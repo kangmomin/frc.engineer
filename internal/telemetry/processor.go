@@ -96,6 +96,11 @@ func (p *Processor) processPacket(data []byte) {
 		return
 	}
 
+	// Handle event packets (penalties, warnings, race control)
+	if parsed.Event != nil {
+		p.handleEventPacket(parsed)
+	}
+
 	// Feed pitwall manager with new packet types
 	if parsed.Motion != nil {
 		p.pitwallManager.UpdateMotion(parsed.Motion, parsed.Header.PlayerCarIndex)
@@ -211,4 +216,94 @@ func (p *Processor) buildDashboardData() *dto.Dashboard {
 		LapInvalid:        lap.CurrentLapInvalid == 1,
 		Timestamp:         time.Now().UnixMilli(),
 	}
+}
+
+// handleEventPacket processes event packets and broadcasts race control notifications
+func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
+	event := parsed.Event
+	playerIdx := parsed.Header.PlayerCarIndex
+
+	var notification *dto.RaceControlNotification
+
+	switch event.EventStringCode {
+	case packets.EventPenalty:
+		penalty, ok := event.EventDetails.(*packets.PenaltyEvent)
+		if !ok || penalty.VehicleIdx != playerIdx {
+			return
+		}
+		penaltyStr := packets.PenaltyTypeString(penalty.PenaltyType)
+		infringementStr := packets.InfringementTypeString(penalty.InfringementType)
+
+		severity := "warning"
+		category := "warning"
+		// Drive through, stop-go, disqualification, black flag are critical
+		if penalty.PenaltyType <= 1 || penalty.PenaltyType == 6 || penalty.PenaltyType == 17 {
+			severity = "critical"
+			category = "penalty"
+		} else if penalty.PenaltyType == 4 { // Time penalty
+			category = "penalty"
+		}
+
+		msg := fmt.Sprintf("%s: %s", penaltyStr, infringementStr)
+		if penalty.Time > 0 {
+			msg = fmt.Sprintf("%s (%ds)", msg, penalty.Time)
+		}
+
+		notification = &dto.RaceControlNotification{
+			Category: category,
+			Message:  msg,
+			Severity: severity,
+		}
+
+	case packets.EventRaceWinner:
+		winner, ok := event.EventDetails.(*packets.RaceWinnerEvent)
+		if !ok || winner.VehicleIdx != playerIdx {
+			return
+		}
+		notification = &dto.RaceControlNotification{
+			Category: "info",
+			Message:  "Race Winner!",
+			Severity: "info",
+		}
+
+	case packets.EventDriveThroughServed:
+		vehicle, ok := event.EventDetails.(*packets.GenericVehicleEvent)
+		if !ok || vehicle.VehicleIdx != playerIdx {
+			return
+		}
+		notification = &dto.RaceControlNotification{
+			Category: "info",
+			Message:  "Drive-through penalty served",
+			Severity: "info",
+		}
+
+	case packets.EventStopGoServed:
+		vehicle, ok := event.EventDetails.(*packets.GenericVehicleEvent)
+		if !ok || vehicle.VehicleIdx != playerIdx {
+			return
+		}
+		notification = &dto.RaceControlNotification{
+			Category: "info",
+			Message:  "Stop-go penalty served",
+			Severity: "info",
+		}
+
+	default:
+		return
+	}
+
+	if notification == nil {
+		return
+	}
+
+	msg := dto.WSResponse{
+		Type: dto.MessageTypeRaceControl,
+		Data: notification,
+	}
+	jsonData, err := json.Marshal(msg)
+	if err != nil {
+		p.logger.Error("failed to marshal race control notification", "error", err)
+		return
+	}
+	p.hub.Broadcast(jsonData)
 }

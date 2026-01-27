@@ -6,6 +6,7 @@ import {
   LapDataResponse,
   WSResponse,
   PitwallState,
+  RaceControlNotification,
 } from '../types/telemetry';
 
 interface UseTelemetryOptions {
@@ -22,6 +23,7 @@ interface UseTelemetryReturn {
   lapData: LapDataResponse | null;
   requestLapData: () => void;
   pitwallState: PitwallState | null;
+  notifications: RaceControlNotification[];
 }
 
 function getDefaultWsUrl(): string {
@@ -52,6 +54,7 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
   const [lastUpdate, setLastUpdate] = useState<number>(0);
   const [lapData, setLapData] = useState<LapDataResponse | null>(null);
   const [pitwallState, setPitwallState] = useState<PitwallState | null>(null);
+  const [notifications, setNotifications] = useState<RaceControlNotification[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
@@ -152,6 +155,21 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
             return;
           }
 
+          // Check if this is a race control notification
+          if (message.type === 'raceControl' && message.data) {
+            const notification: RaceControlNotification = {
+              ...(message.data as Omit<RaceControlNotification, 'id' | 'timestamp'>),
+              id: `rc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              timestamp: Date.now(),
+            };
+            setNotifications((prev) => [...prev, notification]);
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+              setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+            }, 5000);
+            return;
+          }
+
           // Otherwise, it's a regular telemetry update
           const telemetry: TelemetryData = message;
           setData(telemetry);
@@ -225,5 +243,6 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
     lapData,
     requestLapData,
     pitwallState,
+    notifications,
   };
 }

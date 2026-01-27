@@ -172,6 +172,17 @@ export interface CarPosition {
 }
 
 /**
+ * Race control notification from backend event packets
+ */
+export interface RaceControlNotification {
+  id: string;
+  category: 'penalty' | 'warning' | 'info';
+  message: string;
+  severity: 'critical' | 'warning' | 'info';
+  timestamp: number;
+}
+
+/**
  * Default telemetry data for initial state
  */
 export const defaultTelemetryData: TelemetryData = {

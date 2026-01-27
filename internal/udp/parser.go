@@ -16,6 +16,7 @@ type ParsedData struct {
 	Participants *packets.PacketParticipantsData
 	CarStatus    *packets.PacketCarStatusData
 	CarDamage    *packets.PacketCarDamageData
+	Event        *packets.PacketEventData
 }
 
 // Parser handles parsing of F1 25 UDP packets
@@ -97,6 +98,14 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 			return nil, err
 		}
 		parsed.CarDamage = carDamage
+
+	case packets.PacketIDEvent:
+		event, err := packets.ParseEventPacket(data, header)
+		if err != nil {
+			p.logger.Debug("failed to parse event packet", "error", err)
+			return nil, err
+		}
+		parsed.Event = event
 
 	default:
 		return nil, nil

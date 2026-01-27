@@ -6,7 +6,15 @@ const (
 	MessageTypeLapData      = "lapData"      // Server → Client: Response to getLapData request
 	MessageTypeGetBestLap   = "getBestLap"   // Client → Server: Request best lap data
 	MessageTypePitwallState = "pitwallState" // Server → Client: Comprehensive pitwall state
+	MessageTypeRaceControl  = "raceControl"  // Server → Client: Race control notifications
 )
+
+// RaceControlNotification represents a race control event sent to clients
+type RaceControlNotification struct {
+	Category string `json:"category"` // "penalty", "warning", "info"
+	Message  string `json:"message"`
+	Severity string `json:"severity"` // "critical", "warning", "info"
+}
 
 // WSRequest represents a client request message
 type WSRequest struct {
