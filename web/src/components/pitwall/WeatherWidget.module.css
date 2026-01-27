@@ -1,0 +1,97 @@
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.header {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.waiting {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--spacing-md) 0;
+}
+
+.sessionType {
+  font-family: var(--font-racing);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.weatherIcon {
+  font-size: 28px;
+  text-align: center;
+  line-height: 1;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  align-items: baseline;
+}
+
+.label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tempValue {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.value {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.scBadge {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm, 4px);
+  letter-spacing: 1px;
+}
+
+.scFull {
+  background: #dc2626;
+}
+
+.scVirtual {
+  background: #ca8a04;
+}
+
+.scFormation {
+  background: #2563eb;
+}

@@ -1,0 +1,52 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+}
+
+.pedalGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.barContainer {
+  height: 20px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+}
+
+.bar {
+  height: 100%;
+  border-radius: var(--radius-sm);
+  transition: width 0.05s ease;
+}
+
+.throttle {
+  background: linear-gradient(90deg, #006600, var(--throttle-color));
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.brake {
+  background: linear-gradient(90deg, #660000, var(--brake-color));
+  box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+}
+
+.value {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: right;
+}

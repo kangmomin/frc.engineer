@@ -1,0 +1,78 @@
+.panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 80px;
+  padding: var(--spacing-sm);
+}
+
+.label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.value {
+  font-family: var(--font-racing);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.unit {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.percent {
+  font-family: var(--font-racing);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.barContainer {
+  width: 60px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.barThrottle {
+  height: 100%;
+  background: var(--throttle-color);
+  transition: width 50ms ease-out;
+}
+
+.barBrake {
+  height: 100%;
+  background: var(--brake-color);
+  transition: width 50ms ease-out;
+}
+
+.faster .value {
+  color: var(--delta-faster);
+}
+
+.slower .value {
+  color: var(--delta-slower);
+}
+
+.neutral .value {
+  color: var(--delta-neutral);
+}

@@ -1,0 +1,12 @@
+.telemetry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow-y: auto;
+  height: 100%;
+  padding-right: var(--spacing-sm);
+}
+
+.tireSection {
+  flex-shrink: 0;
+}

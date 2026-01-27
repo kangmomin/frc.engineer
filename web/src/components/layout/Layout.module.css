@@ -1,0 +1,297 @@
+.layout {
+  display: flex;
+  height: 100vh;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+/* Overlay when sidebar is open */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 90;
+}
+
+/* Sidebar */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 220px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--bg-panel-border);
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebarOpen {
+  transform: translateX(0);
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.sidebarTitle {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.splitToggle {
+  background: none;
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.splitToggle:hover {
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+/* Navigation */
+.navList {
+  list-style: none;
+  flex: 1;
+  padding: var(--spacing-sm) 0;
+}
+
+.navItem {
+  padding: 0 var(--spacing-sm);
+}
+
+.navButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.navButton:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.navActive {
+  background: rgba(0, 210, 255, 0.1);
+  color: var(--accent-blue);
+  border-left: 2px solid var(--accent-blue);
+}
+
+.navIcon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.navLabel {
+  font-size: 13px;
+}
+
+/* Sidebar footer */
+.sidebarFooter {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--bg-panel-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.connectionStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.statusDot.connected {
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+}
+
+.statusDot.connecting {
+  background: var(--accent-yellow);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.statusDot.disconnected,
+.statusDot.error {
+  background: var(--accent-red);
+}
+
+.statusText {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.reconnectButton {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.reconnectButton:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: var(--accent-blue);
+}
+
+/* Main area */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Top bar: hamburger + miniHUD */
+.topBar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.hamburger {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 40px;
+  height: 40px;
+  padding: 10px;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--bg-panel-border);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.hamburger span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--text-secondary);
+  border-radius: 1px;
+  transition: background 150ms ease;
+}
+
+.hamburger:hover span {
+  background: var(--text-primary);
+}
+
+/* Content containers */
+.contentContainer {
+  flex: 1;
+  overflow: hidden;
+  padding: var(--spacing-md);
+}
+
+.splitContainer {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--bg-panel-border);
+  overflow: hidden;
+}
+
+.panel {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+  padding: var(--spacing-md);
+}
+
+.splitHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--bg-panel-border);
+  flex-shrink: 0;
+}
+
+.splitLabel {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.splitClose {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.splitClose:hover {
+  color: var(--accent-red);
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Responsive: stack split on narrow screens */
+@media (max-width: 800px) {
+  .splitContainer {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+}

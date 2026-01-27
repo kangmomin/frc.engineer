@@ -1,0 +1,226 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"frc.engineer/internal/dto"
+	"frc.engineer/internal/storage"
+	"frc.engineer/internal/telemetry"
+	"frc.engineer/internal/udp"
+	"frc.engineer/internal/websocket"
+	"frc.engineer/pkg/config"
+)
+
+func main() {
+	// Setup structured logging
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
+
+	// Load configuration
+	cfg := config.LoadFromEnv()
+	logger.Info("configuration loaded",
+		"udpPort", cfg.UDPPort,
+		"wsPort", cfg.WSPort,
+		"updateHz", cfg.TelemetryUpdateHz,
+		"dataDir", cfg.DataDir,
+	)
+
+	// Initialize lap storage
+	lapStorage, err := storage.NewFileLapStorage(cfg.DataDir)
+	if err != nil {
+		logger.Error("failed to create lap storage", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("lap storage initialized", "dataDir", cfg.DataDir)
+
+	// Create context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Create UDP listener
+	udpListener, err := udp.NewListener(cfg.UDPPort, cfg.UDPBufferSize, logger)
+	if err != nil {
+		logger.Error("failed to create UDP listener", "error", err)
+		os.Exit(1)
+	}
+
+	// Create packet parser
+	parser := udp.NewParser(logger)
+
+	// Create WebSocket hub
+	hub := websocket.NewHub(cfg.WSBroadcastBuffer, logger)
+
+	// Create telemetry processor
+	processor := telemetry.NewProcessor(parser, hub, cfg.TelemetryUpdateHz, logger)
+
+	// Connect storage to delta calculator
+	processor.DeltaCalculator().SetStorageCallbacks(
+		func(trackID int8, lap *telemetry.LapTelemetry) error {
+			logger.Info("saving best lap", "trackID", trackID, "lapTimeMS", lap.LapTimeMS, "points", len(lap.DataPoints))
+			return lapStorage.SaveBestLap(trackID, lap)
+		},
+		func(trackID int8) (*telemetry.LapTelemetry, error) {
+			lap, err := lapStorage.LoadBestLap(trackID)
+			if err != nil {
+				return nil, err
+			}
+			if lap != nil {
+				logger.Info("loaded best lap from storage", "trackID", trackID, "lapTimeMS", lap.LapTimeMS)
+			}
+			return lap, nil
+		},
+	)
+
+	// Create WebSocket handler
+	wsHandler := websocket.NewHandler(hub, logger)
+
+	// Set up message handler for client requests (e.g., getBestLap)
+	wsHandler.SetMessageHandler(func(_ *websocket.Client, message []byte) []byte {
+		var req dto.WSRequest
+		if err := json.Unmarshal(message, &req); err != nil {
+			logger.Debug("failed to parse WebSocket request", "error", err)
+			return nil
+		}
+
+		switch req.Type {
+		case dto.MessageTypeGetBestLap:
+			deltaCalc := processor.DeltaCalculator()
+			bestLap := deltaCalc.GetBestLapData()
+			currentLap := deltaCalc.GetCurrentLapData()
+
+			response := dto.WSResponse{
+				Type:      dto.MessageTypeLapData,
+				RequestID: req.RequestID,
+				Data: dto.LapDataResponse{
+					BestLap:     convertLapTelemetryToDTO(bestLap),
+					CurrentLap:  convertTelemetryPointsToDTO(currentLap),
+					BestLapTime: deltaCalc.GetBestLapTime(),
+				},
+			}
+
+			responseJSON, err := json.Marshal(response)
+			if err != nil {
+				logger.Error("failed to marshal lap data response", "error", err)
+				return nil
+			}
+			return responseJSON
+		default:
+			logger.Debug("unknown WebSocket request type", "type", req.Type)
+			return nil
+		}
+	})
+
+	// Start components
+	go udpListener.Start(ctx)
+	go hub.Run(ctx)
+	go processor.Start(ctx, udpListener.Packets())
+
+	// Setup HTTP server
+	mux := http.NewServeMux()
+	mux.Handle("/ws", wsHandler)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","clients":%d}`, hub.ClientCount())
+	})
+
+	server := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.WSPort),
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	// Start HTTP server
+	go func() {
+		logger.Info("HTTP server started", "addr", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP server error", "error", err)
+		}
+	}()
+
+	logger.Info("F1 25 Telemetry Server started",
+		"udp", fmt.Sprintf(":%d", cfg.UDPPort),
+		"ws", fmt.Sprintf("ws://localhost:%d/ws", cfg.WSPort),
+	)
+
+	// Wait for shutdown signal
+	sig := <-sigChan
+	logger.Info("shutdown signal received", "signal", sig)
+
+	// Graceful shutdown
+	cancel()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.Error("HTTP server shutdown error", "error", err)
+	}
+
+	logger.Info("server shutdown complete")
+}
+
+// convertLapTelemetryToDTO converts internal lap telemetry to DTO
+func convertLapTelemetryToDTO(lap *telemetry.LapTelemetry) *dto.LapTelemetryDTO {
+	if lap == nil {
+		return nil
+	}
+
+	result := &dto.LapTelemetryDTO{
+		TrackID:   lap.TrackID,
+		LapTimeMS: lap.LapTimeMS,
+		Sector1MS: lap.Sector1MS,
+		Sector2MS: lap.Sector2MS,
+		Sector3MS: lap.Sector3MS,
+	}
+
+	if len(lap.DataPoints) > 0 {
+		result.DataPoints = make([]dto.TelemetryPointDTO, len(lap.DataPoints))
+		for i, p := range lap.DataPoints {
+			result.DataPoints[i] = dto.TelemetryPointDTO{
+				LapDistance: p.LapDistance,
+				LapTime:     p.LapTime,
+				Speed:       p.Speed,
+				Throttle:    p.Throttle,
+				Brake:       p.Brake,
+				Gear:        p.Gear,
+			}
+		}
+	}
+
+	return result
+}
+
+// convertTelemetryPointsToDTO converts internal telemetry points to DTOs
+func convertTelemetryPointsToDTO(points []telemetry.TelemetryPoint) []dto.TelemetryPointDTO {
+	if len(points) == 0 {
+		return nil
+	}
+
+	result := make([]dto.TelemetryPointDTO, len(points))
+	for i, p := range points {
+		result[i] = dto.TelemetryPointDTO{
+			LapDistance: p.LapDistance,
+			LapTime:     p.LapTime,
+			Speed:       p.Speed,
+			Throttle:    p.Throttle,
+			Brake:       p.Brake,
+			Gear:        p.Gear,
+		}
+	}
+	return result
+}

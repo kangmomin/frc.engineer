@@ -1,0 +1,71 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+}
+
+.header {
+  display: flex;
+  justify-content: space-around;
+  gap: var(--spacing-lg);
+}
+
+.headerItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.headerValue {
+  font-family: var(--font-racing);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.times {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.timeRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.timeLabel {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.timeValue {
+  font-family: var(--font-racing);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.currentTime {
+  color: var(--accent-yellow);
+}
+
+.bestTime {
+  color: var(--sector-purple);
+}

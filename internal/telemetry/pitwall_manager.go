@@ -1,0 +1,220 @@
+package telemetry
+
+import (
+	"sync"
+
+	"frc.engineer/internal/dto"
+	"frc.engineer/internal/packets"
+)
+
+// PitwallManager aggregates data from multiple packet types into a unified PitwallState
+type PitwallManager struct {
+	mu sync.RWMutex
+
+	session      *packets.PacketSessionData
+	participants *packets.PacketParticipantsData
+	motion       *packets.PacketMotionData
+	carStatus    *packets.PacketCarStatusData
+	lapData      *packets.PacketLapData
+	telemetry    *packets.PacketCarTelemetryData
+	playerIndex  uint8
+}
+
+// NewPitwallManager creates a new PitwallManager
+func NewPitwallManager() *PitwallManager {
+	return &PitwallManager{}
+}
+
+// UpdateSession stores the latest session packet
+func (pm *PitwallManager) UpdateSession(s *packets.PacketSessionData) {
+	pm.mu.Lock()
+	pm.session = s
+	pm.mu.Unlock()
+}
+
+// UpdateParticipants stores the latest participants packet
+func (pm *PitwallManager) UpdateParticipants(p *packets.PacketParticipantsData) {
+	pm.mu.Lock()
+	pm.participants = p
+	pm.mu.Unlock()
+}
+
+// UpdateMotion stores the latest motion packet
+func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex uint8) {
+	pm.mu.Lock()
+	pm.motion = m
+	pm.playerIndex = playerIndex
+	pm.mu.Unlock()
+}
+
+// UpdateCarStatus stores the latest car status packet
+func (pm *PitwallManager) UpdateCarStatus(cs *packets.PacketCarStatusData) {
+	pm.mu.Lock()
+	pm.carStatus = cs
+	pm.mu.Unlock()
+}
+
+// UpdateLapData stores the latest lap data (all 22 cars) for position/timing
+func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
+	pm.mu.Lock()
+	pm.lapData = ld
+	pm.mu.Unlock()
+}
+
+// UpdateTelemetry stores the latest telemetry packet (for tire temps)
+func (pm *PitwallManager) UpdateTelemetry(t *packets.PacketCarTelemetryData) {
+	pm.mu.Lock()
+	pm.telemetry = t
+	pm.mu.Unlock()
+}
+
+// BuildState constructs the PitwallState DTO from all cached packet data
+func (pm *PitwallManager) BuildState() *dto.PitwallState {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	state := &dto.PitwallState{
+		PlayerIndex: int(pm.playerIndex),
+	}
+
+	// Session info
+	if pm.session != nil {
+		state.Session = &dto.SessionInfo{
+			Weather:     weatherString(pm.session.Weather),
+			TrackTemp:   float32(pm.session.TrackTemperature),
+			AirTemp:     float32(pm.session.AirTemperature),
+			SafetyCar:   safetyCarString(pm.session.SafetyCarStatus),
+			SessionType: sessionTypeString(pm.session.SessionType),
+			TotalLaps:   int(pm.session.TotalLaps),
+			TrackID:     pm.session.TrackID,
+			TrackLength: int(pm.session.TrackLength),
+		}
+	}
+
+	// Car positions from motion data
+	if pm.motion != nil {
+		state.Positions = make([]dto.CarPosition, packets.MaxCars)
+		for i := range packets.MaxCars {
+			m := &pm.motion.CarMotionData[i]
+			state.Positions[i] = dto.CarPosition{
+				Index: i,
+				X:     m.WorldPositionX,
+				Y:     m.WorldPositionY,
+				Z:     m.WorldPositionZ,
+			}
+		}
+	}
+
+	// Driver info (merge participants, lap data, car status)
+	numCars := packets.MaxCars
+	if pm.participants != nil && int(pm.participants.NumActiveCars) < numCars {
+		numCars = int(pm.participants.NumActiveCars)
+	}
+
+	if numCars > 0 {
+		state.Drivers = make([]dto.DriverInfo, numCars)
+		for i := range numCars {
+			d := &state.Drivers[i]
+			d.Index = i
+
+			if pm.participants != nil {
+				p := &pm.participants.Participants[i]
+				d.Name = p.GetName()
+				d.TeamID = int(p.TeamID)
+			}
+
+			if pm.lapData != nil {
+				ld := &pm.lapData.LapData[i]
+				d.Position = int(ld.CarPosition)
+				d.CurrentLapNum = int(ld.CurrentLapNum)
+				d.LastLapTime = float32(ld.LastLapTimeInMS)
+				d.BestLapTime = 0
+			}
+
+			if pm.carStatus != nil {
+				cs := &pm.carStatus.CarStatusData[i]
+				d.TireCompound = tireCompoundString(cs.VisualTyreCompound)
+				d.TireAge = int(cs.TyresAgeLaps)
+			}
+
+			if pm.telemetry != nil {
+				ct := &pm.telemetry.CarTelemetryData[i]
+				for w := range 4 {
+					d.TireTemp[w] = int(ct.TyresSurfaceTemperature[w])
+				}
+			}
+		}
+	}
+
+	return state
+}
+
+// HasData returns true if at least session or motion data has been received
+func (pm *PitwallManager) HasData() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.session != nil || pm.motion != nil
+}
+
+func weatherString(w uint8) string {
+	switch w {
+	case 0:
+		return "clear"
+	case 1:
+		return "light_cloud"
+	case 2:
+		return "overcast"
+	case 3:
+		return "light_rain"
+	case 4:
+		return "heavy_rain"
+	case 5:
+		return "storm"
+	default:
+		return "unknown"
+	}
+}
+
+func safetyCarString(s uint8) string {
+	switch s {
+	case 0:
+		return "none"
+	case 1:
+		return "full"
+	case 2:
+		return "virtual"
+	case 3:
+		return "formation"
+	default:
+		return "unknown"
+	}
+}
+
+func sessionTypeString(s uint8) string {
+	types := map[uint8]string{
+		0: "unknown", 1: "P1", 2: "P2", 3: "P3", 4: "Short P",
+		5: "Q1", 6: "Q2", 7: "Q3", 8: "Short Q", 9: "OSQ",
+		10: "Race", 11: "Race 2", 12: "Race 3", 13: "Time Trial",
+	}
+	if t, ok := types[s]; ok {
+		return t
+	}
+	return "unknown"
+}
+
+func tireCompoundString(v uint8) string {
+	switch v {
+	case 16:
+		return "soft"
+	case 17:
+		return "medium"
+	case 18:
+		return "hard"
+	case 7:
+		return "inter"
+	case 8:
+		return "wet"
+	default:
+		return "unknown"
+	}
+}

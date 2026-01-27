@@ -1,0 +1,181 @@
+:root {
+  /* Background colors */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --bg-panel: rgba(0, 0, 0, 0.85);
+  --bg-panel-border: rgba(255, 255, 255, 0.1);
+
+  /* Text colors */
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --text-muted: #555555;
+
+  /* F1 Accent colors */
+  --accent-red: #e10600;
+  --accent-green: #00ff00;
+  --accent-yellow: #ffff00;
+  --accent-blue: #00d2ff;
+  --accent-orange: #ff8700;
+  --accent-purple: #9b59b6;
+
+  /* Delta colors */
+  --delta-faster: #00ff00;
+  --delta-slower: #ff0000;
+  --delta-neutral: #ffffff;
+
+  /* Pedal colors */
+  --throttle-color: #00ff00;
+  --brake-color: #ff0000;
+
+  /* RPM bar colors */
+  --rpm-low: #00ff00;
+  --rpm-mid: #ffff00;
+  --rpm-high: #ff0000;
+
+  /* Gear colors */
+  --gear-reverse: #ff0000;
+  --gear-neutral: #ffff00;
+  --gear-forward: #ffffff;
+
+  /* DRS colors */
+  --drs-active: #00ff00;
+  --drs-inactive: #444444;
+
+  /* Sector colors */
+  --sector-purple: #9b59b6;
+  --sector-green: #00ff00;
+  --sector-yellow: #ffff00;
+
+  /* Chart colors */
+  --chart-best-lap: #9b59b6;
+  --chart-current-lap: #00ff00;
+  --chart-grid: rgba(255, 255, 255, 0.1);
+  --chart-axis: #888888;
+
+  /* Fonts */
+  --font-racing: 'Orbitron', 'Rajdhani', monospace;
+  --font-body: 'Rajdhani', sans-serif;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Shadows */
+  --shadow-glow: 0 0 10px rgba(0, 210, 255, 0.3);
+  --shadow-panel: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Reset and base styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+/* Common component styles */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+}
+
+.label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.value {
+  font-family: var(--font-racing);
+  font-weight: 700;
+}
+
+.value-large {
+  font-size: 72px;
+  line-height: 1;
+}
+
+.value-medium {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.value-small {
+  font-size: 24px;
+  line-height: 1;
+}
+
+/* Animation utilities */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 5px currentColor; }
+  50% { box-shadow: 0 0 20px currentColor; }
+}
+
+.animate-pulse {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow 0.5s ease-in-out infinite;
+}
+
+/* Connection status */
+.connection-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.connection-dot.connected {
+  background-color: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+}
+
+.connection-dot.connecting {
+  background-color: var(--accent-yellow);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.connection-dot.disconnected,
+.connection-dot.error {
+  background-color: var(--accent-red);
+}

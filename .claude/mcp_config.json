@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "minmo-scribe": {
+      "command": "/opt/pyenv/versions/3.13.9/bin/python3.13",
+      "args": [
+        "/opt/pyenv/versions/3.13.9/lib/python3.13/site-packages/minmo/scribe_mcp.py"
+      ],
+      "env": {
+        "PYTHONPATH": "/opt/pyenv/versions/3.13.9/lib/python3.13/site-packages"
+      }
+    }
+  }
+}

@@ -1,0 +1,56 @@
+.table {
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.headerCell {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 150ms ease;
+}
+
+.row:last-child {
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.row.active {
+  background: rgba(0, 210, 255, 0.1);
+}
+
+.sectorName {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.time {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  color: var(--text-primary);
+  text-align: right;
+}

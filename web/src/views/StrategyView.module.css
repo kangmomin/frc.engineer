@@ -1,0 +1,17 @@
+.strategy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow-y: auto;
+  height: 100%;
+  padding-right: var(--spacing-sm);
+}
+
+.trackSection {
+  flex: 1;
+  min-height: 400px;
+}
+
+.weatherSection {
+  flex-shrink: 0;
+}

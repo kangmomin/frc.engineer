@@ -1,0 +1,75 @@
+.panel {
+  padding: var(--spacing-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+}
+
+.header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #888);
+  margin-bottom: var(--spacing-sm);
+  text-transform: uppercase;
+}
+
+.compoundRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.compoundName {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.tireAge {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+}
+
+.noData {
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+  text-align: center;
+  padding: var(--spacing-lg) 0;
+}
+
+.tireGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+}
+
+.tire {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--spacing-sm);
+  border: 2px solid #444;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tireLabel {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted, #888);
+  letter-spacing: 0.05em;
+}
+
+.tireTemp {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tireWear {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
