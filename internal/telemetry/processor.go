@@ -45,7 +45,7 @@ func NewProcessor(parser *udp.Parser, hub *websocket.Hub, updateRateHz int, logg
 		parser:          parser,
 		hub:             hub,
 		deltaCalculator: NewDeltaCalculator(),
-		pitwallManager:  NewPitwallManager(),
+		pitwallManager:  NewPitwallManager(NewStrategyManager()),
 		logger:          logger,
 		minInterval:     interval,
 	}

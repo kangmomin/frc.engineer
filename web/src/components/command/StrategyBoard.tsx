@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import type { PitwallState } from '../../types/telemetry';
+import type { PitwallState, StintInfo } from '../../types/telemetry';
 import styles from './StrategyBoard.module.css';
 
 interface StrategyBoardProps {
@@ -35,6 +35,31 @@ function getTireLabel(compound: string): string {
     case 'wet': return 'W';
     default: return '?';
   }
+}
+
+// Tire cliff thresholds per compound
+const CLIFF_THRESHOLDS: Record<string, number> = {
+  soft: 15,
+  medium: 25,
+  hard: 35,
+  inter: 30,
+  wet: 25,
+};
+
+function getTireAgeColor(compound: string, age: number): string | undefined {
+  if (age < 5) return '#44cc44'; // fresh = green
+  const cliff = CLIFF_THRESHOLDS[compound];
+  if (cliff && age >= cliff) return '#ff4444'; // cliff = red
+  return undefined;
+}
+
+function renderStintPills(history: StintInfo[] | undefined): React.ReactNode {
+  if (!history || history.length === 0) return '-';
+  return history.map((s, i) => (
+    <span key={i} className={`${styles.stintPill} ${getTireClass(s.compound)}`}>
+      {getTireLabel(s.compound)}-{s.laps}
+    </span>
+  ));
 }
 
 export function StrategyBoard({ pitwallState }: StrategyBoardProps) {
@@ -87,6 +112,7 @@ export function StrategyBoard({ pitwallState }: StrategyBoardProps) {
             <th>TIRE</th>
             <th>LAST</th>
             <th>BEST</th>
+            <th>STINTS</th>
             <th>PITS</th>
             <th>GAP</th>
             <th>INT</th>
@@ -119,8 +145,11 @@ export function StrategyBoard({ pitwallState }: StrategyBoardProps) {
                   <span className={getTireClass(d.tireCompound)}>
                     {getTireLabel(d.tireCompound)}
                   </span>
-                  <span style={{ opacity: 0.6 }}>{d.tireAge}L</span>
+                  <span style={{ color: getTireAgeColor(d.tireCompound, d.tireAge) ?? undefined, opacity: getTireAgeColor(d.tireCompound, d.tireAge) ? 1 : 0.6 }}>
+                    {d.tireAge}L
+                  </span>
                 </td>
+                <td className={styles.stints}>{renderStintPills(d.stintHistory)}</td>
                 <td>{formatTime(d.lastLapTime)}</td>
                 <td>{formatTime(d.bestLapTime)}</td>
                 <td>{d.numPitStops}</td>

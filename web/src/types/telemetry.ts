@@ -141,6 +141,9 @@ export interface DriverInfo {
   ersDeployedThisLap: number;
   ersHarvestedThisLap: number;
 
+  // Strategy
+  stintHistory?: StintInfo[];
+
   // Damage
   damage?: CarDamage;
 
@@ -152,6 +155,11 @@ export interface DriverInfo {
   deltaToCarInFront?: number;
   deltaToRaceLeader?: number;
   pitLaneTime?: number;
+}
+
+export interface StintInfo {
+  compound: string;
+  laps: number;
 }
 
 export interface CarDamage {

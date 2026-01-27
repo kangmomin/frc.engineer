@@ -74,6 +74,20 @@
   font-size: 0.7rem;
 }
 
+.stints {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.stintPill {
+  font-size: 0.65rem;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+
 .noData {
   color: var(--color-text-secondary);
   font-style: italic;

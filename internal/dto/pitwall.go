@@ -46,6 +46,9 @@ type DriverInfo struct {
 	// Damage
 	Damage *CarDamage `json:"damage,omitempty"`
 
+	// Strategy
+	StintHistory []StintInfoDTO `json:"stintHistory,omitempty"`
+
 	// Pit
 	PitStatus    int     `json:"pitStatus"`
 	NumPitStops  int     `json:"numPitStops"`
@@ -54,6 +57,12 @@ type DriverInfo struct {
 	DeltaToCarInFront int     `json:"deltaToCarInFront"`
 	DeltaToRaceLeader int     `json:"deltaToRaceLeader"`
 	PitLaneTime       int     `json:"pitLaneTime"`
+}
+
+// StintInfoDTO represents a completed tire stint
+type StintInfoDTO struct {
+	Compound string `json:"compound"`
+	Laps     int    `json:"laps"`
 }
 
 // CarDamage contains damage percentages for car components

@@ -19,11 +19,14 @@ type PitwallManager struct {
 	telemetry    *packets.PacketCarTelemetryData
 	carDamage    *packets.PacketCarDamageData
 	playerIndex  uint8
+	strategyMgr  *StrategyManager
 }
 
 // NewPitwallManager creates a new PitwallManager
-func NewPitwallManager() *PitwallManager {
-	return &PitwallManager{}
+func NewPitwallManager(strategyMgr *StrategyManager) *PitwallManager {
+	return &PitwallManager{
+		strategyMgr: strategyMgr,
+	}
 }
 
 // UpdateSession stores the latest session packet
@@ -48,11 +51,13 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 	pm.mu.Unlock()
 }
 
-// UpdateCarStatus stores the latest car status packet
+// UpdateCarStatus stores the latest car status packet and updates strategy tracking
 func (pm *PitwallManager) UpdateCarStatus(cs *packets.PacketCarStatusData) {
 	pm.mu.Lock()
 	pm.carStatus = cs
+	lapData := pm.lapData
 	pm.mu.Unlock()
+	pm.strategyMgr.Update(cs, lapData)
 }
 
 // UpdateLapData stores the latest lap data (all 22 cars) for position/timing
@@ -162,6 +167,15 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.ERSDeployMode = int(cs.ERSDeployMode)
 				d.ERSDeployedThisLap = cs.ERSDeployedThisLap
 				d.ERSHarvestedThisLap = cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH
+			}
+
+			// Stint history from strategy manager
+			ds := pm.strategyMgr.GetDriverStrategy(i)
+			if len(ds.StintHistory) > 0 {
+				d.StintHistory = make([]dto.StintInfoDTO, len(ds.StintHistory))
+				for si, s := range ds.StintHistory {
+					d.StintHistory[si] = dto.StintInfoDTO{Compound: s.Compound, Laps: s.Laps}
+				}
 			}
 
 			if pm.telemetry != nil {
