@@ -51,6 +51,9 @@ type DriverInfo struct {
 	NumPitStops  int     `json:"numPitStops"`
 	LapDistance  float32 `json:"lapDistance"`
 	PitStopTimer float32 `json:"pitStopTimer"`
+	DeltaToCarInFront int     `json:"deltaToCarInFront"`
+	DeltaToRaceLeader int     `json:"deltaToRaceLeader"`
+	PitLaneTime       int     `json:"pitLaneTime"`
 }
 
 // CarDamage contains damage percentages for car components

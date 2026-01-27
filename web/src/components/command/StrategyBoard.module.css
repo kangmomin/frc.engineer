@@ -1,0 +1,81 @@
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  overflow-y: auto;
+}
+
+.title {
+  font-family: var(--font-racing);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--spacing-xs);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 4px 6px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.table td {
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.table tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.player {
+  background: rgba(0, 255, 136, 0.08);
+}
+
+.pitActive {
+  animation: pitFlash 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes pitFlash {
+  from { background: rgba(255, 170, 0, 0.15); }
+  to { background: rgba(255, 170, 0, 0.35); }
+}
+
+.rivalFaster {
+  animation: rivalFlash 0.8s ease-in-out 3;
+}
+
+@keyframes rivalFlash {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(160, 32, 240, 0.25); }
+}
+
+.soft { color: #ff4444; }
+.medium { color: #ffdd00; }
+.hard { color: #ffffff; }
+.inter { color: #44cc44; }
+.wet { color: #4488ff; }
+
+.gap {
+  font-family: var(--font-racing);
+  font-size: 0.7rem;
+}
+
+.noData {
+  color: var(--color-text-secondary);
+  font-style: italic;
+  font-size: 0.8rem;
+}

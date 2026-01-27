@@ -1,0 +1,19 @@
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.title {
+  font-family: var(--font-racing);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.noData {
+  color: var(--color-text-secondary);
+  font-style: italic;
+  font-size: 0.8rem;
+}

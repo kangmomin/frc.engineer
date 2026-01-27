@@ -141,6 +141,14 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.NumPitStops = int(ld.NumPitStops)
 				d.LapDistance = ld.LapDistance
 				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0
+				// Guard against int16 boundary values (-32768) which indicate invalid data
+				if ld.DeltaToCarInFrontInMS != -32768 {
+					d.DeltaToCarInFront = int(ld.DeltaToCarInFrontInMS)
+				}
+				if ld.DeltaToRaceLeaderInMS != -32768 {
+					d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderInMS)
+				}
+				d.PitLaneTime = int(ld.PitLaneTimeInLaneInMS)
 			}
 
 			if pm.carStatus != nil {

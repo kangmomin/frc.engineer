@@ -6,6 +6,7 @@ import { StrategyView } from '../../views/StrategyView';
 import { TelemetryView } from '../../views/TelemetryView';
 import { TimingView } from '../../views/TimingView';
 import { EngineerView } from '../../views/EngineerView';
+import { CommandView } from '../../views/CommandView';
 import styles from './Layout.module.css';
 
 interface LayoutProps {
@@ -23,6 +24,7 @@ const TAB_CONFIG: { id: TabId; label: string; icon: string }[] = [
   { id: 'strategy', label: 'Strategy', icon: '◎' },
   { id: 'telemetry', label: 'Telemetry', icon: '◉' },
   { id: 'timing', label: 'Timing', icon: '⏱' },
+  { id: 'command', label: 'Command', icon: '⊕' },
 ];
 
 export function Layout({
@@ -70,6 +72,8 @@ export function Layout({
         return <TelemetryView pitwallState={pitwallState} />;
       case 'timing':
         return <TimingView pitwallState={pitwallState} data={data} lapData={lapData} />;
+      case 'command':
+        return <CommandView pitwallState={pitwallState} />;
     }
   }
 

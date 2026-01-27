@@ -1,0 +1,89 @@
+.predictor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title {
+  font-family: var(--font-racing);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.boxButton {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: #e10600;
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-racing);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: background 0.15s;
+}
+
+.boxButton:hover {
+  background: #ff1a1a;
+}
+
+.boxButton:active {
+  background: #b00500;
+}
+
+.result {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.highlight {
+  color: #00ff88;
+  font-weight: 600;
+}
+
+.warning {
+  color: #ffaa00;
+}
+
+.congestion {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.congestionLow {
+  background: rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+}
+
+.congestionMedium {
+  background: rgba(255, 170, 0, 0.2);
+  color: #ffaa00;
+}
+
+.congestionHigh {
+  background: rgba(225, 6, 0, 0.2);
+  color: #ff4444;
+}
+
+.noData {
+  color: var(--color-text-secondary);
+  font-style: italic;
+  font-size: 0.8rem;
+}

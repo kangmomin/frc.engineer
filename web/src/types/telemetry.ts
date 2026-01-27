@@ -45,7 +45,7 @@ export type ViewMode = 'driver' | 'pitwall';
 /**
  * Tab identifiers for sidebar navigation
  */
-export type TabId = 'cockpit' | 'engineer' | 'strategy' | 'telemetry' | 'timing';
+export type TabId = 'cockpit' | 'engineer' | 'strategy' | 'telemetry' | 'timing' | 'command';
 
 /**
  * A single telemetry data point for chart visualization
@@ -149,6 +149,9 @@ export interface DriverInfo {
   numPitStops: number;
   lapDistance: number;
   pitStopTimer: number;
+  deltaToCarInFront?: number;
+  deltaToRaceLeader?: number;
+  pitLaneTime?: number;
 }
 
 export interface CarDamage {

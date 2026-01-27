@@ -4,6 +4,7 @@ import { calculateSectorBoundaries } from '../utils/trackUtils';
 import { EnhancedSpeedChart } from '../components/engineer/EnhancedSpeedChart';
 import { EnhancedInputsChart } from '../components/engineer/EnhancedInputsChart';
 import { EnhancedDeltaChart } from '../components/engineer/EnhancedDeltaChart';
+import { SectorDeltaPanel } from '../components/engineer/SectorDeltaPanel';
 import styles from './EngineerView.module.css';
 
 interface EngineerViewProps {
@@ -46,6 +47,9 @@ export function EngineerView({ lapData, pitwallState }: EngineerViewProps) {
           sectorBoundaries={sectorBoundaries}
           height={200}
         />
+      </section>
+      <section className={styles.chart}>
+        <SectorDeltaPanel lapData={lapData} />
       </section>
     </div>
   );
