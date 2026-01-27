@@ -10,3 +10,11 @@
 .tireSection {
   flex-shrink: 0;
 }
+
+.fuelSection {
+  flex-shrink: 0;
+}
+
+.damageSection {
+  flex-shrink: 0;
+}

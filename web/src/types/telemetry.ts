@@ -131,6 +131,37 @@ export interface DriverInfo {
   tireAge: number;
   tireWear: number[];
   tireTemp: number[];
+
+  // Fuel & Energy
+  fuelInTank: number;
+  fuelRemainingLaps: number;
+  fuelMix: number;
+  ersStoreEnergy: number;
+  ersDeployMode: number;
+  ersDeployedThisLap: number;
+  ersHarvestedThisLap: number;
+
+  // Damage
+  damage?: CarDamage;
+
+  // Pit
+  pitStatus: number;
+  numPitStops: number;
+  lapDistance: number;
+  pitStopTimer: number;
+}
+
+export interface CarDamage {
+  frontLeftWing: number;
+  frontRightWing: number;
+  rearWing: number;
+  floor: number;
+  diffuser: number;
+  sidepod: number;
+  engine: number;
+  gearbox: number;
+  drsFault: boolean;
+  ersFault: boolean;
 }
 
 export interface CarPosition {

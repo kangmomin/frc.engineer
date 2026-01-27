@@ -33,6 +33,38 @@ type DriverInfo struct {
 	TireAge       int     `json:"tireAge"`
 	TireWear      [4]int  `json:"tireWear"`
 	TireTemp      [4]int  `json:"tireTemp"`
+
+	// Fuel & Energy
+	FuelInTank          float32 `json:"fuelInTank"`
+	FuelRemainingLaps   float32 `json:"fuelRemainingLaps"`
+	FuelMix             int     `json:"fuelMix"`
+	ERSStoreEnergy      float32 `json:"ersStoreEnergy"`
+	ERSDeployMode       int     `json:"ersDeployMode"`
+	ERSDeployedThisLap  float32 `json:"ersDeployedThisLap"`
+	ERSHarvestedThisLap float32 `json:"ersHarvestedThisLap"`
+
+	// Damage
+	Damage *CarDamage `json:"damage,omitempty"`
+
+	// Pit
+	PitStatus    int     `json:"pitStatus"`
+	NumPitStops  int     `json:"numPitStops"`
+	LapDistance  float32 `json:"lapDistance"`
+	PitStopTimer float32 `json:"pitStopTimer"`
+}
+
+// CarDamage contains damage percentages for car components
+type CarDamage struct {
+	FrontLeftWing  int  `json:"frontLeftWing"`
+	FrontRightWing int  `json:"frontRightWing"`
+	RearWing       int  `json:"rearWing"`
+	Floor          int  `json:"floor"`
+	Diffuser       int  `json:"diffuser"`
+	Sidepod        int  `json:"sidepod"`
+	Engine         int  `json:"engine"`
+	Gearbox        int  `json:"gearbox"`
+	DRSFault       bool `json:"drsFault"`
+	ERSFault       bool `json:"ersFault"`
 }
 
 // CarPosition contains GPS position for track map rendering

@@ -1,0 +1,123 @@
+.panel {
+  padding: var(--spacing-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+}
+
+.header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #888);
+  margin-bottom: var(--spacing-sm);
+  text-transform: uppercase;
+}
+
+.noData {
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+  text-align: center;
+  padding: var(--spacing-lg) 0;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.label {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary, #fff);
+}
+
+.separator {
+  border: none;
+  border-top: 1px solid var(--bg-panel-border);
+  margin: var(--spacing-sm) 0;
+}
+
+.undercutAlert {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.trafficList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trafficItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  padding: 3px 0;
+}
+
+.trafficName {
+  color: var(--text-secondary, #ccc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.trafficGap {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gapDanger {
+  color: #ef4444;
+}
+
+.gapWarn {
+  color: #eab308;
+}
+
+.gapSafe {
+  color: #22c55e;
+}
+
+.returnPosition {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
+}
+
+.positionLoss {
+  color: #ef4444;
+}
+
+.positionSame {
+  color: #22c55e;
+}
+
+.subheader {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  margin: var(--spacing-sm) 0 4px;
+}

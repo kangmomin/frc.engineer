@@ -9,3 +9,6 @@ export { TrackMap } from './TrackMap';
 export { Leaderboard } from './Leaderboard';
 export { WeatherWidget } from './WeatherWidget';
 export { TireStatus } from './TireStatus';
+export { FuelStrategy } from './FuelStrategy';
+export { DamageVisualizer } from './DamageVisualizer';
+export { PitStrategy } from './PitStrategy';

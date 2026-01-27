@@ -15,6 +15,7 @@ type ParsedData struct {
 	Session      *packets.PacketSessionData
 	Participants *packets.PacketParticipantsData
 	CarStatus    *packets.PacketCarStatusData
+	CarDamage    *packets.PacketCarDamageData
 }
 
 // Parser handles parsing of F1 25 UDP packets
@@ -88,6 +89,14 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 			return nil, err
 		}
 		parsed.CarStatus = carStatus
+
+	case packets.PacketIDCarDamage:
+		carDamage, err := packets.ParseCarDamagePacket(data, header)
+		if err != nil {
+			p.logger.Debug("failed to parse car damage packet", "error", err)
+			return nil, err
+		}
+		parsed.CarDamage = carDamage
 
 	default:
 		return nil, nil

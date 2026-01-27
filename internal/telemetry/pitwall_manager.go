@@ -17,6 +17,7 @@ type PitwallManager struct {
 	carStatus    *packets.PacketCarStatusData
 	lapData      *packets.PacketLapData
 	telemetry    *packets.PacketCarTelemetryData
+	carDamage    *packets.PacketCarDamageData
 	playerIndex  uint8
 }
 
@@ -65,6 +66,13 @@ func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
 func (pm *PitwallManager) UpdateTelemetry(t *packets.PacketCarTelemetryData) {
 	pm.mu.Lock()
 	pm.telemetry = t
+	pm.mu.Unlock()
+}
+
+// UpdateCarDamage stores the latest car damage packet
+func (pm *PitwallManager) UpdateCarDamage(cd *packets.PacketCarDamageData) {
+	pm.mu.Lock()
+	pm.carDamage = cd
 	pm.mu.Unlock()
 }
 
@@ -129,18 +137,49 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.CurrentLapNum = int(ld.CurrentLapNum)
 				d.LastLapTime = float32(ld.LastLapTimeInMS)
 				d.BestLapTime = 0
+				d.PitStatus = int(ld.PitStatus)
+				d.NumPitStops = int(ld.NumPitStops)
+				d.LapDistance = ld.LapDistance
+				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0
 			}
 
 			if pm.carStatus != nil {
 				cs := &pm.carStatus.CarStatusData[i]
 				d.TireCompound = tireCompoundString(cs.VisualTyreCompound)
 				d.TireAge = int(cs.TyresAgeLaps)
+				d.FuelInTank = cs.FuelInTank
+				d.FuelRemainingLaps = cs.FuelRemainingLaps
+				d.FuelMix = int(cs.FuelMix)
+				d.ERSStoreEnergy = cs.ERSStoreEnergy
+				d.ERSDeployMode = int(cs.ERSDeployMode)
+				d.ERSDeployedThisLap = cs.ERSDeployedThisLap
+				d.ERSHarvestedThisLap = cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH
 			}
 
 			if pm.telemetry != nil {
 				ct := &pm.telemetry.CarTelemetryData[i]
 				for w := range 4 {
 					d.TireTemp[w] = int(ct.TyresSurfaceTemperature[w])
+				}
+			}
+
+			if pm.carDamage != nil {
+				cd := &pm.carDamage.CarDamageData[i]
+				d.Damage = &dto.CarDamage{
+					FrontLeftWing:  int(cd.FrontLeftWingDamage),
+					FrontRightWing: int(cd.FrontRightWingDamage),
+					RearWing:       int(cd.RearWingDamage),
+					Floor:          int(cd.FloorDamage),
+					Diffuser:       int(cd.DiffuserDamage),
+					Sidepod:        int(cd.SidepodDamage),
+					Engine:         int(cd.EngineDamage),
+					Gearbox:        int(cd.GearBoxDamage),
+					DRSFault:       cd.DRSFault == 1,
+					ERSFault:       cd.ERSFault == 1,
+				}
+				// Also populate tire wear from damage packet
+				for w := range 4 {
+					d.TireWear[w] = int(cd.TyresWear[w])
 				}
 			}
 		}
