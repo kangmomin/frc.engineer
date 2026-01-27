@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"frc.engineer/internal/udp"
 	"frc.engineer/internal/websocket"
 	"frc.engineer/pkg/config"
+	"frc.engineer/web"
 )
 
 func main() {
@@ -136,6 +138,24 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"status":"ok","clients":%d}`, hub.ClientCount())
 	})
+
+	// Serve embedded frontend (SPA fallback)
+	distFS, err := fs.Sub(web.DistFS, "dist")
+	if err != nil {
+		logger.Error("failed to create sub filesystem", "error", err)
+		os.Exit(1)
+	}
+	fileServer := http.FileServer(http.FS(distFS))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try serving the file directly; fall back to index.html for SPA routes
+		f, err := distFS.Open(r.URL.Path[1:]) // strip leading "/"
+		if err != nil {
+			r.URL.Path = "/"
+		} else {
+			f.Close()
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.WSPort),
