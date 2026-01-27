@@ -45,7 +45,7 @@ export type ViewMode = 'driver' | 'pitwall';
 /**
  * Tab identifiers for sidebar navigation
  */
-export type TabId = 'cockpit' | 'strategy' | 'telemetry' | 'timing';
+export type TabId = 'cockpit' | 'engineer' | 'strategy' | 'telemetry' | 'timing';
 
 /**
  * A single telemetry data point for chart visualization

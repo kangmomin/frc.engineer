@@ -10,6 +10,11 @@ export interface ChartSeries {
   fill?: string;
 }
 
+export interface SectorBoundaryMarkers {
+  sector1End: number;
+  sector2End: number;
+}
+
 export interface TelemetryChartProps {
   title: string;
   data: uPlot.AlignedData;
@@ -19,6 +24,7 @@ export interface TelemetryChartProps {
   yAxisLabel?: string;
   scales?: uPlot.Options['scales'];
   axes?: uPlot.Options['axes'];
+  sectorBoundaries?: SectorBoundaryMarkers;
 }
 
 export function TelemetryChart({
@@ -30,6 +36,7 @@ export function TelemetryChart({
   yAxisLabel,
   scales,
   axes,
+  sectorBoundaries,
 }: TelemetryChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
@@ -78,6 +85,39 @@ export function TelemetryChart({
       })),
     ];
 
+    const hooks: uPlot.Options['hooks'] = {};
+    if (sectorBoundaries) {
+      hooks.drawClear = [
+        (u: uPlot) => {
+          const ctx = u.ctx;
+          const { sector1End, sector2End } = sectorBoundaries;
+          const boundaries = [
+            { dist: sector1End, label: 'S1' },
+            { dist: sector2End, label: 'S2' },
+          ];
+          for (const b of boundaries) {
+            const x = u.valToPos(b.dist, 'x', true);
+            if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue;
+            const top = u.bbox.top;
+            const bottom = top + u.bbox.height;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 200, 0, 0.6)';
+            ctx.setLineDash([6, 4]);
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x, bottom);
+            ctx.stroke();
+            // Label
+            ctx.fillStyle = 'rgba(255, 200, 0, 0.8)';
+            ctx.font = '10px sans-serif';
+            ctx.fillText(b.label, x + 3, top + 12);
+            ctx.restore();
+          }
+        },
+      ];
+    }
+
     const opts: uPlot.Options = {
       title,
       width,
@@ -90,6 +130,7 @@ export function TelemetryChart({
         drag: { x: false, y: false },
         sync: { key: 'telemetry' },
       },
+      hooks,
     };
 
     chartRef.current = new uPlot(opts, data, containerRef.current);
@@ -102,7 +143,7 @@ export function TelemetryChart({
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [title, series, height, xAxisLabel, yAxisLabel, scales, axes, handleResize]);
+  }, [title, series, height, xAxisLabel, yAxisLabel, scales, axes, sectorBoundaries, handleResize]);
 
   // Update data when it changes
   useEffect(() => {

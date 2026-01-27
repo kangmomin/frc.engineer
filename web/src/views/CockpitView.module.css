@@ -11,26 +11,6 @@
   flex-shrink: 0;
 }
 
-.primaryChart {
-  flex-shrink: 0;
-}
-
-.secondaryCharts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-md);
-}
-
-.secondaryChart {
-  min-width: 0;
-}
-
 .sectorArea {
   flex-shrink: 0;
-}
-
-@media (max-width: 800px) {
-  .secondaryCharts {
-    grid-template-columns: 1fr;
-  }
 }
