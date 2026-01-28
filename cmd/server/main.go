@@ -4,17 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/storage"
 	"frc.engineer/internal/telemetry"
+	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
 	"frc.engineer/internal/websocket"
 	"frc.engineer/pkg/config"
@@ -36,6 +40,9 @@ func main() {
 		"updateHz", cfg.TelemetryUpdateHz,
 		"dataDir", cfg.DataDir,
 	)
+
+	// Initialize runtime config manager
+	runtimeCfg := rtconfig.NewRuntimeConfigManager(cfg.DataDir, cfg.UDPPort)
 
 	// Initialize lap storage
 	lapStorage, err := storage.NewFileLapStorage(cfg.DataDir)
@@ -60,14 +67,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create UDP forwarder and attach to listener
+	forwarder := udp.NewForwarder(logger)
+	udpListener.SetForwarder(forwarder)
+
+	// Apply saved forward targets
+	savedCfg := runtimeCfg.Get()
+	if len(savedCfg.ForwardTargets) > 0 {
+		forwarder.UpdateTargets(savedCfg.ForwardTargets)
+	}
+
 	// Create packet parser
 	parser := udp.NewParser(logger)
 
 	// Create WebSocket hub
 	hub := websocket.NewHub(cfg.WSBroadcastBuffer, logger)
 
+	// Load track map data
+	trackStore := tracks.NewTrackStore(cfg.DataDir)
+
+	// Create track recorder
+	recorder := telemetry.NewTrackRecorder(cfg.DataDir, trackStore, logger)
+	if savedCfg.TrackRecording {
+		recorder.SetEnabled(true)
+	}
+
 	// Create telemetry processor
-	processor := telemetry.NewProcessor(parser, hub, cfg.TelemetryUpdateHz, logger)
+	processor := telemetry.NewProcessor(parser, hub, cfg.TelemetryUpdateHz, logger, trackStore)
+	processor.PitwallManager().SetRecorder(recorder)
 
 	// Connect storage to delta calculator
 	processor.DeltaCalculator().SetStorageCallbacks(
@@ -139,6 +166,64 @@ func main() {
 		fmt.Fprintf(w, `{"status":"ok","clients":%d}`, hub.ClientCount())
 	})
 
+	// REST API: GET /api/config
+	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			current := runtimeCfg.Get()
+			json.NewEncoder(w).Encode(current)
+
+		case http.MethodPut:
+			body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16)) // 64KB max
+			if err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			var newCfg rtconfig.RuntimeConfig
+			if err := json.Unmarshal(body, &newCfg); err != nil {
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+			// Validate
+			if newCfg.UDPPort < 1 || newCfg.UDPPort > 65535 {
+				http.Error(w, "udpPort must be 1-65535", http.StatusBadRequest)
+				return
+			}
+			if len(newCfg.ForwardTargets) > 16 {
+				http.Error(w, "too many forward targets (max 16)", http.StatusBadRequest)
+				return
+			}
+			for _, ft := range newCfg.ForwardTargets {
+				if ft.Host == "" || ft.Port < 1 || ft.Port > 65535 {
+					http.Error(w, "invalid forward target: host required, port 1-65535", http.StatusBadRequest)
+					return
+				}
+			}
+			if err := runtimeCfg.Update(newCfg); err != nil {
+				http.Error(w, "failed to save config", http.StatusInternalServerError)
+				return
+			}
+			// Apply changes
+			forwarder.UpdateTargets(newCfg.ForwardTargets)
+			recorder.SetEnabled(newCfg.TrackRecording)
+			json.NewEncoder(w).Encode(newCfg)
+
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// REST API: GET /api/tracks
+	mux.HandleFunc("/api/tracks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(trackStore.ListLoaded())
+	})
+
 	// Serve embedded frontend (SPA fallback)
 	distFS, err := fs.Sub(web.DistFS, "dist")
 	if err != nil {
@@ -183,6 +268,7 @@ func main() {
 
 	// Graceful shutdown
 	cancel()
+	forwarder.Close()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
@@ -192,6 +278,13 @@ func main() {
 	}
 
 	logger.Info("server shutdown complete")
+}
+
+func cleanF32(v float32) float32 {
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return 0
+	}
+	return v
 }
 
 // convertLapTelemetryToDTO converts internal lap telemetry to DTO
@@ -212,12 +305,12 @@ func convertLapTelemetryToDTO(lap *telemetry.LapTelemetry) *dto.LapTelemetryDTO 
 		result.DataPoints = make([]dto.TelemetryPointDTO, len(lap.DataPoints))
 		for i, p := range lap.DataPoints {
 			result.DataPoints[i] = dto.TelemetryPointDTO{
-				LapDistance: p.LapDistance,
-				LapTime:     p.LapTime,
-				Speed:       p.Speed,
-				Throttle:    p.Throttle,
-				Brake:       p.Brake,
-				Gear:        p.Gear,
+				LapDistance: cleanF32(p.LapDistance),
+				LapTime:    p.LapTime,
+				Speed:      p.Speed,
+				Throttle:   cleanF32(p.Throttle),
+				Brake:      cleanF32(p.Brake),
+				Gear:       p.Gear,
 			}
 		}
 	}
@@ -235,11 +328,11 @@ func convertTelemetryPointsToDTO(points []telemetry.TelemetryPoint) []dto.Teleme
 	for i, p := range points {
 		result[i] = dto.TelemetryPointDTO{
 			LapDistance: p.LapDistance,
-			LapTime:     p.LapTime,
-			Speed:       p.Speed,
-			Throttle:    p.Throttle,
-			Brake:       p.Brake,
-			Gear:        p.Gear,
+			LapTime:    p.LapTime,
+			Speed:      p.Speed,
+			Throttle:   p.Throttle,
+			Brake:      p.Brake,
+			Gear:       p.Gear,
 		}
 	}
 	return result

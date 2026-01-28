@@ -6,18 +6,43 @@ type PitwallState struct {
 	Drivers     []DriverInfo  `json:"drivers"`
 	Positions   []CarPosition `json:"positions"`
 	PlayerIndex int           `json:"playerIndex"`
+	TrackMap    *TrackMapDTO  `json:"trackMap,omitempty"`
+}
+
+// TrackMapDTO holds the full track outline with bounds
+type TrackMapDTO struct {
+	Points []TrackPointDTO `json:"points"`
+	MinX   float64         `json:"minX"`
+	MaxX   float64         `json:"maxX"`
+	MinZ   float64         `json:"minZ"`
+	MaxZ   float64         `json:"maxZ"`
+}
+
+// TrackPointDTO represents a single coordinate on the track outline
+type TrackPointDTO struct {
+	X      float32 `json:"x"`
+	Z      float32 `json:"z"`
+	Sector int     `json:"sector"`
+	DRS    int     `json:"drs"`
+}
+
+// MarshalZoneDTO represents a marshal zone for frontend consumption
+type MarshalZoneDTO struct {
+	Start float32 `json:"start"`
+	Flag  int8    `json:"flag"`
 }
 
 // SessionInfo contains session-level data (weather, track, safety car)
 type SessionInfo struct {
-	Weather     string  `json:"weather"`
-	TrackTemp   float32 `json:"trackTemp"`
-	AirTemp     float32 `json:"airTemp"`
-	SafetyCar   string  `json:"safetyCar"`
-	SessionType string  `json:"sessionType"`
-	TotalLaps   int     `json:"totalLaps"`
-	TrackID     int8    `json:"trackId"`
-	TrackLength int     `json:"trackLength"`
+	Weather      string           `json:"weather"`
+	TrackTemp    float32          `json:"trackTemp"`
+	AirTemp      float32          `json:"airTemp"`
+	SafetyCar    string           `json:"safetyCar"`
+	SessionType  string           `json:"sessionType"`
+	TotalLaps    int              `json:"totalLaps"`
+	TrackID      int8             `json:"trackId"`
+	TrackLength  int              `json:"trackLength"`
+	MarshalZones []MarshalZoneDTO `json:"marshalZones,omitempty"`
 }
 
 // DriverInfo contains per-driver race data

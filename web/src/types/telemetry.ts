@@ -45,7 +45,28 @@ export type ViewMode = 'driver' | 'pitwall';
 /**
  * Tab identifiers for sidebar navigation
  */
-export type TabId = 'cockpit' | 'engineer' | 'strategy' | 'telemetry' | 'timing' | 'command';
+export type TabId = 'cockpit' | 'engineer' | 'strategy' | 'telemetry' | 'timing' | 'command' | 'settings';
+
+/**
+ * Runtime application config (mirrors backend RuntimeConfig)
+ */
+export interface AppConfig {
+  udpPort: number;
+  forwardTargets: ForwardTarget[];
+  trackRecording: boolean;
+}
+
+export interface ForwardTarget {
+  host: string;
+  port: number;
+  enabled: boolean;
+}
+
+export interface TrackListItem {
+  id: number;
+  name: string;
+  hasData: boolean;
+}
 
 /**
  * A single telemetry data point for chart visualization
@@ -101,11 +122,32 @@ export interface WSResponse {
 /**
  * Comprehensive pitwall state from backend
  */
+export interface TrackPoint {
+  x: number;
+  z: number;
+  sector: number;
+  drs: number;
+}
+
+export interface TrackMapData {
+  points: TrackPoint[];
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+export interface MarshalZone {
+  start: number; // 0..1 fraction of track
+  flag: number;  // -1=invalid, 0=none, 1=green, 2=blue, 3=yellow, 4=red
+}
+
 export interface PitwallState {
   session: SessionInfo | null;
   drivers: DriverInfo[];
   positions: CarPosition[];
   playerIndex: number;
+  trackMap?: TrackMapData;
 }
 
 export interface SessionInfo {
@@ -117,6 +159,7 @@ export interface SessionInfo {
   totalLaps: number;
   trackId: number;
   trackLength: number;
+  marshalZones?: MarshalZone[];
 }
 
 export interface DriverInfo {

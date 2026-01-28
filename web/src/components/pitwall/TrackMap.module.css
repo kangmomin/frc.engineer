@@ -36,3 +36,12 @@
   font-family: var(--font-body);
   font-size: 12px;
 }
+
+@keyframes yellowFlash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.yellowFlash {
+  animation: yellowFlash 0.8s ease-in-out infinite;
+}

@@ -2,11 +2,19 @@ package telemetry
 
 import (
 	"maps"
+	"math"
 	"sort"
 	"sync"
 
 	"frc.engineer/internal/packets"
 )
+
+func sanitizeF32(v float32) float32 {
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return 0
+	}
+	return v
+}
 
 // SaveCallback is called when a new best lap is recorded
 type SaveCallback func(trackID int8, lap *LapTelemetry) error
@@ -291,12 +299,12 @@ func (d *DeltaCalculator) addTelemetryPoint(
 	}
 
 	point := TelemetryPoint{
-		LapDistance: distance,
-		SessionTime: header.SessionTime,
+		LapDistance:  sanitizeF32(distance),
+		SessionTime: sanitizeF32(header.SessionTime),
 		LapTime:     lapData.CurrentLapTimeInMS,
 		Speed:       telemetry.Speed,
-		Throttle:    telemetry.Throttle,
-		Brake:       telemetry.Brake,
+		Throttle:    sanitizeF32(telemetry.Throttle),
+		Brake:       sanitizeF32(telemetry.Brake),
 		Gear:        telemetry.Gear,
 	}
 

@@ -15,6 +15,7 @@ type Listener struct {
 	bufferPool sync.Pool
 	packetChan chan []byte
 	logger     *slog.Logger
+	forwarder  *Forwarder
 }
 
 // NewListener creates a new UDP listener
@@ -84,6 +85,11 @@ func (l *Listener) Start(ctx context.Context) {
 		copy(data, buf[:n])
 		l.bufferPool.Put(bufPtr)
 
+		// Forward to configured targets
+		if l.forwarder != nil {
+			l.forwarder.Forward(data)
+		}
+
 		select {
 		case l.packetChan <- data:
 		default:
@@ -96,6 +102,11 @@ func (l *Listener) Start(ctx context.Context) {
 // Packets returns the channel for received packets
 func (l *Listener) Packets() <-chan []byte {
 	return l.packetChan
+}
+
+// SetForwarder attaches a forwarder to the listener
+func (l *Listener) SetForwarder(f *Forwarder) {
+	l.forwarder = f
 }
 
 // Close closes the UDP connection

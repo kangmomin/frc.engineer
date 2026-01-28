@@ -66,6 +66,9 @@ export function PitwallDashboard({
           positions={pitwallState?.positions ?? []}
           drivers={pitwallState?.drivers ?? []}
           playerIndex={pitwallState?.playerIndex ?? 0}
+          trackMap={pitwallState?.trackMap}
+          marshalZones={pitwallState?.session?.marshalZones}
+          trackLength={pitwallState?.session?.trackLength}
         />
       </section>
 

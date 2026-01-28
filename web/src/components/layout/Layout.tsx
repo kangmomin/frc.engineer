@@ -7,6 +7,7 @@ import { TelemetryView } from '../../views/TelemetryView';
 import { TimingView } from '../../views/TimingView';
 import { EngineerView } from '../../views/EngineerView';
 import { CommandView } from '../../views/CommandView';
+import { SettingsView } from '../../views/SettingsView';
 import styles from './Layout.module.css';
 
 interface LayoutProps {
@@ -20,11 +21,12 @@ interface LayoutProps {
 
 const TAB_CONFIG: { id: TabId; label: string; icon: string }[] = [
   { id: 'cockpit', label: 'Cockpit', icon: '⊞' },
-  { id: 'engineer', label: 'Engineer', icon: '⚙' },
+  { id: 'engineer', label: 'Engineer', icon: '▦' },
   { id: 'strategy', label: 'Strategy', icon: '◎' },
   { id: 'telemetry', label: 'Telemetry', icon: '◉' },
   { id: 'timing', label: 'Timing', icon: '⏱' },
   { id: 'command', label: 'Command', icon: '⊕' },
+  { id: 'settings', label: 'Settings', icon: '⚙' },
 ];
 
 export function Layout({
@@ -74,6 +76,8 @@ export function Layout({
         return <TimingView pitwallState={pitwallState} data={data} lapData={lapData} />;
       case 'command':
         return <CommandView pitwallState={pitwallState} />;
+      case 'settings':
+        return <SettingsView />;
     }
   }
 

@@ -1,11 +1,21 @@
 package telemetry
 
 import (
+	"math"
 	"sync"
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/packets"
+	"frc.engineer/internal/tracks"
 )
+
+// sanitize replaces NaN/Inf float32 with 0
+func sanitize(v float32) float32 {
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return 0
+	}
+	return v
+}
 
 // PitwallManager aggregates data from multiple packet types into a unified PitwallState
 type PitwallManager struct {
@@ -20,13 +30,24 @@ type PitwallManager struct {
 	carDamage    *packets.PacketCarDamageData
 	playerIndex  uint8
 	strategyMgr  *StrategyManager
+	trackStore   *tracks.TrackStore
+	recorder     *TrackRecorder
 }
 
 // NewPitwallManager creates a new PitwallManager
-func NewPitwallManager(strategyMgr *StrategyManager) *PitwallManager {
+func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackStore, recorder *TrackRecorder) *PitwallManager {
 	return &PitwallManager{
 		strategyMgr: strategyMgr,
+		trackStore:  trackStore,
+		recorder:    recorder,
 	}
+}
+
+// SetRecorder sets the track recorder
+func (pm *PitwallManager) SetRecorder(r *TrackRecorder) {
+	pm.mu.Lock()
+	pm.recorder = r
+	pm.mu.Unlock()
 }
 
 // UpdateSession stores the latest session packet
@@ -43,12 +64,46 @@ func (pm *PitwallManager) UpdateParticipants(p *packets.PacketParticipantsData) 
 	pm.mu.Unlock()
 }
 
-// UpdateMotion stores the latest motion packet
+// UpdateMotion stores the latest motion packet and feeds track recorder
 func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex uint8) {
 	pm.mu.Lock()
 	pm.motion = m
 	pm.playerIndex = playerIndex
+
+	// Capture recorder inputs under lock, call recorder outside lock
+	var rec *TrackRecorder
+	var trackID int8
+	var trackName string
+	var lapDist float32
+	var lapNum uint8
+	var wx, wy, wz float32
+	var drs, sector int
+
+	if pm.recorder != nil && pm.session != nil && pm.lapData != nil {
+		rec = pm.recorder
+		idx := int(playerIndex)
+		car := &m.CarMotionData[idx]
+		ld := &pm.lapData.LapData[idx]
+
+		trackID = pm.session.TrackID
+		trackName = tracks.TrackName(trackID)
+		lapDist = ld.LapDistance
+		lapNum = ld.CurrentLapNum
+		wx = car.WorldPositionX
+		wy = car.WorldPositionY
+		wz = car.WorldPositionZ
+		sector = int(ld.Sector)
+
+		if pm.telemetry != nil {
+			drs = int(pm.telemetry.CarTelemetryData[idx].DRS)
+		}
+	}
+
 	pm.mu.Unlock()
+
+	if rec != nil {
+		rec.RecordPoint(trackID, trackName, lapDist, lapNum, wx, wy, wz, drs, sector)
+	}
 }
 
 // UpdateCarStatus stores the latest car status packet and updates strategy tracking
@@ -92,7 +147,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 
 	// Session info
 	if pm.session != nil {
-		state.Session = &dto.SessionInfo{
+		si := &dto.SessionInfo{
 			Weather:     weatherString(pm.session.Weather),
 			TrackTemp:   float32(pm.session.TrackTemperature),
 			AirTemp:     float32(pm.session.AirTemperature),
@@ -101,6 +156,42 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 			TotalLaps:   int(pm.session.TotalLaps),
 			TrackID:     pm.session.TrackID,
 			TrackLength: int(pm.session.TrackLength),
+		}
+		numZones := int(pm.session.NumMarshalZones)
+		if numZones > 21 {
+			numZones = 21
+		}
+		if numZones > 0 {
+			si.MarshalZones = make([]dto.MarshalZoneDTO, numZones)
+			for i := range numZones {
+				mz := &pm.session.MarshalZones[i]
+				si.MarshalZones[i] = dto.MarshalZoneDTO{
+					Start: mz.ZoneStart,
+					Flag:  mz.ZoneFlag,
+				}
+			}
+		}
+		state.Session = si
+	}
+
+	// Track map from pre-loaded CSV data
+	if pm.session != nil && pm.trackStore != nil {
+		if td := pm.trackStore.Get(pm.session.TrackID); td != nil {
+			state.TrackMap = &dto.TrackMapDTO{
+				Points: make([]dto.TrackPointDTO, len(td.Points)),
+				MinX:   td.MinX,
+				MaxX:   td.MaxX,
+				MinZ:   td.MinZ,
+				MaxZ:   td.MaxZ,
+			}
+			for i, p := range td.Points {
+				state.TrackMap.Points[i] = dto.TrackPointDTO{
+					X:      p.X,
+					Z:      p.Z,
+					Sector: p.Sector,
+					DRS:    p.DRS,
+				}
+			}
 		}
 	}
 
@@ -144,15 +235,10 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.BestLapTime = 0
 				d.PitStatus = int(ld.PitStatus)
 				d.NumPitStops = int(ld.NumPitStops)
-				d.LapDistance = ld.LapDistance
+				d.LapDistance = sanitize(ld.LapDistance)
 				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0
-				// Guard against int16 boundary values (-32768) which indicate invalid data
-				if ld.DeltaToCarInFrontInMS != -32768 {
-					d.DeltaToCarInFront = int(ld.DeltaToCarInFrontInMS)
-				}
-				if ld.DeltaToRaceLeaderInMS != -32768 {
-					d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderInMS)
-				}
+				d.DeltaToCarInFront = int(ld.DeltaToCarInFrontMSPart)
+				d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderMSPart)
 				d.PitLaneTime = int(ld.PitLaneTimeInLaneInMS)
 			}
 
@@ -160,13 +246,13 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				cs := &pm.carStatus.CarStatusData[i]
 				d.TireCompound = tireCompoundString(cs.VisualTyreCompound)
 				d.TireAge = int(cs.TyresAgeLaps)
-				d.FuelInTank = cs.FuelInTank
-				d.FuelRemainingLaps = cs.FuelRemainingLaps
+				d.FuelInTank = sanitize(cs.FuelInTank)
+				d.FuelRemainingLaps = sanitize(cs.FuelRemainingLaps)
 				d.FuelMix = int(cs.FuelMix)
-				d.ERSStoreEnergy = cs.ERSStoreEnergy
+				d.ERSStoreEnergy = sanitize(cs.ERSStoreEnergy)
 				d.ERSDeployMode = int(cs.ERSDeployMode)
-				d.ERSDeployedThisLap = cs.ERSDeployedThisLap
-				d.ERSHarvestedThisLap = cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH
+				d.ERSDeployedThisLap = sanitize(cs.ERSDeployedThisLap)
+				d.ERSHarvestedThisLap = sanitize(cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH)
 			}
 
 			// Stint history from strategy manager

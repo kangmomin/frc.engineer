@@ -5,6 +5,12 @@ import (
 	"errors"
 )
 
+// MarshalZone represents a marshal zone on track
+type MarshalZone struct {
+	ZoneStart float32 // Fraction (0..1) of way through the lap the marshal zone starts
+	ZoneFlag  int8    // -1=invalid, 0=none, 1=green, 2=blue, 3=yellow, 4=red
+}
+
 // PacketSessionData represents a simplified F1 25 Session packet (Packet ID 1)
 // We only parse the essential fields needed for the pitwall.
 // The full packet is ~680 bytes, but we extract key fields at known offsets.
@@ -17,6 +23,8 @@ type PacketSessionData struct {
 	TrackLength      uint16 // Track length (meters)
 	SessionType      uint8  // 0=unknown, 1=P1, 2=P2, 3=P3, 4=Short P, 5=Q1, 6=Q2, 7=Q3, 8=Short Q, 9=OSQ, 10=R, 11=R2, 12=R3, 13=Time Trial
 	TrackID          int8   // -1=unknown, 0-29=track IDs
+	NumMarshalZones  uint8
+	MarshalZones     [21]MarshalZone
 	SafetyCarStatus  uint8  // 0=no safety car, 1=full, 2=virtual, 3=formation lap
 }
 
@@ -29,6 +37,9 @@ const (
 	sessionTrackLengthOffset      = PacketHeaderSize + 4  // 33-34
 	sessionTypeOffset             = PacketHeaderSize + 6  // 35
 	sessionTrackIDOffset          = PacketHeaderSize + 7  // 36
+	sessionNumMarshalZonesOffset  = PacketHeaderSize + 18 // 47
+	sessionMarshalZonesOffset     = PacketHeaderSize + 19 // 48 (21 zones × 5 bytes each)
+	marshalZoneSize               = 5                     // float32 + int8
 	sessionSafetyCarStatusOffset  = PacketHeaderSize + 19 + (21 * 5) // 153
 )
 
@@ -55,7 +66,21 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 		TrackLength:      binary.LittleEndian.Uint16(data[sessionTrackLengthOffset:]),
 		SessionType:      data[sessionTypeOffset],
 		TrackID:          int8(data[sessionTrackIDOffset]),
+		NumMarshalZones:  data[sessionNumMarshalZonesOffset],
 		SafetyCarStatus:  data[sessionSafetyCarStatusOffset],
+	}
+
+	// Parse marshal zones
+	numZones := int(packet.NumMarshalZones)
+	if numZones > 21 {
+		numZones = 21
+	}
+	for i := range numZones {
+		off := sessionMarshalZonesOffset + i*marshalZoneSize
+		packet.MarshalZones[i] = MarshalZone{
+			ZoneStart: float32FromBytes(data[off : off+4]),
+			ZoneFlag:  int8(data[off+4]),
+		}
 	}
 
 	return packet, nil

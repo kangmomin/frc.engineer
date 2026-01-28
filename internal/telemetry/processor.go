@@ -10,6 +10,7 @@ import (
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/packets"
+	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
 	"frc.engineer/internal/websocket"
 )
@@ -35,7 +36,7 @@ type Processor struct {
 }
 
 // NewProcessor creates a new telemetry processor
-func NewProcessor(parser *udp.Parser, hub *websocket.Hub, updateRateHz int, logger *slog.Logger) *Processor {
+func NewProcessor(parser *udp.Parser, hub *websocket.Hub, updateRateHz int, logger *slog.Logger, trackStore *tracks.TrackStore) *Processor {
 	interval := time.Duration(0)
 	if updateRateHz > 0 {
 		interval = time.Second / time.Duration(updateRateHz)
@@ -45,7 +46,7 @@ func NewProcessor(parser *udp.Parser, hub *websocket.Hub, updateRateHz int, logg
 		parser:          parser,
 		hub:             hub,
 		deltaCalculator: NewDeltaCalculator(),
-		pitwallManager:  NewPitwallManager(NewStrategyManager()),
+		pitwallManager:  NewPitwallManager(NewStrategyManager(), trackStore, nil),
 		logger:          logger,
 		minInterval:     interval,
 	}
@@ -200,11 +201,11 @@ func (p *Processor) buildDashboardData() *dto.Dashboard {
 		Speed:             tel.Speed,
 		Gear:              tel.Gear,
 		RPM:               tel.EngineRPM,
-		Throttle:          tel.Throttle,
-		Brake:             tel.Brake,
+		Throttle:          sanitizeF32(tel.Throttle),
+		Brake:             sanitizeF32(tel.Brake),
 		DeltaPersonalBest: deltaPersonalBest,
-		DeltaCarInFront:   int32(lap.DeltaToCarInFrontInMS),
-		DeltaRaceLeader:   int32(lap.DeltaToRaceLeaderInMS),
+		DeltaCarInFront:   int32(lap.DeltaToCarInFrontMSPart),
+		DeltaRaceLeader:   int32(lap.DeltaToRaceLeaderMSPart),
 		CurrentLap:        lap.CurrentLapNum,
 		CurrentLapTime:    lap.CurrentLapTimeInMS,
 		LastLapTime:       lap.LastLapTimeInMS,
