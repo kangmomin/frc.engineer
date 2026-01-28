@@ -21,7 +21,8 @@ type ParsedData struct {
 
 // Parser handles parsing of F1 25 UDP packets
 type Parser struct {
-	logger *slog.Logger
+	logger       *slog.Logger
+	packetLogger *PacketLogger
 }
 
 // NewParser creates a new packet parser
@@ -29,6 +30,11 @@ func NewParser(logger *slog.Logger) *Parser {
 	return &Parser{
 		logger: logger,
 	}
+}
+
+// SetPacketLogger attaches a PacketLogger for recording packets to disk.
+func (p *Parser) SetPacketLogger(pl *PacketLogger) {
+	p.packetLogger = pl
 }
 
 // Parse parses a raw UDP packet and returns structured data
@@ -46,7 +52,7 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 	case packets.PacketIDCarTelemetry:
 		telemetry, err := packets.ParseCarTelemetryPacket(data, header)
 		if err != nil {
-			p.logger.Debug("failed to parse telemetry packet", "error", err)
+			p.logger.Info("failed to parse telemetry packet", "error", err, "dataLen", len(data), "expectedSize", packets.PacketHeaderSize+(packets.CarTelemetryDataSize*packets.MaxCars)+3)
 			return nil, err
 		}
 		parsed.Telemetry = telemetry
@@ -108,7 +114,15 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 		parsed.Event = event
 
 	default:
+		// 미처리 패킷: 로깅만 수행
+		if p.packetLogger != nil {
+			p.packetLogger.Log(header, nil, data)
+		}
 		return nil, nil
+	}
+
+	if p.packetLogger != nil {
+		p.packetLogger.Log(header, parsed, data)
 	}
 
 	return parsed, nil

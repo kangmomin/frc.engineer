@@ -20,6 +20,10 @@ type Config struct {
 
 	// Storage settings
 	DataDir string // Base directory for persistent data (default: "data/tracks")
+
+	// Packet logging
+	PacketLogging bool   // Enable packet logging to JSONL files (default: false)
+	PacketLogDir  string // Directory for packet log files (default: "data/packets")
 }
 
 // DefaultConfig returns a Config with default values
@@ -31,6 +35,8 @@ func DefaultConfig() *Config {
 		WSBroadcastBuffer: 64,
 		TelemetryUpdateHz: 30,
 		DataDir:           "data/tracks",
+		PacketLogging:     false,
+		PacketLogDir:      "data/packets",
 	}
 }
 
@@ -70,6 +76,14 @@ func LoadFromEnv() *Config {
 
 	if v := os.Getenv("F1_DATA_DIR"); v != "" {
 		cfg.DataDir = v
+	}
+
+	if v := os.Getenv("PACKET_LOGGING"); v == "true" || v == "1" {
+		cfg.PacketLogging = true
+	}
+
+	if v := os.Getenv("PACKET_LOG_DIR"); v != "" {
+		cfg.PacketLogDir = v
 	}
 
 	return cfg

@@ -80,6 +80,14 @@ func main() {
 	// Create packet parser
 	parser := udp.NewParser(logger)
 
+	// Setup packet logging if enabled
+	var packetLogger *udp.PacketLogger
+	if cfg.PacketLogging {
+		packetLogger = udp.NewPacketLogger(cfg.PacketLogDir, logger)
+		parser.SetPacketLogger(packetLogger)
+		logger.Info("packet logging enabled", "dir", cfg.PacketLogDir)
+	}
+
 	// Create WebSocket hub
 	hub := websocket.NewHub(cfg.WSBroadcastBuffer, logger)
 
@@ -269,6 +277,9 @@ func main() {
 	// Graceful shutdown
 	cancel()
 	forwarder.Close()
+	if packetLogger != nil {
+		packetLogger.Close()
+	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
