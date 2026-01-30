@@ -18,3 +18,10 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Large data files
+data/packets/
+
+# Binaries
+*.exe
+nul
