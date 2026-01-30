@@ -7,6 +7,7 @@ import {
   WSResponse,
   PitwallState,
   RaceControlNotification,
+  BattleAlert,
 } from '../types/telemetry';
 
 interface UseTelemetryOptions {
@@ -24,6 +25,8 @@ interface UseTelemetryReturn {
   requestLapData: () => void;
   pitwallState: PitwallState | null;
   notifications: RaceControlNotification[];
+  battleAlert: BattleAlert | null;
+  dismissBattle: () => void;
 }
 
 function getDefaultWsUrl(): string {
@@ -55,6 +58,8 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
   const [lapData, setLapData] = useState<LapDataResponse | null>(null);
   const [pitwallState, setPitwallState] = useState<PitwallState | null>(null);
   const [notifications, setNotifications] = useState<RaceControlNotification[]>([]);
+  const [battleAlert, setBattleAlert] = useState<BattleAlert | null>(null);
+  const battleTimerRef = useRef<number | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
@@ -101,6 +106,14 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
         console.error('Failed to get lap data:', err);
       });
   }, [sendRequest]);
+
+  const dismissBattle = useCallback(() => {
+    setBattleAlert(null);
+    if (battleTimerRef.current) {
+      clearTimeout(battleTimerRef.current);
+      battleTimerRef.current = null;
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (!shouldReconnectRef.current) {
@@ -170,6 +183,23 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
             return;
           }
 
+          // Check if this is a battle alert
+          if (message.type === 'battleAlert' && message.data) {
+            const alert: BattleAlert = {
+              ...(message.data as Omit<BattleAlert, 'id' | 'timestamp'>),
+              id: `ba-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              timestamp: Date.now(),
+            };
+            setBattleAlert(alert);
+            // Auto-dismiss after 10 seconds
+            if (battleTimerRef.current) clearTimeout(battleTimerRef.current);
+            battleTimerRef.current = window.setTimeout(() => {
+              setBattleAlert(null);
+              battleTimerRef.current = null;
+            }, 10000);
+            return;
+          }
+
           // Otherwise, it's a regular telemetry update
           const telemetry: TelemetryData = message;
           setData(telemetry);
@@ -227,6 +257,10 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
+      if (battleTimerRef.current) {
+        clearTimeout(battleTimerRef.current);
+        battleTimerRef.current = null;
+      }
       if (wsRef.current) {
         wsRef.current.onclose = null;
         wsRef.current.close();
@@ -244,5 +278,7 @@ export function useTelemetry(options: UseTelemetryOptions = {}): UseTelemetryRet
     requestLapData,
     pitwallState,
     notifications,
+    battleAlert,
+    dismissBattle,
   };
 }

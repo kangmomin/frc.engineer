@@ -150,6 +150,17 @@ export interface PitwallState {
   trackMap?: TrackMapData;
 }
 
+export interface WeatherForecast {
+  sessionType: string;
+  timeOffset: number;
+  weather: string;
+  trackTemp: number;
+  trackTempChange: number;
+  airTemp: number;
+  airTempChange: number;
+  rainPercentage: number;
+}
+
 export interface SessionInfo {
   weather: string;
   trackTemp: number;
@@ -160,6 +171,7 @@ export interface SessionInfo {
   trackId: number;
   trackLength: number;
   marshalZones?: MarshalZone[];
+  weatherForecast?: WeatherForecast[];
 }
 
 export interface DriverInfo {
@@ -233,6 +245,20 @@ export interface RaceControlNotification {
   category: 'penalty' | 'warning' | 'info';
   message: string;
   severity: 'critical' | 'warning' | 'info';
+  timestamp: number;
+}
+
+/**
+ * Battle prediction alert from backend
+ */
+export interface BattleAlert {
+  id: string;
+  driverAhead: string;
+  driverBehind: string;
+  gapSeconds: number;
+  closingRatePerLap: number;
+  estOvertakeLap: number;
+  side: 'ahead' | 'behind';
   timestamp: number;
 }
 

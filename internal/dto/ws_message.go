@@ -7,7 +7,18 @@ const (
 	MessageTypeGetBestLap   = "getBestLap"   // Client → Server: Request best lap data
 	MessageTypePitwallState = "pitwallState" // Server → Client: Comprehensive pitwall state
 	MessageTypeRaceControl  = "raceControl"  // Server → Client: Race control notifications
+	MessageTypeBattleAlert  = "battleAlert"  // Server → Client: Battle prediction alert
 )
+
+// BattleAlertDTO is sent when an overtake is predicted within a few laps
+type BattleAlertDTO struct {
+	DriverAhead    string  `json:"driverAhead"`
+	DriverBehind   string  `json:"driverBehind"`
+	GapSeconds     float64 `json:"gapSeconds"`
+	ClosingRate    float64 `json:"closingRatePerLap"` // seconds per lap
+	EstOvertakeLap int     `json:"estOvertakeLap"`
+	Side           string  `json:"side"` // "ahead" | "behind"
+}
 
 // RaceControlNotification represents a race control event sent to clients
 type RaceControlNotification struct {

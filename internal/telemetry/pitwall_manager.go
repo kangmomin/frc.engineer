@@ -79,7 +79,7 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 	var wx, wy, wz float32
 	var drs, sector int
 
-	if pm.recorder != nil && pm.session != nil && pm.lapData != nil {
+	if pm.recorder != nil && pm.session != nil && pm.lapData != nil && int(playerIndex) < packets.MaxCars {
 		rec = pm.recorder
 		idx := int(playerIndex)
 		car := &m.CarMotionData[idx]
@@ -168,6 +168,27 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				si.MarshalZones[i] = dto.MarshalZoneDTO{
 					Start: mz.ZoneStart,
 					Flag:  mz.ZoneFlag,
+				}
+			}
+		}
+		// Weather forecast samples
+		numForecast := int(pm.session.NumWeatherForecastSamples)
+		if numForecast > 56 {
+			numForecast = 56
+		}
+		if numForecast > 0 {
+			si.WeatherForecast = make([]dto.WeatherForecastDTO, numForecast)
+			for i := range numForecast {
+				fs := &pm.session.WeatherForecastSamples[i]
+				si.WeatherForecast[i] = dto.WeatherForecastDTO{
+					SessionType:     sessionTypeString(fs.SessionType),
+					TimeOffset:      int(fs.TimeOffset),
+					Weather:         weatherString(fs.Weather),
+					TrackTemp:       float32(fs.TrackTemperature),
+					TrackTempChange: int(fs.TrackTemperatureChange),
+					AirTemp:         float32(fs.AirTemperature),
+					AirTempChange:   int(fs.AirTemperatureChange),
+					RainPercentage:  int(fs.RainPercentage),
 				}
 			}
 		}

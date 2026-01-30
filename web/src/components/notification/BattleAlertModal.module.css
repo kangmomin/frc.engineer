@@ -1,0 +1,76 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--color-surface, #1a1a2e);
+  border: 2px solid #ff8c00;
+  border-radius: 12px;
+  padding: 24px 32px;
+  min-width: 340px;
+  max-width: 440px;
+  animation: pulse-border 2s ease-in-out infinite;
+  color: #fff;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: #ff8c00; box-shadow: 0 0 8px rgba(255, 140, 0, 0.3); }
+  50% { border-color: #ffa940; box-shadow: 0 0 20px rgba(255, 140, 0, 0.6); }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.icon {
+  font-size: 1.4rem;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ff8c00;
+  margin: 0;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin-bottom: 20px;
+}
+
+.label {
+  color: #aaa;
+  font-size: 0.85rem;
+}
+
+.value {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.closeBtn {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: 6px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.closeBtn:hover {
+  border-color: #ff8c00;
+  color: #ff8c00;
+}
