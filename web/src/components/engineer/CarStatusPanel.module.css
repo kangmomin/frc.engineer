@@ -1,0 +1,97 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+  font-size: 0.85rem;
+}
+
+.section {
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+}
+
+.sectionTitle {
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+/* Tire grid: 2x2 */
+.tireGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-xs);
+}
+
+.tire {
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs);
+  text-align: center;
+}
+
+.tireLabel {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.tireWear {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.tireTemp {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.wearGood { color: var(--green); }
+.wearMedium { color: var(--yellow); }
+.wearBad { color: var(--red); }
+
+/* Damage rows */
+.damageRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.damageValue {
+  font-weight: 600;
+}
+
+.dmgOk { color: var(--green); }
+.dmgWarn { color: var(--yellow); }
+.dmgCrit { color: var(--red); }
+
+/* Fuel / ERS */
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.statValue {
+  font-weight: 600;
+}
+
+.bar {
+  height: 6px;
+  background: var(--surface-3);
+  border-radius: 3px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}

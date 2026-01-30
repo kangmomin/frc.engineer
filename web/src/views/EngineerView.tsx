@@ -1,56 +1,50 @@
-import { useMemo } from 'react';
-import type { LapDataResponse, PitwallState } from '../types/telemetry';
-import { calculateSectorBoundaries } from '../utils/trackUtils';
-import { EnhancedSpeedChart } from '../components/engineer/EnhancedSpeedChart';
-import { EnhancedInputsChart } from '../components/engineer/EnhancedInputsChart';
-import { EnhancedDeltaChart } from '../components/engineer/EnhancedDeltaChart';
-import { SectorDeltaPanel } from '../components/engineer/SectorDeltaPanel';
+import type { LapDataResponse, PitwallState, TelemetryData } from '../types/telemetry';
+import { Leaderboard } from '../components/pitwall/Leaderboard';
+import { TrackMap } from '../components/pitwall/TrackMap';
+import { BattlePredictor } from '../components/engineer/BattlePredictor';
+import { CarStatusPanel } from '../components/engineer/CarStatusPanel';
 import styles from './EngineerView.module.css';
 
 interface EngineerViewProps {
   lapData: LapDataResponse | null;
   pitwallState: PitwallState | null;
+  data: TelemetryData;
 }
 
-export function EngineerView({ lapData, pitwallState }: EngineerViewProps) {
-  const bestPoints = lapData?.bestLap?.dataPoints ?? null;
-  const currentPoints = lapData?.currentLap ?? null;
+export function EngineerView({ pitwallState }: EngineerViewProps) {
+  if (!pitwallState) {
+    return <div className={styles.loading}>Waiting for session data…</div>;
+  }
 
-  const sectorBoundaries = useMemo(() => {
-    const trackLength = pitwallState?.session?.trackLength;
-    if (!trackLength || trackLength <= 0) return undefined;
-    return calculateSectorBoundaries(trackLength);
-  }, [pitwallState?.session?.trackLength]);
+  const { drivers, positions, playerIndex, trackMap, session } = pitwallState;
+  const player = drivers.find((d) => d.index === playerIndex) ?? null;
 
   return (
-    <div className={styles.engineer}>
-      <section className={styles.chart}>
-        <EnhancedSpeedChart
-          bestLapPoints={bestPoints}
-          currentLapPoints={currentPoints}
-          sectorBoundaries={sectorBoundaries}
-          height={300}
-        />
-      </section>
-      <section className={styles.chart}>
-        <EnhancedInputsChart
-          bestLapPoints={bestPoints}
-          currentLapPoints={currentPoints}
-          sectorBoundaries={sectorBoundaries}
-          height={250}
-        />
-      </section>
-      <section className={styles.chart}>
-        <EnhancedDeltaChart
-          bestLapPoints={bestPoints}
-          currentLapPoints={currentPoints}
-          sectorBoundaries={sectorBoundaries}
-          height={200}
-        />
-      </section>
-      <section className={styles.chart}>
-        <SectorDeltaPanel lapData={lapData} />
-      </section>
+    <div className={styles.station}>
+      {/* Left: Timing Tower */}
+      <div className={styles.left}>
+        <Leaderboard drivers={drivers} playerIndex={playerIndex} />
+      </div>
+
+      {/* Center: Track + Battle */}
+      <div className={styles.center}>
+        <div className={styles.trackWrapper}>
+          <TrackMap
+            positions={positions}
+            drivers={drivers}
+            playerIndex={playerIndex}
+            trackMap={trackMap}
+            marshalZones={session?.marshalZones}
+            trackLength={session?.trackLength}
+          />
+        </div>
+        <BattlePredictor drivers={drivers} playerIndex={playerIndex} />
+      </div>
+
+      {/* Right: Car Status */}
+      <div className={styles.right}>
+        <CarStatusPanel driver={player} />
+      </div>
     </div>
   );
 }

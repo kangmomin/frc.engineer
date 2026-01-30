@@ -1,12 +1,38 @@
-.engineer {
+.station {
+  display: grid;
+  grid-template-columns: 250px 1fr 300px;
+  gap: var(--spacing-md);
+  height: 100%;
+  overflow: hidden;
+}
+
+.left {
+  overflow-y: auto;
+  height: 100%;
+}
+
+.center {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
   overflow-y: auto;
   height: 100%;
-  padding-right: var(--spacing-sm);
 }
 
-.chart {
-  flex-shrink: 0;
+.right {
+  overflow-y: auto;
+  height: 100%;
+}
+
+.trackWrapper {
+  flex: 1;
+  min-height: 300px;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
 }

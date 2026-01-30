@@ -11,9 +11,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"frc.engineer/internal/analysis"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/storage"
@@ -230,6 +233,50 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(trackStore.ListLoaded())
+	})
+
+	// REST API: GET /api/sessions
+	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		sessions, err := analysis.ListSessions(cfg.PacketLogDir)
+		if err != nil {
+			json.NewEncoder(w).Encode([]struct{}{})
+			return
+		}
+		json.NewEncoder(w).Encode(sessions)
+	})
+
+	// REST API: GET /api/sessions/{dir}/analysis
+	mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		// Parse path: /api/sessions/{dir}/analysis
+		path := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+		if !strings.HasSuffix(path, "/analysis") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		dir := strings.TrimSuffix(path, "/analysis")
+		if dir == "" || strings.Contains(dir, "..") || strings.Contains(dir, "/") {
+			http.Error(w, "invalid directory", http.StatusBadRequest)
+			return
+		}
+
+		fullPath := filepath.Join(cfg.PacketLogDir, dir)
+		result, err := analysis.Analyze(fullPath)
+		if err != nil {
+			logger.Error("analysis failed", "dir", dir, "error", err)
+			http.Error(w, "analysis failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
 	})
 
 	// Serve embedded frontend (SPA fallback)

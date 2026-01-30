@@ -1,12 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { TelemetryData, ConnectionState, LapDataResponse, PitwallState, TabId } from '../../types/telemetry';
 import { MiniHUD } from './MiniHUD';
-import { CockpitView } from '../../views/CockpitView';
-import { StrategyView } from '../../views/StrategyView';
-import { TelemetryView } from '../../views/TelemetryView';
-import { TimingView } from '../../views/TimingView';
 import { EngineerView } from '../../views/EngineerView';
-import { CommandView } from '../../views/CommandView';
 import { SettingsView } from '../../views/SettingsView';
 import styles from './Layout.module.css';
 
@@ -20,12 +15,7 @@ interface LayoutProps {
 }
 
 const TAB_CONFIG: { id: TabId; label: string; icon: string }[] = [
-  { id: 'cockpit', label: 'Cockpit', icon: '⊞' },
   { id: 'engineer', label: 'Engineer', icon: '▦' },
-  { id: 'strategy', label: 'Strategy', icon: '◎' },
-  { id: 'telemetry', label: 'Telemetry', icon: '◉' },
-  { id: 'timing', label: 'Timing', icon: '⏱' },
-  { id: 'command', label: 'Command', icon: '⊕' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
 ];
 
@@ -38,7 +28,7 @@ export function Layout({
   pitwallState,
 }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>('cockpit');
+  const [activeTab, setActiveTab] = useState<TabId>('engineer');
   const [splitTab, setSplitTab] = useState<TabId | null>(null);
 
   useEffect(() => {
@@ -64,20 +54,12 @@ export function Layout({
 
   function renderView(tabId: TabId) {
     switch (tabId) {
-      case 'cockpit':
-        return <CockpitView data={data} lapData={lapData} />;
       case 'engineer':
-        return <EngineerView lapData={lapData} pitwallState={pitwallState} />;
-      case 'strategy':
-        return <StrategyView pitwallState={pitwallState} />;
-      case 'telemetry':
-        return <TelemetryView pitwallState={pitwallState} />;
-      case 'timing':
-        return <TimingView pitwallState={pitwallState} data={data} lapData={lapData} />;
-      case 'command':
-        return <CommandView pitwallState={pitwallState} />;
+        return <EngineerView lapData={lapData} pitwallState={pitwallState} data={data} />;
       case 'settings':
         return <SettingsView />;
+      default:
+        return <EngineerView lapData={lapData} pitwallState={pitwallState} data={data} />;
     }
   }
 

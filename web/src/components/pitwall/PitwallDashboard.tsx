@@ -6,9 +6,6 @@ import { SpeedChart } from './SpeedChart';
 import { InputsChart } from './InputsChart';
 import { DeltaChart } from './DeltaChart';
 import { TrackMap } from './TrackMap';
-import { Leaderboard } from './Leaderboard';
-import { WeatherWidget } from './WeatherWidget';
-import { TireStatus } from './TireStatus';
 import styles from './PitwallDashboard.module.css';
 
 interface PitwallDashboardProps {
@@ -113,15 +110,6 @@ export function PitwallDashboard({
 
       {/* Right Column - Sidebar */}
       <aside className={styles.rightColumn}>
-        <Leaderboard
-          drivers={pitwallState?.drivers ?? []}
-          playerIndex={pitwallState?.playerIndex ?? 0}
-        />
-        <WeatherWidget session={pitwallState?.session ?? null} />
-        <TireStatus
-          drivers={pitwallState?.drivers ?? []}
-          playerIndex={pitwallState?.playerIndex ?? 0}
-        />
         <div className={styles.lapInfo}>
           <div className={styles.lapInfoItem}>
             <span className={styles.lapInfoLabel}>Best Lap</span>

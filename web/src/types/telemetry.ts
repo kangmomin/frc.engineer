@@ -45,7 +45,7 @@ export type ViewMode = 'driver' | 'pitwall';
 /**
  * Tab identifiers for sidebar navigation
  */
-export type TabId = 'cockpit' | 'engineer' | 'strategy' | 'telemetry' | 'timing' | 'command' | 'settings';
+export type TabId = 'engineer' | 'settings';
 
 /**
  * Runtime application config (mirrors backend RuntimeConfig)

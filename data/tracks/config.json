@@ -1,5 +1,5 @@
 {
   "udpPort": 20778,
   "forwardTargets": [],
-  "trackRecording": false
+  "trackRecording": true
 }
