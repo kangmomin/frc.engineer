@@ -44,8 +44,15 @@ func main() {
 		"dataDir", cfg.DataDir,
 	)
 
-	// Initialize runtime config manager
+	// Initialize runtime config manager (loads saved config.json if exists)
 	runtimeCfg := rtconfig.NewRuntimeConfigManager(cfg.DataDir, cfg.UDPPort)
+
+	// Use saved UDP port from config.json instead of default
+	savedCfg := runtimeCfg.Get()
+	if savedCfg.UDPPort != 0 {
+		cfg.UDPPort = savedCfg.UDPPort
+		logger.Info("using saved UDP port from config", "udpPort", cfg.UDPPort)
+	}
 
 	// Initialize lap storage
 	lapStorage, err := storage.NewFileLapStorage(cfg.DataDir)
@@ -75,7 +82,6 @@ func main() {
 	udpListener.SetForwarder(forwarder)
 
 	// Apply saved forward targets
-	savedCfg := runtimeCfg.Get()
 	if len(savedCfg.ForwardTargets) > 0 {
 		forwarder.UpdateTargets(savedCfg.ForwardTargets)
 	}

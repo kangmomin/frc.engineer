@@ -107,6 +107,19 @@ WebSocket 메시지 타입:
 | ZoneStart | float32 | 랩 진행률 (0.0-1.0) |
 | ZoneFlag | int8 | -1=invalid, 0=없음, 1=녹색, 2=청색, 3=황색, 4=적색 |
 
+**WeatherForecastSample** (8 bytes × 최대 56개):
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| SessionType | uint8 | 세션 타입 |
+| TimeOffset | uint8 | 현재로부터 몇 분 뒤 |
+| Weather | uint8 | 날씨 (0=맑음~5=폭풍) |
+| TrackTemperature | int8 | 트랙 온도 (°C) |
+| TrackTemperatureChange | int8 | 트랙 온도 변화 (-1=하강, 0=유지, 1=상승) |
+| AirTemperature | int8 | 기온 (°C) |
+| AirTemperatureChange | int8 | 기온 변화 (-1=하강, 0=유지, 1=상승) |
+| RainPercentage | uint8 | 비 올 확률 (0-100%) |
+
 ---
 
 ## Packet 2: Lap Data
