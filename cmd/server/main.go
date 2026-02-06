@@ -45,7 +45,7 @@ func main() {
 	)
 
 	// Initialize runtime config manager (loads saved config.json if exists)
-	runtimeCfg := rtconfig.NewRuntimeConfigManager(cfg.DataDir, cfg.UDPPort)
+	runtimeCfg := rtconfig.NewRuntimeConfigManager("config.json", cfg.UDPPort)
 
 	// Use saved UDP port from config.json instead of default
 	savedCfg := runtimeCfg.Get()

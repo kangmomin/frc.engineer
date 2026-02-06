@@ -30,9 +30,9 @@ type RuntimeConfigManager struct {
 }
 
 // NewRuntimeConfigManager creates a manager, loading from file if it exists
-func NewRuntimeConfigManager(dataDir string, defaultUDPPort int) *RuntimeConfigManager {
+func NewRuntimeConfigManager(configFilePath string, defaultUDPPort int) *RuntimeConfigManager {
 	m := &RuntimeConfigManager{
-		filePath: filepath.Join(dataDir, "config.json"),
+		filePath: configFilePath,
 		config: RuntimeConfig{
 			UDPPort: defaultUDPPort,
 		},
