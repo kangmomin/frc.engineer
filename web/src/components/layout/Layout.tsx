@@ -1,9 +1,33 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { SettingsView } from '../../views/SettingsView';
+import { CommandCenter } from '../command-center/CommandCenter';
+import type { ConnectionState } from '../../types/telemetry';
 import styles from './Layout.module.css';
+
+type ViewId = 'command' | 'settings';
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeView, setActiveView] = useState<ViewId>('command');
+  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+
+  const handleNavClick = useCallback((view: ViewId) => {
+    setActiveView(view);
+    setSidebarOpen(false);
+  }, []);
+
+  const handleConnectionStateChange = useCallback((state: string) => {
+    setConnectionState(state as ConnectionState);
+  }, []);
+
+  const getConnectionLabel = () => {
+    switch (connectionState) {
+      case 'connected': return 'Connected';
+      case 'connecting': return 'Connecting...';
+      case 'error': return 'Error';
+      default: return 'Disconnected';
+    }
+  };
 
   return (
     <div className={styles.layout}>
@@ -21,8 +45,17 @@ export function Layout() {
         <ul className={styles.navList}>
           <li className={styles.navItem}>
             <button
-              className={`${styles.navButton} ${styles.navActive}`}
-              onClick={() => setSidebarOpen(false)}
+              className={`${styles.navButton} ${activeView === 'command' ? styles.navActive : ''}`}
+              onClick={() => handleNavClick('command')}
+            >
+              <span className={styles.navIcon}>🏎</span>
+              <span className={styles.navLabel}>Command Center</span>
+            </button>
+          </li>
+          <li className={styles.navItem}>
+            <button
+              className={`${styles.navButton} ${activeView === 'settings' ? styles.navActive : ''}`}
+              onClick={() => handleNavClick('settings')}
             >
               <span className={styles.navIcon}>⚙</span>
               <span className={styles.navLabel}>Settings</span>
@@ -32,8 +65,8 @@ export function Layout() {
 
         <div className={styles.sidebarFooter}>
           <div className={styles.connectionStatus}>
-            <div className={`${styles.statusDot}`} />
-            <span className={styles.statusText}>Ready</span>
+            <div className={`${styles.statusDot} ${styles[connectionState]}`} />
+            <span className={styles.statusText}>{getConnectionLabel()}</span>
           </div>
         </div>
       </nav>
@@ -51,13 +84,20 @@ export function Layout() {
             <span />
             <span />
           </button>
+          <div className={styles.topBarTitle}>
+            {activeView === 'command' ? 'Command Center' : 'Settings'}
+          </div>
         </div>
 
         {/* Content */}
         <div className={styles.contentContainer}>
-          <div className={styles.panel}>
-            <SettingsView />
-          </div>
+          {activeView === 'command' ? (
+            <CommandCenter onConnectionStateChange={handleConnectionStateChange} />
+          ) : (
+            <div className={styles.panel}>
+              <SettingsView />
+            </div>
+          )}
         </div>
       </div>
     </div>

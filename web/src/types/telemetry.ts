@@ -185,7 +185,9 @@ export interface DriverInfo {
   tireCompound: string;
   tireAge: number;
   tireWear: number[];
-  tireTemp: number[];
+  tireSurfaceTemp: number[];
+  tireInnerTemp: number[];
+  brakeTemp: number[];
 
   // Fuel & Energy
   fuelInTank: number;

@@ -119,6 +119,37 @@
   z-index: 1;
 }
 
+/* Temperature Grid - 3 types: Surface, Inner, Brake */
+.tempGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+.tempItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+
+.tempLabel {
+  font-family: var(--font-body);
+  font-size: 8px;
+  font-weight: 600;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.tempValue {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .tempDisplay {
   font-family: var(--font-racing);
   font-size: 11px;

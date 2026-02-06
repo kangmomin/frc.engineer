@@ -36,7 +36,9 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
 
   // Normalize tyre data to ensure we always have 4 values
   const tyreWear = useMemo(() => normalizeWheelData(driver?.tireWear), [driver?.tireWear]);
-  const tyreTemp = useMemo(() => normalizeWheelData(driver?.tireTemp), [driver?.tireTemp]);
+  const tyreSurfaceTemp = useMemo(() => normalizeWheelData(driver?.tireSurfaceTemp), [driver?.tireSurfaceTemp]);
+  const tyreInnerTemp = useMemo(() => normalizeWheelData(driver?.tireInnerTemp), [driver?.tireInnerTemp]);
+  const brakeTemp = useMemo(() => normalizeWheelData(driver?.brakeTemp), [driver?.brakeTemp]);
 
   // Calculate average wear per lap for prediction
   const averageWearPerLap = useMemo(() => {
@@ -151,15 +153,18 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
           </div>
         </div>
 
-        {/* Chassis View - 4 Wheel Display */}
+        {/* Chassis View - 4 Wheel Display with 3 Temperature Types */}
         <div className={styles.section}>
           <h4 className={styles.sectionLabel}>Tyre Status</h4>
           <div className={styles.chassisView} role="group" aria-label="Tyre status for all four wheels">
             {WHEEL_POSITIONS.map((pos, idx) => {
               const wear = clamp(tyreWear[idx], 0, 100);
-              const temp = tyreTemp[idx];
+              const surfaceTemp = tyreSurfaceTemp[idx];
+              const innerTemp = tyreInnerTemp[idx];
+              const brake = brakeTemp[idx];
               const wearColor = getWearStatusColor(wear);
-              const tempColor = getTempStatusColor(temp);
+              const surfaceTempColor = getTempStatusColor(surfaceTemp);
+              const innerTempColor = getTempStatusColor(innerTemp);
               const tyreColor = getTyreColor(driver.tireCompound);
 
               return (
@@ -183,12 +188,31 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
                     />
                     <span className={styles.wearPercent}>{wear.toFixed(0)}%</span>
                   </div>
-                  <div
-                    className={styles.tempDisplay}
-                    style={{ color: tempColor }}
-                    aria-label={`${pos} tyre temperature`}
-                  >
-                    {temp.toFixed(0)}°C
+                  <div className={styles.tempGrid}>
+                    <div
+                      className={styles.tempItem}
+                      style={{ color: surfaceTempColor }}
+                      title="Surface Temperature"
+                    >
+                      <span className={styles.tempLabel}>SUR</span>
+                      <span className={styles.tempValue}>{surfaceTemp}°</span>
+                    </div>
+                    <div
+                      className={styles.tempItem}
+                      style={{ color: innerTempColor }}
+                      title="Inner Temperature"
+                    >
+                      <span className={styles.tempLabel}>INN</span>
+                      <span className={styles.tempValue}>{innerTemp}°</span>
+                    </div>
+                    <div
+                      className={styles.tempItem}
+                      style={{ color: brake > 400 ? 'var(--accent-red)' : brake > 300 ? 'var(--accent-yellow)' : 'var(--text-secondary)' }}
+                      title="Brake Temperature"
+                    >
+                      <span className={styles.tempLabel}>BRK</span>
+                      <span className={styles.tempValue}>{brake}°</span>
+                    </div>
                   </div>
                 </div>
               );

@@ -1,0 +1,241 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 1px;
+  background: var(--bg-panel-border);
+  overflow: hidden;
+}
+
+/* Car Controls HUD */
+.controlsHud {
+  background: var(--bg-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.controlsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+}
+
+.controlItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.controlHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.controlLabel {
+  font-family: var(--font-racing);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.controlSubLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.controlMode {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.controlValue {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.controlValueLarge {
+  font-family: var(--font-racing);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Progress Bar */
+.progressBar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-panel-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 150ms ease, background-color 150ms ease;
+}
+
+/* Battle View */
+.battleView {
+  background: var(--bg-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  overflow-y: auto;
+}
+
+.battleContainer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Current Driver Indicator */
+.currentDriver {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: rgba(0, 210, 255, 0.1);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+  border-radius: var(--radius-sm);
+}
+
+.positionBadge {
+  font-family: var(--font-racing);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+
+.driverAbbrev {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+}
+
+/* Battle Card */
+.battleCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--bg-panel-border);
+}
+
+.battleCardTitle {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.battleDriverInfo {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+}
+
+.battlePosition {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.battleName {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+}
+
+/* Gap Display */
+.gapDisplay {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.gapValue {
+  font-family: var(--font-racing);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.trendArrow {
+  font-size: 12px;
+}
+
+/* Gap trend colors */
+.gapDisplay.closing .gapValue,
+.gapDisplay.closing .trendArrow {
+  color: var(--accent-green);
+}
+
+.gapDisplay.pulling .gapValue,
+.gapDisplay.pulling .trendArrow {
+  color: var(--accent-red);
+}
+
+/* Overtake Estimate */
+.overtakeEstimate {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid var(--bg-panel-border);
+}
+
+.overtakeLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.overtakeLap {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-orange);
+}
+
+/* No Data States */
+.noData {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.noCarData {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+}
