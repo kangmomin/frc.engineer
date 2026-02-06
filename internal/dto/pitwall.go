@@ -69,8 +69,10 @@ type DriverInfo struct {
 	BestLapTime   float32 `json:"bestLapTime"`
 	TireCompound  string  `json:"tireCompound"`
 	TireAge       int     `json:"tireAge"`
-	TireWear      [4]int  `json:"tireWear"`
-	TireTemp      [4]int  `json:"tireTemp"`
+	TireWear        [4]int `json:"tireWear"`
+	TireSurfaceTemp [4]int `json:"tireSurfaceTemp"`
+	TireInnerTemp   [4]int `json:"tireInnerTemp"`
+	BrakeTemp       [4]int `json:"brakeTemp"`
 
 	// Fuel & Energy
 	FuelInTank          float32 `json:"fuelInTank"`

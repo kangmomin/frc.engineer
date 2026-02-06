@@ -333,7 +333,7 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		}
 
 	case packets.EventStopGoServed:
-		vehicle, ok := event.EventDetails.(*packets.GenericVehicleEvent)
+		vehicle, ok := event.EventDetails.(*packets.StopGoServedEvent)
 		if !ok || vehicle.VehicleIdx != playerIdx {
 			return
 		}
