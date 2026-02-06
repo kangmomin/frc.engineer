@@ -19,6 +19,7 @@ type RuntimeConfig struct {
 	UDPPort        int             `json:"udpPort"`
 	ForwardTargets []ForwardTarget `json:"forwardTargets"`
 	TrackRecording bool            `json:"trackRecording"`
+	PacketLogging  bool            `json:"packetLogging"`
 }
 
 // RuntimeConfigManager manages persistent runtime configuration

@@ -89,9 +89,9 @@ func main() {
 	// Create packet parser
 	parser := udp.NewParser(logger)
 
-	// Setup packet logging if enabled
+	// Setup packet logging if enabled (env var or saved config)
 	var packetLogger *udp.PacketLogger
-	if cfg.PacketLogging {
+	if cfg.PacketLogging || savedCfg.PacketLogging {
 		packetLogger = udp.NewPacketLogger(cfg.PacketLogDir, logger)
 		parser.SetPacketLogger(packetLogger)
 		logger.Info("packet logging enabled", "dir", cfg.PacketLogDir)
@@ -224,6 +224,19 @@ func main() {
 			// Apply changes
 			forwarder.UpdateTargets(newCfg.ForwardTargets)
 			recorder.SetEnabled(newCfg.TrackRecording)
+
+			// Toggle packet logging at runtime
+			if newCfg.PacketLogging && packetLogger == nil {
+				packetLogger = udp.NewPacketLogger(cfg.PacketLogDir, logger)
+				parser.SetPacketLogger(packetLogger)
+				logger.Info("packet logging enabled at runtime", "dir", cfg.PacketLogDir)
+			} else if !newCfg.PacketLogging && packetLogger != nil {
+				parser.SetPacketLogger(nil)
+				packetLogger.Close()
+				packetLogger = nil
+				logger.Info("packet logging disabled at runtime")
+			}
+
 			json.NewEncoder(w).Encode(newCfg)
 
 		default:

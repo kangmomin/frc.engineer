@@ -2,6 +2,7 @@ package udp
 
 import (
 	"log/slog"
+	"sync/atomic"
 
 	"frc.engineer/internal/packets"
 )
@@ -22,7 +23,7 @@ type ParsedData struct {
 // Parser handles parsing of F1 25 UDP packets
 type Parser struct {
 	logger       *slog.Logger
-	packetLogger *PacketLogger
+	packetLogger atomic.Pointer[PacketLogger]
 }
 
 // NewParser creates a new packet parser
@@ -32,9 +33,10 @@ func NewParser(logger *slog.Logger) *Parser {
 	}
 }
 
-// SetPacketLogger attaches a PacketLogger for recording packets to disk.
+// SetPacketLogger attaches (or detaches) a PacketLogger for recording packets to disk.
+// Safe to call concurrently with Parse.
 func (p *Parser) SetPacketLogger(pl *PacketLogger) {
-	p.packetLogger = pl
+	p.packetLogger.Store(pl)
 }
 
 // Parse parses a raw UDP packet and returns structured data
@@ -47,6 +49,18 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 	parsed := &ParsedData{
 		Header: header,
 	}
+
+	packetName := packetIDName[header.PacketID]
+	if packetName == "" {
+		packetName = "unknown"
+	}
+	p.logger.Debug("packet received",
+		"packetID", uint8(header.PacketID),
+		"name", packetName,
+		"size", len(data),
+		"frame", header.FrameIdentifier,
+		"sessionTime", header.SessionTime,
+	)
 
 	switch header.PacketID {
 	case packets.PacketIDCarTelemetry:
@@ -115,14 +129,14 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 
 	default:
 		// 미처리 패킷: 로깅만 수행
-		if p.packetLogger != nil {
-			p.packetLogger.Log(header, nil, data)
+		if pl := p.packetLogger.Load(); pl != nil {
+			pl.Log(header, nil, data)
 		}
 		return nil, nil
 	}
 
-	if p.packetLogger != nil {
-		p.packetLogger.Log(header, parsed, data)
+	if pl := p.packetLogger.Load(); pl != nil {
+		pl.Log(header, parsed, data)
 	}
 
 	return parsed, nil
