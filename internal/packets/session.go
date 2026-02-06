@@ -39,7 +39,7 @@ type PacketSessionData struct {
 	MarshalZones              [21]MarshalZone
 	SafetyCarStatus           uint8 // 0=no safety car, 1=full, 2=virtual, 3=formation lap
 	NumWeatherForecastSamples uint8
-	WeatherForecastSamples    [56]WeatherForecastSample
+	WeatherForecastSamples    [64]WeatherForecastSample
 }
 
 // Session packet field offsets (relative to start of packet)
@@ -104,8 +104,8 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 	if len(data) > sessionNumForecastOffset {
 		packet.NumWeatherForecastSamples = data[sessionNumForecastOffset]
 		numSamples := int(packet.NumWeatherForecastSamples)
-		if numSamples > 56 {
-			numSamples = 56
+		if numSamples > 64 {
+			numSamples = 64
 		}
 		for i := range numSamples {
 			off := sessionForecastOffset + i*weatherForecastSampleSize

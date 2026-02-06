@@ -6,24 +6,33 @@ import (
 	"errors"
 )
 
-// ParticipantData represents data for a single participant (60 bytes)
+// LiveryColour represents an RGB colour for car livery (3 bytes)
+type LiveryColour struct {
+	Red   uint8
+	Green uint8
+	Blue  uint8
+}
+
+// ParticipantData represents data for a single participant (57 bytes per F1 25 spec)
 type ParticipantData struct {
-	AIControlled    uint8    // Whether controlled by AI (1) or human (0)
-	DriverID        uint8    // Driver ID (255 = player)
-	NetworkID       uint8    // Network ID (unique for network game)
-	TeamID          uint8    // Team ID (0=Mercedes, 1=Ferrari, 2=Red Bull, etc.)
-	MyTeam          uint8    // My team flag
-	RaceNumber      uint8    // Race number
-	Nationality     uint8    // Nationality ID
-	Name            [48]byte // UTF-8 name string
-	YourTelemetry   uint8    // Player's telemetry setting (0=restricted, 1=public)
-	ShowOnlineNames uint8    // Show online names flag
-	TechLevel       uint16   // F1 World tech level
-	Platform        uint8    // Gaming platform
+	AIControlled    uint8          // Whether controlled by AI (1) or human (0)
+	DriverID        uint8          // Driver ID (255 = player)
+	NetworkID       uint8          // Network ID (unique for network game)
+	TeamID          uint8          // Team ID (0=Mercedes, 1=Ferrari, 2=Red Bull, etc.)
+	MyTeam          uint8          // My team flag
+	RaceNumber      uint8          // Race number
+	Nationality     uint8          // Nationality ID
+	Name            [32]byte       // UTF-8 name string (32 bytes per F1 25 spec)
+	YourTelemetry   uint8          // Player's telemetry setting (0=restricted, 1=public)
+	ShowOnlineNames uint8          // Show online names flag
+	TechLevel       uint16         // F1 World tech level
+	Platform        uint8          // Gaming platform
+	NumColours      uint8          // Number of valid livery colours
+	LiveryColours   [4]LiveryColour // Car livery colours (12 bytes)
 }
 
 // ParticipantDataSize is the size of a single ParticipantData in bytes
-const ParticipantDataSize = 60
+const ParticipantDataSize = 57
 
 // PacketParticipantsData is the full participants packet
 type PacketParticipantsData struct {
@@ -82,8 +91,8 @@ func parseParticipantData(data []byte) ParticipantData {
 	p.Nationality = data[offset]
 	offset++
 
-	copy(p.Name[:], data[offset:offset+48])
-	offset += 48
+	copy(p.Name[:], data[offset:offset+32])
+	offset += 32
 
 	p.YourTelemetry = data[offset]
 	offset++
@@ -95,6 +104,19 @@ func parseParticipantData(data []byte) ParticipantData {
 	offset += 2
 
 	p.Platform = data[offset]
+	offset++
+
+	p.NumColours = data[offset]
+	offset++
+
+	for i := range 4 {
+		p.LiveryColours[i] = LiveryColour{
+			Red:   data[offset],
+			Green: data[offset+1],
+			Blue:  data[offset+2],
+		}
+		offset += 3
+	}
 
 	return p
 }
