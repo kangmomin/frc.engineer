@@ -21,6 +21,7 @@ type Processor struct {
 	hub             *websocket.Hub
 	deltaCalculator *DeltaCalculator
 	pitwallManager  *PitwallManager
+	battleDetector  *BattleDetector
 	logger          *slog.Logger
 
 	// Rate limiting
@@ -47,6 +48,7 @@ func NewProcessor(parser *udp.Parser, hub *websocket.Hub, updateRateHz int, logg
 		hub:             hub,
 		deltaCalculator: NewDeltaCalculator(),
 		pitwallManager:  NewPitwallManager(NewStrategyManager(), trackStore, nil),
+		battleDetector:  NewBattleDetector(),
 		logger:          logger,
 		minInterval:     interval,
 	}
@@ -161,6 +163,9 @@ func (p *Processor) processPacket(data []byte) {
 		} else {
 			p.hub.Broadcast(pitwallJSON)
 		}
+
+		// Battle detection: check gap trends on lap change
+		p.checkBattleAlerts(pitwallState)
 	}
 
 	// Check rate limit for telemetry dashboard
@@ -216,6 +221,55 @@ func (p *Processor) buildDashboardData() *dto.Dashboard {
 		Sector:            lap.Sector,
 		LapInvalid:        lap.CurrentLapInvalid == 1,
 		Timestamp:         time.Now().UnixMilli(),
+	}
+}
+
+// checkBattleAlerts runs the battle detector against the latest pitwall state
+func (p *Processor) checkBattleAlerts(state *dto.PitwallState) {
+	if state == nil || len(state.Drivers) == 0 {
+		return
+	}
+
+	playerIdx := state.PlayerIndex
+	if playerIdx < 0 || playerIdx >= len(state.Drivers) {
+		return
+	}
+	player := &state.Drivers[playerIdx]
+
+	// Find drivers immediately ahead and behind by position
+	var driverAheadName, driverBehindName string
+	var gapAheadMs, gapBehindMs int
+
+	for i := range state.Drivers {
+		d := &state.Drivers[i]
+		if d.Position == player.Position-1 {
+			driverAheadName = d.Name
+			gapAheadMs = player.DeltaToCarInFront
+		}
+		if d.Position == player.Position+1 {
+			driverBehindName = d.Name
+			gapBehindMs = d.DeltaToCarInFront
+		}
+	}
+
+	alerts := p.battleDetector.Check(player.CurrentLapNum, gapAheadMs, gapBehindMs, driverAheadName, driverBehindName)
+	for _, alert := range alerts {
+		msg := dto.WSResponse{
+			Type: dto.MessageTypeBattleAlert,
+			Data: alert,
+		}
+		jsonData, err := json.Marshal(msg)
+		if err != nil {
+			p.logger.Error("failed to marshal battle alert", "error", err)
+			continue
+		}
+		p.hub.Broadcast(jsonData)
+		p.logger.Info("battle alert",
+			"side", alert.Side,
+			"gap", alert.GapSeconds,
+			"closingRate", alert.ClosingRate,
+			"estLaps", alert.EstOvertakeLap,
+		)
 	}
 }
 
@@ -279,7 +333,7 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		}
 
 	case packets.EventStopGoServed:
-		vehicle, ok := event.EventDetails.(*packets.GenericVehicleEvent)
+		vehicle, ok := event.EventDetails.(*packets.StopGoServedEvent)
 		if !ok || vehicle.VehicleIdx != playerIdx {
 			return
 		}

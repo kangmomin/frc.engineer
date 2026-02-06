@@ -11,21 +11,35 @@ type MarshalZone struct {
 	ZoneFlag  int8    // -1=invalid, 0=none, 1=green, 2=blue, 3=yellow, 4=red
 }
 
+// WeatherForecastSample represents a single weather forecast entry
+type WeatherForecastSample struct {
+	SessionType            uint8 // Session type (same as PacketSessionData.SessionType)
+	TimeOffset             uint8 // Minutes from now
+	Weather                uint8 // 0=clear, 1=light cloud, 2=overcast, 3=light rain, 4=heavy rain, 5=storm
+	TrackTemperature       int8  // Track temperature (celsius)
+	TrackTemperatureChange int8  // -1=down, 0=same, 1=up
+	AirTemperature         int8  // Air temperature (celsius)
+	AirTemperatureChange   int8  // -1=down, 0=same, 1=up
+	RainPercentage         uint8 // 0-100
+}
+
 // PacketSessionData represents a simplified F1 25 Session packet (Packet ID 1)
 // We only parse the essential fields needed for the pitwall.
 // The full packet is ~680 bytes, but we extract key fields at known offsets.
 type PacketSessionData struct {
-	Header           PacketHeader
-	Weather          uint8  // 0=clear, 1=light cloud, 2=overcast, 3=light rain, 4=heavy rain, 5=storm
-	TrackTemperature int8   // Track temperature (celsius)
-	AirTemperature   int8   // Air temperature (celsius)
-	TotalLaps        uint8  // Total laps in race
-	TrackLength      uint16 // Track length (meters)
-	SessionType      uint8  // 0=unknown, 1=P1, 2=P2, 3=P3, 4=Short P, 5=Q1, 6=Q2, 7=Q3, 8=Short Q, 9=OSQ, 10=R, 11=R2, 12=R3, 13=Time Trial
-	TrackID          int8   // -1=unknown, 0-29=track IDs
-	NumMarshalZones  uint8
-	MarshalZones     [21]MarshalZone
-	SafetyCarStatus  uint8  // 0=no safety car, 1=full, 2=virtual, 3=formation lap
+	Header                    PacketHeader
+	Weather                   uint8  // 0=clear, 1=light cloud, 2=overcast, 3=light rain, 4=heavy rain, 5=storm
+	TrackTemperature          int8   // Track temperature (celsius)
+	AirTemperature            int8   // Air temperature (celsius)
+	TotalLaps                 uint8  // Total laps in race
+	TrackLength               uint16 // Track length (meters)
+	SessionType               uint8  // 0=unknown, 1=P1, 2=P2, 3=P3, 4=Short P, 5=Q1, 6=Q2, 7=Q3, 8=Short Q, 9=OSQ, 10=R, 11=R2, 12=R3, 13=Time Trial
+	TrackID                   int8   // -1=unknown, 0-29=track IDs
+	NumMarshalZones           uint8
+	MarshalZones              [21]MarshalZone
+	SafetyCarStatus           uint8 // 0=no safety car, 1=full, 2=virtual, 3=formation lap
+	NumWeatherForecastSamples uint8
+	WeatherForecastSamples    [64]WeatherForecastSample
 }
 
 // Session packet field offsets (relative to start of packet)
@@ -40,7 +54,10 @@ const (
 	sessionNumMarshalZonesOffset  = PacketHeaderSize + 18 // 47
 	sessionMarshalZonesOffset     = PacketHeaderSize + 19 // 48 (21 zones × 5 bytes each)
 	marshalZoneSize               = 5                     // float32 + int8
-	sessionSafetyCarStatusOffset  = PacketHeaderSize + 19 + (21 * 5) // 153
+	sessionSafetyCarStatusOffset       = PacketHeaderSize + 19 + (21 * 5) // 153
+	sessionNumForecastOffset           = PacketHeaderSize + 126            // 155
+	sessionForecastOffset              = PacketHeaderSize + 127            // 156
+	weatherForecastSampleSize          = 8
 )
 
 // MinSessionPacketSize is the minimum size needed to parse essential session fields
@@ -80,6 +97,31 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 		packet.MarshalZones[i] = MarshalZone{
 			ZoneStart: float32FromBytes(data[off : off+4]),
 			ZoneFlag:  int8(data[off+4]),
+		}
+	}
+
+	// Parse weather forecast samples (conditional — packet may be shorter)
+	if len(data) > sessionNumForecastOffset {
+		packet.NumWeatherForecastSamples = data[sessionNumForecastOffset]
+		numSamples := int(packet.NumWeatherForecastSamples)
+		if numSamples > 64 {
+			numSamples = 64
+		}
+		for i := range numSamples {
+			off := sessionForecastOffset + i*weatherForecastSampleSize
+			if off+weatherForecastSampleSize > len(data) {
+				break
+			}
+			packet.WeatherForecastSamples[i] = WeatherForecastSample{
+				SessionType:            data[off],
+				TimeOffset:             data[off+1],
+				Weather:                data[off+2],
+				TrackTemperature:       int8(data[off+3]),
+				TrackTemperatureChange: int8(data[off+4]),
+				AirTemperature:         int8(data[off+5]),
+				AirTemperatureChange:   int8(data[off+6]),
+				RainPercentage:         data[off+7],
+			}
 		}
 	}
 

@@ -6,11 +6,12 @@ import (
 	"math"
 )
 
-// CarDamageData represents damage data for a single car (42 bytes per F1 25 spec)
+// CarDamageData represents damage data for a single car (46 bytes per F1 25 spec)
 type CarDamageData struct {
 	TyresWear             [4]float32 // RL, RR, FL, FR
 	TyresDamage           [4]uint8   // RL, RR, FL, FR
 	BrakesDamage          [4]uint8   // RL, RR, FL, FR
+	TyreBlisters          [4]uint8   // RL, RR, FL, FR (F1 25)
 	FrontLeftWingDamage   uint8
 	FrontRightWingDamage  uint8
 	RearWingDamage        uint8
@@ -27,11 +28,13 @@ type CarDamageData struct {
 	EngineICEWear         uint8
 	EngineMGUKWear        uint8
 	EngineTCWear          uint8
+	EngineBlown           uint8 // 0=OK, 1=blown (F1 25)
+	EngineSeized          uint8 // 0=OK, 1=seized (F1 25)
 }
 
 // CarDamageDataSize is the size of a single CarDamageData in bytes
-// 4×float32(16) + 4×uint8(4) + 4×uint8(4) + 16×uint8(16) = 40 bytes
-const CarDamageDataSize = 40
+// 4×float32(16) + 4×uint8(4) + 4×uint8(4) + 4×uint8(4) + 18×uint8(18) = 46 bytes
+const CarDamageDataSize = 46
 
 // PacketCarDamageData is the full car damage packet
 type PacketCarDamageData struct {
@@ -84,6 +87,12 @@ func parseCarDamageData(data []byte) CarDamageData {
 		offset++
 	}
 
+	// Tyre blisters (4 x uint8) - F1 25
+	for i := range 4 {
+		d.TyreBlisters[i] = data[offset]
+		offset++
+	}
+
 	d.FrontLeftWingDamage = data[offset]
 	offset++
 	d.FrontRightWingDamage = data[offset]
@@ -115,6 +124,10 @@ func parseCarDamageData(data []byte) CarDamageData {
 	d.EngineMGUKWear = data[offset]
 	offset++
 	d.EngineTCWear = data[offset]
+	offset++
+	d.EngineBlown = data[offset]
+	offset++
+	d.EngineSeized = data[offset]
 
 	return d
 }

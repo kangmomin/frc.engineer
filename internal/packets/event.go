@@ -27,6 +27,7 @@ const (
 	EventOvertake          = "OVTK"
 	EventSafetyCarStatus   = "SCAR"
 	EventCollision         = "COLL"
+	EventRedFlag           = "RDFL"
 )
 
 // PacketEventData represents the event packet (Packet ID 3)
@@ -84,9 +85,25 @@ func (FastestLapEvent) eventDetails() {}
 // RetirementEvent contains retirement data
 type RetirementEvent struct {
 	VehicleIdx uint8
+	Reason     uint8 // 0=invalid, 1=retired, 2=finished, 3=terminal damage, etc.
 }
 
 func (RetirementEvent) eventDetails() {}
+
+// DRSDisabledEvent contains DRS disabled reason
+type DRSDisabledEvent struct {
+	Reason uint8 // 0=Wet track, 1=Safety car, 2=Red flag, 3=Min lap not reached
+}
+
+func (DRSDisabledEvent) eventDetails() {}
+
+// StopGoServedEvent contains stop-go penalty served data
+type StopGoServedEvent struct {
+	VehicleIdx uint8
+	StopTime   float32 // Time spent in stop-go (seconds)
+}
+
+func (StopGoServedEvent) eventDetails() {}
 
 // OvertakeEvent contains overtake data
 type OvertakeEvent struct {
@@ -184,11 +201,12 @@ func ParseEventPacket(data []byte, header *PacketHeader) (*PacketEventData, erro
 		}
 
 	case EventRetirement:
-		if len(data) < offset+1 {
+		if len(data) < offset+2 {
 			return nil, fmt.Errorf("packet too small for retirement event details")
 		}
 		pkt.EventDetails = &RetirementEvent{
 			VehicleIdx: data[offset],
+			Reason:     data[offset+1],
 		}
 
 	case EventOvertake:
@@ -200,12 +218,29 @@ func ParseEventPacket(data []byte, header *PacketHeader) (*PacketEventData, erro
 			BeingOvertakenVehicleIdx: data[offset+1],
 		}
 
-	case EventDriveThroughServed, EventStopGoServed, EventTeamMateInPits:
+	case EventDriveThroughServed, EventTeamMateInPits:
 		if len(data) < offset+1 {
 			return nil, fmt.Errorf("packet too small for vehicle event details")
 		}
 		pkt.EventDetails = &GenericVehicleEvent{
 			VehicleIdx: data[offset],
+		}
+
+	case EventStopGoServed:
+		if len(data) < offset+5 {
+			return nil, fmt.Errorf("packet too small for stop-go served event details")
+		}
+		pkt.EventDetails = &StopGoServedEvent{
+			VehicleIdx: data[offset],
+			StopTime:   float32FromBytes(data[offset+1 : offset+5]),
+		}
+
+	case EventDRSDisabled:
+		if len(data) < offset+1 {
+			return nil, fmt.Errorf("packet too small for DRS disabled event details")
+		}
+		pkt.EventDetails = &DRSDisabledEvent{
+			Reason: data[offset],
 		}
 
 	case EventSafetyCarStatus:
@@ -235,7 +270,7 @@ func ParseEventPacket(data []byte, header *PacketHeader) (*PacketEventData, erro
 		}
 
 	default:
-		// Events without details (SSTA, SEND, DRSE, DRSD, CHQF, LGOT, BUTN, FLBK)
+		// Events without details (SSTA, SEND, DRSE, CHQF, LGOT, RDFL, BUTN, FLBK)
 	}
 
 	return pkt, nil

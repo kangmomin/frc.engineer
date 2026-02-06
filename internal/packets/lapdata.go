@@ -39,6 +39,8 @@ type LapData struct {
 	PitLaneTimeInLaneInMS      uint16  // Time spent in pit lane in milliseconds
 	PitStopTimerInMS           uint16  // Time of pit stop in milliseconds
 	PitStopShouldServePen      uint8   // Whether pit stop should serve penalty
+	SpeedTrapFastestSpeed      float32 // Speed trap fastest speed for this car (km/h)
+	SpeedTrapFastestLap        uint8   // Lap number of fastest speed trap (255 = not set)
 }
 
 // LapDataSize is the size of a single LapData in bytes
@@ -175,6 +177,12 @@ func parseLapData(data []byte) LapData {
 	offset += 2
 
 	lap.PitStopShouldServePen = data[offset]
+	offset++
+
+	lap.SpeedTrapFastestSpeed = math.Float32frombits(binary.LittleEndian.Uint32(data[offset:]))
+	offset += 4
+
+	lap.SpeedTrapFastestLap = data[offset]
 
 	return lap
 }

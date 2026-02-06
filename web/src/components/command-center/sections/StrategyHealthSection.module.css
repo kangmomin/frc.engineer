@@ -1,0 +1,295 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--bg-panel-border);
+  overflow: hidden;
+}
+
+/* Pit Simulation Section */
+.pitSection {
+  background: var(--bg-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  flex-shrink: 0;
+}
+
+.pitHeader {
+  margin-bottom: var(--spacing-sm);
+}
+
+.pitLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pitContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.pitResult {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.pitNow {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.positionChange {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.currentPos {
+  font-family: var(--font-racing);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.arrow {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.estimatedPos {
+  font-family: var(--font-racing);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-green);
+}
+
+.estimatedPos.posLost {
+  color: var(--accent-red);
+}
+
+.positionsLostBadge {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 0, 0, 0.15);
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-red);
+}
+
+/* Nearby Drivers List */
+.nearbyDrivers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--spacing-xs);
+}
+
+.nearbyDriver {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+
+.nearbyDriver.wouldOvertake {
+  background: rgba(255, 0, 0, 0.08);
+  border-left: 2px solid var(--accent-red);
+}
+
+.nearbyPos {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  color: var(--text-secondary);
+  min-width: 24px;
+}
+
+.nearbyName {
+  flex: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nearbyGap {
+  font-family: var(--font-racing);
+  color: var(--text-muted);
+}
+
+/* Car Health Section */
+.healthSection {
+  background: var(--bg-primary);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.healthHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  flex-shrink: 0;
+}
+
+.healthLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.allClearBadge {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 255, 0, 0.15);
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-green);
+}
+
+.healthContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--spacing-md) var(--spacing-md);
+}
+
+/* Fault Indicators */
+.faultRow {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.faultIndicator {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(0, 255, 0, 0.08);
+  border: 1px solid rgba(0, 255, 0, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.faultIndicator.faultActive {
+  background: rgba(255, 0, 0, 0.15);
+  border-color: var(--accent-red);
+  animation: faultPulse 1s ease-in-out infinite;
+}
+
+.faultLabel {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.faultStatus {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-green);
+}
+
+.faultIndicator.faultActive .faultStatus {
+  color: var(--accent-red);
+}
+
+/* Damage Grid */
+.damageGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-sm);
+}
+
+.damageItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.damageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.damageLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.damageValue {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.damageValue.safe {
+  color: var(--accent-green);
+}
+
+.damageValue.warning {
+  color: var(--accent-yellow);
+}
+
+.damageValue.danger {
+  color: var(--accent-red);
+}
+
+.damageBar {
+  width: 100%;
+  height: 4px;
+  background: var(--bg-panel-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.damageFill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 150ms ease, background-color 150ms ease;
+}
+
+/* No Data State */
+.noData {
+  padding: var(--spacing-md);
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Animations */
+@keyframes faultPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}

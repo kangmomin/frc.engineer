@@ -195,6 +195,17 @@
   align-items: center;
   flex-shrink: 0;
   border-bottom: 1px solid var(--bg-panel-border);
+  height: 40px;
+}
+
+.topBarTitle {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 0 var(--spacing-md);
 }
 
 .hamburger {

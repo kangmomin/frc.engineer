@@ -1,0 +1,146 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.tableWrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  z-index: 1;
+}
+
+.table th {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.table td {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+
+.row {
+  transition: background 150ms ease;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.playerRow {
+  background: rgba(0, 210, 255, 0.08);
+}
+
+.playerRow:hover {
+  background: rgba(0, 210, 255, 0.12);
+}
+
+/* Column widths */
+.colPos {
+  width: 30px;
+  text-align: center;
+}
+
+.colDriver {
+  min-width: 80px;
+}
+
+.colGap {
+  width: 70px;
+}
+
+.colTyre {
+  width: 60px;
+}
+
+.colPits {
+  width: 35px;
+  text-align: center;
+}
+
+.colLap {
+  width: 80px;
+}
+
+.colSector {
+  width: 55px;
+}
+
+/* Cell content */
+.position {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.driverCell {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.driverName {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.gap {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.pits {
+  font-family: var(--font-racing);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.lapTime {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.sector {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.sector.purple {
+  color: var(--sector-purple);
+}
+
+.sector.green {
+  color: var(--sector-green);
+}
+
+.sector.yellow {
+  color: var(--sector-yellow);
+}

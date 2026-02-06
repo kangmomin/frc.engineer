@@ -1,6 +1,7 @@
 package udp
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -42,14 +43,15 @@ type PacketLogEntry struct {
 	Data        interface{} `json:"data"`
 }
 
-// PacketLogger writes parsed packets to per-type JSONL files.
+// PacketLogger writes parsed packets to per-type JSONL files and raw binary.
 type PacketLogger struct {
-	baseDir      string
-	logger       *slog.Logger
-	mu           sync.Mutex
-	sessionUID   uint64
-	sessionDir   string
+	baseDir    string
+	logger     *slog.Logger
+	mu         sync.Mutex
+	sessionUID uint64
+	sessionDir string
 	files      map[string]*os.File
+	rawFile    *os.File
 }
 
 // NewPacketLogger creates a new PacketLogger that writes under baseDir.
@@ -100,6 +102,11 @@ func (pl *PacketLogger) Log(header *packets.PacketHeader, parsed *ParsedData, ra
 			return
 		}
 		pl.sessionUID = header.SessionUID
+	}
+
+	// Write length-prefixed raw bytes to raw.bin for replay support.
+	if err := pl.writeRaw(raw); err != nil {
+		pl.logger.Error("packet logger: write raw", "error", err)
 	}
 
 	stem := packetIDName[header.PacketID]
@@ -159,8 +166,31 @@ func (pl *PacketLogger) closeFilesLocked() {
 	for _, f := range pl.files {
 		f.Close()
 	}
+	if pl.rawFile != nil {
+		pl.rawFile.Close()
+		pl.rawFile = nil
+	}
 	pl.files = make(map[string]*os.File)
 	pl.sessionDir = ""
+}
+
+// writeRaw appends a length-prefixed packet to raw.bin.
+// Format: [4-byte little-endian length][raw bytes]
+// Writes a single combined buffer to avoid partial-write corruption.
+func (pl *PacketLogger) writeRaw(data []byte) error {
+	if pl.rawFile == nil {
+		path := filepath.Join(pl.sessionDir, "raw.bin")
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			return fmt.Errorf("open raw.bin: %w", err)
+		}
+		pl.rawFile = f
+	}
+	buf := make([]byte, 4+len(data))
+	binary.LittleEndian.PutUint32(buf, uint32(len(data)))
+	copy(buf[4:], data)
+	_, err := pl.rawFile.Write(buf)
+	return err
 }
 
 // parsedPayload extracts the non-nil payload from ParsedData.

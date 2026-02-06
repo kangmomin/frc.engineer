@@ -44,8 +44,15 @@ func main() {
 		"dataDir", cfg.DataDir,
 	)
 
-	// Initialize runtime config manager
+	// Initialize runtime config manager (loads saved config.json if exists)
 	runtimeCfg := rtconfig.NewRuntimeConfigManager(cfg.DataDir, cfg.UDPPort)
+
+	// Use saved UDP port from config.json instead of default
+	savedCfg := runtimeCfg.Get()
+	if savedCfg.UDPPort != 0 {
+		cfg.UDPPort = savedCfg.UDPPort
+		logger.Info("using saved UDP port from config", "udpPort", cfg.UDPPort)
+	}
 
 	// Initialize lap storage
 	lapStorage, err := storage.NewFileLapStorage(cfg.DataDir)
@@ -75,7 +82,6 @@ func main() {
 	udpListener.SetForwarder(forwarder)
 
 	// Apply saved forward targets
-	savedCfg := runtimeCfg.Get()
 	if len(savedCfg.ForwardTargets) > 0 {
 		forwarder.UpdateTargets(savedCfg.ForwardTargets)
 	}
@@ -83,9 +89,9 @@ func main() {
 	// Create packet parser
 	parser := udp.NewParser(logger)
 
-	// Setup packet logging if enabled
+	// Setup packet logging if enabled (env var or saved config)
 	var packetLogger *udp.PacketLogger
-	if cfg.PacketLogging {
+	if cfg.PacketLogging || savedCfg.PacketLogging {
 		packetLogger = udp.NewPacketLogger(cfg.PacketLogDir, logger)
 		parser.SetPacketLogger(packetLogger)
 		logger.Info("packet logging enabled", "dir", cfg.PacketLogDir)
@@ -218,6 +224,19 @@ func main() {
 			// Apply changes
 			forwarder.UpdateTargets(newCfg.ForwardTargets)
 			recorder.SetEnabled(newCfg.TrackRecording)
+
+			// Toggle packet logging at runtime
+			if newCfg.PacketLogging && packetLogger == nil {
+				packetLogger = udp.NewPacketLogger(cfg.PacketLogDir, logger)
+				parser.SetPacketLogger(packetLogger)
+				logger.Info("packet logging enabled at runtime", "dir", cfg.PacketLogDir)
+			} else if !newCfg.PacketLogging && packetLogger != nil {
+				parser.SetPacketLogger(nil)
+				packetLogger.Close()
+				packetLogger = nil
+				logger.Info("packet logging disabled at runtime")
+			}
+
 			json.NewEncoder(w).Encode(newCfg)
 
 		default:

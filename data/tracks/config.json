@@ -1,5 +1,11 @@
 {
   "udpPort": 20778,
-  "forwardTargets": [],
+  "forwardTargets": [
+    {
+      "host": "127.0.0.1",
+      "port": 20777,
+      "enabled": false
+    }
+  ],
   "trackRecording": true
 }

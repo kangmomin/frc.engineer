@@ -29,7 +29,7 @@ WebSocket 메시지 타입:
 | GameMajorVersion | uint8 | 게임 메이저 버전 |
 | GameMinorVersion | uint8 | 게임 마이너 버전 |
 | PacketVersion | uint8 | 패킷 버전 |
-| PacketID | uint8 | 패킷 타입 (0-14) |
+| PacketID | uint8 | 패킷 타입 (0-15) |
 | SessionUID | uint64 | 세션 고유 ID |
 | SessionTime | float32 | 세션 경과 시간 |
 | FrameIdentifier | uint32 | 프레임 식별자 |
@@ -44,20 +44,21 @@ WebSocket 메시지 타입:
 | ID | 패킷 | 크기 | 구현 여부 |
 |----|------|------|-----------|
 | 0 | Motion | ~1,349B | ✅ |
-| 1 | Session | ~680B | ✅ |
+| 1 | Session | ~753B | ✅ |
 | 2 | LapData | ~1,285B | ✅ |
-| 3 | Event | 가변 | ✅ |
-| 4 | Participants | ~1,352B | ✅ |
+| 3 | Event | 45B | ✅ |
+| 4 | Participants | ~1,284B | ✅ |
 | 5 | CarSetups | - | ❌ |
 | 6 | CarTelemetry | ~1,352B | ✅ |
 | 7 | CarStatus | ~1,239B | ✅ |
 | 8 | FinalClassification | - | ❌ |
 | 9 | LobbyInfo | - | ❌ |
-| 10 | CarDamage | ~909B | ✅ |
+| 10 | CarDamage | ~1,041B | ✅ |
 | 11 | SessionHistory | - | ❌ |
 | 12 | TyreSets | - | ❌ |
 | 13 | MotionEx | - | ❌ |
 | 14 | TimeTrial | - | ❌ |
+| 15 | LapPositions | ~1,131B | ❌ |
 
 최대 차량 수: **22대**
 
@@ -107,6 +108,19 @@ WebSocket 메시지 타입:
 | ZoneStart | float32 | 랩 진행률 (0.0-1.0) |
 | ZoneFlag | int8 | -1=invalid, 0=없음, 1=녹색, 2=청색, 3=황색, 4=적색 |
 
+**WeatherForecastSample** (8 bytes × 최대 64개):
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| SessionType | uint8 | 세션 타입 |
+| TimeOffset | uint8 | 현재로부터 몇 분 뒤 |
+| Weather | uint8 | 날씨 (0=맑음~5=폭풍) |
+| TrackTemperature | int8 | 트랙 온도 (°C) |
+| TrackTemperatureChange | int8 | 트랙 온도 변화 (0=상승, 1=하강, 2=변화 없음) |
+| AirTemperature | int8 | 기온 (°C) |
+| AirTemperatureChange | int8 | 기온 변화 (0=상승, 1=하강, 2=변화 없음) |
+| RainPercentage | uint8 | 비 올 확률 (0-100%) |
+
 ---
 
 ## Packet 2: Lap Data
@@ -146,6 +160,15 @@ WebSocket 메시지 타입:
 | PitLaneTimeInLaneInMS | uint16 | ms | 피트레인 체류 시간 |
 | PitStopTimerInMS | uint16 | ms | 피트 스톱 시간 |
 | PitStopShouldServePen | uint8 | - | 페널티 수행 여부 |
+| SpeedTrapFastestSpeed | float32 | km/h | 스피드 트랩 최고 속도 |
+| SpeedTrapFastestLap | uint8 | - | 최고 속도 달성 랩 (255=미설정) |
+
+패킷 푸터 (2 bytes):
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| TimeTrialPBCarIdx | uint8 | 타임 트라이얼 PB 차량 인덱스 (255=무효) |
+| TimeTrialRivalCarIdx | uint8 | 타임 트라이얼 라이벌 차량 인덱스 (255=무효) |
 
 ---
 
@@ -158,9 +181,9 @@ WebSocket 메시지 타입:
 | SSTA | 세션 시작 | 없음 |
 | SEND | 세션 종료 | 없음 |
 | FTLP | 최속 랩 | vehicleIdx(uint8), lapTime(float32) |
-| RTMT | 리타이어 | vehicleIdx(uint8) |
+| RTMT | 리타이어 | vehicleIdx(uint8), reason(uint8) — 아래 참조 |
 | DRSE | DRS 활성화 | 없음 |
-| DRSD | DRS 비활성화 | 없음 |
+| DRSD | DRS 비활성화 | reason(uint8) — 아래 참조 |
 | TMPT | 팀메이트 피트인 | vehicleIdx(uint8) |
 | CHQF | 체커기 | 없음 |
 | RCWN | 레이스 우승 | vehicleIdx(uint8) |
@@ -169,18 +192,31 @@ WebSocket 메시지 타입:
 | STLG | 출발 신호등 | numLights(uint8) |
 | LGOT | 신호등 소등 | 없음 |
 | DTSV | DT 수행 | vehicleIdx(uint8) |
-| SGSV | S/G 수행 | vehicleIdx(uint8) |
-| FLBK | 플래시백 | 없음 |
-| BUTN | 버튼 상태 | 없음 |
+| SGSV | S/G 수행 | vehicleIdx(uint8), stopTime(float32) |
+| FLBK | 플래시백 | flashbackFrameIdentifier(uint32), flashbackSessionTime(float32) |
+| BUTN | 버튼 상태 | buttonStatus(uint32) |
+| RDFL | 레드 플래그 | 없음 |
 | OVTK | 추월 | overtakingVehicleIdx, beingOvertakenVehicleIdx |
 | SCAR | SC 상태 | safetyCarType, eventType |
 | COLL | 충돌 | vehicle1Idx, vehicle2Idx |
+
+**RTMT reason**: 0=invalid, 1=retired, 2=finished, 3=terminal damage, 4=inactive, 5=not enough laps, 6=black flagged, 7=red flagged, 8=mechanical failure, 9=session skipped, 10=session simulated
+
+**DRSD reason**: 0=Wet track, 1=Safety car deployed, 2=Red flag, 3=Min lap not reached
 
 ---
 
 ## Packet 4: Participants Data
 
-차량별 60 bytes × 22대
+NumActiveCars(uint8) + 차량별 57 bytes × 22대 = 1,254 bytes
+
+패킷 필드:
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| NumActiveCars | uint8 | 활성 차량 수 (HUD 표시 수와 일치) |
+
+차량별 데이터 (per-car):
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
@@ -191,11 +227,21 @@ WebSocket 메시지 타입:
 | MyTeam | uint8 | 마이팀 모드 여부 |
 | RaceNumber | uint8 | 레이스 번호 |
 | Nationality | uint8 | 국적 코드 |
-| Name | [48]byte | UTF-8 이름 |
+| Name | [32]byte | UTF-8 이름 (null terminated, 최대 32자) |
 | YourTelemetry | uint8 | 0=제한, 1=공개 |
 | ShowOnlineNames | uint8 | 온라인 이름 표시 |
 | TechLevel | uint16 | F1 World 기술 레벨 |
 | Platform | uint8 | 게임 플랫폼 |
+| NumColours | uint8 | 유효한 리버리 색상 수 |
+| LiveryColours | [4]LiveryColour | 차량 리버리 색상 (12 bytes) |
+
+**LiveryColour** (3 bytes):
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| Red | uint8 | R 값 |
+| Green | uint8 | G 값 |
+| Blue | uint8 | B 값 |
 
 ---
 
@@ -268,13 +314,14 @@ WebSocket 메시지 타입:
 
 ## Packet 10: Car Damage Data
 
-차량별 40 bytes × 22대 = 880 bytes
+차량별 46 bytes × 22대 = 1,012 bytes
 
 | 필드 | 타입 | 단위 | 설명 |
 |------|------|------|------|
-| TyresWear | [4]float32 | 0-1 | 타이어 마모 [RL,RR,FL,FR] |
+| TyresWear | [4]float32 | % | 타이어 마모 [RL,RR,FL,FR] |
 | TyresDamage | [4]uint8 | % | 타이어 손상 |
 | BrakesDamage | [4]uint8 | % | 브레이크 손상 |
+| TyreBlisters | [4]uint8 | % | 타이어 블리스터 [RL,RR,FL,FR] |
 | FrontLeftWingDamage | uint8 | % | 좌측 전방 윙 손상 |
 | FrontRightWingDamage | uint8 | % | 우측 전방 윙 손상 |
 | RearWingDamage | uint8 | % | 후방 윙 손상 |
@@ -291,6 +338,8 @@ WebSocket 메시지 타입:
 | EngineICEWear | uint8 | % | ICE 마모 |
 | EngineMGUKWear | uint8 | % | MGU-K 마모 |
 | EngineTCWear | uint8 | % | TC 마모 |
+| EngineBlown | uint8 | - | 0=정상, 1=블로운 |
+| EngineSeized | uint8 | - | 0=정상, 1=시저드 |
 
 ---
 

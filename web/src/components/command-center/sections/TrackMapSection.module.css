@@ -1,0 +1,257 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 1px;
+  background: var(--bg-panel-border);
+  overflow: hidden;
+}
+
+/* Weather Badge */
+.weatherBadge {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.weatherIcon {
+  font-size: 14px;
+}
+
+.temp {
+  font-family: var(--font-racing);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.scBadge {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(255, 204, 0, 0.2);
+  color: var(--accent-yellow);
+}
+
+.scBadge.scActive {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Track Area */
+.trackArea {
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm);
+  min-height: 0;
+}
+
+.trackSvg {
+  width: 100%;
+  height: 100%;
+  max-height: 200px;
+}
+
+.noTrack {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Weather Timeline */
+.weatherTimeline {
+  background: var(--bg-primary);
+  padding: var(--spacing-xs) var(--spacing-md);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-panel-border) transparent;
+}
+
+.weatherTimeline::-webkit-scrollbar {
+  height: 4px;
+}
+
+.weatherTimeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.weatherTimeline::-webkit-scrollbar-thumb {
+  background: var(--bg-panel-border);
+  border-radius: 2px;
+}
+
+.forecastList {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+}
+
+.forecastItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 48px;
+  flex-shrink: 0;
+  transition: background 150ms ease;
+}
+
+.forecastItem:first-child {
+  background: rgba(0, 210, 255, 0.1);
+  border: 1px solid rgba(0, 210, 255, 0.3);
+}
+
+.forecastItem.hasRain {
+  background: rgba(51, 153, 255, 0.15);
+  border: 1px solid rgba(51, 153, 255, 0.3);
+}
+
+.forecastItem.highRain {
+  background: rgba(51, 153, 255, 0.25);
+  border: 1px solid rgba(51, 153, 255, 0.5);
+  animation: rainPulse 2s ease-in-out infinite;
+}
+
+@keyframes rainPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.forecastTime {
+  font-family: var(--font-body);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.forecastWeather {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.forecastDetails {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.forecastRain {
+  font-family: var(--font-racing);
+  font-size: 9px;
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.forecastTemp {
+  font-family: var(--font-racing);
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.noForecast {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Race Control Log */
+.raceControlLog {
+  background: var(--bg-primary);
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.notificationList {
+  display: flex;
+  flex-direction: column;
+}
+
+.notification {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-left: 3px solid transparent;
+  font-size: 11px;
+}
+
+.notification.info {
+  border-left-color: var(--accent-blue);
+}
+
+.notification.warning {
+  border-left-color: var(--accent-yellow);
+  background: rgba(255, 204, 0, 0.05);
+}
+
+.notification.critical {
+  border-left-color: var(--accent-red);
+  background: rgba(255, 0, 0, 0.05);
+}
+
+.notificationTime {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 55px;
+}
+
+.notificationMessage {
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.noNotifications {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Track Footer */
+.trackFooter {
+  background: var(--bg-primary);
+  padding: var(--spacing-xs) var(--spacing-md);
+}
+
+.footerGrid {
+  display: flex;
+  gap: var(--spacing-lg);
+}
+
+.footerItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.footerLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.footerValue {
+  font-family: var(--font-racing);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

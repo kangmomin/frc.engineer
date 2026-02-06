@@ -79,7 +79,7 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 	var wx, wy, wz float32
 	var drs, sector int
 
-	if pm.recorder != nil && pm.session != nil && pm.lapData != nil {
+	if pm.recorder != nil && pm.session != nil && pm.lapData != nil && int(playerIndex) < packets.MaxCars {
 		rec = pm.recorder
 		idx := int(playerIndex)
 		car := &m.CarMotionData[idx]
@@ -168,6 +168,27 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				si.MarshalZones[i] = dto.MarshalZoneDTO{
 					Start: mz.ZoneStart,
 					Flag:  mz.ZoneFlag,
+				}
+			}
+		}
+		// Weather forecast samples
+		numForecast := int(pm.session.NumWeatherForecastSamples)
+		if numForecast > 64 {
+			numForecast = 64
+		}
+		if numForecast > 0 {
+			si.WeatherForecast = make([]dto.WeatherForecastDTO, numForecast)
+			for i := range numForecast {
+				fs := &pm.session.WeatherForecastSamples[i]
+				si.WeatherForecast[i] = dto.WeatherForecastDTO{
+					SessionType:     sessionTypeString(fs.SessionType),
+					TimeOffset:      int(fs.TimeOffset),
+					Weather:         weatherString(fs.Weather),
+					TrackTemp:       float32(fs.TrackTemperature),
+					TrackTempChange: int(fs.TrackTemperatureChange),
+					AirTemp:         float32(fs.AirTemperature),
+					AirTempChange:   int(fs.AirTemperatureChange),
+					RainPercentage:  int(fs.RainPercentage),
 				}
 			}
 		}
@@ -264,30 +285,47 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				}
 			}
 
+			// F1 game order: [RL, RR, FL, FR] -> DTO order: [FL, FR, RL, RR]
+			var g2d = [4]int{2, 3, 0, 1}
+
 			if pm.telemetry != nil {
 				ct := &pm.telemetry.CarTelemetryData[i]
 				for w := range 4 {
-					d.TireTemp[w] = int(ct.TyresSurfaceTemperature[w])
+					g := g2d[w]
+					d.TireSurfaceTemp[w] = int(ct.TyresSurfaceTemperature[g])
+					d.TireInnerTemp[w] = int(ct.TyresInnerTemperature[g])
+					d.BrakeTemp[w] = int(ct.BrakesTemperature[g])
 				}
 			}
 
 			if pm.carDamage != nil {
 				cd := &pm.carDamage.CarDamageData[i]
 				d.Damage = &dto.CarDamage{
-					FrontLeftWing:  int(cd.FrontLeftWingDamage),
-					FrontRightWing: int(cd.FrontRightWingDamage),
-					RearWing:       int(cd.RearWingDamage),
-					Floor:          int(cd.FloorDamage),
-					Diffuser:       int(cd.DiffuserDamage),
-					Sidepod:        int(cd.SidepodDamage),
-					Engine:         int(cd.EngineDamage),
-					Gearbox:        int(cd.GearBoxDamage),
+					FrontLeftWing:  clampDamage(cd.FrontLeftWingDamage),
+					FrontRightWing: clampDamage(cd.FrontRightWingDamage),
+					RearWing:       clampDamage(cd.RearWingDamage),
+					Floor:          clampDamage(cd.FloorDamage),
+					Diffuser:       clampDamage(cd.DiffuserDamage),
+					Sidepod:        clampDamage(cd.SidepodDamage),
+					Engine:         clampDamage(cd.EngineDamage),
+					Gearbox:        clampDamage(cd.GearBoxDamage),
 					DRSFault:       cd.DRSFault == 1,
 					ERSFault:       cd.ERSFault == 1,
 				}
 				// Also populate tire wear from damage packet
+				// F1 25 sends wear as 0.0-1.0 float; convert to 0-100 percent
 				for w := range 4 {
-					d.TireWear[w] = int(cd.TyresWear[w])
+					wear := float64(cd.TyresWear[g2d[w]])
+					if wear < 0 {
+						wear = 0
+					} else if wear > 0 && wear <= 1.0 {
+						wear *= 100
+					}
+					wearPct := int(math.Round(wear))
+					if wearPct > 100 {
+						wearPct = 100
+					}
+					d.TireWear[w] = wearPct
 				}
 			}
 		}
@@ -347,6 +385,13 @@ func sessionTypeString(s uint8) string {
 		return t
 	}
 	return "unknown"
+}
+
+func clampDamage(v uint8) int {
+	if v > 100 {
+		return 100
+	}
+	return int(v)
 }
 
 func tireCompoundString(v uint8) string {

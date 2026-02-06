@@ -32,17 +32,30 @@ type MarshalZoneDTO struct {
 	Flag  int8    `json:"flag"`
 }
 
+// WeatherForecastDTO represents a weather forecast entry for frontend consumption
+type WeatherForecastDTO struct {
+	SessionType     string  `json:"sessionType"`
+	TimeOffset      int     `json:"timeOffset"`
+	Weather         string  `json:"weather"`
+	TrackTemp       float32 `json:"trackTemp"`
+	TrackTempChange int     `json:"trackTempChange"`
+	AirTemp         float32 `json:"airTemp"`
+	AirTempChange   int     `json:"airTempChange"`
+	RainPercentage  int     `json:"rainPercentage"`
+}
+
 // SessionInfo contains session-level data (weather, track, safety car)
 type SessionInfo struct {
-	Weather      string           `json:"weather"`
-	TrackTemp    float32          `json:"trackTemp"`
-	AirTemp      float32          `json:"airTemp"`
-	SafetyCar    string           `json:"safetyCar"`
-	SessionType  string           `json:"sessionType"`
-	TotalLaps    int              `json:"totalLaps"`
-	TrackID      int8             `json:"trackId"`
-	TrackLength  int              `json:"trackLength"`
-	MarshalZones []MarshalZoneDTO `json:"marshalZones,omitempty"`
+	Weather         string               `json:"weather"`
+	TrackTemp       float32              `json:"trackTemp"`
+	AirTemp         float32              `json:"airTemp"`
+	SafetyCar       string               `json:"safetyCar"`
+	SessionType     string               `json:"sessionType"`
+	TotalLaps       int                  `json:"totalLaps"`
+	TrackID         int8                 `json:"trackId"`
+	TrackLength     int                  `json:"trackLength"`
+	MarshalZones    []MarshalZoneDTO     `json:"marshalZones,omitempty"`
+	WeatherForecast []WeatherForecastDTO `json:"weatherForecast,omitempty"`
 }
 
 // DriverInfo contains per-driver race data
@@ -56,8 +69,10 @@ type DriverInfo struct {
 	BestLapTime   float32 `json:"bestLapTime"`
 	TireCompound  string  `json:"tireCompound"`
 	TireAge       int     `json:"tireAge"`
-	TireWear      [4]int  `json:"tireWear"`
-	TireTemp      [4]int  `json:"tireTemp"`
+	TireWear        [4]int `json:"tireWear"`
+	TireSurfaceTemp [4]int `json:"tireSurfaceTemp"`
+	TireInnerTemp   [4]int `json:"tireInnerTemp"`
+	BrakeTemp       [4]int `json:"brakeTemp"`
 
 	// Fuel & Energy
 	FuelInTank          float32 `json:"fuelInTank"`
