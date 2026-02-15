@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { DriverInfo, SessionInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
+import { getTeamName } from '../../../constants/teamColors';
 import { SectionHeader } from '../shared/SectionHeader';
 import { TyreIcon } from '../shared/TyreIcon';
 import { TeamColorBar } from '../shared/TeamColorBar';
@@ -58,13 +59,23 @@ export function LeaderboardSection({ drivers, session, playerIndex }: Leaderboar
                   <td className={styles.colDriver}>
                     <div className={styles.driverCell}>
                       <TeamColorBar teamId={driver.teamId} position="left" />
-                      <span className={styles.driverName}>
-                        {formatDriverName(driver.name, driver.index)}
-                      </span>
+                      <div className={isPlayer ? styles.playerDriverInfo : styles.driverInfo}>
+                        <span className={isPlayer ? styles.playerFullName : styles.fullName}>
+                          {driver.name?.trim() || `P${driver.index}`}
+                        </span>
+                        <span className={isPlayer ? styles.playerTeamName : styles.teamName}>
+                          {getTeamName(driver.teamId)}
+                        </span>
+                      </div>
                     </div>
                   </td>
                   <td className={styles.colGap}>
-                    <span className={styles.gap}>{gap}</span>
+                    <div className={styles.gapCell}>
+                      <span className={styles.gap}>{gap}</span>
+                      {driver.deltaToCarInFront != null && driver.deltaToCarInFront > 0 && driver.deltaToCarInFront <= 1000 && (
+                        <span className={styles.drsBadge}>DRS</span>
+                      )}
+                    </div>
                   </td>
                   <td className={styles.colTyre}>
                     <TyreIcon

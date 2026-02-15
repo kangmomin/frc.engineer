@@ -4,6 +4,7 @@ import type {
   CarPosition,
   DriverInfo,
   TrackMapData,
+  MarshalZone,
   RaceControlNotification,
 } from '../../../types/telemetry';
 import { getTeamColor } from '../../../constants/teamColors';
@@ -28,7 +29,7 @@ export function TrackMapSection({
   return (
     <div className={styles.container}>
       <SectionHeader
-        title="Track"
+        title={session?.trackName ?? 'Track'}
         subtitle={session?.sessionType ?? 'No Session'}
       />
 
@@ -40,6 +41,7 @@ export function TrackMapSection({
             drivers={drivers}
             trackMap={trackMap}
             playerIndex={playerIndex}
+            marshalZones={session?.marshalZones}
           />
         </div>
 
@@ -86,14 +88,23 @@ export function getWeatherEmoji(weather: string): string {
   return map[normalized] ?? '☀️';
 }
 
+/** Map marshal zone flag number to color */
+const FLAG_COLORS: Record<number, string> = {
+  1: '#2ecc71', // green
+  2: '#3498db', // blue
+  3: '#f1c40f', // yellow
+  4: '#e74c3c', // red
+};
+
 interface TrackCanvasProps {
   positions: CarPosition[];
   drivers: DriverInfo[];
   trackMap?: TrackMapData;
   playerIndex: number;
+  marshalZones?: MarshalZone[];
 }
 
-function TrackCanvas({ positions, drivers, trackMap, playerIndex }: TrackCanvasProps) {
+function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones }: TrackCanvasProps) {
   const driverMap = useMemo(() => {
     const map = new Map<number, DriverInfo>();
     drivers.forEach((d) => map.set(d.index, d));
@@ -109,7 +120,60 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex }: TrackCanvasP
     return `${trackMap.minX - padding} ${trackMap.minZ - padding} ${width} ${height}`;
   }, [trackMap]);
 
-  // Generate track path
+  // Generate sector paths and midpoints for labels
+  const sectorData = useMemo(() => {
+    if (!trackMap || trackMap.points.length < 2) return [];
+    const pts = trackMap.points;
+
+    // Collect points per sector
+    const sectorPoints: Map<number, { x: number; z: number }[]> = new Map();
+    for (const pt of pts) {
+      if (!sectorPoints.has(pt.sector)) sectorPoints.set(pt.sector, []);
+      sectorPoints.get(pt.sector)!.push({ x: pt.x, z: pt.z });
+    }
+
+    // Build path and midpoint per sector
+    const result: { sector: number; path: string; midX: number; midZ: number }[] = [];
+    let currentSector = pts[0].sector;
+    let d = `M ${pts[0].x} ${pts[0].z}`;
+
+    for (let i = 1; i < pts.length; i++) {
+      if (pts[i].sector !== currentSector) {
+        d += ` L ${pts[i].x} ${pts[i].z}`;
+        const sp = sectorPoints.get(currentSector)!;
+        const mid = sp[Math.floor(sp.length / 2)];
+        result.push({ sector: currentSector, path: d, midX: mid.x, midZ: mid.z });
+        currentSector = pts[i].sector;
+        d = `M ${pts[i].x} ${pts[i].z}`;
+      } else {
+        d += ` L ${pts[i].x} ${pts[i].z}`;
+      }
+    }
+    d += ` L ${pts[0].x} ${pts[0].z}`;
+    const sp = sectorPoints.get(currentSector)!;
+    const mid = sp[Math.floor(sp.length / 2)];
+    result.push({ sector: currentSector, path: d, midX: mid.x, midZ: mid.z });
+
+    return result;
+  }, [trackMap]);
+
+  // Determine highest-priority flag per sector from marshal zones
+  const sectorFlags = useMemo(() => {
+    const flags: Record<number, number> = { 0: 0, 1: 0, 2: 0 };
+    if (!marshalZones || !trackMap || trackMap.points.length === 0) return flags;
+
+    const totalPts = trackMap.points.length;
+    for (const mz of marshalZones) {
+      if (mz.flag <= 0) continue; // -1=invalid, 0=none
+      const ptIdx = Math.min(Math.floor(mz.start * totalPts), totalPts - 1);
+      const sector = trackMap.points[ptIdx].sector;
+      // Keep highest flag per sector (4=red > 3=yellow > 2=blue > 1=green)
+      if (mz.flag > flags[sector]) flags[sector] = mz.flag;
+    }
+    return flags;
+  }, [marshalZones, trackMap]);
+
+  // Full track path for the background outline
   const trackPath = useMemo(() => {
     if (!trackMap || trackMap.points.length < 2) return '';
     const pts = trackMap.points;
@@ -131,23 +195,49 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex }: TrackCanvasP
 
   return (
     <svg viewBox={viewBox} className={styles.trackSvg} preserveAspectRatio="xMidYMid meet">
-      {/* Track outline - thicker lines for better visibility */}
+      {/* Track outline background */}
       <path
         d={trackPath}
         fill="none"
-        stroke="rgba(255,255,255,0.15)"
+        stroke="rgba(255,255,255,0.1)"
         strokeWidth="20"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <path
-        d={trackPath}
-        fill="none"
-        stroke="rgba(255,255,255,0.5)"
-        strokeWidth="12"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+
+      {/* Sector paths: neutral by default, colored when flagged */}
+      {sectorData.map((s, i) => {
+        const flag = sectorFlags[s.sector] ?? 0;
+        const color = flag > 0 ? (FLAG_COLORS[flag] ?? 'rgba(255,255,255,0.5)') : 'rgba(255,255,255,0.5)';
+        return (
+          <path
+            key={i}
+            d={s.path}
+            fill="none"
+            stroke={color}
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        );
+      })}
+
+      {/* Sector labels */}
+      {sectorData.map((s) => (
+        <text
+          key={`label-${s.sector}`}
+          x={s.midX}
+          y={s.midZ}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="rgba(255,255,255,0.6)"
+          fontSize="16"
+          fontWeight="700"
+          fontFamily="var(--font-racing)"
+        >
+          S{s.sector + 1}
+        </text>
+      ))}
 
       {/* Car positions */}
       {positions.map((pos) => {
@@ -158,21 +248,32 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex }: TrackCanvasP
 
         return (
           <g key={pos.index}>
+            {isPlayer && (
+              <circle
+                cx={pos.x}
+                cy={pos.z}
+                r={22}
+                fill="none"
+                stroke="#00FF00"
+                strokeWidth={2}
+                opacity="0.4"
+              />
+            )}
             <circle
               cx={pos.x}
               cy={pos.z}
-              r={isPlayer ? 12 : 8}
+              r={isPlayer ? 16 : 12}
               fill={color}
               stroke={isPlayer ? '#00FF00' : 'white'}
-              strokeWidth={isPlayer ? 3 : 1}
+              strokeWidth={isPlayer ? 4 : 2}
               opacity="0.9"
             />
             <text
               x={pos.x}
-              y={pos.z + 3}
+              y={pos.z + (isPlayer ? 4 : 3.5)}
               textAnchor="middle"
               fill="white"
-              fontSize={isPlayer ? 10 : 8}
+              fontSize={isPlayer ? 13 : 11}
               fontWeight="bold"
               fontFamily="var(--font-racing)"
             >

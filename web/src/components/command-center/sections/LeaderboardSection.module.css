@@ -109,10 +109,68 @@
   letter-spacing: 0.5px;
 }
 
+.playerDriverInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+
+.playerFullName {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+.playerTeamName {
+  font-size: 9px;
+  color: #00d2ff;
+  letter-spacing: 0.3px;
+}
+
+.teamName {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.3px;
+}
+
+.driverInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+
+.fullName {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
 .gap {
   font-family: var(--font-racing);
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+.gapCell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drsBadge {
+  font-family: var(--font-racing);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #000;
+  background: #00e600;
+  padding: 1px 4px;
+  border-radius: 2px;
+  line-height: 1;
 }
 
 .pits {
