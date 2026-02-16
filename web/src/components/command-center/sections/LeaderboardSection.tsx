@@ -93,10 +93,14 @@ export function LeaderboardSection({ drivers, session, playerIndex }: Leaderboar
                     </span>
                   </td>
                   <td className={styles.colSector}>
-                    <span className={styles.sector}>--</span>
+                    <span className={styles.sector}>
+                      {driver.sector1TimeMs > 0 ? formatSectorTime(driver.sector1TimeMs) : '--'}
+                    </span>
                   </td>
                   <td className={styles.colSector}>
-                    <span className={styles.sector}>--</span>
+                    <span className={styles.sector}>
+                      {driver.sector2TimeMs > 0 ? formatSectorTime(driver.sector2TimeMs) : '--'}
+                    </span>
                   </td>
                   <td className={styles.colSector}>
                     <span className={styles.sector}>--</span>
@@ -109,6 +113,11 @@ export function LeaderboardSection({ drivers, session, playerIndex }: Leaderboar
       </div>
     </div>
   );
+}
+
+function formatSectorTime(ms: number): string {
+  const seconds = ms / 1000;
+  return seconds.toFixed(3);
 }
 
 function formatDriverName(fullName: string, carIndex?: number): string {

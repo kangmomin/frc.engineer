@@ -120,14 +120,14 @@ function CarControlsHUD({ driver }: CarControlsHUDProps) {
         </span>
       </div>
 
-      {/* Brake Bias - derived from typical F1 range 50-60% */}
+      {/* Brake Bias */}
       <div className={styles.controlItem}>
         <div className={styles.controlHeader}>
           <span className={styles.controlLabel}>BB</span>
           <span className={styles.controlSubLabel}>Brake Bias</span>
         </div>
         <span className={styles.controlValueLarge}>
-          --
+          {driver.brakeBias > 0 ? `${driver.brakeBias}%` : '--'}
         </span>
       </div>
 
@@ -137,9 +137,14 @@ function CarControlsHUD({ driver }: CarControlsHUDProps) {
           <span className={styles.controlLabel}>DIFF</span>
           <span className={styles.controlSubLabel}>Differential</span>
         </div>
-        <span className={styles.controlValueLarge}>
-          --
-        </span>
+        {driver.diffOnThrottle > 0 || driver.diffOffThrottle > 0 ? (
+          <div className={styles.diffValues}>
+            <span className={styles.controlValue}>ON {driver.diffOnThrottle}%</span>
+            <span className={styles.controlValue}>OFF {driver.diffOffThrottle}%</span>
+          </div>
+        ) : (
+          <span className={styles.controlValueLarge}>--</span>
+        )}
       </div>
     </div>
   );

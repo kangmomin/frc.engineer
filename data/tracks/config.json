@@ -1,5 +1,5 @@
 {
-  "udpPort": 20778,
+  "udpPort": 20777,
   "forwardTargets": [
     {
       "host": "127.0.0.1",

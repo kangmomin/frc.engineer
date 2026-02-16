@@ -25,7 +25,7 @@ export function CommandCenter({ onConnectionStateChange }: CommandCenterProps) {
     onConnectionStateChange?.(connectionState);
   }, [connectionState, onConnectionStateChange]);
 
-  const playerDriver = pitwallState?.drivers[pitwallState.playerIndex];
+  const playerDriver = pitwallState?.drivers.find(d => d.index === pitwallState.playerIndex);
 
   return (
     <div className={styles.grid}>

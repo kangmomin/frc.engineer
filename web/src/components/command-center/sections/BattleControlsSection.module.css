@@ -73,6 +73,11 @@
   color: var(--text-primary);
 }
 
+.diffValues {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
 /* Progress Bar */
 .progressBar {
   width: 100%;

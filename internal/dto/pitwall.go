@@ -53,6 +53,7 @@ type SessionInfo struct {
 	SessionType     string               `json:"sessionType"`
 	TotalLaps       int                  `json:"totalLaps"`
 	TrackID         int8                 `json:"trackId"`
+	TrackName       string               `json:"trackName"`
 	TrackLength     int                  `json:"trackLength"`
 	MarshalZones    []MarshalZoneDTO     `json:"marshalZones,omitempty"`
 	WeatherForecast []WeatherForecastDTO `json:"weatherForecast,omitempty"`
@@ -74,6 +75,11 @@ type DriverInfo struct {
 	TireInnerTemp   [4]int `json:"tireInnerTemp"`
 	BrakeTemp       [4]int `json:"brakeTemp"`
 
+	// Car Controls
+	BrakeBias      int `json:"brakeBias"`
+	DiffOnThrottle int `json:"diffOnThrottle"`
+	DiffOffThrottle int `json:"diffOffThrottle"`
+
 	// Fuel & Energy
 	FuelInTank          float32 `json:"fuelInTank"`
 	FuelRemainingLaps   float32 `json:"fuelRemainingLaps"`
@@ -88,6 +94,11 @@ type DriverInfo struct {
 
 	// Strategy
 	StintHistory []StintInfoDTO `json:"stintHistory,omitempty"`
+
+	// Sector times (current lap)
+	Sector1TimeMs int `json:"sector1TimeMs"`
+	Sector2TimeMs int `json:"sector2TimeMs"`
+	CurrentSector int `json:"currentSector"`
 
 	// Pit
 	PitStatus    int     `json:"pitStatus"`

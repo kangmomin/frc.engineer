@@ -17,6 +17,7 @@ type ParsedData struct {
 	Participants *packets.PacketParticipantsData
 	CarStatus    *packets.PacketCarStatusData
 	CarDamage    *packets.PacketCarDamageData
+	CarSetups    *packets.PacketCarSetupData
 	Event        *packets.PacketEventData
 }
 
@@ -110,6 +111,14 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 			return nil, err
 		}
 		parsed.CarStatus = carStatus
+
+	case packets.PacketIDCarSetups:
+		carSetups, err := packets.ParseCarSetupPacket(data, header)
+		if err != nil {
+			p.logger.Debug("failed to parse car setup packet", "error", err)
+			return nil, err
+		}
+		parsed.CarSetups = carSetups
 
 	case packets.PacketIDCarDamage:
 		carDamage, err := packets.ParseCarDamagePacket(data, header)

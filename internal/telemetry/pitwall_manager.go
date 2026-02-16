@@ -28,6 +28,7 @@ type PitwallManager struct {
 	lapData      *packets.PacketLapData
 	telemetry    *packets.PacketCarTelemetryData
 	carDamage    *packets.PacketCarDamageData
+	carSetups    *packets.PacketCarSetupData
 	playerIndex  uint8
 	strategyMgr  *StrategyManager
 	trackStore   *tracks.TrackStore
@@ -129,6 +130,13 @@ func (pm *PitwallManager) UpdateTelemetry(t *packets.PacketCarTelemetryData) {
 	pm.mu.Unlock()
 }
 
+// UpdateCarSetups stores the latest car setups packet
+func (pm *PitwallManager) UpdateCarSetups(cs *packets.PacketCarSetupData) {
+	pm.mu.Lock()
+	pm.carSetups = cs
+	pm.mu.Unlock()
+}
+
 // UpdateCarDamage stores the latest car damage packet
 func (pm *PitwallManager) UpdateCarDamage(cd *packets.PacketCarDamageData) {
 	pm.mu.Lock()
@@ -155,6 +163,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 			SessionType: sessionTypeString(pm.session.SessionType),
 			TotalLaps:   int(pm.session.TotalLaps),
 			TrackID:     pm.session.TrackID,
+			TrackName:   tracks.TrackName(pm.session.TrackID),
 			TrackLength: int(pm.session.TrackLength),
 		}
 		numZones := int(pm.session.NumMarshalZones)
@@ -231,9 +240,16 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	}
 
 	// Driver info (merge participants, lap data, car status)
+	// Always include at least up to playerIndex+1 so the player is in the array
 	numCars := packets.MaxCars
 	if pm.participants != nil && int(pm.participants.NumActiveCars) < numCars {
 		numCars = int(pm.participants.NumActiveCars)
+	}
+	if int(pm.playerIndex) >= numCars {
+		numCars = int(pm.playerIndex) + 1
+	}
+	if numCars > packets.MaxCars {
+		numCars = packets.MaxCars
 	}
 
 	if numCars > 0 {
@@ -258,6 +274,9 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.NumPitStops = int(ld.NumPitStops)
 				d.LapDistance = sanitize(ld.LapDistance)
 				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0
+				d.Sector1TimeMs = int(ld.Sector1TimeMinutes)*60000 + int(ld.Sector1TimeInMS)
+				d.Sector2TimeMs = int(ld.Sector2TimeMinutes)*60000 + int(ld.Sector2TimeInMS)
+				d.CurrentSector = int(ld.Sector)
 				d.DeltaToCarInFront = int(ld.DeltaToCarInFrontMSPart)
 				d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderMSPart)
 				d.PitLaneTime = int(ld.PitLaneTimeInLaneInMS)
@@ -274,6 +293,13 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.ERSDeployMode = int(cs.ERSDeployMode)
 				d.ERSDeployedThisLap = sanitize(cs.ERSDeployedThisLap)
 				d.ERSHarvestedThisLap = sanitize(cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH)
+				d.BrakeBias = int(cs.FrontBrakeBias)
+			}
+
+			if pm.carSetups != nil {
+				setup := &pm.carSetups.CarSetupData[i]
+				d.DiffOnThrottle = int(setup.OnThrottle)
+				d.DiffOffThrottle = int(setup.OffThrottle)
 			}
 
 			// Stint history from strategy manager
@@ -379,7 +405,8 @@ func sessionTypeString(s uint8) string {
 	types := map[uint8]string{
 		0: "unknown", 1: "P1", 2: "P2", 3: "P3", 4: "Short P",
 		5: "Q1", 6: "Q2", 7: "Q3", 8: "Short Q", 9: "OSQ",
-		10: "Race", 11: "Race 2", 12: "Race 3", 13: "Time Trial",
+		10: "SS1", 11: "SS2", 12: "SS3", 13: "Short SS", 14: "OSS",
+		15: "Race", 16: "Race 2", 17: "Race 3", 18: "Time Trial",
 	}
 	if t, ok := types[s]; ok {
 		return t

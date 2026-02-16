@@ -43,6 +43,13 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'err
 export type ViewMode = 'driver' | 'pitwall';
 
 /**
+ * Tire wear prediction display mode
+ * - 'absolute': Show predicted total wear at N laps (e.g. 75%)
+ * - 'relative': Show additional wear over N laps (e.g. +15%)
+ */
+export type TireWearDisplayMode = 'absolute' | 'relative';
+
+/**
  * Tab identifiers for sidebar navigation
  */
 export type TabId = 'engineer' | 'settings';
@@ -52,6 +59,7 @@ export type TabId = 'engineer' | 'settings';
  */
 export interface AppConfig {
   udpPort: number;
+  backendPort: number;
   forwardTargets: ForwardTarget[];
   trackRecording: boolean;
 }
@@ -169,6 +177,7 @@ export interface SessionInfo {
   sessionType: string;
   totalLaps: number;
   trackId: number;
+  trackName: string;
   trackLength: number;
   marshalZones?: MarshalZone[];
   weatherForecast?: WeatherForecast[];
@@ -189,6 +198,11 @@ export interface DriverInfo {
   tireInnerTemp: number[];
   brakeTemp: number[];
 
+  // Car Controls
+  brakeBias: number;
+  diffOnThrottle: number;
+  diffOffThrottle: number;
+
   // Fuel & Energy
   fuelInTank: number;
   fuelRemainingLaps: number;
@@ -203,6 +217,11 @@ export interface DriverInfo {
 
   // Damage
   damage?: CarDamage;
+
+  // Sector times (current lap)
+  sector1TimeMs: number;
+  sector2TimeMs: number;
+  currentSector: number;
 
   // Pit
   pitStatus: number;

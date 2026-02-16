@@ -27,10 +27,6 @@ interface UsePitwallWebSocketReturn {
 }
 
 function getDefaultUrl(): string {
-  if (import.meta.env.DEV) {
-    return 'ws://localhost:8080/ws';
-  }
-  // Use wss:// for HTTPS to avoid mixed-content issues
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws`;
 }

@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useSettings } from '../hooks/useSettings';
-import type { AppConfig, ForwardTarget } from '../types/telemetry';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import type { AppConfig, ForwardTarget, TireWearDisplayMode } from '../types/telemetry';
 import styles from './SettingsView.module.css';
 
 export function SettingsView() {
-  const { config, tracks, loading, saving, updateConfig } = useSettings();
+  const { config, tracks, loading, saving, restartRequired, updateConfig } = useSettings();
   const [draft, setDraft] = useState<AppConfig | null>(null);
+  const [wearDisplayMode, setWearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
+    'tireWearDisplayMode',
+    'absolute',
+    (v) => (v === 'absolute' || v === 'relative' ? v : null),
+  );
 
   useEffect(() => {
     if (config && !draft) {
@@ -55,18 +61,26 @@ export function SettingsView() {
 
   return (
     <div className={styles.settings}>
-      {/* UDP Settings */}
+      {/* Port Settings */}
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>UDP Settings</h3>
+        <h3 className={styles.sectionTitle}>Port Settings</h3>
         <div className={styles.field}>
-          <span className={styles.fieldLabel}>Listen Port</span>
+          <span className={styles.fieldLabel}>Backend Port</span>
+          <input
+            className={styles.input}
+            type="number"
+            value={draft.backendPort}
+            onChange={(e) => setField('backendPort', parseInt(e.target.value) || 0)}
+          />
+        </div>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>UDP Port</span>
           <input
             className={styles.input}
             type="number"
             value={draft.udpPort}
             onChange={(e) => setField('udpPort', parseInt(e.target.value) || 0)}
           />
-          <span className={styles.hint}>Requires server restart to take effect</span>
         </div>
       </div>
 
@@ -131,6 +145,40 @@ export function SettingsView() {
           ))}
         </div>
       </div>
+
+      {/* Display Settings */}
+      <div className={styles.section}>
+        <h3 className={styles.sectionTitle}>Display</h3>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>타이어 마모 예측</span>
+          <div className={styles.segmentedControl}>
+            <button
+              className={`${styles.segmentBtn} ${wearDisplayMode === 'absolute' ? styles.segmentBtnActive : ''}`}
+              onClick={() => setWearDisplayMode('absolute')}
+            >
+              절대치
+            </button>
+            <button
+              className={`${styles.segmentBtn} ${wearDisplayMode === 'relative' ? styles.segmentBtnActive : ''}`}
+              onClick={() => setWearDisplayMode('relative')}
+            >
+              상대치
+            </button>
+          </div>
+        </div>
+        <span className={styles.hint}>
+          {wearDisplayMode === 'absolute'
+            ? '절대치: N랩 후 예상 총 마모도 표시 (예: 75%)'
+            : '상대치: N랩 동안 추가 마모량 표시 (예: +15%)'}
+        </span>
+      </div>
+
+      {/* Restart warning */}
+      {restartRequired && (
+        <div className={styles.restartWarning}>
+          프로그램을 재시작해야 적용됩니다.
+        </div>
+      )}
 
       {/* Save button */}
       {dirty && (

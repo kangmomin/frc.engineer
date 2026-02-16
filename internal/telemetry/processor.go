@@ -126,6 +126,9 @@ func (p *Processor) processPacket(data []byte) {
 	if parsed.CarDamage != nil {
 		p.pitwallManager.UpdateCarDamage(parsed.CarDamage)
 	}
+	if parsed.CarSetups != nil {
+		p.pitwallManager.UpdateCarSetups(parsed.CarSetups)
+	}
 
 	p.mu.Lock()
 

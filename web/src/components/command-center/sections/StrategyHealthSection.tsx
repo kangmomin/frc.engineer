@@ -66,7 +66,7 @@ function calculatePitSimulation(
   };
 }
 
-// Calculate cumulative gap between two drivers
+// Calculate cumulative gap between two drivers (returns seconds)
 function getCumulativeGap(
   driver: DriverInfo,
   behindDriver: DriverInfo,
@@ -75,7 +75,11 @@ function getCumulativeGap(
   let gap = 0;
   for (const d of sortedDrivers) {
     if (d.position > driver.position && d.position <= behindDriver.position) {
-      gap += d.deltaToCarInFront ?? 1.5; // Default 1.5s if no data (use ?? to preserve 0)
+      // deltaToCarInFront is in milliseconds from backend, convert to seconds
+      const gapSec = d.deltaToCarInFront != null && d.deltaToCarInFront > 0
+        ? d.deltaToCarInFront / 1000
+        : 1.5; // Default 1.5s if no data
+      gap += gapSec;
     }
   }
   return gap;

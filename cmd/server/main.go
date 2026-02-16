@@ -45,13 +45,17 @@ func main() {
 	)
 
 	// Initialize runtime config manager (loads saved config.json if exists)
-	runtimeCfg := rtconfig.NewRuntimeConfigManager("config.json", cfg.UDPPort)
+	runtimeCfg := rtconfig.NewRuntimeConfigManager("config.json", cfg.UDPPort, cfg.WSPort)
 
-	// Use saved UDP port from config.json instead of default
+	// Use saved ports from config.json instead of defaults
 	savedCfg := runtimeCfg.Get()
 	if savedCfg.UDPPort != 0 {
 		cfg.UDPPort = savedCfg.UDPPort
 		logger.Info("using saved UDP port from config", "udpPort", cfg.UDPPort)
+	}
+	if savedCfg.BackendPort != 0 {
+		cfg.WSPort = savedCfg.BackendPort
+		logger.Info("using saved backend port from config", "backendPort", cfg.WSPort)
 	}
 
 	// Initialize lap storage
@@ -207,6 +211,10 @@ func main() {
 				http.Error(w, "udpPort must be 1-65535", http.StatusBadRequest)
 				return
 			}
+			if newCfg.BackendPort < 1 || newCfg.BackendPort > 65535 {
+				http.Error(w, "backendPort must be 1-65535", http.StatusBadRequest)
+				return
+			}
 			if len(newCfg.ForwardTargets) > 16 {
 				http.Error(w, "too many forward targets (max 16)", http.StatusBadRequest)
 				return
@@ -296,6 +304,13 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
+	})
+
+	// Debug: dump current pitwall state
+	mux.HandleFunc("/api/debug/pitwall", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		state := processor.PitwallManager().BuildState()
+		json.NewEncoder(w).Encode(state)
 	})
 
 	// Serve embedded frontend (SPA fallback)

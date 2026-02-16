@@ -17,6 +17,7 @@ type ForwardTarget struct {
 // RuntimeConfig holds runtime-changeable settings
 type RuntimeConfig struct {
 	UDPPort        int             `json:"udpPort"`
+	BackendPort    int             `json:"backendPort"`
 	ForwardTargets []ForwardTarget `json:"forwardTargets"`
 	TrackRecording bool            `json:"trackRecording"`
 	PacketLogging  bool            `json:"packetLogging"`
@@ -30,11 +31,12 @@ type RuntimeConfigManager struct {
 }
 
 // NewRuntimeConfigManager creates a manager, loading from file if it exists
-func NewRuntimeConfigManager(configFilePath string, defaultUDPPort int) *RuntimeConfigManager {
+func NewRuntimeConfigManager(configFilePath string, defaultUDPPort, defaultBackendPort int) *RuntimeConfigManager {
 	m := &RuntimeConfigManager{
 		filePath: configFilePath,
 		config: RuntimeConfig{
-			UDPPort: defaultUDPPort,
+			UDPPort:     defaultUDPPort,
+			BackendPort: defaultBackendPort,
 		},
 	}
 	m.load()

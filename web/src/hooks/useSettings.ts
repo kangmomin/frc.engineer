@@ -1,10 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AppConfig, TrackListItem } from '../types/telemetry';
 
 function getApiBase(): string {
-  if (import.meta.env.DEV) {
-    return `http://${window.location.hostname}:8080`;
-  }
   return '';
 }
 
@@ -13,6 +10,8 @@ export function useSettings() {
   const [tracks, setTracks] = useState<TrackListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [restartRequired, setRestartRequired] = useState(false);
+  const initialConfigRef = useRef<AppConfig | null>(null);
 
   const base = getApiBase();
 
@@ -21,7 +20,11 @@ export function useSettings() {
       const res = await fetch(`${base}/api/config`);
       if (res.ok) {
         const data = await res.json();
-        setConfig({ ...data, forwardTargets: data.forwardTargets ?? [] });
+        const cfg: AppConfig = { ...data, forwardTargets: data.forwardTargets ?? [] };
+        setConfig(cfg);
+        if (!initialConfigRef.current) {
+          initialConfigRef.current = cfg;
+        }
       }
     } catch (e) {
       console.error('Failed to fetch config:', e);
@@ -54,7 +57,17 @@ export function useSettings() {
       });
       if (res.ok) {
         const data = await res.json();
-        setConfig({ ...data, forwardTargets: data.forwardTargets ?? [] });
+        const saved: AppConfig = { ...data, forwardTargets: data.forwardTargets ?? [] };
+
+        const initial = initialConfigRef.current;
+        if (initial) {
+          const portsChanged =
+            saved.udpPort !== initial.udpPort ||
+            saved.backendPort !== initial.backendPort;
+          setRestartRequired(portsChanged);
+        }
+
+        setConfig(saved);
       }
     } catch (e) {
       console.error('Failed to update config:', e);
@@ -63,5 +76,5 @@ export function useSettings() {
     }
   }, [base]);
 
-  return { config, tracks, loading, saving, updateConfig, refreshTracks: fetchTracks };
+  return { config, tracks, loading, saving, restartRequired, updateConfig, refreshTracks: fetchTracks };
 }

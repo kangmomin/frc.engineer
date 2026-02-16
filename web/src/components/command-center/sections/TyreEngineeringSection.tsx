@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
-import type { DriverInfo } from '../../../types/telemetry';
+import type { DriverInfo, TireWearDisplayMode } from '../../../types/telemetry';
 import { getTyreColor, getWearStatusColor, getTempStatusColor } from '../../../constants/tyreCompounds';
 import { SectionHeader } from '../shared/SectionHeader';
 import { TyreIcon } from '../shared/TyreIcon';
 import { useTyreInventory } from '../../../hooks/useTyreInventory';
+import { useLocalStorage } from '../../../hooks/useLocalStorage';
 import { INVENTORY_COMPOUNDS, type InventoryCompound } from '../../../types/tyreInventory';
 import styles from './TyreEngineeringSection.module.css';
 
@@ -30,6 +31,11 @@ function normalizeWheelData(data: number[] | undefined): number[] {
 
 export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) {
   const [predictionLaps, setPredictionLaps] = useState<string>('');
+  const [wearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
+    'tireWearDisplayMode',
+    'absolute',
+    (v) => (v === 'absolute' || v === 'relative' ? v : null),
+  );
   const { allocated, remaining, setCompoundAllocation, resetToDefault } = useTyreInventory(
     driver?.stintHistory
   );
@@ -54,9 +60,13 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
 
     return tyreWear.map((currentWear) => {
       const wearPerLap = driver.tireAge > 0 ? currentWear / driver.tireAge : 0;
-      return clamp(currentWear + wearPerLap * laps, 0, 100);
+      const absoluteWear = clamp(currentWear + wearPerLap * laps, 0, 100);
+      if (wearDisplayMode === 'relative') {
+        return absoluteWear - currentWear;
+      }
+      return absoluteWear;
     });
-  }, [driver, tyreWear, predictionLaps]);
+  }, [driver, tyreWear, predictionLaps, wearDisplayMode]);
 
   if (!driver) {
     return (
@@ -245,7 +255,11 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
             <div className={styles.predictionGrid} role="group" aria-label="Predicted tyre wear">
               {WHEEL_POSITIONS.map((pos, idx) => {
                 const predicted = predictedWear[idx] ?? 0;
-                const predictedColor = getWearStatusColor(predicted);
+                const isRelative = wearDisplayMode === 'relative';
+                // For color coding, use the absolute value (current + delta) for proper threshold mapping
+                const absoluteValue = isRelative ? tyreWear[idx] + predicted : predicted;
+                const predictedColor = getWearStatusColor(absoluteValue);
+                const barWidth = isRelative ? clamp(predicted, 0, 100) : predicted;
                 return (
                   <div key={pos} className={styles.predictionItem}>
                     <span className={styles.predictionLabel}>{pos}</span>
@@ -260,7 +274,7 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
                       <div
                         className={styles.predictionFill}
                         style={{
-                          width: `${predicted}%`,
+                          width: `${barWidth}%`,
                           backgroundColor: predictedColor,
                         }}
                       />
@@ -269,7 +283,7 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
                       className={styles.predictionValue}
                       style={{ color: predictedColor }}
                     >
-                      {predicted.toFixed(0)}%
+                      {isRelative ? '+' : ''}{predicted.toFixed(0)}%
                     </span>
                   </div>
                 );

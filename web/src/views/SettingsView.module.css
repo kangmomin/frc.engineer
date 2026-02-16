@@ -170,6 +170,51 @@
   border-color: var(--color-green, #2ecc71);
 }
 
+.restartWarning {
+  background: rgba(255, 165, 0, 0.12);
+  border: 1px solid rgba(255, 165, 0, 0.4);
+  border-radius: var(--radius-sm);
+  color: #ffa500;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* Segmented control */
+.segmentedControl {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.segmentBtn {
+  background: var(--bg-surface);
+  border: none;
+  color: var(--text-secondary);
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.segmentBtn:not(:last-child) {
+  border-right: 1px solid var(--border-color);
+}
+
+.segmentBtn:hover {
+  color: var(--text-primary);
+}
+
+.segmentBtnActive {
+  background: var(--accent);
+  color: #fff;
+}
+
+.segmentBtnActive:hover {
+  color: #fff;
+}
+
 .loading {
   color: var(--text-muted);
   text-align: center;

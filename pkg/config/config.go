@@ -12,7 +12,7 @@ type Config struct {
 	UDPBufferSize int // UDP receive channel buffer size (default: 128)
 
 	// WebSocket settings
-	WSPort            int // WebSocket server HTTP port (default: 8080)
+	WSPort            int // WebSocket server HTTP port (default: 8081)
 	WSBroadcastBuffer int // WebSocket broadcast channel buffer size (default: 64)
 
 	// Telemetry settings
@@ -31,7 +31,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		UDPPort:           20777,
 		UDPBufferSize:     128,
-		WSPort:            8080,
+		WSPort:            8081,
 		WSBroadcastBuffer: 64,
 		TelemetryUpdateHz: 30,
 		DataDir:           "data/tracks",

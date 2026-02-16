@@ -140,7 +140,7 @@ const (
 	WeatherStorm      WeatherType = 5
 )
 
-// SessionType represents the type of session
+// SessionType represents the type of session (F1 25)
 type SessionType uint8
 
 const (
@@ -154,10 +154,15 @@ const (
 	SessionQ3        SessionType = 7
 	SessionShortQ    SessionType = 8
 	SessionOSQ       SessionType = 9
-	SessionRace      SessionType = 10
-	SessionRace2     SessionType = 11
-	SessionRace3     SessionType = 12
-	SessionTimeTrial SessionType = 13
+	SessionSS1       SessionType = 10 // Sprint Shootout 1
+	SessionSS2       SessionType = 11 // Sprint Shootout 2
+	SessionSS3       SessionType = 12 // Sprint Shootout 3
+	SessionShortSS   SessionType = 13 // Short Sprint Shootout
+	SessionOSSS      SessionType = 14 // One-Shot Sprint Shootout
+	SessionRace      SessionType = 15
+	SessionRace2     SessionType = 16
+	SessionRace3     SessionType = 17
+	SessionTimeTrial SessionType = 18
 )
 
 // SafetyCarStatus represents the safety car status

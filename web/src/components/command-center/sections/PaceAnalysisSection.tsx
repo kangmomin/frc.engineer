@@ -29,13 +29,17 @@ function useLapHistory(driver: DriverInfo | null, maxLaps: number = 50) {
   const [lapHistory, setLapHistory] = useState<LapHistoryEntry[]>([]);
   const lastLapNumRef = useRef<number>(0);
   const lastDriverIndexRef = useRef<number | null>(null);
+  // Cache sector times from the current lap before they reset on lap transition
+  const cachedS1Ref = useRef<number>(0);
+  const cachedS2Ref = useRef<number>(0);
 
   useEffect(() => {
     if (!driver) {
-      // Reset when driver is null
       setLapHistory([]);
       lastLapNumRef.current = 0;
       lastDriverIndexRef.current = null;
+      cachedS1Ref.current = 0;
+      cachedS2Ref.current = 0;
       return;
     }
 
@@ -46,9 +50,15 @@ function useLapHistory(driver: DriverInfo | null, maxLaps: number = 50) {
     if (isDriverChange || isSessionReset) {
       setLapHistory([]);
       lastLapNumRef.current = 0;
+      cachedS1Ref.current = 0;
+      cachedS2Ref.current = 0;
     }
 
     lastDriverIndexRef.current = driver.index;
+
+    // Cache sector times while they're available (before lap transition resets them)
+    if (driver.sector1TimeMs > 0) cachedS1Ref.current = driver.sector1TimeMs;
+    if (driver.sector2TimeMs > 0) cachedS2Ref.current = driver.sector2TimeMs;
 
     const currentLapNum = driver.currentLapNum;
     const lastLapTime = driver.lastLapTime;
@@ -56,22 +66,27 @@ function useLapHistory(driver: DriverInfo | null, maxLaps: number = 50) {
     // Detect lap completion: lap number increased and we have a valid last lap time
     if (currentLapNum > lastLapNumRef.current && lastLapTime > 0) {
       const completedLapNum = currentLapNum - 1;
+      const s1 = cachedS1Ref.current > 0 ? cachedS1Ref.current : null;
+      const s2 = cachedS2Ref.current > 0 ? cachedS2Ref.current : null;
+      const s3 = s1 !== null && s2 !== null ? lastLapTime - s1 - s2 : null;
 
       const newEntry: LapHistoryEntry = {
         lapNumber: completedLapNum,
         lapTime: lastLapTime,
-        sector1: null, // Sector times not available in DriverInfo
-        sector2: null,
-        sector3: null,
+        sector1: s1,
+        sector2: s2,
+        sector3: s3,
         timestamp: Date.now(),
       };
 
+      // Reset cached sectors for the new lap
+      cachedS1Ref.current = 0;
+      cachedS2Ref.current = 0;
+
       setLapHistory(prev => {
-        // Check if we already have this lap - update it if lap time changed
         const existingIndex = prev.findIndex(entry => entry.lapNumber === completedLapNum);
 
         if (existingIndex >= 0) {
-          // Update existing entry if lap time has changed
           if (prev[existingIndex].lapTime !== lastLapTime) {
             const updated = [...prev];
             updated[existingIndex] = newEntry;
@@ -81,7 +96,6 @@ function useLapHistory(driver: DriverInfo | null, maxLaps: number = 50) {
         }
 
         const updated = [...prev, newEntry];
-        // Keep only the most recent laps
         if (updated.length > maxLaps) {
           return updated.slice(-maxLaps);
         }
