@@ -26,6 +26,27 @@ export function TrackMapSection({
   trackMap,
   playerIndex,
 }: TrackMapSectionProps) {
+  const turns = useMemo(() => (trackMap ? detectTurns(trackMap) : []), [trackMap]);
+
+  const currentTurn = useMemo(() => {
+    if (turns.length === 0) return null;
+    const playerPos = positions.find((p) => p.index === playerIndex);
+    if (!playerPos) return null;
+
+    let nearest: Turn | null = null;
+    let minDist = Infinity;
+    for (const t of turns) {
+      const dx = playerPos.x - t.apexX;
+      const dz = playerPos.z - t.apexZ;
+      const d = dx * dx + dz * dz;
+      if (d < minDist) {
+        minDist = d;
+        nearest = t;
+      }
+    }
+    return nearest;
+  }, [turns, positions, playerIndex]);
+
   return (
     <div className={styles.container}>
       <SectionHeader
@@ -42,12 +63,13 @@ export function TrackMapSection({
             trackMap={trackMap}
             playerIndex={playerIndex}
             marshalZones={session?.marshalZones}
+            turns={turns}
           />
         </div>
 
         {/* Track Footer Info */}
         <div className={styles.trackFooter}>
-          <TrackFooter session={session} />
+          <TrackFooter session={session} currentTurn={currentTurn?.num ?? null} />
         </div>
       </div>
     </div>
@@ -88,6 +110,79 @@ export function getWeatherEmoji(weather: string): string {
   return map[normalized] ?? '☀️';
 }
 
+interface Turn {
+  num: number;
+  apexX: number;
+  apexZ: number;
+  x: number; // label position (offset from track)
+  z: number;
+}
+
+/** Detect turns from track curvature. Returns stable array for a given trackMap. */
+function detectTurns(trackMap: TrackMapData): Turn[] {
+  if (trackMap.points.length < 20) return [];
+  const pts = trackMap.points;
+  const len = pts.length;
+
+  const step = 5;
+  const curvatures: number[] = new Array(len).fill(0);
+  for (let i = step; i < len - step; i++) {
+    const ax = pts[i].x - pts[i - step].x;
+    const az = pts[i].z - pts[i - step].z;
+    const bx = pts[i + step].x - pts[i].x;
+    const bz = pts[i + step].z - pts[i].z;
+    const angle1 = Math.atan2(az, ax);
+    const angle2 = Math.atan2(bz, bx);
+    let diff = angle2 - angle1;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    while (diff < -Math.PI) diff += 2 * Math.PI;
+    curvatures[i] = Math.abs(diff);
+  }
+
+  const windowSize = 15;
+  const smoothed: number[] = new Array(len).fill(0);
+  for (let i = 0; i < len; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let j = Math.max(0, i - windowSize); j <= Math.min(len - 1, i + windowSize); j++) {
+      sum += curvatures[j];
+      count++;
+    }
+    smoothed[i] = sum / count;
+  }
+
+  const threshold = 0.015;
+  const minGap = Math.floor(len / 50);
+  const peaks: { index: number; x: number; z: number }[] = [];
+
+  for (let i = 1; i < len - 1; i++) {
+    if (smoothed[i] > threshold && smoothed[i] >= smoothed[i - 1] && smoothed[i] >= smoothed[i + 1]) {
+      if (peaks.length === 0 || i - peaks[peaks.length - 1].index >= minGap) {
+        peaks.push({ index: i, x: pts[i].x, z: pts[i].z });
+      } else if (smoothed[i] > smoothed[peaks[peaks.length - 1].index]) {
+        peaks[peaks.length - 1] = { index: i, x: pts[i].x, z: pts[i].z };
+      }
+    }
+  }
+
+  const cx = (trackMap.minX + trackMap.maxX) / 2;
+  const cz = (trackMap.minZ + trackMap.maxZ) / 2;
+  const offset = 25;
+
+  return peaks.map((p, i) => {
+    const dx = p.x - cx;
+    const dz = p.z - cz;
+    const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+    return {
+      num: i + 1,
+      apexX: p.x,
+      apexZ: p.z,
+      x: p.x + (dx / dist) * offset,
+      z: p.z + (dz / dist) * offset,
+    };
+  });
+}
+
 /** Map marshal zone flag number to color */
 const FLAG_COLORS: Record<number, string> = {
   1: '#2ecc71', // green
@@ -102,9 +197,10 @@ interface TrackCanvasProps {
   trackMap?: TrackMapData;
   playerIndex: number;
   marshalZones?: MarshalZone[];
+  turns: Turn[];
 }
 
-function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones }: TrackCanvasProps) {
+function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, turns }: TrackCanvasProps) {
   const driverMap = useMemo(() => {
     const map = new Map<number, DriverInfo>();
     drivers.forEach((d) => map.set(d.index, d));
@@ -155,6 +251,39 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones }
     result.push({ sector: currentSector, path: d, midX: mid.x, midZ: mid.z });
 
     return result;
+  }, [trackMap]);
+
+  // Generate DRS zone paths
+  const drsZones = useMemo(() => {
+    if (!trackMap || trackMap.points.length < 2) return [];
+    const pts = trackMap.points;
+    const zones: { path: string; midX: number; midZ: number }[] = [];
+    let inDrs = false;
+    let d = '';
+    let zonePoints: { x: number; z: number }[] = [];
+
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].drs === 1 && !inDrs) {
+        inDrs = true;
+        d = `M ${pts[i].x} ${pts[i].z}`;
+        zonePoints = [{ x: pts[i].x, z: pts[i].z }];
+      } else if (pts[i].drs === 1 && inDrs) {
+        d += ` L ${pts[i].x} ${pts[i].z}`;
+        zonePoints.push({ x: pts[i].x, z: pts[i].z });
+      } else if (pts[i].drs === 0 && inDrs) {
+        inDrs = false;
+        if (zonePoints.length > 1) {
+          const mid = zonePoints[Math.floor(zonePoints.length / 2)];
+          zones.push({ path: d, midX: mid.x, midZ: mid.z });
+        }
+      }
+    }
+    // Close last zone if track ends in DRS
+    if (inDrs && zonePoints.length > 1) {
+      const mid = zonePoints[Math.floor(zonePoints.length / 2)];
+      zones.push({ path: d, midX: mid.x, midZ: mid.z });
+    }
+    return zones;
   }, [trackMap]);
 
   // Determine highest-priority flag per sector from marshal zones
@@ -222,6 +351,20 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones }
         );
       })}
 
+      {/* DRS zone paths */}
+      {drsZones.map((zone, i) => (
+        <path
+          key={`drs-${i}`}
+          d={zone.path}
+          fill="none"
+          stroke="#00e600"
+          strokeWidth="16"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.5"
+        />
+      ))}
+
       {/* Sector labels */}
       {sectorData.map((s) => (
         <text
@@ -236,6 +379,40 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones }
           fontFamily="var(--font-racing)"
         >
           S{s.sector + 1}
+        </text>
+      ))}
+
+      {/* DRS zone labels */}
+      {drsZones.map((zone, i) => (
+        <text
+          key={`drs-label-${i}`}
+          x={zone.midX}
+          y={zone.midZ}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="#00e600"
+          fontSize="10"
+          fontWeight="700"
+          fontFamily="var(--font-racing)"
+        >
+          DRS
+        </text>
+      ))}
+
+      {/* Turn number labels */}
+      {turns.map((t) => (
+        <text
+          key={`turn-${t.num}`}
+          x={t.x}
+          y={t.z}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="rgba(255,255,255,0.45)"
+          fontSize="10"
+          fontWeight="600"
+          fontFamily="var(--font-racing)"
+        >
+          T{t.num}
         </text>
       ))}
 
@@ -375,9 +552,10 @@ export function formatTime(timestamp: number): string {
 
 interface TrackFooterProps {
   session: SessionInfo | null;
+  currentTurn: number | null;
 }
 
-function TrackFooter({ session }: TrackFooterProps) {
+function TrackFooter({ session, currentTurn }: TrackFooterProps) {
   if (!session) return null;
 
   return (
@@ -393,6 +571,10 @@ function TrackFooter({ session }: TrackFooterProps) {
       <div className={styles.footerItem}>
         <span className={styles.footerLabel}>Length</span>
         <span className={styles.footerValue}>{(session.trackLength / 1000).toFixed(2)}km</span>
+      </div>
+      <div className={styles.footerItem}>
+        <span className={styles.footerLabel}>Turn</span>
+        <span className={styles.footerValue}>{currentTurn != null ? `T${currentTurn}` : '-'}</span>
       </div>
     </div>
   );
