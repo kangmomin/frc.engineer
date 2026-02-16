@@ -71,9 +71,8 @@ export interface ForwardTarget {
 }
 
 export interface TrackListItem {
-  id: number;
   name: string;
-  hasData: boolean;
+  filename: string;
 }
 
 /**

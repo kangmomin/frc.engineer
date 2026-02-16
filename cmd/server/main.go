@@ -259,7 +259,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(trackStore.ListLoaded())
+		json.NewEncoder(w).Encode(trackStore.ListRecordedFiles())
 	})
 
 	// REST API: GET /api/sessions

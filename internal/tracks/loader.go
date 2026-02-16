@@ -31,7 +31,8 @@ type TrackMapData struct {
 
 // TrackStore maps trackID to parsed track data
 type TrackStore struct {
-	tracks map[int8]*TrackMapData
+	tracks  map[int8]*TrackMapData
+	dataDir string
 }
 
 // trackID → file name prefix mapping (F1 25 track IDs)
@@ -73,7 +74,7 @@ func TrackName(trackID int8) string {
 
 // NewTrackStore loads all CSV racing line files from dataDir
 func NewTrackStore(dataDir string) *TrackStore {
-	ts := &TrackStore{tracks: make(map[int8]*TrackMapData)}
+	ts := &TrackStore{tracks: make(map[int8]*TrackMapData), dataDir: dataDir}
 
 	for id, name := range trackFileMap {
 		// Try both naming patterns
@@ -133,6 +134,30 @@ type TrackInfo struct {
 	ID      int    `json:"id"`
 	Name    string `json:"name"`
 	HasData bool   `json:"hasData"`
+}
+
+// RecordedFileInfo describes a saved track file on disk
+type RecordedFileInfo struct {
+	Name     string `json:"name"`
+	Filename string `json:"filename"`
+}
+
+// ListRecordedFiles scans the data directory for *_recorded.txt files
+func (ts *TrackStore) ListRecordedFiles() []RecordedFileInfo {
+	var result []RecordedFileInfo
+	matches, err := filepath.Glob(filepath.Join(ts.dataDir, "*_recorded.txt"))
+	if err != nil {
+		return result
+	}
+	for _, path := range matches {
+		base := filepath.Base(path)
+		name := strings.TrimSuffix(base, "_recorded.txt")
+		result = append(result, RecordedFileInfo{
+			Name:     name,
+			Filename: base,
+		})
+	}
+	return result
 }
 
 // loadCSV parses a racing line CSV file

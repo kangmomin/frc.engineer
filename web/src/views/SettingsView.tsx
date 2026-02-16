@@ -136,13 +136,17 @@ export function SettingsView() {
           </span>
         </div>
 
-        <h4 className={styles.sectionTitle}>Known Tracks</h4>
+        <h4 className={styles.sectionTitle}>저장된 트랙 파일</h4>
         <div className={styles.trackList}>
-          {(tracks ?? []).map((t) => (
-            <span key={t.id} className={t.hasData ? styles.trackBadgeLoaded : styles.trackBadge}>
-              {t.name}
-            </span>
-          ))}
+          {(tracks ?? []).length === 0 ? (
+            <span className={styles.hint}>저장된 트랙 파일이 없습니다</span>
+          ) : (
+            (tracks ?? []).map((t) => (
+              <span key={t.filename} className={styles.trackBadgeLoaded}>
+                {t.name}
+              </span>
+            ))
+          )}
         </div>
       </div>
 
