@@ -63,12 +63,15 @@ func (am *AuthManager) Login(email, password string) (*User, error) {
 		return nil, fmt.Errorf("invalid response from auth server")
 	}
 
-	// Check product access
-	hasAccess, err := am.checkProductAccess(loginResp.AccessToken)
+	// Check product access (3 cases):
+	// 1. has_access=true, subscription=nil  → owner/admin access
+	// 2. has_access=true, subscription!=nil → subscriber access
+	// 3. has_access=false                   → no access
+	access, err := am.checkProductAccess(loginResp.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify product access")
 	}
-	if !hasAccess {
+	if !access.HasAccess {
 		return nil, fmt.Errorf("no access to this product")
 	}
 
@@ -81,28 +84,31 @@ func (am *AuthManager) Login(email, password string) (*User, error) {
 	return &loginResp.User, nil
 }
 
-func (am *AuthManager) checkProductAccess(token string) (bool, error) {
+type productAccess struct {
+	HasAccess    bool             `json:"has_access"`
+	Subscription *json.RawMessage `json:"subscription"`
+}
+
+func (am *AuthManager) checkProductAccess(token string) (*productAccess, error) {
 	req, err := http.NewRequest("GET", authBaseURL+"/products/"+productID+"/access", nil)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
-	var result struct {
-		HasAccess bool `json:"has_access"`
-	}
+	var result productAccess
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return false, err
+		return nil, err
 	}
-	return result.HasAccess, nil
+	return &result, nil
 }
 
 func (am *AuthManager) GetState() (*User, bool) {

@@ -25,11 +25,17 @@ export function useAuth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Login failed');
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          setError(data.error || 'Login failed');
+        } catch {
+          setError(text || `Login failed (${res.status})`);
+        }
         return;
       }
+      const data = await res.json();
       setUser(data);
     } catch {
       setError('Server unreachable');
