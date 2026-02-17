@@ -120,18 +120,6 @@ function formatSectorTime(ms: number): string {
   return seconds.toFixed(3);
 }
 
-function formatDriverName(fullName: string, carIndex?: number): string {
-  const trimmed = fullName?.trim() ?? '';
-  if (!trimmed) {
-    return carIndex !== undefined ? `P${carIndex}` : 'PLY';
-  }
-  const parts = trimmed.split(/\s+/);
-  if (parts.length > 1) {
-    return parts[parts.length - 1].substring(0, 3).toUpperCase();
-  }
-  return trimmed.substring(0, 3).toUpperCase();
-}
-
 function formatGapToLeader(deltaMs: number | undefined): string {
   if (deltaMs === undefined || deltaMs === 0) return '--';
   if (deltaMs >= 60000) {

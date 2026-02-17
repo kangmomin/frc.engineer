@@ -283,6 +283,18 @@ export interface BattleAlert {
 }
 
 /**
+ * Authenticated user from backend
+ */
+export interface AuthUser {
+  id: string;
+  email: string;
+  nickname: string;
+  role: string;
+  permissions: string[];
+  emailVerified: boolean;
+}
+
+/**
  * Default telemetry data for initial state
  */
 export const defaultTelemetryData: TelemetryData = {
