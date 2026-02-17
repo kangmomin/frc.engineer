@@ -2,11 +2,14 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 )
 
 const (
@@ -109,6 +112,36 @@ func (am *AuthManager) checkProductAccess(token string) (*productAccess, error) 
 		return nil, err
 	}
 	return &result, nil
+}
+
+// StartPeriodicCheck re-verifies product access every 5 minutes.
+// If the check fails or access is revoked, the user is automatically logged out.
+func (am *AuthManager) StartPeriodicCheck(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				am.mu.RLock()
+				token := am.accessToken
+				loggedIn := am.user != nil
+				am.mu.RUnlock()
+
+				if !loggedIn {
+					continue
+				}
+
+				access, err := am.checkProductAccess(token)
+				if err != nil || !access.HasAccess {
+					slog.Warn("periodic access check failed, logging out", "error", err)
+					am.Logout()
+				}
+			}
+		}
+	}()
 }
 
 func (am *AuthManager) GetState() (*User, bool) {

@@ -1,19 +1,32 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AuthUser } from '../types/telemetry';
+
+function checkMe(): Promise<{ user: AuthUser | null; loggedIn: boolean }> {
+  return fetch('/api/auth/me')
+    .then((r) => r.json())
+    .catch(() => ({ user: null, loggedIn: false }));
+}
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const userRef = useRef(user);
+  userRef.current = user;
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.loggedIn && data.user) setUser(data.user);
-      })
-      .catch(() => {})
+    checkMe()
+      .then((data) => { if (data.loggedIn && data.user) setUser(data.user); })
       .finally(() => setLoading(false));
+
+    // Poll every 5 minutes — if backend logged us out, sync frontend
+    const interval = setInterval(() => {
+      if (!userRef.current) return;
+      checkMe().then((data) => {
+        if (!data.loggedIn) setUser(null);
+      });
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
