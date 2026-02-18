@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { DriverInfo, TireWearDisplayMode } from '../../../types/telemetry';
+import type { DriverInfo, DynamicsLap, TireWearDisplayMode } from '../../../types/telemetry';
 import { getTyreColor, getWearStatusColor, getTempStatusColor } from '../../../constants/tyreCompounds';
 import { SectionHeader } from '../shared/SectionHeader';
 import { TyreIcon } from '../shared/TyreIcon';
@@ -7,6 +7,8 @@ import { useTyreInventory } from '../../../hooks/useTyreInventory';
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
 import { INVENTORY_COMPOUNDS, type InventoryCompound } from '../../../types/tyreInventory';
 import styles from './TyreEngineeringSection.module.css';
+
+type SectionTab = 'tyres' | 'spin';
 
 interface TyreEngineeringSectionProps {
   driver: DriverInfo | null;
@@ -29,7 +31,61 @@ function normalizeWheelData(data: number[] | undefined): number[] {
   return normalized;
 }
 
+function DynamicsTab({ laps }: { laps: DynamicsLap[] }) {
+  if (laps.length === 0) {
+    return <div className={styles.noData}>No completed lap data yet</div>;
+  }
+
+  return (
+    <div className={styles.dynamicsTable}>
+      <div className={`${styles.dynamicsRow} ${styles.dynamicsHeader}`}>
+        <span className={styles.dynamicsCell}>Lap</span>
+        <span className={styles.dynamicsCell}>Understeer</span>
+        <span className={styles.dynamicsCell}>Oversteer</span>
+        <span className={styles.dynamicsCell}>Lock</span>
+        <span className={styles.dynamicsCell}>Spin</span>
+      </div>
+      {laps.map((lap) => (
+        <div key={lap.lapNum} className={styles.dynamicsRow}>
+          <span className={styles.dynamicsCell}>{lap.lapNum}</span>
+          <span className={styles.dynamicsCell}>
+            <span className={styles.dynamicsMiniBar}>
+              <span
+                className={styles.dynamicsMiniBarFill}
+                style={{
+                  width: `${Math.min(lap.understeerPct, 100)}%`,
+                  backgroundColor: 'var(--accent-yellow)',
+                }}
+              />
+            </span>
+            <span className={styles.dynamicsValue}>{lap.understeerPct.toFixed(1)}%</span>
+          </span>
+          <span className={styles.dynamicsCell}>
+            <span className={styles.dynamicsMiniBar}>
+              <span
+                className={styles.dynamicsMiniBarFill}
+                style={{
+                  width: `${Math.min(lap.oversteerPct, 100)}%`,
+                  backgroundColor: 'var(--accent-red)',
+                }}
+              />
+            </span>
+            <span className={styles.dynamicsValue}>{lap.oversteerPct.toFixed(1)}%</span>
+          </span>
+          <span className={`${styles.dynamicsCell} ${styles.dynamicsCount}`}>
+            {lap.lockupCount > 0 ? lap.lockupCount : '-'}
+          </span>
+          <span className={`${styles.dynamicsCell} ${styles.dynamicsCount}`}>
+            {lap.spinCount > 0 ? lap.spinCount : '-'}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) {
+  const [activeTab, setActiveTab] = useState<SectionTab>('tyres');
   const [predictionLaps, setPredictionLaps] = useState<string>('');
   const [wearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
     'tireWearDisplayMode',
@@ -77,13 +133,36 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
     );
   }
 
+  const tabButtons = (
+    <div className={styles.tabBar}>
+      <button
+        className={`${styles.tabButton} ${activeTab === 'tyres' ? styles.tabActive : ''}`}
+        onClick={() => setActiveTab('tyres')}
+      >
+        Tyres
+      </button>
+      <button
+        className={`${styles.tabButton} ${activeTab === 'spin' ? styles.tabActive : ''}`}
+        onClick={() => setActiveTab('spin')}
+      >
+        Spin
+      </button>
+    </div>
+  );
+
   return (
     <div className={styles.container}>
       <SectionHeader
         title="Tyre Engineering"
         subtitle={`${driver.tireCompound} - ${driver.tireAge}L`}
+        rightContent={tabButtons}
       />
 
+      {activeTab === 'spin' ? (
+        <div className={styles.content}>
+          <DynamicsTab laps={driver.dynamics ?? []} />
+        </div>
+      ) : (
       <div className={styles.content}>
         {/* Tyre Inventory */}
         <div className={styles.section}>
@@ -292,6 +371,7 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

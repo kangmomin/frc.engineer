@@ -329,3 +329,105 @@
 .inventoryRemaining.danger {
   color: #ff3333;
 }
+
+/* Tab Bar */
+.tabBar {
+  display: flex;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  padding: 2px;
+}
+
+.tabButton {
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.tabButton:hover {
+  color: var(--text-secondary);
+}
+
+.tabActive {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+/* Dynamics Table */
+.dynamicsTable {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dynamicsRow {
+  display: grid;
+  grid-template-columns: 32px 1fr 1fr 36px 36px;
+  gap: var(--spacing-xs);
+  align-items: center;
+  padding: 4px var(--spacing-xs);
+  border-radius: 3px;
+}
+
+.dynamicsRow:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dynamicsHeader {
+  border-bottom: 1px solid var(--bg-panel-border);
+  margin-bottom: 2px;
+}
+
+.dynamicsHeader .dynamicsCell {
+  font-family: var(--font-body);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.dynamicsCell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dynamicsCount {
+  justify-content: center;
+}
+
+.dynamicsMiniBar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dynamicsMiniBarFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 300ms ease;
+}
+
+.dynamicsValue {
+  width: 36px;
+  font-family: var(--font-racing);
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: right;
+  flex-shrink: 0;
+}

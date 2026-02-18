@@ -222,6 +222,9 @@ export interface DriverInfo {
   sector2TimeMs: number;
   currentSector: number;
 
+  // Vehicle Dynamics
+  dynamics?: DynamicsLap[];
+
   // Pit
   pitStatus: number;
   numPitStops: number;
@@ -248,6 +251,14 @@ export interface CarDamage {
   gearbox: number;
   drsFault: boolean;
   ersFault: boolean;
+}
+
+export interface DynamicsLap {
+  lapNum: number;
+  understeerPct: number;
+  oversteerPct: number;
+  lockupCount: number;
+  spinCount: number;
 }
 
 export interface CarPosition {

@@ -29,18 +29,20 @@ type PitwallManager struct {
 	telemetry    *packets.PacketCarTelemetryData
 	carDamage    *packets.PacketCarDamageData
 	carSetups    *packets.PacketCarSetupData
-	playerIndex  uint8
-	strategyMgr  *StrategyManager
-	trackStore   *tracks.TrackStore
-	recorder     *TrackRecorder
+	playerIndex       uint8
+	strategyMgr       *StrategyManager
+	trackStore        *tracks.TrackStore
+	recorder          *TrackRecorder
+	dynamicsAnalyzer  *DynamicsAnalyzer
 }
 
 // NewPitwallManager creates a new PitwallManager
 func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackStore, recorder *TrackRecorder) *PitwallManager {
 	return &PitwallManager{
-		strategyMgr: strategyMgr,
-		trackStore:  trackStore,
-		recorder:    recorder,
+		strategyMgr:      strategyMgr,
+		trackStore:       trackStore,
+		recorder:         recorder,
+		dynamicsAnalyzer: NewDynamicsAnalyzer(),
 	}
 }
 
@@ -80,23 +82,35 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 	var wx, wy, wz float32
 	var drs, sector int
 
-	if pm.recorder != nil && pm.session != nil && pm.lapData != nil && int(playerIndex) < packets.MaxCars {
-		rec = pm.recorder
+	if pm.session != nil && pm.lapData != nil && int(playerIndex) < packets.MaxCars {
 		idx := int(playerIndex)
 		car := &m.CarMotionData[idx]
 		ld := &pm.lapData.LapData[idx]
 
-		trackID = pm.session.TrackID
-		trackName = tracks.TrackName(trackID)
-		lapDist = ld.LapDistance
-		lapNum = ld.CurrentLapNum
-		wx = car.WorldPositionX
-		wy = car.WorldPositionY
-		wz = car.WorldPositionZ
-		sector = int(ld.Sector)
+		if pm.recorder != nil {
+			rec = pm.recorder
+			trackID = pm.session.TrackID
+			trackName = tracks.TrackName(trackID)
+			lapDist = ld.LapDistance
+			lapNum = ld.CurrentLapNum
+			wx = car.WorldPositionX
+			wy = car.WorldPositionY
+			wz = car.WorldPositionZ
+			sector = int(ld.Sector)
 
+			if pm.telemetry != nil {
+				drs = int(pm.telemetry.CarTelemetryData[idx].DRS)
+			}
+		}
+
+		// Feed dynamics analyzer (under lock since it modifies state)
 		if pm.telemetry != nil {
-			drs = int(pm.telemetry.CarTelemetryData[idx].DRS)
+			tel := &pm.telemetry.CarTelemetryData[idx]
+			pm.dynamicsAnalyzer.ProcessFrame(
+				car.WorldVelocityX, car.WorldVelocityZ, car.Yaw,
+				tel.Speed, tel.Steer, tel.Brake,
+				ld.CurrentLapNum,
+			)
 		}
 	}
 
@@ -309,6 +323,11 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				for si, s := range ds.StintHistory {
 					d.StintHistory[si] = dto.StintInfoDTO{Compound: s.Compound, Laps: s.Laps}
 				}
+			}
+
+			// Vehicle dynamics (player car only)
+			if i == int(pm.playerIndex) {
+				d.Dynamics = pm.dynamicsAnalyzer.GetLapDynamics()
 			}
 
 			// F1 game order: [RL, RR, FL, FR] -> DTO order: [FL, FR, RL, RR]

@@ -100,6 +100,9 @@ type DriverInfo struct {
 	Sector2TimeMs int `json:"sector2TimeMs"`
 	CurrentSector int `json:"currentSector"`
 
+	// Vehicle Dynamics
+	Dynamics []DynamicsLapDTO `json:"dynamics,omitempty"`
+
 	// Pit
 	PitStatus    int     `json:"pitStatus"`
 	NumPitStops  int     `json:"numPitStops"`
@@ -128,6 +131,15 @@ type CarDamage struct {
 	Gearbox        int  `json:"gearbox"`
 	DRSFault       bool `json:"drsFault"`
 	ERSFault       bool `json:"ersFault"`
+}
+
+// DynamicsLapDTO contains per-lap vehicle dynamics statistics
+type DynamicsLapDTO struct {
+	LapNum        int     `json:"lapNum"`
+	UndersteerPct float64 `json:"understeerPct"`
+	OversteerPct  float64 `json:"oversteerPct"`
+	LockupCount   int     `json:"lockupCount"`
+	SpinCount     int     `json:"spinCount"`
 }
 
 // CarPosition contains GPS position for track map rendering
