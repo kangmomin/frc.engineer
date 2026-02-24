@@ -1,0 +1,13 @@
+{
+  "udpPort": 20779,
+  "backendPort": 8081,
+  "forwardTargets": [
+    {
+      "host": "127.0.0.1",
+      "port": 20780,
+      "enabled": true
+    }
+  ],
+  "trackRecording": true,
+  "packetLogging": false
+}
