@@ -77,8 +77,8 @@
 }
 
 .colPits {
-  width: 35px;
-  text-align: center;
+  width: auto;
+  min-width: 40px;
 }
 
 .colLap {
@@ -177,6 +177,19 @@
   font-family: var(--font-racing);
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.stintLog {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.stintDot {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .lapTime {

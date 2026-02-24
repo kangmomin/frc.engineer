@@ -1,14 +1,18 @@
 import { useMemo } from 'react';
+import type { DriverInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
 import { getTeamName } from '../../../constants/teamColors';
+import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompounds';
 import { SectionHeader } from '../shared/SectionHeader';
 import { TyreIcon } from '../shared/TyreIcon';
 import { TeamColorBar } from '../shared/TeamColorBar';
 import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './LeaderboardSection.module.css';
 
+const EMPTY_DRIVERS: DriverInfo[] = [];
+
 export function LeaderboardSection() {
-  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? []);
+  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? EMPTY_DRIVERS);
   const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
   const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
   // Sort drivers by position
@@ -33,7 +37,7 @@ export function LeaderboardSection() {
               <th className={styles.colDriver}>Driver</th>
               <th className={styles.colGap}>Gap</th>
               <th className={styles.colTyre}>Tyre</th>
-              <th className={styles.colPits}>Pit</th>
+              <th className={styles.colPits}>Stints</th>
               <th className={styles.colLap}>Last</th>
               <th className={styles.colSector}>S1</th>
               <th className={styles.colSector}>S2</th>
@@ -82,7 +86,17 @@ export function LeaderboardSection() {
                     />
                   </td>
                   <td className={styles.colPits}>
-                    <span className={styles.pits}>{driver.numPitStops}</span>
+                    <div className={styles.stintLog}>
+                      {buildStintLog(driver).map((compound, idx) => (
+                        <span
+                          key={idx}
+                          className={styles.stintDot}
+                          style={{ color: getTyreColor(compound) }}
+                        >
+                          {getTyreShortLabel(compound)}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className={styles.colLap}>
                     <span className={styles.lapTime}>
@@ -110,6 +124,19 @@ export function LeaderboardSection() {
       </div>
     </div>
   );
+}
+
+function buildStintLog(driver: DriverInfo): string[] {
+  const compounds: string[] = [];
+  if (driver.stintHistory) {
+    for (const stint of driver.stintHistory) {
+      compounds.push(stint.compound);
+    }
+  }
+  if (driver.tireCompound && driver.tireCompound !== 'unknown') {
+    compounds.push(driver.tireCompound);
+  }
+  return compounds;
 }
 
 function formatSectorTime(ms: number): string {

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import type {
   SessionInfo,
   CarPosition,
@@ -12,10 +12,13 @@ import { SectionHeader } from '../shared/SectionHeader';
 import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './TrackMapSection.module.css';
 
+const EMPTY_POSITIONS: CarPosition[] = [];
+const EMPTY_DRIVERS: DriverInfo[] = [];
+
 export function TrackMapSection() {
   const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
-  const positions = useTelemetryStore((state) => state.pitwallState?.positions ?? []);
-  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? []);
+  const positions = useTelemetryStore((state) => state.pitwallState?.positions ?? EMPTY_POSITIONS);
+  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? EMPTY_DRIVERS);
   const trackMap = useTelemetryStore((state) => state.pitwallState?.trackMap);
   const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
 
@@ -307,6 +310,78 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, 
     return d;
   }, [trackMap]);
 
+  // --- Smooth car position animation via requestAnimationFrame ---
+  const carElems = useRef<Map<number, SVGGElement>>(new Map());
+  const animPos = useRef<Map<number, {
+    x: number; z: number;
+    tgtX: number; tgtZ: number;
+  }>>(new Map());
+  const rafId = useRef(0);
+
+  // Update target positions when props change
+  useEffect(() => {
+    for (const p of positions) {
+      if (!animPos.current.has(p.index)) {
+        animPos.current.set(p.index, {
+          x: p.x, z: p.z,
+          tgtX: p.x, tgtZ: p.z
+        });
+        const el = carElems.current.get(p.index);
+        if (el) el.setAttribute('transform', `translate(${p.x},${p.z})`);
+      } else {
+        const state = animPos.current.get(p.index)!;
+
+        // If the car teleported a huge distance (e.g. >300m), snap instantly instead of sliding
+        const distSq = (p.x - state.x) ** 2 + (p.z - state.z) ** 2;
+        if (distSq > 100000) {
+          state.x = p.x;
+          state.z = p.z;
+        }
+
+        state.tgtX = p.x;
+        state.tgtZ = p.z;
+      }
+    }
+  }, [positions]);
+
+  // rAF interpolation loop — runs independently of React renders
+  useEffect(() => {
+    let lastTime = performance.now();
+
+    function tick(time: number) {
+      const dtMs = Math.min(time - lastTime, 100); // cap dt at 100ms to prevent huge jumps if tab is inactive
+      lastTime = time;
+
+      // Framerate-independent exponential smoothing
+      // 1 - exp(-dt * factor). factor determines speed. 0.012 gives a nice smooth slide.
+      const smoothing = 1 - Math.exp(-dtMs * 0.015);
+
+      for (const [idx, state] of animPos.current) {
+        let newX = state.x + (state.tgtX - state.x) * smoothing;
+        let newZ = state.z + (state.tgtZ - state.z) * smoothing;
+
+        // Ensure we eventually snap perfectly to target if very close
+        if (Math.abs(state.tgtX - newX) < 0.01 && Math.abs(state.tgtZ - newZ) < 0.01) {
+          newX = state.tgtX;
+          newZ = state.tgtZ;
+        }
+
+        if (state.x !== newX || state.z !== newZ) {
+          state.x = newX;
+          state.z = newZ;
+          const el = carElems.current.get(idx);
+          if (el) {
+            el.setAttribute('transform', `translate(${newX.toFixed(2)},${newZ.toFixed(2)})`);
+          }
+        }
+      }
+      rafId.current = requestAnimationFrame(tick);
+    }
+
+    rafId.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId.current);
+  }, []);
+
   if (!trackMap || trackMap.points.length === 0) {
     return (
       <div className={styles.noTrack}>
@@ -409,7 +484,7 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, 
         </text>
       ))}
 
-      {/* Car positions */}
+      {/* Car positions — transform managed by rAF loop, not React */}
       {positions.map((pos) => {
         const driver = driverMap.get(pos.index);
         if (!driver) return null;
@@ -417,11 +492,17 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, 
         const isPlayer = pos.index === playerIndex;
 
         return (
-          <g key={pos.index}>
+          <g
+            key={pos.index}
+            ref={(el) => {
+              if (el) carElems.current.set(pos.index, el);
+              else carElems.current.delete(pos.index);
+            }}
+          >
             {isPlayer && (
               <circle
-                cx={pos.x}
-                cy={pos.z}
+                cx={0}
+                cy={0}
                 r={22}
                 fill="none"
                 stroke="#00FF00"
@@ -430,8 +511,8 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, 
               />
             )}
             <circle
-              cx={pos.x}
-              cy={pos.z}
+              cx={0}
+              cy={0}
               r={isPlayer ? 16 : 12}
               fill={color}
               stroke={isPlayer ? '#00FF00' : 'white'}
@@ -439,8 +520,8 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, 
               opacity="0.9"
             />
             <text
-              x={pos.x}
-              y={pos.z + (isPlayer ? 4 : 3.5)}
+              x={0}
+              y={isPlayer ? 4 : 3.5}
               textAnchor="middle"
               fill="white"
               fontSize={isPlayer ? 13 : 11}

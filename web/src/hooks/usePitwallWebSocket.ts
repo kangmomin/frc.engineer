@@ -52,6 +52,8 @@ export function usePitwallWebSocket(
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
   const isManualReconnectRef = useRef(false);
+  const pendingPitwallRef = useRef<PitwallState | null>(null);
+  const pitwallRafRef = useRef(0);
 
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -111,12 +113,26 @@ export function usePitwallWebSocket(
       ws.onmessage = (event) => {
         if (!isMountedRef.current) return;
 
+        // Skip messages we don't handle (e.g. telemetry at 30Hz) to avoid costly JSON.parse
+        const raw = event.data as string;
+        if (raw.startsWith('{"type":"telemetry"')) return;
+
         try {
-          const message = JSON.parse(event.data) as WebSocketMessage;
+          const message = JSON.parse(raw) as WebSocketMessage;
 
           switch (message.type) {
             case 'pitwallState':
-              setPitwallState(message.data as PitwallState);
+              // Batch with rAF so React renders at most once per frame
+              pendingPitwallRef.current = message.data as PitwallState;
+              if (!pitwallRafRef.current) {
+                pitwallRafRef.current = requestAnimationFrame(() => {
+                  pitwallRafRef.current = 0;
+                  if (pendingPitwallRef.current) {
+                    setPitwallState(pendingPitwallRef.current);
+                    pendingPitwallRef.current = null;
+                  }
+                });
+              }
               break;
 
             case 'raceControl':
@@ -164,6 +180,7 @@ export function usePitwallWebSocket(
     return () => {
       isMountedRef.current = false;
       clearReconnectTimeout();
+      if (pitwallRafRef.current) cancelAnimationFrame(pitwallRafRef.current);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;

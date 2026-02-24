@@ -7,6 +7,8 @@ import { WeatherBadge, WeatherTimeline, RaceControlLog } from './TrackMapSection
 import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './PaceAnalysisSection.module.css';
 
+const EMPTY_DRIVERS: DriverInfo[] = [];
+
 interface LapHistoryEntry {
   lapNumber: number;
   lapTime: number;
@@ -137,7 +139,7 @@ interface ProcessedLapEntry extends LapHistoryEntry {
 }
 
 export function PaceAnalysisSection() {
-  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? []);
+  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? EMPTY_DRIVERS);
   const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
   const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
   const raceControlNotifications = useTelemetryStore((state) => state.raceControlNotifications);
