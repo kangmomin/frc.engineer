@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import type {
   PitwallState,
-  ConnectionState,
   RaceControlNotification,
   BattleAlert,
 } from '../types/telemetry';
+import { useTelemetryStore } from '../store/telemetryStore';
 
 interface WebSocketMessage {
   type: string;
@@ -18,10 +18,6 @@ interface UsePitwallWebSocketOptions {
 }
 
 interface UsePitwallWebSocketReturn {
-  pitwallState: PitwallState | null;
-  connectionState: ConnectionState;
-  raceControlNotifications: RaceControlNotification[];
-  battleAlerts: BattleAlert[];
   reconnect: () => void;
   clearNotifications: () => void;
 }
@@ -37,18 +33,19 @@ const DEFAULT_OPTIONS: Required<UsePitwallWebSocketOptions> = {
   maxReconnectAttempts: 10,
 };
 
-const MAX_NOTIFICATIONS = 50;
-const MAX_BATTLE_ALERTS = 10;
-
 export function usePitwallWebSocket(
   options: UsePitwallWebSocketOptions = {}
 ): UsePitwallWebSocketReturn {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
-  const [pitwallState, setPitwallState] = useState<PitwallState | null>(null);
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
-  const [raceControlNotifications, setRaceControlNotifications] = useState<RaceControlNotification[]>([]);
-  const [battleAlerts, setBattleAlerts] = useState<BattleAlert[]>([]);
+  // Pull setters from Zustand store
+  const {
+    setConnectionState,
+    setPitwallState,
+    addRaceControlNotification,
+    addBattleAlert,
+    clearNotifications,
+  } = useTelemetryStore();
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
@@ -123,19 +120,11 @@ export function usePitwallWebSocket(
               break;
 
             case 'raceControl':
-              setRaceControlNotifications((prev) => {
-                const notification = message.data as RaceControlNotification;
-                const updated = [notification, ...prev];
-                return updated.slice(0, MAX_NOTIFICATIONS);
-              });
+              addRaceControlNotification(message.data as RaceControlNotification);
               break;
 
             case 'battleAlert':
-              setBattleAlerts((prev) => {
-                const alert = message.data as BattleAlert;
-                const updated = [alert, ...prev];
-                return updated.slice(0, MAX_BATTLE_ALERTS);
-              });
+              addBattleAlert(message.data as BattleAlert);
               break;
           }
         } catch {
@@ -147,7 +136,7 @@ export function usePitwallWebSocket(
         setConnectionState('error');
       }
     }
-  }, [opts.url, opts.reconnectInterval, opts.maxReconnectAttempts, clearReconnectTimeout]);
+  }, [opts.url, opts.reconnectInterval, opts.maxReconnectAttempts, clearReconnectTimeout, setConnectionState, setPitwallState, addRaceControlNotification, addBattleAlert]);
 
   const reconnect = useCallback(() => {
     clearReconnectTimeout();
@@ -167,11 +156,6 @@ export function usePitwallWebSocket(
     }, 100);
   }, [connect, clearReconnectTimeout]);
 
-  const clearNotifications = useCallback(() => {
-    setRaceControlNotifications([]);
-    setBattleAlerts([]);
-  }, []);
-
   // Connect on mount
   useEffect(() => {
     isMountedRef.current = true;
@@ -188,11 +172,8 @@ export function usePitwallWebSocket(
   }, [connect, clearReconnectTimeout]);
 
   return {
-    pitwallState,
-    connectionState,
-    raceControlNotifications,
-    battleAlerts,
     reconnect,
     clearNotifications,
   };
 }
+

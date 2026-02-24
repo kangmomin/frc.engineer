@@ -57,6 +57,28 @@ export function SettingsView() {
     });
   }
 
+  function handleNumberInput<K extends keyof AppConfig>(key: K, value: string) {
+    if (value === '') {
+      setField(key, 0 as AppConfig[K]); // Fallback, could be typed better if we allowed undefined
+      return;
+    }
+    const num = parseInt(value, 10);
+    if (!isNaN(num)) {
+      setField(key, num as AppConfig[K]);
+    }
+  }
+
+  function handleTargetPortInput(index: number, value: string) {
+    if (value === '') {
+      updateTarget(index, 'port', 0);
+      return;
+    }
+    const num = parseInt(value, 10);
+    if (!isNaN(num)) {
+      updateTarget(index, 'port', num);
+    }
+  }
+
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
 
   return (
@@ -69,8 +91,8 @@ export function SettingsView() {
           <input
             className={styles.input}
             type="number"
-            value={draft.backendPort}
-            onChange={(e) => setField('backendPort', parseInt(e.target.value) || 0)}
+            value={draft.backendPort || ''}
+            onChange={(e) => handleNumberInput('backendPort', e.target.value)}
           />
         </div>
         <div className={styles.field}>
@@ -78,8 +100,8 @@ export function SettingsView() {
           <input
             className={styles.input}
             type="number"
-            value={draft.udpPort}
-            onChange={(e) => setField('udpPort', parseInt(e.target.value) || 0)}
+            value={draft.udpPort || ''}
+            onChange={(e) => handleNumberInput('udpPort', e.target.value)}
           />
         </div>
       </div>
@@ -100,8 +122,8 @@ export function SettingsView() {
               className={styles.portInput}
               type="number"
               placeholder="Port"
-              value={t.port}
-              onChange={(e) => updateTarget(i, 'port', parseInt(e.target.value) || 0)}
+              value={t.port || ''}
+              onChange={(e) => handleTargetPortInput(i, e.target.value)}
             />
             <input
               className={styles.toggle}

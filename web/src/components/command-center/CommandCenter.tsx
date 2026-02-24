@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
+import { useTelemetryStore } from '../../store/telemetryStore';
 import { TrackMapSection } from './sections/TrackMapSection';
 import { LeaderboardSection } from './sections/LeaderboardSection';
 import { PaceAnalysisSection } from './sections/PaceAnalysisSection';
@@ -8,72 +7,31 @@ import { TyreEngineeringSection } from './sections/TyreEngineeringSection';
 import { StrategyHealthSection } from './sections/StrategyHealthSection';
 import styles from './CommandCenter.module.css';
 
-interface CommandCenterProps {
-  onConnectionStateChange?: (state: string) => void;
-}
-
-export function CommandCenter({ onConnectionStateChange }: CommandCenterProps) {
-  const {
-    pitwallState,
-    connectionState,
-    raceControlNotifications,
-    battleAlerts,
-  } = usePitwallWebSocket();
-
-  // Notify parent of connection state changes via useEffect to avoid side-effects during render
-  useEffect(() => {
-    onConnectionStateChange?.(connectionState);
-  }, [connectionState, onConnectionStateChange]);
-
-  const playerDriver = pitwallState?.drivers.find(d => d.index === pitwallState.playerIndex);
+export function CommandCenter() {
+  const connectionState = useTelemetryStore((state) => state.connectionState);
 
   return (
     <div className={styles.grid}>
       {/* Row 1 */}
       <div className={`${styles.cell} ${styles.trackMap}`}>
-        <TrackMapSection
-          session={pitwallState?.session ?? null}
-          positions={pitwallState?.positions ?? []}
-          drivers={pitwallState?.drivers ?? []}
-          trackMap={pitwallState?.trackMap}
-          playerIndex={pitwallState?.playerIndex ?? 0}
-        />
+        <TrackMapSection />
       </div>
       <div className={`${styles.cell} ${styles.paceAnalysis}`}>
-        <PaceAnalysisSection
-          drivers={pitwallState?.drivers ?? []}
-          playerIndex={pitwallState?.playerIndex ?? 0}
-          session={pitwallState?.session ?? null}
-          raceControlNotifications={raceControlNotifications}
-        />
+        <PaceAnalysisSection />
       </div>
       <div className={`${styles.cell} ${styles.tyreEngineering}`}>
-        <TyreEngineeringSection
-          driver={playerDriver ?? null}
-        />
+        <TyreEngineeringSection />
       </div>
 
       {/* Row 2 */}
       <div className={`${styles.cell} ${styles.leaderboard}`}>
-        <LeaderboardSection
-          drivers={pitwallState?.drivers ?? []}
-          session={pitwallState?.session ?? null}
-          playerIndex={pitwallState?.playerIndex ?? 0}
-        />
+        <LeaderboardSection />
       </div>
       <div className={`${styles.cell} ${styles.battleControls}`}>
-        <BattleControlsSection
-          driver={playerDriver ?? null}
-          drivers={pitwallState?.drivers ?? []}
-          battleAlerts={battleAlerts}
-        />
+        <BattleControlsSection />
       </div>
       <div className={`${styles.cell} ${styles.strategyHealth}`}>
-        <StrategyHealthSection
-          driver={playerDriver ?? null}
-          drivers={pitwallState?.drivers ?? []}
-          session={pitwallState?.session ?? null}
-        />
+        <StrategyHealthSection />
       </div>
 
       {/* Connection overlay when disconnected */}

@@ -1,13 +1,8 @@
 import { useMemo } from 'react';
 import type { DriverInfo, BattleAlert } from '../../../types/telemetry';
 import { SectionHeader } from '../shared/SectionHeader';
+import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './BattleControlsSection.module.css';
-
-interface BattleControlsSectionProps {
-  driver: DriverInfo | null;
-  drivers: DriverInfo[];
-  battleAlerts: BattleAlert[];
-}
 
 // ERS deploy mode labels (F1 25: 0=None, 1=Low, 2=Medium, 3=Overtake, 4=Hotlap)
 const ERS_MODES: Record<number, string> = {
@@ -21,11 +16,12 @@ const ERS_MODES: Record<number, string> = {
 // Max ERS energy in Joules (4 MJ)
 const MAX_ERS_ENERGY = 4000000;
 
-export function BattleControlsSection({
-  driver,
-  drivers,
-  battleAlerts,
-}: BattleControlsSectionProps) {
+export function BattleControlsSection() {
+  const pitwallState = useTelemetryStore((state) => state.pitwallState);
+  const drivers = pitwallState?.drivers ?? [];
+  const driver = drivers.find(d => d.index === pitwallState?.playerIndex) ?? null;
+  const battleAlerts = useTelemetryStore((state) => state.battleAlerts);
+
   return (
     <div className={styles.container}>
       <SectionHeader

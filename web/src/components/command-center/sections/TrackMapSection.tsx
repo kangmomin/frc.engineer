@@ -9,23 +9,16 @@ import type {
 } from '../../../types/telemetry';
 import { getTeamColor } from '../../../constants/teamColors';
 import { SectionHeader } from '../shared/SectionHeader';
+import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './TrackMapSection.module.css';
 
-interface TrackMapSectionProps {
-  session: SessionInfo | null;
-  positions: CarPosition[];
-  drivers: DriverInfo[];
-  trackMap?: TrackMapData;
-  playerIndex: number;
-}
+export function TrackMapSection() {
+  const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
+  const positions = useTelemetryStore((state) => state.pitwallState?.positions ?? []);
+  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? []);
+  const trackMap = useTelemetryStore((state) => state.pitwallState?.trackMap);
+  const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
 
-export function TrackMapSection({
-  session,
-  positions,
-  drivers,
-  trackMap,
-  playerIndex,
-}: TrackMapSectionProps) {
   const turns = useMemo(() => (trackMap ? detectTurns(trackMap) : []), [trackMap]);
 
   const currentTurn = useMemo(() => {

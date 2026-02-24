@@ -1,13 +1,8 @@
 import { useMemo } from 'react';
-import { DriverInfo, CarDamage, SessionInfo } from '../../../types/telemetry';
+import { DriverInfo, CarDamage } from '../../../types/telemetry';
 import { SectionHeader } from '../shared/SectionHeader';
+import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './StrategyHealthSection.module.css';
-
-interface StrategyHealthSectionProps {
-  driver: DriverInfo | null;
-  drivers: DriverInfo[];
-  session: SessionInfo | null;
-}
 
 // Typical pit stop time in seconds (pit lane entry to exit)
 const PIT_STOP_TIME_SECONDS = 22;
@@ -91,15 +86,15 @@ const DAMAGE_COMPONENTS: Array<{
   label: string;
   shortLabel: string;
 }> = [
-  { key: 'frontLeftWing', label: 'Front Left Wing', shortLabel: 'FL Wing' },
-  { key: 'frontRightWing', label: 'Front Right Wing', shortLabel: 'FR Wing' },
-  { key: 'rearWing', label: 'Rear Wing', shortLabel: 'Rear Wing' },
-  { key: 'floor', label: 'Floor', shortLabel: 'Floor' },
-  { key: 'diffuser', label: 'Diffuser', shortLabel: 'Diffuser' },
-  { key: 'sidepod', label: 'Sidepod', shortLabel: 'Sidepod' },
-  { key: 'engine', label: 'Engine', shortLabel: 'Engine' },
-  { key: 'gearbox', label: 'Gearbox', shortLabel: 'Gearbox' },
-];
+    { key: 'frontLeftWing', label: 'Front Left Wing', shortLabel: 'FL Wing' },
+    { key: 'frontRightWing', label: 'Front Right Wing', shortLabel: 'FR Wing' },
+    { key: 'rearWing', label: 'Rear Wing', shortLabel: 'Rear Wing' },
+    { key: 'floor', label: 'Floor', shortLabel: 'Floor' },
+    { key: 'diffuser', label: 'Diffuser', shortLabel: 'Diffuser' },
+    { key: 'sidepod', label: 'Sidepod', shortLabel: 'Sidepod' },
+    { key: 'engine', label: 'Engine', shortLabel: 'Engine' },
+    { key: 'gearbox', label: 'Gearbox', shortLabel: 'Gearbox' },
+  ];
 
 function getDamageColor(value: number): string {
   if (value < 20) return 'var(--accent-green)';
@@ -159,11 +154,11 @@ function FaultIndicator({ label, active }: FaultIndicatorProps) {
   );
 }
 
-export function StrategyHealthSection({
-  driver,
-  drivers,
-  session,
-}: StrategyHealthSectionProps) {
+export function StrategyHealthSection() {
+  const pitwallState = useTelemetryStore((state) => state.pitwallState);
+  const drivers = pitwallState?.drivers ?? [];
+  const session = pitwallState?.session ?? null;
+  const driver = drivers.find(d => d.index === pitwallState?.playerIndex) ?? null;
   const pitSimulation = useMemo(() => {
     if (!driver || drivers.length === 0) return null;
     return calculatePitSimulation(driver, drivers);
@@ -199,9 +194,8 @@ export function StrategyHealthSection({
                   </span>
                   <span className={styles.arrow}>&rarr;</span>
                   <span
-                    className={`${styles.estimatedPos} ${
-                      pitSimulation.positionsLost > 0 ? styles.posLost : ''
-                    }`}
+                    className={`${styles.estimatedPos} ${pitSimulation.positionsLost > 0 ? styles.posLost : ''
+                      }`}
                   >
                     P{pitSimulation.estimatedPosition}
                   </span>
@@ -218,9 +212,8 @@ export function StrategyHealthSection({
                   {pitSimulation.nearbyDrivers.map((d) => (
                     <div
                       key={d.position}
-                      className={`${styles.nearbyDriver} ${
-                        d.wouldOvertake ? styles.wouldOvertake : ''
-                      }`}
+                      className={`${styles.nearbyDriver} ${d.wouldOvertake ? styles.wouldOvertake : ''
+                        }`}
                     >
                       <span className={styles.nearbyPos}>P{d.position}</span>
                       <span className={styles.nearbyName}>{d.name}</span>

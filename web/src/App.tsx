@@ -1,6 +1,6 @@
 import { Layout } from './components/layout/Layout';
 import { LoginView } from './views/LoginView';
-import { useAuth } from './hooks/useAuth';
+import { useAuth } from './context/AuthContext';
 import './styles/theme.css';
 
 function App() {

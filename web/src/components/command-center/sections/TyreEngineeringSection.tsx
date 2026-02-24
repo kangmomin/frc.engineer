@@ -1,18 +1,15 @@
 import { useState, useMemo } from 'react';
-import type { DriverInfo, DynamicsLap, TireWearDisplayMode } from '../../../types/telemetry';
+import type { DynamicsLap, TireWearDisplayMode } from '../../../types/telemetry';
 import { getTyreColor, getWearStatusColor, getTempStatusColor } from '../../../constants/tyreCompounds';
 import { SectionHeader } from '../shared/SectionHeader';
 import { TyreIcon } from '../shared/TyreIcon';
 import { useTyreInventory } from '../../../hooks/useTyreInventory';
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
 import { INVENTORY_COMPOUNDS, type InventoryCompound } from '../../../types/tyreInventory';
+import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './TyreEngineeringSection.module.css';
 
 type SectionTab = 'tyres' | 'spin';
-
-interface TyreEngineeringSectionProps {
-  driver: DriverInfo | null;
-}
 
 const WHEEL_POSITIONS = ['FL', 'FR', 'RL', 'RR'] as const;
 const NUM_WHEELS = 4;
@@ -84,7 +81,9 @@ function DynamicsTab({ laps }: { laps: DynamicsLap[] }) {
   );
 }
 
-export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) {
+export function TyreEngineeringSection() {
+  const pitwallState = useTelemetryStore((state) => state.pitwallState);
+  const driver = pitwallState?.drivers.find(d => d.index === pitwallState.playerIndex) ?? null;
   const [activeTab, setActiveTab] = useState<SectionTab>('tyres');
   const [predictionLaps, setPredictionLaps] = useState<string>('');
   const [wearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
@@ -163,214 +162,214 @@ export function TyreEngineeringSection({ driver }: TyreEngineeringSectionProps) 
           <DynamicsTab laps={driver.dynamics ?? []} />
         </div>
       ) : (
-      <div className={styles.content}>
-        {/* Tyre Inventory */}
-        <div className={styles.section}>
-          <div className={styles.inventoryHeader}>
-            <h4 className={styles.sectionLabel}>Tyre Inventory</h4>
-            <button
-              className={styles.resetButton}
-              onClick={resetToDefault}
-              title="Reset to default allocation"
-            >
-              Reset
-            </button>
-          </div>
-          <div className={styles.inventoryGrid}>
-            {INVENTORY_COMPOUNDS.map((compound) => {
-              const alloc = allocated[compound];
-              const remainingCount = remaining[compound];
-              const progressPercent = alloc > 0 ? (remainingCount / alloc) * 100 : 0;
-              const tyreColor = getTyreColor(compound);
+        <div className={styles.content}>
+          {/* Tyre Inventory */}
+          <div className={styles.section}>
+            <div className={styles.inventoryHeader}>
+              <h4 className={styles.sectionLabel}>Tyre Inventory</h4>
+              <button
+                className={styles.resetButton}
+                onClick={resetToDefault}
+                title="Reset to default allocation"
+              >
+                Reset
+              </button>
+            </div>
+            <div className={styles.inventoryGrid}>
+              {INVENTORY_COMPOUNDS.map((compound) => {
+                const alloc = allocated[compound];
+                const remainingCount = remaining[compound];
+                const progressPercent = alloc > 0 ? (remainingCount / alloc) * 100 : 0;
+                const tyreColor = getTyreColor(compound);
 
-              let remainingClass = styles.inventoryRemaining;
-              if (remainingCount === 0) {
-                remainingClass += ` ${styles.danger}`;
-              } else if (remainingCount === 1) {
-                remainingClass += ` ${styles.warning}`;
-              }
+                let remainingClass = styles.inventoryRemaining;
+                if (remainingCount === 0) {
+                  remainingClass += ` ${styles.danger}`;
+                } else if (remainingCount === 1) {
+                  remainingClass += ` ${styles.warning}`;
+                }
 
-              return (
-                <div key={compound} className={styles.inventoryItem}>
-                  <TyreIcon compound={compound} size="small" showAge={false} />
-                  <input
-                    type="number"
-                    min="0"
-                    max="20"
-                    value={alloc}
-                    onChange={(e) =>
-                      setCompoundAllocation(compound as InventoryCompound, parseInt(e.target.value, 10) || 0)
-                    }
-                    className={styles.inventoryInput}
-                    title={`Total ${compound} sets`}
-                  />
-                  <div className={styles.inventoryProgress}>
-                    <div
-                      className={styles.inventoryProgressFill}
-                      style={{
-                        width: `${progressPercent}%`,
-                        backgroundColor: tyreColor,
-                      }}
-                    />
-                  </div>
-                  <span className={remainingClass} style={{ color: remainingCount > 1 ? tyreColor : undefined }}>
-                    {remainingCount} left
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Stint History */}
-        <div className={styles.section}>
-          <h4 className={styles.sectionLabel}>Stint History</h4>
-          <div className={styles.stintHistory}>
-            {driver.stintHistory && driver.stintHistory.length > 0 ? (
-              driver.stintHistory.map((stint, idx) => (
-                <div key={idx} className={styles.stintItem}>
-                  <TyreIcon compound={stint.compound} size="small" showAge={false} />
-                  <span className={styles.stintLaps}>{stint.laps}L</span>
-                </div>
-              ))
-            ) : (
-              <div className={styles.stintItem}>
-                <TyreIcon compound={driver.tireCompound} size="small" showAge={false} />
-                <span className={styles.stintLaps}>{driver.tireAge}L</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Chassis View - 4 Wheel Display with 3 Temperature Types */}
-        <div className={styles.section}>
-          <h4 className={styles.sectionLabel}>Tyre Status</h4>
-          <div className={styles.chassisView} role="group" aria-label="Tyre status for all four wheels">
-            {WHEEL_POSITIONS.map((pos, idx) => {
-              const wear = clamp(tyreWear[idx], 0, 100);
-              const surfaceTemp = tyreSurfaceTemp[idx];
-              const innerTemp = tyreInnerTemp[idx];
-              const brake = brakeTemp[idx];
-              const wearColor = getWearStatusColor(wear);
-              const surfaceTempColor = getTempStatusColor(surfaceTemp);
-              const innerTempColor = getTempStatusColor(innerTemp);
-              const tyreColor = getTyreColor(driver.tireCompound);
-
-              return (
-                <div key={pos} className={styles.wheelCell}>
-                  <span className={styles.wheelLabel}>{pos}</span>
-                  <div
-                    className={styles.wheelVisual}
-                    style={{ borderColor: tyreColor }}
-                    role="meter"
-                    aria-label={`${pos} tyre wear`}
-                    aria-valuenow={wear}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                  >
-                    <div
-                      className={styles.wearFill}
-                      style={{
-                        height: `${wear}%`,
-                        backgroundColor: wearColor,
-                      }}
-                    />
-                    <span className={styles.wearPercent}>{wear.toFixed(0)}%</span>
-                  </div>
-                  <div className={styles.tempGrid}>
-                    <div
-                      className={styles.tempItem}
-                      style={{ color: surfaceTempColor }}
-                      title="Surface Temperature"
-                    >
-                      <span className={styles.tempLabel}>SUR</span>
-                      <span className={styles.tempValue}>{surfaceTemp}°</span>
-                    </div>
-                    <div
-                      className={styles.tempItem}
-                      style={{ color: innerTempColor }}
-                      title="Inner Temperature"
-                    >
-                      <span className={styles.tempLabel}>INN</span>
-                      <span className={styles.tempValue}>{innerTemp}°</span>
-                    </div>
-                    <div
-                      className={styles.tempItem}
-                      style={{ color: brake > 400 ? 'var(--accent-red)' : brake > 300 ? 'var(--accent-yellow)' : 'var(--text-secondary)' }}
-                      title="Brake Temperature"
-                    >
-                      <span className={styles.tempLabel}>BRK</span>
-                      <span className={styles.tempValue}>{brake}°</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Tyre Prediction */}
-        <div className={styles.section}>
-          <h4 className={styles.sectionLabel}>Wear Prediction</h4>
-          <div className={styles.predictionInput}>
-            <label className={styles.inputLabel}>
-              Laps:
-              <input
-                type="number"
-                min="1"
-                max="99"
-                value={predictionLaps}
-                onChange={(e) => setPredictionLaps(e.target.value)}
-                className={styles.lapsInput}
-                placeholder="0"
-              />
-            </label>
-            <span className={styles.wearRate}>
-              ~{averageWearPerLap.toFixed(1)}%/lap
-            </span>
-          </div>
-
-          {predictedWear && (
-            <div className={styles.predictionGrid} role="group" aria-label="Predicted tyre wear">
-              {WHEEL_POSITIONS.map((pos, idx) => {
-                const predicted = predictedWear[idx] ?? 0;
-                const isRelative = wearDisplayMode === 'relative';
-                // For color coding, use the absolute value (current + delta) for proper threshold mapping
-                const absoluteValue = isRelative ? tyreWear[idx] + predicted : predicted;
-                const predictedColor = getWearStatusColor(absoluteValue);
-                const barWidth = isRelative ? clamp(predicted, 0, 100) : predicted;
                 return (
-                  <div key={pos} className={styles.predictionItem}>
-                    <span className={styles.predictionLabel}>{pos}</span>
-                    <div
-                      className={styles.predictionBar}
-                      role="meter"
-                      aria-label={`${pos} predicted wear`}
-                      aria-valuenow={predicted}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                    >
+                  <div key={compound} className={styles.inventoryItem}>
+                    <TyreIcon compound={compound} size="small" showAge={false} />
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={alloc}
+                      onChange={(e) =>
+                        setCompoundAllocation(compound as InventoryCompound, parseInt(e.target.value, 10) || 0)
+                      }
+                      className={styles.inventoryInput}
+                      title={`Total ${compound} sets`}
+                    />
+                    <div className={styles.inventoryProgress}>
                       <div
-                        className={styles.predictionFill}
+                        className={styles.inventoryProgressFill}
                         style={{
-                          width: `${barWidth}%`,
-                          backgroundColor: predictedColor,
+                          width: `${progressPercent}%`,
+                          backgroundColor: tyreColor,
                         }}
                       />
                     </div>
-                    <span
-                      className={styles.predictionValue}
-                      style={{ color: predictedColor }}
-                    >
-                      {isRelative ? '+' : ''}{predicted.toFixed(0)}%
+                    <span className={remainingClass} style={{ color: remainingCount > 1 ? tyreColor : undefined }}>
+                      {remainingCount} left
                     </span>
                   </div>
                 );
               })}
             </div>
-          )}
+          </div>
+
+          {/* Stint History */}
+          <div className={styles.section}>
+            <h4 className={styles.sectionLabel}>Stint History</h4>
+            <div className={styles.stintHistory}>
+              {driver.stintHistory && driver.stintHistory.length > 0 ? (
+                driver.stintHistory.map((stint, idx) => (
+                  <div key={idx} className={styles.stintItem}>
+                    <TyreIcon compound={stint.compound} size="small" showAge={false} />
+                    <span className={styles.stintLaps}>{stint.laps}L</span>
+                  </div>
+                ))
+              ) : (
+                <div className={styles.stintItem}>
+                  <TyreIcon compound={driver.tireCompound} size="small" showAge={false} />
+                  <span className={styles.stintLaps}>{driver.tireAge}L</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Chassis View - 4 Wheel Display with 3 Temperature Types */}
+          <div className={styles.section}>
+            <h4 className={styles.sectionLabel}>Tyre Status</h4>
+            <div className={styles.chassisView} role="group" aria-label="Tyre status for all four wheels">
+              {WHEEL_POSITIONS.map((pos, idx) => {
+                const wear = clamp(tyreWear[idx], 0, 100);
+                const surfaceTemp = tyreSurfaceTemp[idx];
+                const innerTemp = tyreInnerTemp[idx];
+                const brake = brakeTemp[idx];
+                const wearColor = getWearStatusColor(wear);
+                const surfaceTempColor = getTempStatusColor(surfaceTemp);
+                const innerTempColor = getTempStatusColor(innerTemp);
+                const tyreColor = getTyreColor(driver.tireCompound);
+
+                return (
+                  <div key={pos} className={styles.wheelCell}>
+                    <span className={styles.wheelLabel}>{pos}</span>
+                    <div
+                      className={styles.wheelVisual}
+                      style={{ borderColor: tyreColor }}
+                      role="meter"
+                      aria-label={`${pos} tyre wear`}
+                      aria-valuenow={wear}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    >
+                      <div
+                        className={styles.wearFill}
+                        style={{
+                          height: `${wear}%`,
+                          backgroundColor: wearColor,
+                        }}
+                      />
+                      <span className={styles.wearPercent}>{wear.toFixed(0)}%</span>
+                    </div>
+                    <div className={styles.tempGrid}>
+                      <div
+                        className={styles.tempItem}
+                        style={{ color: surfaceTempColor }}
+                        title="Surface Temperature"
+                      >
+                        <span className={styles.tempLabel}>SUR</span>
+                        <span className={styles.tempValue}>{surfaceTemp}°</span>
+                      </div>
+                      <div
+                        className={styles.tempItem}
+                        style={{ color: innerTempColor }}
+                        title="Inner Temperature"
+                      >
+                        <span className={styles.tempLabel}>INN</span>
+                        <span className={styles.tempValue}>{innerTemp}°</span>
+                      </div>
+                      <div
+                        className={styles.tempItem}
+                        style={{ color: brake > 400 ? 'var(--accent-red)' : brake > 300 ? 'var(--accent-yellow)' : 'var(--text-secondary)' }}
+                        title="Brake Temperature"
+                      >
+                        <span className={styles.tempLabel}>BRK</span>
+                        <span className={styles.tempValue}>{brake}°</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tyre Prediction */}
+          <div className={styles.section}>
+            <h4 className={styles.sectionLabel}>Wear Prediction</h4>
+            <div className={styles.predictionInput}>
+              <label className={styles.inputLabel}>
+                Laps:
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={predictionLaps}
+                  onChange={(e) => setPredictionLaps(e.target.value)}
+                  className={styles.lapsInput}
+                  placeholder="0"
+                />
+              </label>
+              <span className={styles.wearRate}>
+                ~{averageWearPerLap.toFixed(1)}%/lap
+              </span>
+            </div>
+
+            {predictedWear && (
+              <div className={styles.predictionGrid} role="group" aria-label="Predicted tyre wear">
+                {WHEEL_POSITIONS.map((pos, idx) => {
+                  const predicted = predictedWear[idx] ?? 0;
+                  const isRelative = wearDisplayMode === 'relative';
+                  // For color coding, use the absolute value (current + delta) for proper threshold mapping
+                  const absoluteValue = isRelative ? tyreWear[idx] + predicted : predicted;
+                  const predictedColor = getWearStatusColor(absoluteValue);
+                  const barWidth = isRelative ? clamp(predicted, 0, 100) : predicted;
+                  return (
+                    <div key={pos} className={styles.predictionItem}>
+                      <span className={styles.predictionLabel}>{pos}</span>
+                      <div
+                        className={styles.predictionBar}
+                        role="meter"
+                        aria-label={`${pos} predicted wear`}
+                        aria-valuenow={predicted}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
+                        <div
+                          className={styles.predictionFill}
+                          style={{
+                            width: `${barWidth}%`,
+                            backgroundColor: predictedColor,
+                          }}
+                        />
+                      </div>
+                      <span
+                        className={styles.predictionValue}
+                        style={{ color: predictedColor }}
+                      >
+                        {isRelative ? '+' : ''}{predicted.toFixed(0)}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       )}
     </div>
   );

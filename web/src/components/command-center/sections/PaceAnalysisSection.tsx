@@ -1,17 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { DriverInfo, SessionInfo, RaceControlNotification } from '../../../types/telemetry';
+import type { DriverInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
 import { SectionHeader } from '../shared/SectionHeader';
 import { DeltaText } from '../shared/DeltaText';
 import { WeatherBadge, WeatherTimeline, RaceControlLog } from './TrackMapSection';
+import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './PaceAnalysisSection.module.css';
-
-interface PaceAnalysisSectionProps {
-  drivers: DriverInfo[];
-  playerIndex: number;
-  session: SessionInfo | null;
-  raceControlNotifications: RaceControlNotification[];
-}
 
 interface LapHistoryEntry {
   lapNumber: number;
@@ -142,15 +136,20 @@ interface ProcessedLapEntry extends LapHistoryEntry {
   deltaFromBest: number;
 }
 
-export function PaceAnalysisSection({ drivers, playerIndex, session, raceControlNotifications }: PaceAnalysisSectionProps) {
+export function PaceAnalysisSection() {
+  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? []);
+  const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
+  const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
+  const raceControlNotifications = useTelemetryStore((state) => state.raceControlNotifications);
+
   const player = drivers.find(d => d.index === playerIndex) ?? null;
   const { lapHistory, bestLapTime } = useLapHistory(player);
 
   // Find the best lap in history for highlighting
   const bestLapNumber = lapHistory.length > 0
     ? lapHistory.reduce((best, current) =>
-        current.lapTime < best.lapTime ? current : best
-      ).lapNumber
+      current.lapTime < best.lapTime ? current : best
+    ).lapNumber
     : null;
 
   return (

@@ -1,19 +1,16 @@
 import { useMemo } from 'react';
-import type { DriverInfo, SessionInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
 import { getTeamName } from '../../../constants/teamColors';
 import { SectionHeader } from '../shared/SectionHeader';
 import { TyreIcon } from '../shared/TyreIcon';
 import { TeamColorBar } from '../shared/TeamColorBar';
+import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './LeaderboardSection.module.css';
 
-interface LeaderboardSectionProps {
-  drivers: DriverInfo[];
-  session: SessionInfo | null;
-  playerIndex: number;
-}
-
-export function LeaderboardSection({ drivers, session, playerIndex }: LeaderboardSectionProps) {
+export function LeaderboardSection() {
+  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? []);
+  const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
+  const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
   // Sort drivers by position
   const sortedDrivers = useMemo(() => {
     return [...drivers].sort((a, b) => a.position - b.position);

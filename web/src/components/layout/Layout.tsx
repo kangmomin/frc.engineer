@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { SettingsView } from '../../views/SettingsView';
 import { CommandCenter } from '../command-center/CommandCenter';
-import type { ConnectionState } from '../../types/telemetry';
+import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
+import { useTelemetryStore } from '../../store/telemetryStore';
 import styles from './Layout.module.css';
 
 type ViewId = 'command' | 'settings';
@@ -9,15 +10,14 @@ type ViewId = 'command' | 'settings';
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<ViewId>('command');
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+
+  // Connect WebSocket at the root layout level so it stays alive across views
+  usePitwallWebSocket();
+  const connectionState = useTelemetryStore((state) => state.connectionState);
 
   const handleNavClick = useCallback((view: ViewId) => {
     setActiveView(view);
     setSidebarOpen(false);
-  }, []);
-
-  const handleConnectionStateChange = useCallback((state: string) => {
-    setConnectionState(state as ConnectionState);
   }, []);
 
   const getConnectionLabel = () => {
@@ -92,7 +92,7 @@ export function Layout() {
         {/* Content */}
         <div className={styles.contentContainer}>
           {activeView === 'command' ? (
-            <CommandCenter onConnectionStateChange={handleConnectionStateChange} />
+            <CommandCenter />
           ) : (
             <div className={styles.panel}>
               <SettingsView />
