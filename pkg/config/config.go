@@ -16,7 +16,7 @@ type Config struct {
 	WSBroadcastBuffer int // WebSocket broadcast channel buffer size (default: 64)
 
 	// Telemetry settings
-	TelemetryUpdateHz int // Target update rate to clients in Hz (default: 30)
+	TelemetryUpdateHz int // Target update rate to clients in Hz (default: 60)
 
 	// Storage settings
 	DataDir string // Base directory for persistent data (default: "data/tracks")
@@ -33,7 +33,7 @@ func DefaultConfig() *Config {
 		UDPBufferSize:     128,
 		WSPort:            8081,
 		WSBroadcastBuffer: 64,
-		TelemetryUpdateHz: 30,
+		TelemetryUpdateHz: 60,
 		DataDir:           "data/tracks",
 		PacketLogging:     false,
 		PacketLogDir:      "data/packets",
