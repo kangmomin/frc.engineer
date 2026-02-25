@@ -15,6 +15,16 @@ import (
 	"frc.engineer/internal/websocket"
 )
 
+// RaceSummaryCounts tracks race-control notification totals for persisted summaries.
+type RaceSummaryCounts struct {
+	Penalty int
+	Warning int
+	Info    int
+}
+
+// RaceSummarySaveCallback is invoked once per session on race-end events.
+type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, state *dto.PitwallState) error
+
 // Processor processes telemetry data and broadcasts to WebSocket clients
 type Processor struct {
 	parser          *udp.Parser
@@ -30,10 +40,18 @@ type Processor struct {
 	lastPitwallSend time.Time
 
 	// Latest data cache
-	mu             sync.RWMutex
+	mu              sync.RWMutex
 	latestTelemetry *packets.CarTelemetryData
 	latestLapData   *packets.LapData
 	latestHeader    *packets.PacketHeader
+
+	// Race summary persistence state
+	raceSummaryMu       sync.Mutex
+	raceSummaryEnabled  bool
+	raceSummarySave     RaceSummarySaveCallback
+	raceSummarySession  uint64
+	raceSummarySaved    bool
+	raceSummaryCounters RaceSummaryCounts
 }
 
 // NewProcessor creates a new telemetry processor
@@ -62,6 +80,20 @@ func (p *Processor) DeltaCalculator() *DeltaCalculator {
 // PitwallManager returns the processor's pitwall manager
 func (p *Processor) PitwallManager() *PitwallManager {
 	return p.pitwallManager
+}
+
+// SetRaceSummarySaveCallback sets the callback used to persist race summaries.
+func (p *Processor) SetRaceSummarySaveCallback(cb RaceSummarySaveCallback) {
+	p.raceSummaryMu.Lock()
+	p.raceSummarySave = cb
+	p.raceSummaryMu.Unlock()
+}
+
+// SetRaceSummaryRecording toggles race summary persistence at runtime.
+func (p *Processor) SetRaceSummaryRecording(enabled bool) {
+	p.raceSummaryMu.Lock()
+	p.raceSummaryEnabled = enabled
+	p.raceSummaryMu.Unlock()
 }
 
 // Start begins processing packets from the UDP listener
@@ -98,6 +130,8 @@ func (p *Processor) processPacket(data []byte) {
 	if parsed == nil {
 		return
 	}
+
+	p.observeSessionUID(parsed.Header.SessionUID)
 
 	// Handle event packets (penalties, warnings, race control)
 	if parsed.Event != nil {
@@ -281,6 +315,10 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 	event := parsed.Event
 	playerIdx := parsed.Header.PlayerCarIndex
 
+	if isRaceEndEvent(event.EventStringCode) {
+		p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
+	}
+
 	var notification *dto.RaceControlNotification
 
 	switch event.EventStringCode {
@@ -364,4 +402,73 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		return
 	}
 	p.hub.Broadcast(jsonData)
+	p.countRaceControlNotification(notification)
+}
+
+func isRaceEndEvent(eventCode string) bool {
+	switch eventCode {
+	case packets.EventSessionEnded, packets.EventChequeredFlag, packets.EventRaceWinner:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Processor) observeSessionUID(sessionUID uint64) {
+	p.raceSummaryMu.Lock()
+	defer p.raceSummaryMu.Unlock()
+
+	if sessionUID == 0 {
+		return
+	}
+	if p.raceSummarySession != sessionUID {
+		p.raceSummarySession = sessionUID
+		p.raceSummarySaved = false
+		p.raceSummaryCounters = RaceSummaryCounts{}
+	}
+}
+
+func (p *Processor) countRaceControlNotification(notification *dto.RaceControlNotification) {
+	if notification == nil {
+		return
+	}
+
+	p.raceSummaryMu.Lock()
+	defer p.raceSummaryMu.Unlock()
+
+	switch notification.Category {
+	case "penalty":
+		p.raceSummaryCounters.Penalty++
+	case "warning":
+		p.raceSummaryCounters.Warning++
+	default:
+		p.raceSummaryCounters.Info++
+	}
+}
+
+func (p *Processor) trySaveRaceSummary(sessionUID uint64, trigger string) {
+	p.observeSessionUID(sessionUID)
+
+	p.raceSummaryMu.Lock()
+	if !p.raceSummaryEnabled || p.raceSummarySave == nil || p.raceSummarySaved || p.raceSummarySession != sessionUID {
+		p.raceSummaryMu.Unlock()
+		return
+	}
+	save := p.raceSummarySave
+	counts := p.raceSummaryCounters
+	p.raceSummarySaved = true
+	p.raceSummaryMu.Unlock()
+
+	state := p.pitwallManager.BuildState()
+	if err := save(sessionUID, counts, state); err != nil {
+		p.logger.Error("failed to save race summary", "sessionUID", sessionUID, "trigger", trigger, "error", err)
+		p.raceSummaryMu.Lock()
+		if p.raceSummarySession == sessionUID {
+			p.raceSummarySaved = false
+		}
+		p.raceSummaryMu.Unlock()
+		return
+	}
+
+	p.logger.Info("race summary saved", "sessionUID", sessionUID, "trigger", trigger)
 }

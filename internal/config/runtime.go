@@ -21,6 +21,7 @@ type RuntimeConfig struct {
 	ForwardTargets []ForwardTarget `json:"forwardTargets"`
 	TrackRecording bool            `json:"trackRecording"`
 	PacketLogging  bool            `json:"packetLogging"`
+	RaceSummaryRecording bool      `json:"raceSummaryRecording"`
 }
 
 // RuntimeConfigManager manages persistent runtime configuration

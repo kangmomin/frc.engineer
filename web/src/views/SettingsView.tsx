@@ -172,6 +172,23 @@ export function SettingsView() {
         </div>
       </div>
 
+      {/* Race Summary Recording */}
+      <div className={styles.section}>
+        <h3 className={styles.sectionTitle}>Race Summary Recording</h3>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Save Race Summaries</span>
+          <input
+            className={styles.toggle}
+            type="checkbox"
+            checked={draft.raceSummaryRecording}
+            onChange={(e) => setField('raceSummaryRecording', e.target.checked)}
+          />
+          <span className={styles.hint}>
+            Save processed race summaries at race end (non-RAW JSON)
+          </span>
+        </div>
+      </div>
+
       {/* Display Settings */}
       <div className={styles.section}>
         <h3 className={styles.sectionTitle}>Display</h3>

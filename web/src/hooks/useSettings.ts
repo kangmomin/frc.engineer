@@ -20,7 +20,12 @@ export function useSettings() {
       const res = await fetch(`${base}/api/config`);
       if (res.ok) {
         const data = await res.json();
-        const cfg: AppConfig = { ...data, forwardTargets: data.forwardTargets ?? [] };
+        const cfg: AppConfig = {
+          ...data,
+          forwardTargets: data.forwardTargets ?? [],
+          packetLogging: data.packetLogging ?? false,
+          raceSummaryRecording: data.raceSummaryRecording ?? false,
+        };
         setConfig(cfg);
         if (!initialConfigRef.current) {
           initialConfigRef.current = cfg;
@@ -57,7 +62,12 @@ export function useSettings() {
       });
       if (res.ok) {
         const data = await res.json();
-        const saved: AppConfig = { ...data, forwardTargets: data.forwardTargets ?? [] };
+        const saved: AppConfig = {
+          ...data,
+          forwardTargets: data.forwardTargets ?? [],
+          packetLogging: data.packetLogging ?? false,
+          raceSummaryRecording: data.raceSummaryRecording ?? false,
+        };
 
         const initial = initialConfigRef.current;
         if (initial) {

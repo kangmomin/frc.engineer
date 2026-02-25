@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -20,6 +21,7 @@ import (
 	"frc.engineer/internal/auth"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/races"
 	"frc.engineer/internal/storage"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
@@ -69,6 +71,14 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("lap storage initialized", "dataDir", cfg.DataDir)
+
+	// Initialize race summary storage
+	raceStorage, err := races.NewFileStorage(filepath.Join("data", "races"), logger)
+	if err != nil {
+		logger.Error("failed to create race summary storage", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("race summary storage initialized", "dir", filepath.Join("data", "races"))
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -123,6 +133,16 @@ func main() {
 	// Create telemetry processor
 	processor := telemetry.NewProcessor(parser, hub, cfg.TelemetryUpdateHz, logger, trackStore)
 	processor.PitwallManager().SetRecorder(recorder)
+	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, state *dto.PitwallState) error {
+		summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
+			Penalty: counts.Penalty,
+			Warning: counts.Warning,
+			Info:    counts.Info,
+		}, time.Now())
+		_, err := raceStorage.Save(summary)
+		return err
+	})
+	processor.SetRaceSummaryRecording(savedCfg.RaceSummaryRecording)
 
 	// Connect storage to delta calculator
 	processor.DeltaCalculator().SetStorageCallbacks(
@@ -284,6 +304,7 @@ func main() {
 			// Apply changes
 			forwarder.UpdateTargets(newCfg.ForwardTargets)
 			recorder.SetEnabled(newCfg.TrackRecording)
+			processor.SetRaceSummaryRecording(newCfg.RaceSummaryRecording)
 
 			// Toggle packet logging at runtime
 			if newCfg.PacketLogging && packetLogger == nil {
@@ -356,6 +377,54 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
+	})
+
+	// REST API: GET /api/races
+	mux.HandleFunc("/api/races", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		list, err := raceStorage.List()
+		if err != nil {
+			logger.Error("failed to list race summaries", "error", err)
+			http.Error(w, "failed to list race summaries", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+	})
+
+	// REST API: GET /api/races/{id}
+	mux.HandleFunc("/api/races/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/api/races/")
+		id = strings.TrimSuffix(id, "/")
+		if id == "" || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+			http.Error(w, "invalid race id", http.StatusBadRequest)
+			return
+		}
+
+		summary, err := raceStorage.Load(id)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				http.Error(w, "race summary not found", http.StatusNotFound)
+				return
+			}
+			if errors.Is(err, races.ErrUnsafeID) {
+				http.Error(w, "invalid race id", http.StatusBadRequest)
+				return
+			}
+			logger.Error("failed to load race summary", "id", id, "error", err)
+			http.Error(w, "failed to load race summary", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(summary)
 	})
 
 	// Debug: dump current pitwall state

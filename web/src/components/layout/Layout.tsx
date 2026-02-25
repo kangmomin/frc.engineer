@@ -1,17 +1,18 @@
 import { useState, useCallback } from 'react';
 import { SettingsView } from '../../views/SettingsView';
+import { RacesView } from '../../views/RacesView';
 import { CommandCenter } from '../command-center/CommandCenter';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import styles from './Layout.module.css';
 
-type ViewId = 'command' | 'settings';
+type ViewId = 'command' | 'settings' | 'races';
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<ViewId>('command');
 
-  // Connect WebSocket at the root layout level so it stays alive across views
+  // Connect WebSocket at the root layout level so it stays alive across views.
   usePitwallWebSocket();
   const connectionState = useTelemetryStore((state) => state.connectionState);
 
@@ -29,14 +30,18 @@ export function Layout() {
     }
   };
 
+  const topBarTitle = activeView === 'command'
+    ? 'Command Center'
+    : activeView === 'settings'
+      ? 'Settings'
+      : 'Races';
+
   return (
     <div className={styles.layout}>
-      {/* Sidebar overlay */}
       {sidebarOpen && (
         <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <nav className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}>
         <div className={styles.sidebarHeader}>
           <h2 className={styles.sidebarTitle}>F1 Pitwall</h2>
@@ -48,7 +53,7 @@ export function Layout() {
               className={`${styles.navButton} ${activeView === 'command' ? styles.navActive : ''}`}
               onClick={() => handleNavClick('command')}
             >
-              <span className={styles.navIcon}>🏎</span>
+              <span className={styles.navIcon}>CC</span>
               <span className={styles.navLabel}>Command Center</span>
             </button>
           </li>
@@ -57,8 +62,17 @@ export function Layout() {
               className={`${styles.navButton} ${activeView === 'settings' ? styles.navActive : ''}`}
               onClick={() => handleNavClick('settings')}
             >
-              <span className={styles.navIcon}>⚙</span>
+              <span className={styles.navIcon}>ST</span>
               <span className={styles.navLabel}>Settings</span>
+            </button>
+          </li>
+          <li className={styles.navItem}>
+            <button
+              className={`${styles.navButton} ${activeView === 'races' ? styles.navActive : ''}`}
+              onClick={() => handleNavClick('races')}
+            >
+              <span className={styles.navIcon}>RC</span>
+              <span className={styles.navLabel}>Races</span>
             </button>
           </li>
         </ul>
@@ -71,31 +85,30 @@ export function Layout() {
         </div>
       </nav>
 
-      {/* Main area */}
       <div className={styles.main}>
-        {/* Top bar with hamburger */}
         <div className={styles.topBar}>
           <button
             className={styles.hamburger}
-            onClick={() => setSidebarOpen((o) => !o)}
+            onClick={() => setSidebarOpen((open) => !open)}
             aria-label="Toggle menu"
           >
             <span />
             <span />
             <span />
           </button>
-          <div className={styles.topBarTitle}>
-            {activeView === 'command' ? 'Command Center' : 'Settings'}
-          </div>
+          <div className={styles.topBarTitle}>{topBarTitle}</div>
         </div>
 
-        {/* Content */}
         <div className={styles.contentContainer}>
-          {activeView === 'command' ? (
-            <CommandCenter />
-          ) : (
+          {activeView === 'command' && <CommandCenter />}
+          {activeView === 'settings' && (
             <div className={styles.panel}>
               <SettingsView />
+            </div>
+          )}
+          {activeView === 'races' && (
+            <div className={styles.panel}>
+              <RacesView />
             </div>
           )}
         </div>

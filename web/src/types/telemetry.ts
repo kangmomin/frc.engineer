@@ -52,7 +52,7 @@ export type TireWearDisplayMode = 'absolute' | 'relative';
 /**
  * Tab identifiers for sidebar navigation
  */
-export type TabId = 'engineer' | 'settings';
+export type TabId = 'engineer' | 'settings' | 'races';
 
 /**
  * Runtime application config (mirrors backend RuntimeConfig)
@@ -62,6 +62,8 @@ export interface AppConfig {
   backendPort: number;
   forwardTargets: ForwardTarget[];
   trackRecording: boolean;
+  packetLogging: boolean;
+  raceSummaryRecording: boolean;
 }
 
 export interface ForwardTarget {
@@ -73,6 +75,75 @@ export interface ForwardTarget {
 export interface TrackListItem {
   name: string;
   filename: string;
+}
+
+export interface RaceListItem {
+  id: string;
+  savedAtLocal: string;
+  trackName: string;
+  sessionType: string;
+  playerName: string;
+  finalPosition: number;
+}
+
+export interface RaceStint {
+  compound: string;
+  laps: number;
+}
+
+export interface RacePlayerSummary {
+  driverIndex: number;
+  name: string;
+  teamId: number;
+  finalPosition: number;
+  completedLaps: number;
+  bestLapMs: number;
+  lastLapMs: number;
+  pitStops: number;
+  stints?: RaceStint[];
+}
+
+export interface RaceDriverSummary {
+  driverIndex: number;
+  name: string;
+  teamId: number;
+  position: number;
+  completedLaps: number;
+  bestLapMs: number;
+  lastLapMs: number;
+  pitStops: number;
+  tireCompound: string;
+  tireAge: number;
+  stints?: RaceStint[];
+}
+
+export interface RaceSummary {
+  id: string;
+  savedAtLocal: string;
+  sessionUID: number;
+  track: {
+    trackId: number;
+    trackName: string;
+  };
+  session: {
+    sessionType: string;
+    totalLaps: number;
+    safetyCar: string;
+    weather: string;
+    airTemp: number;
+    trackTemp: number;
+  };
+  player: RacePlayerSummary;
+  drivers: RaceDriverSummary[];
+  highlights: {
+    fastestLapHolder?: string;
+    fastestLapMs?: number;
+    notifications: {
+      penalty: number;
+      warning: number;
+      info: number;
+    };
+  };
 }
 
 /**
