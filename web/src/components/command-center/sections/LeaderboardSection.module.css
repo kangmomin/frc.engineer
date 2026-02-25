@@ -149,6 +149,41 @@
   letter-spacing: 0.3px;
 }
 
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.damageAlert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.wingAlert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-family: var(--font-racing);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
 .gap {
   font-family: var(--font-racing);
   font-size: 11px;

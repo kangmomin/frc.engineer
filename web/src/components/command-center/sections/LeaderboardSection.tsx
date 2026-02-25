@@ -10,6 +10,7 @@ import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './LeaderboardSection.module.css';
 
 const EMPTY_DRIVERS: DriverInfo[] = [];
+const WING_GONE_THRESHOLD = 75;
 
 export function LeaderboardSection() {
   const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? EMPTY_DRIVERS);
@@ -48,6 +49,7 @@ export function LeaderboardSection() {
             {sortedDrivers.map((driver, idx) => {
               const isPlayer = driver.index === playerIndex;
               const gap = idx === 0 ? 'LEADER' : formatGapToLeader(driver.deltaToRaceLeader);
+              const damageAlert = getDamageAlertInfo(driver, isPlayer);
 
               return (
                 <tr
@@ -61,9 +63,37 @@ export function LeaderboardSection() {
                     <div className={styles.driverCell}>
                       <TeamColorBar teamId={driver.teamId} position="left" />
                       <div className={isPlayer ? styles.playerDriverInfo : styles.driverInfo}>
-                        <span className={isPlayer ? styles.playerFullName : styles.fullName}>
-                          {driver.name?.trim() || `P${driver.index}`}
-                        </span>
+                        <div className={styles.nameRow}>
+                          <span className={isPlayer ? styles.playerFullName : styles.fullName}>
+                            {driver.name?.trim() || `P${driver.index}`}
+                          </span>
+                          {damageAlert.showAlert && (
+                            <span
+                              className={styles.damageAlert}
+                              style={{
+                                backgroundColor: damageAlert.alertColor,
+                                color: damageAlert.alertTextColor,
+                              }}
+                              title="Damage detected"
+                              aria-label="Damage detected"
+                            >
+                              !
+                            </span>
+                          )}
+                          {damageAlert.showWingGone && (
+                            <span
+                              className={styles.wingAlert}
+                              style={{
+                                backgroundColor: damageAlert.wingColor,
+                                color: damageAlert.wingTextColor,
+                              }}
+                              title="Wing damage"
+                              aria-label="Wing damage"
+                            >
+                              W
+                            </span>
+                          )}
+                        </div>
                         <span className={isPlayer ? styles.playerTeamName : styles.teamName}>
                           {getTeamName(driver.teamId)}
                         </span>
@@ -137,6 +167,91 @@ function buildStintLog(driver: DriverInfo): string[] {
     compounds.push(driver.tireCompound);
   }
   return compounds;
+}
+
+interface DamageAlertInfo {
+  showAlert: boolean;
+  alertColor: string;
+  alertTextColor: string;
+  showWingGone: boolean;
+  wingColor: string;
+  wingTextColor: string;
+}
+
+function getDamageAlertInfo(driver: DriverInfo, isPlayer: boolean): DamageAlertInfo {
+  const none: DamageAlertInfo = {
+    showAlert: false,
+    alertColor: '#ffbf1f',
+    alertTextColor: '#111',
+    showWingGone: false,
+    wingColor: '#ffbf1f',
+    wingTextColor: '#111',
+  };
+
+  // Per request, only show markers for other cars.
+  if (isPlayer || !driver.damage) {
+    return none;
+  }
+
+  const {
+    frontLeftWing,
+    frontRightWing,
+    rearWing,
+    floor,
+    diffuser,
+    sidepod,
+    engine,
+    gearbox,
+    drsFault,
+    ersFault,
+  } = driver.damage;
+
+  const maxDamage = Math.max(
+    frontLeftWing,
+    frontRightWing,
+    rearWing,
+    floor,
+    diffuser,
+    sidepod,
+    engine,
+    gearbox
+  );
+  const wingDamage = Math.max(frontLeftWing, frontRightWing, rearWing);
+  const hasAnyDamage = maxDamage > 0 || drsFault || ersFault;
+
+  if (!hasAnyDamage) {
+    return none;
+  }
+
+  // Faults are treated as highly severe even if percentage damage is low.
+  const alertSeverity = Math.max(maxDamage, drsFault || ersFault ? 90 : 0);
+  const showWingGone = wingDamage >= WING_GONE_THRESHOLD;
+
+  return {
+    showAlert: true,
+    alertColor: damageToHeatColor(alertSeverity),
+    alertTextColor: alertSeverity >= 60 ? '#fff' : '#111',
+    showWingGone,
+    wingColor: damageToHeatColor(wingDamage),
+    wingTextColor: wingDamage >= 60 ? '#fff' : '#111',
+  };
+}
+
+function damageToHeatColor(value: number): string {
+  // 0% -> yellow, 100% -> red
+  const t = clamp01(value / 100);
+  const start = { r: 255, g: 191, b: 31 }; // #ffbf1f
+  const end = { r: 255, g: 59, b: 48 }; // #ff3b30
+  const r = Math.round(start.r + (end.r - start.r) * t);
+  const g = Math.round(start.g + (end.g - start.g) * t);
+  const b = Math.round(start.b + (end.b - start.b) * t);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function clamp01(v: number): number {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
 }
 
 function formatSectorTime(ms: number): string {
