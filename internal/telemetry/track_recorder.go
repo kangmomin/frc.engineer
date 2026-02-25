@@ -145,6 +145,7 @@ func (r *TrackRecorder) saveLap(trackID int8, trackName string, buffer []recordP
 
 	// Sanitize track name to prevent path traversal
 	safeName := safeNameRe.ReplaceAllString(trackName, "_")
+	safeName = tracks.NormalizeRecordedTrackName(safeName)
 	if safeName == "" {
 		safeName = fmt.Sprintf("track_%d", trackID)
 	}

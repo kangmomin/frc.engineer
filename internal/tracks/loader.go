@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -142,21 +143,91 @@ type RecordedFileInfo struct {
 	Filename string `json:"filename"`
 }
 
-// ListRecordedFiles scans the data directory for *_recorded.txt files
+const (
+	recordedFileSuffix       = "_recorded.txt"
+	legacyRecordedFileSuffix = "_record.txt"
+)
+
+// NormalizeRecordedTrackName removes legacy recording suffixes from a track base name.
+// Examples:
+// - "losail_recorded" -> "losail"
+// - "losail_record"   -> "losail"
+// - "losail"          -> "losail"
+func NormalizeRecordedTrackName(name string) string {
+	normalized := strings.TrimSpace(name)
+	normalized = strings.Trim(normalized, "_")
+	for {
+		changed := false
+		if strings.HasSuffix(normalized, "_recorded") {
+			normalized = strings.TrimSuffix(normalized, "_recorded")
+			changed = true
+		}
+		if strings.HasSuffix(normalized, "_record") {
+			normalized = strings.TrimSuffix(normalized, "_record")
+			changed = true
+		}
+		normalized = strings.Trim(normalized, "_")
+		if !changed {
+			break
+		}
+	}
+	if normalized == "record" || normalized == "recorded" {
+		return "unknown"
+	}
+	if normalized == "" {
+		return "unknown"
+	}
+	return normalized
+}
+
+// ListRecordedFiles scans the data directory for recorded track files.
+// Supports both current (*_recorded.txt) and legacy (*_record.txt) naming.
 func (ts *TrackStore) ListRecordedFiles() []RecordedFileInfo {
 	var result []RecordedFileInfo
-	matches, err := filepath.Glob(filepath.Join(ts.dataDir, "*_recorded.txt"))
-	if err != nil {
-		return result
+
+	patterns := []string{
+		filepath.Join(ts.dataDir, "*"+recordedFileSuffix),
+		filepath.Join(ts.dataDir, "*"+legacyRecordedFileSuffix),
 	}
-	for _, path := range matches {
-		base := filepath.Base(path)
-		name := strings.TrimSuffix(base, "_recorded.txt")
-		result = append(result, RecordedFileInfo{
-			Name:     name,
-			Filename: base,
-		})
+
+	seen := make(map[string]struct{})
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			continue
+		}
+		for _, path := range matches {
+			base := filepath.Base(path)
+			if _, ok := seen[base]; ok {
+				continue
+			}
+			seen[base] = struct{}{}
+
+			name := base
+			switch {
+			case strings.HasSuffix(base, recordedFileSuffix):
+				name = strings.TrimSuffix(base, recordedFileSuffix)
+			case strings.HasSuffix(base, legacyRecordedFileSuffix):
+				name = strings.TrimSuffix(base, legacyRecordedFileSuffix)
+			default:
+				name = strings.TrimSuffix(base, filepath.Ext(base))
+			}
+			name = NormalizeRecordedTrackName(name)
+
+			result = append(result, RecordedFileInfo{
+				Name:     name,
+				Filename: base,
+			})
+		}
 	}
+
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Name == result[j].Name {
+			return result[i].Filename < result[j].Filename
+		}
+		return result[i].Name < result[j].Name
+	})
+
 	return result
 }
 
