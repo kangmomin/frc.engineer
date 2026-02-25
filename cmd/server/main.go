@@ -471,6 +471,8 @@ func main() {
 		"udp", fmt.Sprintf(":%d", cfg.UDPPort),
 		"ws", fmt.Sprintf("ws://localhost:%d/ws", cfg.WSPort),
 	)
+	printStartupAccessGuide(logger, cfg.WSPort)
+	checkForUpdateAsync(logger)
 
 	// Wait for shutdown signal
 	sig := <-sigChan
@@ -519,11 +521,11 @@ func convertLapTelemetryToDTO(lap *telemetry.LapTelemetry) *dto.LapTelemetryDTO 
 		for i, p := range lap.DataPoints {
 			result.DataPoints[i] = dto.TelemetryPointDTO{
 				LapDistance: cleanF32(p.LapDistance),
-				LapTime:    p.LapTime,
-				Speed:      p.Speed,
-				Throttle:   cleanF32(p.Throttle),
-				Brake:      cleanF32(p.Brake),
-				Gear:       p.Gear,
+				LapTime:     p.LapTime,
+				Speed:       p.Speed,
+				Throttle:    cleanF32(p.Throttle),
+				Brake:       cleanF32(p.Brake),
+				Gear:        p.Gear,
 			}
 		}
 	}
@@ -541,11 +543,11 @@ func convertTelemetryPointsToDTO(points []telemetry.TelemetryPoint) []dto.Teleme
 	for i, p := range points {
 		result[i] = dto.TelemetryPointDTO{
 			LapDistance: p.LapDistance,
-			LapTime:    p.LapTime,
-			Speed:      p.Speed,
-			Throttle:   p.Throttle,
-			Brake:      p.Brake,
-			Gear:       p.Gear,
+			LapTime:     p.LapTime,
+			Speed:       p.Speed,
+			Throttle:    p.Throttle,
+			Brake:       p.Brake,
+			Gear:        p.Gear,
 		}
 	}
 	return result
