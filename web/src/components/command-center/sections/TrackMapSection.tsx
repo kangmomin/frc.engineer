@@ -599,9 +599,9 @@ export function RaceControlLog({ notifications }: RaceControlLogProps) {
 
   return (
     <div className={styles.notificationList}>
-      {notifications.slice(0, 5).map((n) => (
+      {notifications.slice(0, 5).map((n, idx) => (
         <div
-          key={n.id}
+          key={`${n.id}-${n.timestamp}-${idx}`}
           className={`${styles.notification} ${styles[n.severity]}`}
         >
           <span className={styles.notificationTime}>

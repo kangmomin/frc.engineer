@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DriverInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
 import { getTeamName } from '../../../constants/teamColors';
@@ -11,11 +11,119 @@ import styles from './LeaderboardSection.module.css';
 
 const EMPTY_DRIVERS: DriverInfo[] = [];
 const WING_GONE_THRESHOLD = 75;
+const DEFAULT_PACE_WINDOW_LAPS = 3;
+const MIN_PACE_WINDOW_LAPS = 1;
+const MAX_PACE_WINDOW_LAPS = 20;
+const MAX_DELTA_HISTORY_LAPS = 80;
+const PACE_NEUTRAL_THRESHOLD_MS = 50;
+
+interface DriverDeltaSnapshot {
+  lapNumber: number;
+  deltaToLeaderMs: number;
+}
+
+interface PaceDeltaResult {
+  deltaMs: number | null;
+  lapsUsed: number;
+  estimated: boolean;
+}
+
+function normalizeDeltaToLeader(driver: DriverInfo): number | null {
+  if (driver.position === 1) return 0;
+  if (driver.deltaToRaceLeader === undefined || driver.deltaToRaceLeader === null) return null;
+  if (!Number.isFinite(driver.deltaToRaceLeader) || driver.deltaToRaceLeader < 0) return null;
+  return driver.deltaToRaceLeader;
+}
+
+function useDriverDeltaHistory(drivers: DriverInfo[], maxEntries: number = MAX_DELTA_HISTORY_LAPS) {
+  const [historyByDriver, setHistoryByDriver] = useState<Record<number, DriverDeltaSnapshot[]>>({});
+  const lastLapByDriverRef = useRef<Record<number, number>>({});
+
+  useEffect(() => {
+    if (drivers.length === 0) {
+      setHistoryByDriver({});
+      lastLapByDriverRef.current = {};
+      return;
+    }
+
+    setHistoryByDriver((prev) => {
+      let changed = false;
+      const next: Record<number, DriverDeltaSnapshot[]> = { ...prev };
+      const activeDriverIds = new Set(drivers.map((driver) => driver.index));
+
+      for (const key of Object.keys(next)) {
+        const driverIndex = Number(key);
+        if (!activeDriverIds.has(driverIndex)) {
+          delete next[driverIndex];
+          delete lastLapByDriverRef.current[driverIndex];
+          changed = true;
+        }
+      }
+
+      for (const driver of drivers) {
+        const deltaToLeaderMs = normalizeDeltaToLeader(driver);
+        if (deltaToLeaderMs === null) continue;
+
+        const lapNumber = driver.currentLapNum;
+        const previousLap = lastLapByDriverRef.current[driver.index];
+        const snapshots = next[driver.index] ?? [];
+        const snapshot: DriverDeltaSnapshot = { lapNumber, deltaToLeaderMs };
+
+        if (previousLap === undefined || lapNumber < previousLap) {
+          if (previousLap !== undefined && previousLap-lapNumber <= 1) {
+            // Ignore one-lap transient jitter around line-crossing packets.
+            continue;
+          }
+          lastLapByDriverRef.current[driver.index] = lapNumber;
+          next[driver.index] = [snapshot];
+          changed = true;
+          continue;
+        }
+
+        if (lapNumber > previousLap) {
+          lastLapByDriverRef.current[driver.index] = lapNumber;
+          const appended = [...snapshots, snapshot];
+          next[driver.index] =
+            appended.length > maxEntries ? appended.slice(-maxEntries) : appended;
+          changed = true;
+          continue;
+        }
+
+        if (snapshots.length === 0) {
+          next[driver.index] = [snapshot];
+          changed = true;
+          continue;
+        }
+
+        const lastSnapshot = snapshots[snapshots.length - 1];
+        if (lastSnapshot && lastSnapshot.lapNumber === lapNumber && lastSnapshot.deltaToLeaderMs !== deltaToLeaderMs) {
+          const updated = [...snapshots];
+          updated[updated.length - 1] = snapshot;
+          next[driver.index] = updated;
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [drivers, maxEntries]);
+
+  return historyByDriver;
+}
 
 export function LeaderboardSection() {
   const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? EMPTY_DRIVERS);
   const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
   const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
+  const [paceWindowInput, setPaceWindowInput] = useState<string>(String(DEFAULT_PACE_WINDOW_LAPS));
+
+  const paceWindowLaps = useMemo(
+    () => parsePaceWindowLaps(paceWindowInput),
+    [paceWindowInput],
+  );
+
+  const deltaHistoryByDriver = useDriverDeltaHistory(drivers);
+
   // Sort drivers by position
   const sortedDrivers = useMemo(() => {
     return [...drivers].sort((a, b) => a.position - b.position);
@@ -23,11 +131,42 @@ export function LeaderboardSection() {
 
   const leader = sortedDrivers[0];
 
+  const paceDeltaByDriver = useMemo(() => {
+    const paceMap: Record<number, PaceDeltaResult> = {};
+    const leaderLastLapTime = sortedDrivers[0]?.lastLapTime ?? 0;
+    for (const driver of sortedDrivers) {
+      paceMap[driver.index] = calculatePaceDelta(
+        deltaHistoryByDriver[driver.index],
+        paceWindowLaps,
+        driver.lastLapTime,
+        leaderLastLapTime,
+        driver.position === 1,
+      );
+    }
+    return paceMap;
+  }, [sortedDrivers, deltaHistoryByDriver, paceWindowLaps]);
+
   return (
     <div className={styles.container}>
       <SectionHeader
         title="Leaderboard"
         subtitle={session ? `Lap ${leader?.currentLapNum ?? 0}/${session.totalLaps}` : undefined}
+        rightContent={(
+          <label className={styles.paceInputWrap}>
+            <span className={styles.paceInputLabel}>Pace Laps</span>
+            <input
+              className={styles.paceInput}
+              type="number"
+              min={MIN_PACE_WINDOW_LAPS}
+              max={MAX_PACE_WINDOW_LAPS}
+              step={1}
+              value={paceWindowInput}
+              onChange={(e) => setPaceWindowInput(e.target.value)}
+              onBlur={() => setPaceWindowInput(String(parsePaceWindowLaps(paceWindowInput)))}
+              aria-label="Lap window for pace comparison"
+            />
+          </label>
+        )}
       />
 
       <div className={styles.tableWrapper}>
@@ -43,12 +182,14 @@ export function LeaderboardSection() {
               <th className={styles.colSector}>S1</th>
               <th className={styles.colSector}>S2</th>
               <th className={styles.colSector}>S3</th>
+              <th className={styles.colPace}>{`Delta ${paceWindowLaps}L`}</th>
             </tr>
           </thead>
           <tbody>
             {sortedDrivers.map((driver, idx) => {
               const isPlayer = driver.index === playerIndex;
               const gap = idx === 0 ? 'LEADER' : formatGapToLeader(driver.deltaToRaceLeader);
+              const paceDelta = paceDeltaByDriver[driver.index] ?? { deltaMs: null, lapsUsed: 0, estimated: false };
               const damageAlert = getDamageAlertInfo(driver, isPlayer);
 
               return (
@@ -144,7 +285,14 @@ export function LeaderboardSection() {
                     </span>
                   </td>
                   <td className={styles.colSector}>
-                    <span className={styles.sector}>--</span>
+                    <span className={styles.sector}>
+                      {formatSector3Time(driver)}
+                    </span>
+                  </td>
+                  <td className={styles.colPace}>
+                    <span className={`${styles.paceValue} ${getPaceClassName(paceDelta.deltaMs)}`}>
+                      {formatPaceDelta(paceDelta, paceWindowLaps)}
+                    </span>
                   </td>
                 </tr>
               );
@@ -259,6 +407,19 @@ function formatSectorTime(ms: number): string {
   return seconds.toFixed(3);
 }
 
+function formatSector3Time(driver: DriverInfo): string {
+  if (driver.lastLapTime <= 0 || driver.sector1TimeMs <= 0 || driver.sector2TimeMs <= 0) {
+    return '--';
+  }
+
+  const sector3Ms = driver.lastLapTime - driver.sector1TimeMs - driver.sector2TimeMs;
+  if (sector3Ms <= 0) {
+    return '--';
+  }
+
+  return formatSectorTime(sector3Ms);
+}
+
 function formatGapToLeader(deltaMs: number | undefined): string {
   if (deltaMs === undefined || deltaMs === 0) return '--';
   if (deltaMs >= 60000) {
@@ -268,4 +429,91 @@ function formatGapToLeader(deltaMs: number | undefined): string {
     return `+${minutes}:${seconds.padStart(4, '0')}`;
   }
   return `+${(deltaMs / 1000).toFixed(1)}`;
+}
+
+function parsePaceWindowLaps(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) return DEFAULT_PACE_WINDOW_LAPS;
+  return Math.min(MAX_PACE_WINDOW_LAPS, Math.max(MIN_PACE_WINDOW_LAPS, parsed));
+}
+
+function calculatePaceDelta(
+  history: DriverDeltaSnapshot[] | undefined,
+  lapWindow: number,
+  driverLastLapTime: number,
+  leaderLastLapTime: number,
+  isLeader: boolean,
+): PaceDeltaResult {
+  if (isLeader) return { deltaMs: 0, lapsUsed: lapWindow, estimated: false };
+
+  if (!history || history.length < 2) {
+    return estimatePaceFromLastLap(driverLastLapTime, leaderLastLapTime, lapWindow);
+  }
+
+  const current = history[history.length - 1];
+  const baselineLap = current.lapNumber - lapWindow;
+  let baseline: DriverDeltaSnapshot | null = null;
+
+  for (let i = history.length - 2; i >= 0; i--) {
+    const entry = history[i];
+    if (entry.lapNumber <= baselineLap) {
+      baseline = entry;
+      break;
+    }
+  }
+
+  if (!baseline) {
+    baseline = history[0];
+  }
+
+  const lapsUsed = current.lapNumber - baseline.lapNumber;
+  if (lapsUsed <= 0) {
+    return estimatePaceFromLastLap(driverLastLapTime, leaderLastLapTime, lapWindow);
+  }
+
+  return {
+    deltaMs: current.deltaToLeaderMs - baseline.deltaToLeaderMs,
+    lapsUsed,
+    estimated: false,
+  };
+}
+
+function formatPaceDelta(result: PaceDeltaResult, targetLaps: number): string {
+  if (result.deltaMs === null) return '--';
+  const deltaMs = result.deltaMs;
+  if (Math.abs(deltaMs) < PACE_NEUTRAL_THRESHOLD_MS) return 'EVEN';
+
+  const deltaSeconds = deltaMs / 1000;
+  const signedSeconds = deltaSeconds > 0 ? `+${deltaSeconds.toFixed(1)}` : deltaSeconds.toFixed(1);
+  let paceText = `${signedSeconds}s`;
+  if (result.estimated) {
+    paceText = `~${paceText}`;
+  }
+  if (result.lapsUsed < targetLaps) {
+    return `${paceText} (${result.lapsUsed}L)`;
+  }
+  return paceText;
+}
+
+function estimatePaceFromLastLap(
+  driverLastLapTime: number,
+  leaderLastLapTime: number,
+  lapWindow: number,
+): PaceDeltaResult {
+  if (driverLastLapTime <= 0 || leaderLastLapTime <= 0) {
+    return { deltaMs: null, lapsUsed: 0, estimated: false };
+  }
+
+  return {
+    deltaMs: (driverLastLapTime - leaderLastLapTime) * lapWindow,
+    lapsUsed: lapWindow,
+    estimated: true,
+  };
+}
+
+function getPaceClassName(deltaMs: number | null): string {
+  if (deltaMs === null || Math.abs(deltaMs) < PACE_NEUTRAL_THRESHOLD_MS) {
+    return styles.paceNeutral;
+  }
+  return deltaMs < 0 ? styles.paceFaster : styles.paceSlower;
 }

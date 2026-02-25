@@ -8,7 +8,7 @@
 .tableWrapper {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 .table {
@@ -87,6 +87,47 @@
 
 .colSector {
   width: 55px;
+}
+
+.colPace {
+  width: 128px;
+}
+
+.paceInputWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paceInputLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.paceInput {
+  width: 48px;
+  height: 22px;
+  border: 1px solid var(--bg-panel-border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+.paceInput:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.paceInput::-webkit-outer-spin-button,
+.paceInput::-webkit-inner-spin-button {
+  margin: 0;
 }
 
 /* Cell content */
@@ -249,4 +290,22 @@
 
 .sector.yellow {
   color: var(--sector-yellow);
+}
+
+.paceValue {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.paceFaster {
+  color: var(--delta-faster);
+}
+
+.paceSlower {
+  color: var(--delta-slower);
+}
+
+.paceNeutral {
+  color: var(--text-muted);
 }

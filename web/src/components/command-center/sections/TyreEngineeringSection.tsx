@@ -15,9 +15,12 @@ type SectionTab = 'tyres' | 'spin';
 const WHEEL_POSITIONS = ['FL', 'FR', 'RL', 'RR'] as const;
 const NUM_WHEELS = 4;
 const PRODUCT_SPIN_TAB_PERMISSION = /^product\.[^.]+\.spin_tab$/;
+const WILDCARD_PERMISSION = '*';
 
 function hasSpinTabPermission(permissions: string[]): boolean {
-  return permissions.some((permission) => PRODUCT_SPIN_TAB_PERMISSION.test(permission));
+  return permissions.some(
+    (permission) => permission === WILDCARD_PERMISSION || PRODUCT_SPIN_TAB_PERMISSION.test(permission),
+  );
 }
 
 /** Clamp value to [0, 100] range */
