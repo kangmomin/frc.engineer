@@ -112,11 +112,75 @@ Create deploy tag + release with asset:
 ```powershell
 git tag -a v2.0.0 -m "Release v2.0.0"
 git push origin v2.0.0
+$notes = @'
+Major release v2.0.0
+
+- Deploy binary: frc-engineer.exe
+- Source commit: <source_commit_hash>
+- Deploy commit: <deploy_commit_hash>
+'@
+
 gh release create v2.0.0 .\frc-engineer.exe `
   --title "v2.0.0" `
-  --notes "Major release v2.0.0" `
+  --notes "$notes" `
   --latest
 ```
+
+---
+
+## 4.3 Release Notes Markdown Caution
+
+If you pass `\n` as plain text in `--notes`, GitHub release body will show `\n` literally.
+
+Bad example (literal `\n` shown as text):
+
+```powershell
+gh release create v1.0.0 .\frc-engineer.exe `
+  --title "v1.0.0" `
+  --notes "Major release v1.0.0\n\n- Deploy binary: frc-engineer.exe\n- Source commit: a7cc8a7\n- Deploy commit: 82ddbc5"
+```
+
+Good examples:
+
+1. PowerShell here-string
+
+```powershell
+$notes = @'
+Major release v1.0.0
+
+- Deploy binary: frc-engineer.exe
+- Source commit: a7cc8a7
+- Deploy commit: 82ddbc5
+'@
+
+gh release create v1.0.0 .\frc-engineer.exe `
+  --title "v1.0.0" `
+  --notes "$notes" `
+  --latest
+```
+
+2. Markdown file
+
+```powershell
+@'
+Major release v1.0.0
+
+- Deploy binary: frc-engineer.exe
+- Source commit: a7cc8a7
+- Deploy commit: 82ddbc5
+'@ | Set-Content -Encoding UTF8 release-notes.md
+
+gh release create v1.0.0 .\frc-engineer.exe `
+  --title "v1.0.0" `
+  --notes-file .\release-notes.md `
+  --latest
+```
+
+Recommended:
+
+- Use `--notes-file` for reproducible releases.
+- Keep the note template consistent across versions (title + binary + source commit + deploy commit).
+- Verify release body after publish: headings, blank lines, and bullet list rendering.
 
 ---
 
@@ -159,4 +223,3 @@ If binary conflict occurs during rebase, recopy latest binary, `git add`, then:
 ```powershell
 git rebase --continue
 ```
-
