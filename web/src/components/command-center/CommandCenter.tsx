@@ -9,6 +9,7 @@ import styles from './CommandCenter.module.css';
 
 export function CommandCenter() {
   const connectionState = useTelemetryStore((state) => state.connectionState);
+  const playbackActive = useTelemetryStore((state) => state.playbackActive);
 
   return (
     <div className={styles.grid}>
@@ -35,7 +36,7 @@ export function CommandCenter() {
       </div>
 
       {/* Connection overlay when disconnected */}
-      {connectionState !== 'connected' && (
+      {connectionState !== 'connected' && !playbackActive && (
         <div className={styles.connectionOverlay}>
           <div className={styles.connectionMessage}>
             <div className={`${styles.connectionDot} ${styles[connectionState]}`} />

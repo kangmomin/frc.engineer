@@ -29,6 +29,44 @@
   margin-bottom: var(--spacing-sm);
 }
 
+.modeOptions {
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.modeOption {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.modeOption:hover {
+  border-color: var(--accent);
+}
+
+.modeOptionActive {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(0, 210, 255, 0.35);
+}
+
+.modeLabel {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.modeHint {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
 .fieldLabel {
   min-width: 120px;
   color: var(--text-secondary);

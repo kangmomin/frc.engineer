@@ -12,19 +12,23 @@ const (
 
 // BattleAlertDTO is sent when an overtake is predicted within a few laps
 type BattleAlertDTO struct {
+	ID            string  `json:"id,omitempty"`
 	DriverAhead    string  `json:"driverAhead"`
 	DriverBehind   string  `json:"driverBehind"`
 	GapSeconds     float64 `json:"gapSeconds"`
 	ClosingRate    float64 `json:"closingRatePerLap"` // seconds per lap
 	EstOvertakeLap int     `json:"estOvertakeLap"`
 	Side           string  `json:"side"` // "ahead" | "behind"
+	Timestamp      int64   `json:"timestamp,omitempty"`
 }
 
 // RaceControlNotification represents a race control event sent to clients
 type RaceControlNotification struct {
+	ID       string `json:"id,omitempty"`
 	Category string `json:"category"` // "penalty", "warning", "info"
 	Message  string `json:"message"`
 	Severity string `json:"severity"` // "critical", "warning", "info"
+	Timestamp int64 `json:"timestamp,omitempty"`
 }
 
 // WSRequest represents a client request message

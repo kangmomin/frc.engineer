@@ -37,6 +37,8 @@ export interface TelemetryData {
  */
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
+export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';
+
 /**
  * View mode for the dashboard
  */
@@ -64,6 +66,7 @@ export interface AppConfig {
   trackRecording: boolean;
   packetLogging: boolean;
   raceSummaryRecording: boolean;
+  dataStorageMode: DataStorageMode;
 }
 
 export interface ForwardTarget {
@@ -84,6 +87,9 @@ export interface RaceListItem {
   sessionType: string;
   playerName: string;
   finalPosition: number;
+  dataStorageMode?: DataStorageMode;
+  hasReplay?: boolean;
+  frameCount?: number;
 }
 
 export interface RaceStint {
@@ -121,6 +127,7 @@ export interface RaceSummary {
   id: string;
   savedAtLocal: string;
   sessionUID: number;
+  dataStorageMode?: DataStorageMode;
   track: {
     trackId: number;
     trackName: string;
@@ -143,6 +150,16 @@ export interface RaceSummary {
       warning: number;
       info: number;
     };
+  };
+  replay?: {
+    frameIntervalMs: number;
+    trackMap?: TrackMapData;
+    frames: {
+      timestamp: number;
+      pitwall: PitwallState;
+      raceControl?: RaceControlNotification[];
+      battleAlerts?: BattleAlert[];
+    }[];
   };
 }
 

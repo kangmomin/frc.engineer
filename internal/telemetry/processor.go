@@ -22,6 +22,27 @@ type RaceSummaryCounts struct {
 	Info    int
 }
 
+// ReplayFrame is one timeline snapshot for dashboard replay.
+type ReplayFrame struct {
+	Timestamp   int64                       `json:"timestamp"`
+	Pitwall     *dto.PitwallState           `json:"pitwall"`
+	RaceControl []dto.RaceControlNotification `json:"raceControl,omitempty"`
+	BattleAlerts []dto.BattleAlertDTO       `json:"battleAlerts,omitempty"`
+}
+
+// ReplayTimeline is a complete replay payload for one session.
+type ReplayTimeline struct {
+	FrameIntervalMS int          `json:"frameIntervalMs"`
+	TrackMap        *dto.TrackMapDTO `json:"trackMap,omitempty"`
+	Frames          []ReplayFrame `json:"frames"`
+}
+
+const (
+	maxReplayRaceControl = 50
+	maxReplayBattleAlert = 10
+	replayFrameIntervalMS = 250
+)
+
 // RaceSummarySaveCallback is invoked once per session on race-end events.
 type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, state *dto.PitwallState) error
 
@@ -52,6 +73,15 @@ type Processor struct {
 	raceSummarySession  uint64
 	raceSummarySaved    bool
 	raceSummaryCounters RaceSummaryCounts
+
+	// Replay timeline capture state (summary / advanced storage modes)
+	replayMu          sync.Mutex
+	replayEnabled     bool
+	replaySessionUID  uint64
+	replayFrames      []ReplayFrame
+	replayRaceControl []dto.RaceControlNotification
+	replayBattleAlert []dto.BattleAlertDTO
+	replayTrackMap    *dto.TrackMapDTO
 }
 
 // NewProcessor creates a new telemetry processor
@@ -96,6 +126,48 @@ func (p *Processor) SetRaceSummaryRecording(enabled bool) {
 	p.raceSummaryMu.Unlock()
 }
 
+// SetReplayRecording toggles timeline snapshot capture used by summary/advanced storage.
+func (p *Processor) SetReplayRecording(enabled bool) {
+	p.replayMu.Lock()
+	defer p.replayMu.Unlock()
+	p.replayEnabled = enabled
+	if !enabled {
+		p.replaySessionUID = 0
+		p.replayFrames = nil
+		p.replayRaceControl = nil
+		p.replayBattleAlert = nil
+		p.replayTrackMap = nil
+	}
+}
+
+// GetReplayTimeline returns a copy of captured replay frames for a specific session.
+func (p *Processor) GetReplayTimeline(sessionUID uint64) *ReplayTimeline {
+	p.replayMu.Lock()
+	defer p.replayMu.Unlock()
+
+	if !p.replayEnabled || sessionUID == 0 || p.replaySessionUID != sessionUID || len(p.replayFrames) == 0 {
+		return nil
+	}
+
+	frames := make([]ReplayFrame, len(p.replayFrames))
+	for i := range p.replayFrames {
+		frame := p.replayFrames[i]
+		if len(frame.RaceControl) > 0 {
+			frame.RaceControl = append([]dto.RaceControlNotification(nil), frame.RaceControl...)
+		}
+		if len(frame.BattleAlerts) > 0 {
+			frame.BattleAlerts = append([]dto.BattleAlertDTO(nil), frame.BattleAlerts...)
+		}
+		frames[i] = frame
+	}
+
+	return &ReplayTimeline{
+		FrameIntervalMS: replayFrameIntervalMS,
+		TrackMap:        p.replayTrackMap,
+		Frames:          frames,
+	}
+}
+
 // Start begins processing packets from the UDP listener
 func (p *Processor) Start(ctx context.Context, packets <-chan []byte) {
 	updateHz := "unlimited"
@@ -132,6 +204,7 @@ func (p *Processor) processPacket(data []byte) {
 	}
 
 	p.observeSessionUID(parsed.Header.SessionUID)
+	p.observeReplaySession(parsed.Header.SessionUID)
 
 	// Handle event packets (penalties, warnings, race control)
 	if parsed.Event != nil {
@@ -203,6 +276,7 @@ func (p *Processor) processPacket(data []byte) {
 
 		// Battle detection: check gap trends on lap change
 		p.checkBattleAlerts(pitwallState)
+		p.recordReplayFrame(parsed.Header.SessionUID, now.UnixMilli(), pitwallState)
 	}
 
 	// Check rate limit for telemetry dashboard
@@ -290,7 +364,14 @@ func (p *Processor) checkBattleAlerts(state *dto.PitwallState) {
 	}
 
 	alerts := p.battleDetector.Check(player.CurrentLapNum, gapAheadMs, gapBehindMs, driverAheadName, driverBehindName)
-	for _, alert := range alerts {
+	for i := range alerts {
+		alert := alerts[i]
+		if alert.Timestamp == 0 {
+			alert.Timestamp = time.Now().UnixMilli()
+		}
+		if alert.ID == "" {
+			alert.ID = fmt.Sprintf("ba_%d_%s_%s", alert.Timestamp, alert.Side, alert.DriverBehind)
+		}
 		msg := dto.WSResponse{
 			Type: dto.MessageTypeBattleAlert,
 			Data: alert,
@@ -301,6 +382,7 @@ func (p *Processor) checkBattleAlerts(state *dto.PitwallState) {
 			continue
 		}
 		p.hub.Broadcast(jsonData)
+		p.recordReplayBattleAlert(alert)
 		p.logger.Info("battle alert",
 			"side", alert.Side,
 			"gap", alert.GapSeconds,
@@ -391,6 +473,12 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 	if notification == nil {
 		return
 	}
+	if notification.Timestamp == 0 {
+		notification.Timestamp = time.Now().UnixMilli()
+	}
+	if notification.ID == "" {
+		notification.ID = fmt.Sprintf("rc_%d_%s", notification.Timestamp, notification.Category)
+	}
 
 	msg := dto.WSResponse{
 		Type: dto.MessageTypeRaceControl,
@@ -402,6 +490,7 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		return
 	}
 	p.hub.Broadcast(jsonData)
+	p.recordReplayRaceControl(notification)
 	p.countRaceControlNotification(notification)
 }
 
@@ -425,6 +514,84 @@ func (p *Processor) observeSessionUID(sessionUID uint64) {
 		p.raceSummarySession = sessionUID
 		p.raceSummarySaved = false
 		p.raceSummaryCounters = RaceSummaryCounts{}
+	}
+}
+
+func (p *Processor) observeReplaySession(sessionUID uint64) {
+	if sessionUID == 0 {
+		return
+	}
+
+	p.replayMu.Lock()
+	defer p.replayMu.Unlock()
+
+	if p.replaySessionUID != sessionUID {
+		p.replaySessionUID = sessionUID
+		p.replayFrames = nil
+		p.replayRaceControl = nil
+		p.replayBattleAlert = nil
+		p.replayTrackMap = nil
+	}
+}
+
+func (p *Processor) recordReplayFrame(sessionUID uint64, ts int64, pitwallState *dto.PitwallState) {
+	if pitwallState == nil || sessionUID == 0 {
+		return
+	}
+
+	p.replayMu.Lock()
+	defer p.replayMu.Unlock()
+
+	if !p.replayEnabled || p.replaySessionUID != sessionUID {
+		return
+	}
+	if p.replayTrackMap == nil && pitwallState.TrackMap != nil {
+		p.replayTrackMap = pitwallState.TrackMap
+	}
+
+	pitwallCopy := *pitwallState
+	pitwallCopy.TrackMap = nil
+
+	frame := ReplayFrame{
+		Timestamp: ts,
+		Pitwall:   &pitwallCopy,
+	}
+	if len(p.replayRaceControl) > 0 {
+		frame.RaceControl = append([]dto.RaceControlNotification(nil), p.replayRaceControl...)
+	}
+	if len(p.replayBattleAlert) > 0 {
+		frame.BattleAlerts = append([]dto.BattleAlertDTO(nil), p.replayBattleAlert...)
+	}
+	p.replayFrames = append(p.replayFrames, frame)
+}
+
+func (p *Processor) recordReplayRaceControl(notification *dto.RaceControlNotification) {
+	if notification == nil {
+		return
+	}
+
+	p.replayMu.Lock()
+	defer p.replayMu.Unlock()
+	if !p.replayEnabled {
+		return
+	}
+
+	p.replayRaceControl = append([]dto.RaceControlNotification{*notification}, p.replayRaceControl...)
+	if len(p.replayRaceControl) > maxReplayRaceControl {
+		p.replayRaceControl = p.replayRaceControl[:maxReplayRaceControl]
+	}
+}
+
+func (p *Processor) recordReplayBattleAlert(alert dto.BattleAlertDTO) {
+	p.replayMu.Lock()
+	defer p.replayMu.Unlock()
+	if !p.replayEnabled {
+		return
+	}
+
+	p.replayBattleAlert = append([]dto.BattleAlertDTO{alert}, p.replayBattleAlert...)
+	if len(p.replayBattleAlert) > maxReplayBattleAlert {
+		p.replayBattleAlert = p.replayBattleAlert[:maxReplayBattleAlert]
 	}
 }
 

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	rtconfig "frc.engineer/internal/config"
 )
 
 // Storage persists race summaries and serves list/detail reads.
@@ -70,6 +72,7 @@ func (s *FileStorage) Save(summary *RaceSummary) (string, error) {
 	if summary.SavedAtLocal == "" {
 		summary.SavedAtLocal = time.Now().Format("2006-01-02 15:04:05")
 	}
+	summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(summary.DataStorageMode)
 
 	path := s.filePath(id)
 	data, err := json.MarshalIndent(summary, "", "  ")
@@ -126,14 +129,22 @@ func (s *FileStorage) List() ([]RaceListItem, error) {
 		if summary.ID == "" {
 			summary.ID = id
 		}
+		summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(summary.DataStorageMode)
+		frameCount := 0
+		if summary.Replay != nil {
+			frameCount = len(summary.Replay.Frames)
+		}
 
 		items = append(items, RaceListItem{
-			ID:            summary.ID,
-			SavedAtLocal:  summary.SavedAtLocal,
-			TrackName:     summary.Track.TrackName,
-			SessionType:   summary.Session.SessionType,
-			PlayerName:    summary.Player.Name,
-			FinalPosition: summary.Player.FinalPosition,
+			ID:              summary.ID,
+			SavedAtLocal:    summary.SavedAtLocal,
+			TrackName:       summary.Track.TrackName,
+			SessionType:     summary.Session.SessionType,
+			PlayerName:      summary.Player.Name,
+			FinalPosition:   summary.Player.FinalPosition,
+			DataStorageMode: summary.DataStorageMode,
+			HasReplay:       frameCount > 0,
+			FrameCount:      frameCount,
 		})
 	}
 
@@ -164,6 +175,7 @@ func (s *FileStorage) Load(id string) (*RaceSummary, error) {
 	if summary.ID == "" {
 		summary.ID = id
 	}
+	summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(summary.DataStorageMode)
 	return &summary, nil
 }
 

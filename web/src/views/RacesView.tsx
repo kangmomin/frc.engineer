@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { RaceListItem, RaceSummary } from '../types/telemetry';
+import { CommandCenter } from '../components/command-center/CommandCenter';
+import { useTelemetryStore } from '../store/telemetryStore';
+import type {
+  BattleAlert,
+  DataStorageMode,
+  RaceControlNotification,
+  RaceListItem,
+  RaceSummary,
+} from '../types/telemetry';
 import styles from './RacesView.module.css';
 
 function formatLap(ms: number): string {
@@ -10,6 +18,53 @@ function formatLap(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
 }
 
+function formatStorageMode(mode?: DataStorageMode): string {
+  if (mode === 'advanced') return 'Advanced';
+  if (mode === 'summary') return 'Summary';
+  return 'Result Only';
+}
+
+function formatReplayClock(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '00:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function normalizeRaceControlList(list: RaceControlNotification[] | undefined): RaceControlNotification[] {
+  if (!list || list.length === 0) return [];
+  return list.map((item, idx) => {
+    const timestamp = Number.isFinite(item.timestamp) ? item.timestamp : Date.now();
+    return {
+      ...item,
+      id: item.id || `rc-${timestamp}-${idx}`,
+      timestamp,
+      category: item.category ?? 'info',
+      severity: item.severity ?? 'info',
+      message: item.message ?? '',
+    };
+  });
+}
+
+function normalizeBattleAlertList(list: BattleAlert[] | undefined): BattleAlert[] {
+  if (!list || list.length === 0) return [];
+  return list.map((item, idx) => {
+    const timestamp = Number.isFinite(item.timestamp) ? item.timestamp : Date.now();
+    return {
+      ...item,
+      id: item.id || `ba-${timestamp}-${idx}`,
+      timestamp,
+      driverAhead: item.driverAhead ?? 'Unknown',
+      driverBehind: item.driverBehind ?? 'Unknown',
+      gapSeconds: item.gapSeconds ?? 0,
+      closingRatePerLap: item.closingRatePerLap ?? 0,
+      estOvertakeLap: item.estOvertakeLap ?? 0,
+      side: item.side === 'behind' ? 'behind' : 'ahead',
+    };
+  });
+}
+
 export function RacesView() {
   const [races, setRaces] = useState<RaceListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -17,6 +72,14 @@ export function RacesView() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+
+  const setPlaybackActive = useTelemetryStore((state) => state.setPlaybackActive);
+  const applyReplayFrame = useTelemetryStore((state) => state.applyReplayFrame);
+  const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
 
   useEffect(() => {
     let mounted = true;
@@ -55,6 +118,9 @@ export function RacesView() {
     let mounted = true;
     setLoadingDetail(true);
     setError(null);
+    setDetail(null);
+    setPlaying(false);
+    setFrameIndex(0);
 
     fetch(`/api/races/${encodeURIComponent(selectedId)}`)
       .then(async (res) => {
@@ -77,6 +143,63 @@ export function RacesView() {
       mounted = false;
     };
   }, [selectedId]);
+
+  const replayFrames = useMemo(() => detail?.replay?.frames ?? [], [detail?.replay?.frames]);
+  const replayTrackMap = detail?.replay?.trackMap;
+  const hasReplay = replayFrames.length > 0;
+
+  useEffect(() => {
+    setPlaybackActive(hasReplay);
+    if (!hasReplay) {
+      clearNotifications();
+    }
+  }, [hasReplay, setPlaybackActive, clearNotifications]);
+
+  useEffect(() => {
+    return () => {
+      setPlaybackActive(false);
+    };
+  }, [setPlaybackActive]);
+
+  useEffect(() => {
+    if (!hasReplay) return;
+    if (frameIndex < replayFrames.length) return;
+    setFrameIndex(Math.max(0, replayFrames.length - 1));
+  }, [hasReplay, frameIndex, replayFrames.length]);
+
+  useEffect(() => {
+    if (!hasReplay) return;
+    const frame = replayFrames[frameIndex];
+    if (!frame?.pitwall) return;
+    const mergedPitwall =
+      replayTrackMap && !frame.pitwall.trackMap
+        ? { ...frame.pitwall, trackMap: replayTrackMap }
+        : frame.pitwall;
+
+    applyReplayFrame({
+      pitwall: mergedPitwall,
+      raceControl: normalizeRaceControlList(frame.raceControl),
+      battleAlerts: normalizeBattleAlertList(frame.battleAlerts),
+    });
+  }, [applyReplayFrame, frameIndex, hasReplay, replayFrames, replayTrackMap]);
+
+  useEffect(() => {
+    if (!playing || !hasReplay || replayFrames.length <= 1) return;
+
+    const baseInterval = detail?.replay?.frameIntervalMs ?? 250;
+    const interval = Math.max(50, Math.round(baseInterval / playbackRate));
+    const timer = window.setInterval(() => {
+      setFrameIndex((prev) => Math.min(prev + 1, replayFrames.length - 1));
+    }, interval);
+
+    return () => window.clearInterval(timer);
+  }, [detail?.replay?.frameIntervalMs, hasReplay, playbackRate, playing, replayFrames.length]);
+
+  useEffect(() => {
+    if (playing && hasReplay && frameIndex >= replayFrames.length - 1) {
+      setPlaying(false);
+    }
+  }, [frameIndex, hasReplay, playing, replayFrames.length]);
 
   const selectedIndex = useMemo(
     () => races.findIndex((r) => r.id === selectedId),
@@ -106,6 +229,11 @@ export function RacesView() {
   const notifications = highlights.notifications ?? { penalty: 0, warning: 0, info: 0 };
   const drivers = detail?.drivers ?? [];
 
+  const replayStart = replayFrames[0]?.timestamp ?? 0;
+  const replayEnd = replayFrames[replayFrames.length - 1]?.timestamp ?? replayStart;
+  const replayDuration = Math.max(0, replayEnd - replayStart);
+  const replayCurrent = Math.max(0, (replayFrames[frameIndex]?.timestamp ?? replayStart) - replayStart);
+
   return (
     <div className={styles.container}>
       <aside className={styles.listPane}>
@@ -128,6 +256,10 @@ export function RacesView() {
                 </div>
                 <div className={styles.listMeta}>{race.savedAtLocal}</div>
                 <div className={styles.listMeta}>{race.sessionType || 'Unknown Session'}</div>
+                <div className={styles.listModeRow}>
+                  <span className={styles.modeBadge}>{formatStorageMode(race.dataStorageMode)}</span>
+                  {(race.hasReplay ?? false) && <span className={styles.replayBadge}>{race.frameCount ?? 0} frames</span>}
+                </div>
               </button>
             ))}
           </div>
@@ -140,13 +272,83 @@ export function RacesView() {
           {selectedIndex >= 0 && races[selectedIndex] && (
             <span className={styles.subtitle}>#{selectedIndex + 1}</span>
           )}
+          {detail?.dataStorageMode && (
+            <span className={styles.detailMode}>{formatStorageMode(detail.dataStorageMode)}</span>
+          )}
         </div>
 
         {error && <div className={styles.error}>{error}</div>}
         {!error && loadingDetail && <div className={styles.placeholder}>Loading detail...</div>}
         {!error && !loadingDetail && !detail && <div className={styles.placeholder}>Select a race to view details</div>}
 
-        {!error && !loadingDetail && detail && (
+        {!error && !loadingDetail && detail && hasReplay && (
+          <div className={styles.replayContainer}>
+            <div className={styles.timelineControls}>
+              <div className={styles.timelinePrimary}>
+                <button
+                  className={styles.controlBtn}
+                  onClick={() => {
+                    setPlaying(false);
+                    setFrameIndex((prev) => Math.max(0, prev - 1));
+                  }}
+                  disabled={frameIndex <= 0}
+                >
+                  {'<'}
+                </button>
+                <button
+                  className={styles.controlBtn}
+                  onClick={() => setPlaying((prev) => !prev)}
+                  disabled={replayFrames.length <= 1}
+                >
+                  {playing ? 'Pause' : 'Play'}
+                </button>
+                <button
+                  className={styles.controlBtn}
+                  onClick={() => {
+                    setPlaying(false);
+                    setFrameIndex((prev) => Math.min(replayFrames.length - 1, prev + 1));
+                  }}
+                  disabled={frameIndex >= replayFrames.length - 1}
+                >
+                  {'>'}
+                </button>
+                <select
+                  className={styles.rateSelect}
+                  value={playbackRate}
+                  onChange={(e) => setPlaybackRate(Number(e.target.value))}
+                >
+                  <option value={0.5}>0.5x</option>
+                  <option value={1}>1x</option>
+                  <option value={2}>2x</option>
+                </select>
+              </div>
+
+              <div className={styles.timelineSliderWrap}>
+                <input
+                  className={styles.timelineSlider}
+                  type="range"
+                  min={0}
+                  max={Math.max(0, replayFrames.length - 1)}
+                  value={frameIndex}
+                  onChange={(e) => {
+                    setPlaying(false);
+                    setFrameIndex(Number(e.target.value));
+                  }}
+                />
+                <div className={styles.timelineMeta}>
+                  <span>{formatReplayClock(replayCurrent)} / {formatReplayClock(replayDuration)}</span>
+                  <span>Frame {frameIndex + 1} / {replayFrames.length}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.replayPanel}>
+              <CommandCenter />
+            </div>
+          </div>
+        )}
+
+        {!error && !loadingDetail && detail && !hasReplay && (
           <div className={styles.detailContent}>
             <div className={styles.cardGrid}>
               <div className={styles.card}>

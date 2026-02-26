@@ -55,6 +55,7 @@ func main() {
 
 	// Use saved ports from config.json instead of defaults
 	savedCfg := runtimeCfg.Get()
+	storageMode := rtconfig.NormalizeDataStorageMode(savedCfg.DataStorageMode)
 	if savedCfg.UDPPort != 0 {
 		cfg.UDPPort = savedCfg.UDPPort
 		logger.Info("using saved UDP port from config", "udpPort", cfg.UDPPort)
@@ -112,7 +113,7 @@ func main() {
 
 	// Setup packet logging if enabled (env var or saved config)
 	var packetLogger *udp.PacketLogger
-	if cfg.PacketLogging || savedCfg.PacketLogging {
+	if cfg.PacketLogging || storageMode == rtconfig.DataStorageModeAdvanced {
 		packetLogger = udp.NewPacketLogger(cfg.PacketLogDir, logger)
 		parser.SetPacketLogger(packetLogger)
 		logger.Info("packet logging enabled", "dir", cfg.PacketLogDir)
@@ -134,15 +135,23 @@ func main() {
 	processor := telemetry.NewProcessor(parser, hub, cfg.TelemetryUpdateHz, logger, trackStore)
 	processor.PitwallManager().SetRecorder(recorder)
 	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, state *dto.PitwallState) error {
+		currentCfg := runtimeCfg.Get()
+		mode := rtconfig.NormalizeDataStorageMode(currentCfg.DataStorageMode)
+
 		summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
 			Penalty: counts.Penalty,
 			Warning: counts.Warning,
 			Info:    counts.Info,
 		}, time.Now())
+		summary.DataStorageMode = mode
+		if mode == rtconfig.DataStorageModeSummary || mode == rtconfig.DataStorageModeAdvanced {
+			summary.Replay = convertReplayTimeline(processor.GetReplayTimeline(sessionUID))
+		}
 		_, err := raceStorage.Save(summary)
 		return err
 	})
 	processor.SetRaceSummaryRecording(savedCfg.RaceSummaryRecording)
+	processor.SetReplayRecording(storageMode == rtconfig.DataStorageModeSummary || storageMode == rtconfig.DataStorageModeAdvanced)
 
 	// Connect storage to delta calculator
 	processor.DeltaCalculator().SetStorageCallbacks(
@@ -278,6 +287,7 @@ func main() {
 				http.Error(w, "invalid JSON", http.StatusBadRequest)
 				return
 			}
+			newCfg.DataStorageMode = rtconfig.NormalizeDataStorageMode(newCfg.DataStorageMode)
 			// Validate
 			if newCfg.UDPPort < 1 || newCfg.UDPPort > 65535 {
 				http.Error(w, "udpPort must be 1-65535", http.StatusBadRequest)
@@ -305,13 +315,18 @@ func main() {
 			forwarder.UpdateTargets(newCfg.ForwardTargets)
 			recorder.SetEnabled(newCfg.TrackRecording)
 			processor.SetRaceSummaryRecording(newCfg.RaceSummaryRecording)
+			processor.SetReplayRecording(
+				newCfg.DataStorageMode == rtconfig.DataStorageModeSummary ||
+					newCfg.DataStorageMode == rtconfig.DataStorageModeAdvanced,
+			)
 
-			// Toggle packet logging at runtime
-			if newCfg.PacketLogging && packetLogger == nil {
+			// Toggle packet logging at runtime.
+			shouldPacketLogging := cfg.PacketLogging || newCfg.DataStorageMode == rtconfig.DataStorageModeAdvanced
+			if shouldPacketLogging && packetLogger == nil {
 				packetLogger = udp.NewPacketLogger(cfg.PacketLogDir, logger)
 				parser.SetPacketLogger(packetLogger)
 				logger.Info("packet logging enabled at runtime", "dir", cfg.PacketLogDir)
-			} else if !newCfg.PacketLogging && packetLogger != nil {
+			} else if !shouldPacketLogging && packetLogger != nil {
 				parser.SetPacketLogger(nil)
 				packetLogger.Close()
 				packetLogger = nil
@@ -500,6 +515,34 @@ func cleanF32(v float32) float32 {
 		return 0
 	}
 	return v
+}
+
+func convertReplayTimeline(in *telemetry.ReplayTimeline) *races.ReplayTimeline {
+	if in == nil || len(in.Frames) == 0 {
+		return nil
+	}
+
+	out := &races.ReplayTimeline{
+		FrameIntervalMS: in.FrameIntervalMS,
+		TrackMap:        in.TrackMap,
+		Frames:          make([]races.ReplayFrame, len(in.Frames)),
+	}
+
+	for i := range in.Frames {
+		frame := in.Frames[i]
+		out.Frames[i] = races.ReplayFrame{
+			Timestamp: frame.Timestamp,
+			Pitwall:   frame.Pitwall,
+		}
+		if len(frame.RaceControl) > 0 {
+			out.Frames[i].RaceControl = append([]dto.RaceControlNotification(nil), frame.RaceControl...)
+		}
+		if len(frame.BattleAlerts) > 0 {
+			out.Frames[i].BattleAlerts = append([]dto.BattleAlertDTO(nil), frame.BattleAlerts...)
+		}
+	}
+
+	return out
 }
 
 // convertLapTelemetryToDTO converts internal lap telemetry to DTO

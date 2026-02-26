@@ -7,6 +7,28 @@ import (
 	"sync"
 )
 
+// DataStorageMode controls what race data is persisted.
+type DataStorageMode string
+
+const (
+	// DataStorageModeResultOnly keeps current minimal race-result summary storage.
+	DataStorageModeResultOnly DataStorageMode = "resultOnly"
+	// DataStorageModeSummary stores dashboard-visible state snapshots for replay.
+	DataStorageModeSummary DataStorageMode = "summary"
+	// DataStorageModeAdvanced stores full UDP packet logs plus summary snapshots.
+	DataStorageModeAdvanced DataStorageMode = "advanced"
+)
+
+// NormalizeDataStorageMode returns a safe, known mode.
+func NormalizeDataStorageMode(mode DataStorageMode) DataStorageMode {
+	switch mode {
+	case DataStorageModeSummary, DataStorageModeAdvanced:
+		return mode
+	default:
+		return DataStorageModeResultOnly
+	}
+}
+
 // ForwardTarget represents a UDP forwarding destination
 type ForwardTarget struct {
 	Host    string `json:"host"`
@@ -16,12 +38,13 @@ type ForwardTarget struct {
 
 // RuntimeConfig holds runtime-changeable settings
 type RuntimeConfig struct {
-	UDPPort        int             `json:"udpPort"`
-	BackendPort    int             `json:"backendPort"`
-	ForwardTargets []ForwardTarget `json:"forwardTargets"`
-	TrackRecording bool            `json:"trackRecording"`
-	PacketLogging  bool            `json:"packetLogging"`
-	RaceSummaryRecording bool      `json:"raceSummaryRecording"`
+	UDPPort              int             `json:"udpPort"`
+	BackendPort          int             `json:"backendPort"`
+	ForwardTargets       []ForwardTarget `json:"forwardTargets"`
+	TrackRecording       bool            `json:"trackRecording"`
+	PacketLogging        bool            `json:"packetLogging"`
+	RaceSummaryRecording bool            `json:"raceSummaryRecording"`
+	DataStorageMode      DataStorageMode `json:"dataStorageMode"`
 }
 
 // RuntimeConfigManager manages persistent runtime configuration
@@ -36,8 +59,10 @@ func NewRuntimeConfigManager(configFilePath string, defaultUDPPort, defaultBacke
 	m := &RuntimeConfigManager{
 		filePath: configFilePath,
 		config: RuntimeConfig{
-			UDPPort:     defaultUDPPort,
-			BackendPort: defaultBackendPort,
+			UDPPort:              defaultUDPPort,
+			BackendPort:          defaultBackendPort,
+			RaceSummaryRecording: true,
+			DataStorageMode:      DataStorageModeResultOnly,
 		},
 	}
 	m.load()
@@ -61,6 +86,7 @@ func (m *RuntimeConfigManager) Get() RuntimeConfig {
 func (m *RuntimeConfigManager) Update(cfg RuntimeConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	cfg.DataStorageMode = NormalizeDataStorageMode(cfg.DataStorageMode)
 	m.config = cfg
 	return m.save()
 }
@@ -71,6 +97,7 @@ func (m *RuntimeConfigManager) load() {
 		return // File doesn't exist yet, use defaults
 	}
 	_ = json.Unmarshal(data, &m.config)
+	m.config.DataStorageMode = NormalizeDataStorageMode(m.config.DataStorageMode)
 }
 
 func (m *RuntimeConfigManager) save() error {

@@ -3,6 +3,7 @@ package races
 import (
 	"time"
 
+	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 )
 
@@ -18,11 +19,13 @@ type RaceSummary struct {
 	ID           string             `json:"id"`
 	SavedAtLocal string             `json:"savedAtLocal"`
 	SessionUID   uint64             `json:"sessionUID"`
+	DataStorageMode rtconfig.DataStorageMode `json:"dataStorageMode,omitempty"`
 	Track        TrackInfo          `json:"track"`
 	Session      SessionSummary     `json:"session"`
 	Player       PlayerSummary      `json:"player"`
 	Drivers      []DriverSummary    `json:"drivers"`
 	Highlights   RaceHighlights     `json:"highlights"`
+	Replay       *ReplayTimeline    `json:"replay,omitempty"`
 }
 
 // TrackInfo describes the track for a stored race summary.
@@ -82,14 +85,32 @@ type RaceHighlights struct {
 	Notifications    NotificationCounts `json:"notifications"`
 }
 
+// ReplayFrame is one dashboard timeline snapshot.
+type ReplayFrame struct {
+	Timestamp    int64                         `json:"timestamp"`
+	Pitwall      *dto.PitwallState             `json:"pitwall"`
+	RaceControl  []dto.RaceControlNotification `json:"raceControl,omitempty"`
+	BattleAlerts []dto.BattleAlertDTO          `json:"battleAlerts,omitempty"`
+}
+
+// ReplayTimeline holds time-ordered snapshots for timeline playback.
+type ReplayTimeline struct {
+	FrameIntervalMS int           `json:"frameIntervalMs"`
+	TrackMap        *dto.TrackMapDTO `json:"trackMap,omitempty"`
+	Frames          []ReplayFrame `json:"frames"`
+}
+
 // RaceListItem is a lightweight list row returned by /api/races.
 type RaceListItem struct {
-	ID            string `json:"id"`
-	SavedAtLocal  string `json:"savedAtLocal"`
-	TrackName     string `json:"trackName"`
-	SessionType   string `json:"sessionType"`
-	PlayerName    string `json:"playerName"`
-	FinalPosition int    `json:"finalPosition"`
+	ID              string                   `json:"id"`
+	SavedAtLocal    string                   `json:"savedAtLocal"`
+	TrackName       string                   `json:"trackName"`
+	SessionType     string                   `json:"sessionType"`
+	PlayerName      string                   `json:"playerName"`
+	FinalPosition   int                      `json:"finalPosition"`
+	DataStorageMode rtconfig.DataStorageMode `json:"dataStorageMode,omitempty"`
+	HasReplay       bool                     `json:"hasReplay"`
+	FrameCount      int                      `json:"frameCount"`
 }
 
 // BuildSummary creates a race summary from the latest pitwall snapshot.
@@ -97,6 +118,7 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 	out := &RaceSummary{
 		SavedAtLocal: savedAt.Format("2006-01-02 15:04:05"),
 		SessionUID:   sessionUID,
+		DataStorageMode: rtconfig.DataStorageModeResultOnly,
 		Highlights: RaceHighlights{
 			Notifications: counts,
 		},

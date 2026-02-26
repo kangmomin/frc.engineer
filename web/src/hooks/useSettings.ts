@@ -24,7 +24,8 @@ export function useSettings() {
           ...data,
           forwardTargets: data.forwardTargets ?? [],
           packetLogging: data.packetLogging ?? false,
-          raceSummaryRecording: data.raceSummaryRecording ?? false,
+          raceSummaryRecording: data.raceSummaryRecording ?? true,
+          dataStorageMode: data.dataStorageMode ?? 'resultOnly',
         };
         setConfig(cfg);
         if (!initialConfigRef.current) {
@@ -66,7 +67,8 @@ export function useSettings() {
           ...data,
           forwardTargets: data.forwardTargets ?? [],
           packetLogging: data.packetLogging ?? false,
-          raceSummaryRecording: data.raceSummaryRecording ?? false,
+          raceSummaryRecording: data.raceSummaryRecording ?? true,
+          dataStorageMode: data.dataStorageMode ?? 'resultOnly',
         };
 
         const initial = initialConfigRef.current;

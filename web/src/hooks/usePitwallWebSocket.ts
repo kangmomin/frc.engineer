@@ -54,6 +54,8 @@ export function usePitwallWebSocket(
   const isManualReconnectRef = useRef(false);
   const pendingPitwallRef = useRef<PitwallState | null>(null);
   const pitwallRafRef = useRef(0);
+  const raceControlSeqRef = useRef(0);
+  const battleSeqRef = useRef(0);
 
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -112,6 +114,7 @@ export function usePitwallWebSocket(
 
       ws.onmessage = (event) => {
         if (!isMountedRef.current) return;
+        if (useTelemetryStore.getState().playbackActive) return;
 
         // Skip messages we don't handle (e.g. telemetry at 30Hz) to avoid costly JSON.parse
         const raw = event.data as string;
@@ -136,11 +139,17 @@ export function usePitwallWebSocket(
               break;
 
             case 'raceControl':
-              addRaceControlNotification(message.data as RaceControlNotification);
+              addRaceControlNotification(normalizeRaceControl(
+                message.data as Partial<RaceControlNotification> | undefined,
+                raceControlSeqRef.current++,
+              ));
               break;
 
             case 'battleAlert':
-              addBattleAlert(message.data as BattleAlert);
+              addBattleAlert(normalizeBattleAlert(
+                message.data as Partial<BattleAlert> | undefined,
+                battleSeqRef.current++,
+              ));
               break;
           }
         } catch {
@@ -191,6 +200,39 @@ export function usePitwallWebSocket(
   return {
     reconnect,
     clearNotifications,
+  };
+}
+
+function normalizeRaceControl(
+  raw: Partial<RaceControlNotification> | undefined,
+  seq: number,
+): RaceControlNotification {
+  const timestamp = typeof raw?.timestamp === 'number' ? raw.timestamp : Date.now();
+  const id = raw?.id || `rc-${timestamp}-${seq}`;
+  return {
+    id,
+    timestamp,
+    category: raw?.category ?? 'info',
+    message: raw?.message ?? '',
+    severity: raw?.severity ?? 'info',
+  };
+}
+
+function normalizeBattleAlert(
+  raw: Partial<BattleAlert> | undefined,
+  seq: number,
+): BattleAlert {
+  const timestamp = typeof raw?.timestamp === 'number' ? raw.timestamp : Date.now();
+  const id = raw?.id || `ba-${timestamp}-${seq}`;
+  return {
+    id,
+    timestamp,
+    driverAhead: raw?.driverAhead ?? 'Unknown',
+    driverBehind: raw?.driverBehind ?? 'Unknown',
+    gapSeconds: raw?.gapSeconds ?? 0,
+    closingRatePerLap: raw?.closingRatePerLap ?? 0,
+    estOvertakeLap: raw?.estOvertakeLap ?? 0,
+    side: raw?.side === 'behind' ? 'behind' : 'ahead',
   };
 }
 
