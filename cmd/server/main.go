@@ -410,12 +410,8 @@ func main() {
 		json.NewEncoder(w).Encode(list)
 	})
 
-	// REST API: GET /api/races/{id}
+	// REST API: GET|DELETE /api/races/{id}
 	mux.HandleFunc("/api/races/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
 		id := strings.TrimPrefix(r.URL.Path, "/api/races/")
 		id = strings.TrimSuffix(id, "/")
 		if id == "" || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
@@ -423,23 +419,45 @@ func main() {
 			return
 		}
 
-		summary, err := raceStorage.Load(id)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				http.Error(w, "race summary not found", http.StatusNotFound)
+		switch r.Method {
+		case http.MethodGet:
+			summary, err := raceStorage.Load(id)
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					http.Error(w, "race summary not found", http.StatusNotFound)
+					return
+				}
+				if errors.Is(err, races.ErrUnsafeID) {
+					http.Error(w, "invalid race id", http.StatusBadRequest)
+					return
+				}
+				logger.Error("failed to load race summary", "id", id, "error", err)
+				http.Error(w, "failed to load race summary", http.StatusInternalServerError)
 				return
 			}
-			if errors.Is(err, races.ErrUnsafeID) {
-				http.Error(w, "invalid race id", http.StatusBadRequest)
-				return
-			}
-			logger.Error("failed to load race summary", "id", id, "error", err)
-			http.Error(w, "failed to load race summary", http.StatusInternalServerError)
-			return
-		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(summary)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(summary)
+
+		case http.MethodDelete:
+			if err := raceStorage.Delete(id); err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					http.Error(w, "race summary not found", http.StatusNotFound)
+					return
+				}
+				if errors.Is(err, races.ErrUnsafeID) {
+					http.Error(w, "invalid race id", http.StatusBadRequest)
+					return
+				}
+				logger.Error("failed to delete race summary", "id", id, "error", err)
+				http.Error(w, "failed to delete race summary", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	// Debug: dump current pitwall state

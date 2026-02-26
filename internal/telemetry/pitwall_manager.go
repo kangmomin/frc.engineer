@@ -21,19 +21,19 @@ func sanitize(v float32) float32 {
 type PitwallManager struct {
 	mu sync.RWMutex
 
-	session      *packets.PacketSessionData
-	participants *packets.PacketParticipantsData
-	motion       *packets.PacketMotionData
-	carStatus    *packets.PacketCarStatusData
-	lapData      *packets.PacketLapData
-	telemetry    *packets.PacketCarTelemetryData
-	carDamage    *packets.PacketCarDamageData
-	carSetups    *packets.PacketCarSetupData
-	playerIndex       uint8
-	strategyMgr       *StrategyManager
-	trackStore        *tracks.TrackStore
-	recorder          *TrackRecorder
-	dynamicsAnalyzer  *DynamicsAnalyzer
+	session          *packets.PacketSessionData
+	participants     *packets.PacketParticipantsData
+	motion           *packets.PacketMotionData
+	carStatus        *packets.PacketCarStatusData
+	lapData          *packets.PacketLapData
+	telemetry        *packets.PacketCarTelemetryData
+	carDamage        *packets.PacketCarDamageData
+	carSetups        *packets.PacketCarSetupData
+	playerIndex      uint8
+	strategyMgr      *StrategyManager
+	trackStore       *tracks.TrackStore
+	recorder         *TrackRecorder
+	dynamicsAnalyzer *DynamicsAnalyzer
 }
 
 // NewPitwallManager creates a new PitwallManager
@@ -335,6 +335,11 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 
 			if pm.telemetry != nil {
 				ct := &pm.telemetry.CarTelemetryData[i]
+				d.Speed = ct.Speed
+				d.Throttle = sanitize(ct.Throttle)
+				d.Brake = sanitize(ct.Brake)
+				d.Gear = ct.Gear
+				d.Steering = sanitize(ct.Steer)
 				for w := range 4 {
 					g := g2d[w]
 					d.TireSurfaceTemp[w] = int(ct.TyresSurfaceTemperature[g])

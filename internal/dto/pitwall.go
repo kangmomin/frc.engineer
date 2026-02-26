@@ -61,23 +61,28 @@ type SessionInfo struct {
 
 // DriverInfo contains per-driver race data
 type DriverInfo struct {
-	Index         int     `json:"index"`
-	Name          string  `json:"name"`
-	TeamID        int     `json:"teamId"`
-	Position      int     `json:"position"`
-	CurrentLapNum int     `json:"currentLapNum"`
-	LastLapTime   float32 `json:"lastLapTime"`
-	BestLapTime   float32 `json:"bestLapTime"`
-	TireCompound  string  `json:"tireCompound"`
-	TireAge       int     `json:"tireAge"`
-	TireWear        [4]int `json:"tireWear"`
-	TireSurfaceTemp [4]int `json:"tireSurfaceTemp"`
-	TireInnerTemp   [4]int `json:"tireInnerTemp"`
-	BrakeTemp       [4]int `json:"brakeTemp"`
+	Index           int     `json:"index"`
+	Name            string  `json:"name"`
+	TeamID          int     `json:"teamId"`
+	Position        int     `json:"position"`
+	CurrentLapNum   int     `json:"currentLapNum"`
+	Speed           uint16  `json:"speed"`
+	Throttle        float32 `json:"throttle"`
+	Brake           float32 `json:"brake"`
+	Gear            int8    `json:"gear"`
+	Steering        float32 `json:"steering"`
+	LastLapTime     float32 `json:"lastLapTime"`
+	BestLapTime     float32 `json:"bestLapTime"`
+	TireCompound    string  `json:"tireCompound"`
+	TireAge         int     `json:"tireAge"`
+	TireWear        [4]int  `json:"tireWear"`
+	TireSurfaceTemp [4]int  `json:"tireSurfaceTemp"`
+	TireInnerTemp   [4]int  `json:"tireInnerTemp"`
+	BrakeTemp       [4]int  `json:"brakeTemp"`
 
 	// Car Controls
-	BrakeBias      int `json:"brakeBias"`
-	DiffOnThrottle int `json:"diffOnThrottle"`
+	BrakeBias       int `json:"brakeBias"`
+	DiffOnThrottle  int `json:"diffOnThrottle"`
 	DiffOffThrottle int `json:"diffOffThrottle"`
 
 	// Fuel & Energy
@@ -104,10 +109,10 @@ type DriverInfo struct {
 	Dynamics []DynamicsLapDTO `json:"dynamics,omitempty"`
 
 	// Pit
-	PitStatus    int     `json:"pitStatus"`
-	NumPitStops  int     `json:"numPitStops"`
-	LapDistance  float32 `json:"lapDistance"`
-	PitStopTimer float32 `json:"pitStopTimer"`
+	PitStatus         int     `json:"pitStatus"`
+	NumPitStops       int     `json:"numPitStops"`
+	LapDistance       float32 `json:"lapDistance"`
+	PitStopTimer      float32 `json:"pitStopTimer"`
 	DeltaToCarInFront int     `json:"deltaToCarInFront"`
 	DeltaToRaceLeader int     `json:"deltaToRaceLeader"`
 	PitLaneTime       int     `json:"pitLaneTime"`

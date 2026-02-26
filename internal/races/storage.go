@@ -21,6 +21,7 @@ type Storage interface {
 	Save(summary *RaceSummary) (string, error)
 	List() ([]RaceListItem, error)
 	Load(id string) (*RaceSummary, error)
+	Delete(id string) error
 }
 
 // FileStorage stores race summaries as JSON files.
@@ -118,6 +119,11 @@ func (s *FileStorage) List() ([]RaceListItem, error) {
 			continue
 		}
 
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
 		data, err := os.ReadFile(filepath.Join(s.baseDir, entry.Name()))
 		if err != nil {
 			continue
@@ -142,6 +148,7 @@ func (s *FileStorage) List() ([]RaceListItem, error) {
 			SessionType:     summary.Session.SessionType,
 			PlayerName:      summary.Player.Name,
 			FinalPosition:   summary.Player.FinalPosition,
+			FileSizeBytes:   info.Size(),
 			DataStorageMode: summary.DataStorageMode,
 			HasReplay:       frameCount > 0,
 			FrameCount:      frameCount,
@@ -177,6 +184,18 @@ func (s *FileStorage) Load(id string) (*RaceSummary, error) {
 	}
 	summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(summary.DataStorageMode)
 	return &summary, nil
+}
+
+// Delete removes a specific race summary by ID.
+func (s *FileStorage) Delete(id string) error {
+	if !isSafeID(id) {
+		return ErrUnsafeID
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return os.Remove(s.filePath(id))
 }
 
 func (s *FileStorage) filePath(id string) string {

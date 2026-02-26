@@ -105,8 +105,50 @@ func TestFileStorageListSortedNewestFirst(t *testing.T) {
 	if items[0].ID != newID || items[1].ID != oldID {
 		t.Fatalf("List() order = [%s, %s], want [%s, %s]", items[0].ID, items[1].ID, newID, oldID)
 	}
+	if items[0].FileSizeBytes <= 0 || items[1].FileSizeBytes <= 0 {
+		t.Fatalf("List() expected positive file sizes, got [%d, %d]", items[0].FileSizeBytes, items[1].FileSizeBytes)
+	}
 
 	if _, err := os.Stat(filepath.Join(dir, newID+".json")); err != nil {
 		t.Fatalf("saved file missing: %v", err)
+	}
+}
+
+func TestFileStorageDelete(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewFileStorage(dir, nil)
+	if err != nil {
+		t.Fatalf("NewFileStorage() error = %v", err)
+	}
+
+	id, err := store.Save(&RaceSummary{
+		ID:         "20260225_130000_losail_7",
+		SessionUID: 7,
+		Track:      TrackInfo{TrackName: "Losail"},
+		Session:    SessionSummary{SessionType: "Race"},
+		Player:     PlayerSummary{Name: "Driver", FinalPosition: 1},
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := store.Delete(id); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	if _, err := store.Load(id); !os.IsNotExist(err) {
+		t.Fatalf("Load() after delete error = %v, want not exist", err)
+	}
+}
+
+func TestFileStorageDeleteRejectsUnsafeID(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewFileStorage(dir, nil)
+	if err != nil {
+		t.Fatalf("NewFileStorage() error = %v", err)
+	}
+
+	if err := store.Delete("../escape"); err != ErrUnsafeID {
+		t.Fatalf("Delete() unsafe id error = %v, want %v", err, ErrUnsafeID)
 	}
 }

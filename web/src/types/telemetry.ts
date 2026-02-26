@@ -87,6 +87,7 @@ export interface RaceListItem {
   sessionType: string;
   playerName: string;
   finalPosition: number;
+  fileSizeBytes: number;
   dataStorageMode?: DataStorageMode;
   hasReplay?: boolean;
   frameCount?: number;
@@ -276,6 +277,11 @@ export interface DriverInfo {
   teamId: number;
   position: number;
   currentLapNum: number;
+  speed: number;
+  throttle: number;
+  brake: number;
+  gear: number;
+  steering: number;
   lastLapTime: number;
   bestLapTime: number;
   tireCompound: string;
