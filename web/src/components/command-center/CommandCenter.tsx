@@ -5,6 +5,7 @@ import { PaceAnalysisSection } from './sections/PaceAnalysisSection';
 import { BattleControlsSection } from './sections/BattleControlsSection';
 import { TyreEngineeringSection } from './sections/TyreEngineeringSection';
 import { StrategyHealthSection } from './sections/StrategyHealthSection';
+import { RaceResultModal } from './RaceResultModal';
 import styles from './CommandCenter.module.css';
 
 export function CommandCenter() {
@@ -34,6 +35,8 @@ export function CommandCenter() {
       <div className={`${styles.cell} ${styles.strategyHealth}`}>
         <StrategyHealthSection />
       </div>
+
+      <RaceResultModal />
 
       {/* Connection overlay when disconnected */}
       {connectionState !== 'connected' && !playbackActive && (

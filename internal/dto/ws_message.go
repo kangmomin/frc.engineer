@@ -8,6 +8,7 @@ const (
 	MessageTypePitwallState = "pitwallState" // Server → Client: Comprehensive pitwall state
 	MessageTypeRaceControl  = "raceControl"  // Server → Client: Race control notifications
 	MessageTypeBattleAlert  = "battleAlert"  // Server → Client: Battle prediction alert
+	MessageTypeRaceResult   = "raceResult"   // Server → Client: Race result summary
 )
 
 // BattleAlertDTO is sent when an overtake is predicted within a few laps

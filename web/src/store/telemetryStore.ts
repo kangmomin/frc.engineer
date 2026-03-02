@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PitwallState, ConnectionState, RaceControlNotification, BattleAlert } from '../types/telemetry';
+import type { PitwallState, ConnectionState, RaceControlNotification, BattleAlert, RaceSummary } from '../types/telemetry';
 
 interface TelemetryState {
   // Connection
@@ -25,6 +25,11 @@ interface TelemetryState {
   battleAlerts: BattleAlert[];
   addBattleAlert: (alert: BattleAlert) => void;
   setBattleAlerts: (alerts: BattleAlert[]) => void;
+
+  // Race result
+  raceResult: RaceSummary | null;
+  setRaceResult: (result: RaceSummary) => void;
+  clearRaceResult: () => void;
 
   // Actions
   clearNotifications: () => void;
@@ -65,6 +70,10 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
     }),
   setBattleAlerts: (alerts) =>
     set({ battleAlerts: alerts.slice(0, MAX_BATTLE_ALERTS) }),
+
+  raceResult: null,
+  setRaceResult: (result) => set({ raceResult: result }),
+  clearRaceResult: () => set({ raceResult: null }),
 
   clearNotifications: () =>
     set({

@@ -3,6 +3,7 @@ import type {
   PitwallState,
   RaceControlNotification,
   BattleAlert,
+  RaceSummary,
 } from '../types/telemetry';
 import { useTelemetryStore } from '../store/telemetryStore';
 
@@ -43,6 +44,7 @@ export function usePitwallWebSocket(
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
   const addRaceControlNotification = useTelemetryStore((state) => state.addRaceControlNotification);
   const addBattleAlert = useTelemetryStore((state) => state.addBattleAlert);
+  const setRaceResult = useTelemetryStore((state) => state.setRaceResult);
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -149,6 +151,10 @@ export function usePitwallWebSocket(
                 battleSeqRef.current++,
               ));
               break;
+
+            case 'raceResult':
+              setRaceResult(message.data as RaceSummary);
+              break;
           }
         } catch {
           // Ignore parse errors
@@ -159,7 +165,7 @@ export function usePitwallWebSocket(
         setConnectionState('error');
       }
     }
-  }, [opts.url, opts.reconnectInterval, opts.maxReconnectAttempts, clearReconnectTimeout, setConnectionState, setPitwallState, addRaceControlNotification, addBattleAlert]);
+  }, [opts.url, opts.reconnectInterval, opts.maxReconnectAttempts, clearReconnectTimeout, setConnectionState, setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult]);
 
   const reconnect = useCallback(() => {
     clearReconnectTimeout();

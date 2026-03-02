@@ -380,6 +380,39 @@
   overflow: hidden;
 }
 
+.telemetryWindowBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.telemetryWindowLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+
+.telemetryWindowBtn {
+  border: 1px solid var(--bg-panel-border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.telemetryWindowBtn:hover {
+  color: var(--text-primary);
+}
+
+.telemetryWindowBtnActive {
+  background: rgba(124, 232, 255, 0.15);
+  border-color: rgba(124, 232, 255, 0.4);
+  color: #7ce8ff;
+}
+
 .telemetryMetricsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

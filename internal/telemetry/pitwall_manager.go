@@ -418,20 +418,15 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 					DRSFault:       cd.DRSFault == 1,
 					ERSFault:       cd.ERSFault == 1,
 				}
-				// Also populate tire wear from damage packet
-				// F1 25 sends wear as 0.0-1.0 float; convert to 0-100 percent
+				// Also populate tire wear from damage packet (game sends 0-100% float)
 				for w := range 4 {
-					wear := float64(cd.TyresWear[g2d[w]])
+					wear := math.Round(float64(cd.TyresWear[g2d[w]]))
 					if wear < 0 {
 						wear = 0
-					} else if wear > 0 && wear <= 1.0 {
-						wear *= 100
+					} else if wear > 100 {
+						wear = 100
 					}
-					wearPct := int(math.Round(wear))
-					if wearPct > 100 {
-						wearPct = 100
-					}
-					d.TireWear[w] = wearPct
+					d.TireWear[w] = int(wear)
 				}
 			}
 		}

@@ -21,6 +21,8 @@ Thumbs.db
 
 # Large data files
 data/packets/
+data/races/
+data/races.zip
 
 # Binaries
 *.exe

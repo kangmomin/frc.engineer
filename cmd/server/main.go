@@ -148,7 +148,17 @@ func main() {
 			summary.Replay = convertReplayTimeline(processor.GetReplayTimeline(sessionUID))
 		}
 		_, err := raceStorage.Save(summary)
-		return err
+		if err != nil {
+			return err
+		}
+
+		// Broadcast result (without replay data) to connected clients
+		broadcast := *summary
+		broadcast.Replay = nil
+		if msg, err := json.Marshal(dto.WSResponse{Type: dto.MessageTypeRaceResult, Data: broadcast}); err == nil {
+			hub.Broadcast(msg)
+		}
+		return nil
 	})
 	processor.SetRaceSummaryRecording(savedCfg.RaceSummaryRecording)
 	processor.SetReplayRecording(storageMode == rtconfig.DataStorageModeSummary || storageMode == rtconfig.DataStorageModeAdvanced)

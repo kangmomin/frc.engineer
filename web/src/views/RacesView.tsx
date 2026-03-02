@@ -504,32 +504,41 @@ interface TelemetryMetricChartProps {
   primarySamples: ReplayTelemetrySample[];
   compareSamples: ReplayTelemetrySample[];
   currentTimeSec: number;
+  windowSec: number;
 }
 
-function TelemetryMetricChart({ metric, primarySamples, compareSamples, currentTimeSec }: TelemetryMetricChartProps) {
+function TelemetryMetricChart({ metric, primarySamples, compareSamples, currentTimeSec, windowSec }: TelemetryMetricChartProps) {
   const width = 720;
   const height = 190;
   const padX = 30;
   const padY = 18;
 
+  const xMin = Math.max(0, currentTimeSec - windowSec);
+  const xEnd = currentTimeSec;
+
+  const filterWindow = (samples: ReplayTelemetrySample[]) => {
+    const pts: { x: number; y: number }[] = [];
+    for (const s of samples) {
+      if (s.timeSec < xMin) continue;
+      if (s.timeSec > xEnd) break;
+      pts.push({ x: s.timeSec, y: s[metric.key] });
+    }
+    return pts;
+  };
+
   const primaryPoints = useMemo(
-    () => primarySamples.map((sample) => ({ x: sample.timeSec, y: sample[metric.key] })),
-    [primarySamples, metric.key],
+    () => filterWindow(primarySamples),
+    [primarySamples, metric.key, xMin, xEnd],
   );
   const comparePoints = useMemo(
-    () => compareSamples.map((sample) => ({ x: sample.timeSec, y: sample[metric.key] })),
-    [compareSamples, metric.key],
+    () => filterWindow(compareSamples),
+    [compareSamples, metric.key, xMin, xEnd],
   );
 
   const allPoints = useMemo(
     () => [...primaryPoints, ...comparePoints],
     [primaryPoints, comparePoints],
   );
-  const xMax = useMemo(() => {
-    const primaryMax = primaryPoints[primaryPoints.length - 1]?.x ?? 0;
-    const compareMax = comparePoints[comparePoints.length - 1]?.x ?? 0;
-    return Math.max(1, primaryMax, compareMax);
-  }, [primaryPoints, comparePoints]);
 
   const yMin = useMemo(() => {
     if (metric.min !== undefined) return metric.min;
@@ -549,7 +558,8 @@ function TelemetryMetricChart({ metric, primarySamples, compareSamples, currentT
     return { min: yMin, max: yMax };
   }, [yMax, yMin]);
 
-  const toX = (value: number) => padX + (value / xMax) * (width - padX * 2);
+  const xRange = Math.max(windowSec, 0.001);
+  const toX = (value: number) => padX + ((value - xMin) / xRange) * (width - padX * 2);
   const toY = (value: number) =>
     height - padY - ((value - normalizedY.min) / (normalizedY.max - normalizedY.min)) * (height - padY * 2);
 
@@ -564,7 +574,7 @@ function TelemetryMetricChart({ metric, primarySamples, compareSamples, currentT
   const comparePath = buildPath(comparePoints);
   const primaryCurrentValue = getSampleValueAtTime(primarySamples, metric.key, currentTimeSec);
   const compareCurrentValue = getSampleValueAtTime(compareSamples, metric.key, currentTimeSec);
-  const currentMarkerX = toX(Math.min(Math.max(currentTimeSec, 0), xMax));
+  const currentMarkerX = toX(clamp(currentTimeSec, xMin, xEnd));
 
   return (
     <div className={styles.telemetryMetricCard}>
@@ -643,6 +653,8 @@ function TelemetryMetricChart({ metric, primarySamples, compareSamples, currentT
   );
 }
 
+const TELEMETRY_WINDOW_OPTIONS = [3, 5, 10, 30, 60];
+
 interface TelemetryReplayPanelProps {
   primarySummary: RaceSummary;
   compareSummary: RaceSummary | null;
@@ -650,6 +662,7 @@ interface TelemetryReplayPanelProps {
 }
 
 function TelemetryReplayPanel({ primarySummary, compareSummary, currentTimeSec }: TelemetryReplayPanelProps) {
+  const [windowSec, setWindowSec] = useState(3);
   const primarySamples = useMemo(
     () => buildReplayTelemetrySamples(primarySummary),
     [primarySummary],
@@ -672,17 +685,33 @@ function TelemetryReplayPanel({ primarySummary, compareSummary, currentTimeSec }
       </div>
 
       {signalReady ? (
-        <div className={styles.telemetryMetricsGrid}>
-          {TELEMETRY_METRICS.map((metric) => (
-            <TelemetryMetricChart
-              key={metric.key}
-              metric={metric}
-              primarySamples={primarySamples}
-              compareSamples={compareSamples}
-              currentTimeSec={currentTimeSec}
-            />
-          ))}
-        </div>
+        <>
+          <div className={styles.telemetryWindowBar}>
+            <span className={styles.telemetryWindowLabel}>Window</span>
+            {TELEMETRY_WINDOW_OPTIONS.map((sec) => (
+              <button
+                key={sec}
+                type="button"
+                className={`${styles.telemetryWindowBtn} ${windowSec === sec ? styles.telemetryWindowBtnActive : ''}`}
+                onClick={() => setWindowSec(sec)}
+              >
+                {sec}s
+              </button>
+            ))}
+          </div>
+          <div className={styles.telemetryMetricsGrid}>
+            {TELEMETRY_METRICS.map((metric) => (
+              <TelemetryMetricChart
+                key={metric.key}
+                metric={metric}
+                primarySamples={primarySamples}
+                compareSamples={compareSamples}
+                currentTimeSec={currentTimeSec}
+                windowSec={windowSec}
+              />
+            ))}
+          </div>
+        </>
       ) : (
         <div className={styles.telemetryNoData}>
           This advanced replay file does not include telemetry channels. Save a new advanced race file.

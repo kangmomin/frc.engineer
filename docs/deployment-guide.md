@@ -178,6 +178,7 @@ gh release create v1.0.0 .\frc-engineer.exe `
 
 Recommended:
 
+- **릴리즈 노트는 한글로 작성한다.** 제목, 변경사항 요약, 커밋 해시 등 모든 코멘트를 한국어로 기재할 것.
 - Use `--notes-file` for reproducible releases.
 - Keep the note template consistent across versions (title + binary + source commit + deploy commit).
 - Verify release body after publish: headings, blank lines, and bullet list rendering.

@@ -7,13 +7,12 @@ export const TEAM_COLORS: Record<number, string> = {
   1: '#dc0000',   // Ferrari - Rosso Corsa
   2: '#0600ef',   // Red Bull Racing - Dark Blue
   3: '#005aff',   // Williams - Blue
-  4: '#ff8700',   // McLaren - Papaya Orange
+  4: '#006f62',   // Aston Martin - British Racing Green
   5: '#2b4562',   // Alpine - Blue/Pink
-  6: '#006f62',   // Aston Martin - British Racing Green
+  6: '#6692ff',   // RB (VCARB) - Blue
   7: '#ffffff',   // Haas - White/Red
-  8: '#ffffff',   // [Reserved]
+  8: '#ff8700',   // McLaren - Papaya Orange
   9: '#6692ff',   // Sauber (Stake F1) - Blue
-  10: '#2b4562',  // RB (VCARB) - Blue
   11: '#ffffff',  // [Reserved]
   255: '#888888', // Unknown/Safety Car
 };
@@ -34,12 +33,12 @@ export const TEAM_NAMES: Record<number, string> = {
   1: 'Ferrari',
   2: 'Red Bull Racing',
   3: 'Williams',
-  4: 'McLaren',
+  4: 'Aston Martin',
   5: 'Alpine',
-  6: 'Aston Martin',
+  6: 'RB',
   7: 'Haas',
+  8: 'McLaren',
   9: 'Sauber',
-  10: 'RB',
   255: 'Unknown',
 };
 

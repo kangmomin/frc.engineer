@@ -318,6 +318,12 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, 
   }>>(new Map());
   const rafId = useRef(0);
 
+  // Clear animated positions when track changes (live→replay or replay→replay)
+  // so cars snap to correct coordinates instead of interpolating from stale ones
+  useEffect(() => {
+    animPos.current.clear();
+  }, [trackMap]);
+
   // Update target positions when props change
   useEffect(() => {
     for (const p of positions) {
@@ -333,7 +339,7 @@ function TrackCanvas({ positions, drivers, trackMap, playerIndex, marshalZones, 
 
         // If the car teleported a huge distance (e.g. >300m), snap instantly instead of sliding
         const distSq = (p.x - state.x) ** 2 + (p.z - state.z) ** 2;
-        if (distSq > 100000) {
+        if (distSq > 10000) {
           state.x = p.x;
           state.z = p.z;
         }

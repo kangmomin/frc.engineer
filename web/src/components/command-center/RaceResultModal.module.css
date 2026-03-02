@@ -1,0 +1,260 @@
+/* Full-viewport modal overlay */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: var(--spacing-lg);
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-lg);
+  max-width: 900px;
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.header {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--bg-panel-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.headerInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trackName {
+  font-family: var(--font-racing);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+}
+
+.sessionType {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.dismissBtn {
+  border: 1px solid var(--bg-panel-border);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dismissBtn:hover {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+
+/* Player result card */
+.playerCard {
+  margin: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-md);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.positionBig {
+  font-family: var(--font-racing);
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+  min-width: 64px;
+  text-align: center;
+}
+
+.positionSuffix {
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+.playerDetails {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: var(--spacing-sm) var(--spacing-lg);
+  flex: 1;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statValue {
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Drivers table */
+.tableSection {
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+}
+
+.tableTitle {
+  margin: 0 0 var(--spacing-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tableWrap {
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+  max-height: 400px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary);
+  z-index: 1;
+}
+
+.table th {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.table td {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.row {
+  transition: background 150ms ease;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.playerRow {
+  background: rgba(0, 210, 255, 0.08);
+}
+
+.playerRow:hover {
+  background: rgba(0, 210, 255, 0.12);
+}
+
+.colPos {
+  width: 30px;
+  text-align: center;
+}
+
+.position {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.driverCell {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.driverName {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.teamName {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.3px;
+}
+
+.lapTime {
+  font-family: var(--font-racing);
+  font-size: 11px;
+}
+
+.tire {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .overlay {
+    padding: var(--spacing-sm);
+  }
+
+  .playerCard {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    margin: var(--spacing-sm);
+  }
+
+  .playerDetails {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tableSection {
+    padding: 0 var(--spacing-sm) var(--spacing-sm);
+  }
+}
