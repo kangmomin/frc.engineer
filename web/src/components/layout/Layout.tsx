@@ -1,16 +1,34 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { SettingsView } from '../../views/SettingsView';
 import { RacesView } from '../../views/RacesView';
+import { SetupAnalysisView } from '../../views/SetupAnalysisView';
 import { CommandCenter } from '../command-center/CommandCenter';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useTelemetryStore } from '../../store/telemetryStore';
+import { useAuth } from '../../context/AuthContext';
 import styles from './Layout.module.css';
 
-type ViewId = 'command' | 'settings' | 'races';
+const SETUP_TAB_PERMISSION = /^product\.[^.]+\.setup_tab$/;
+
+function hasSetupTabPermission(permissions: string[]): boolean {
+  return permissions.some(
+    (p) => p === '*' || SETUP_TAB_PERMISSION.test(p),
+  );
+}
+
+type ViewId = 'command' | 'settings' | 'races' | 'setup';
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<ViewId>('command');
+  const { user } = useAuth();
+  const canUseSetupTab = useMemo(() => hasSetupTabPermission(user?.permissions ?? []), [user?.permissions]);
+
+  useEffect(() => {
+    if (!canUseSetupTab && activeView === 'setup') {
+      setActiveView('command');
+    }
+  }, [canUseSetupTab, activeView]);
 
   // Connect WebSocket at the root layout level so it stays alive across views.
   usePitwallWebSocket();
@@ -34,7 +52,9 @@ export function Layout() {
     ? 'Command Center'
     : activeView === 'settings'
       ? 'Settings'
-      : 'Races';
+      : activeView === 'setup'
+        ? 'Setup Analysis'
+        : 'Races';
 
   return (
     <div className={styles.layout}>
@@ -66,6 +86,17 @@ export function Layout() {
               <span className={styles.navLabel}>Settings</span>
             </button>
           </li>
+          {canUseSetupTab && (
+            <li className={styles.navItem}>
+              <button
+                className={`${styles.navButton} ${activeView === 'setup' ? styles.navActive : ''}`}
+                onClick={() => handleNavClick('setup')}
+              >
+                <span className={styles.navIcon}>SA</span>
+                <span className={styles.navLabel}>Setup Analysis</span>
+              </button>
+            </li>
+          )}
           <li className={styles.navItem}>
             <button
               className={`${styles.navButton} ${activeView === 'races' ? styles.navActive : ''}`}
@@ -104,6 +135,11 @@ export function Layout() {
           {activeView === 'settings' && (
             <div className={styles.panel}>
               <SettingsView />
+            </div>
+          )}
+          {activeView === 'setup' && canUseSetupTab && (
+            <div className={styles.panel}>
+              <SetupAnalysisView />
             </div>
           )}
           {activeView === 'races' && (

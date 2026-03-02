@@ -108,6 +108,10 @@ type DriverInfo struct {
 	// Vehicle Dynamics
 	Dynamics []DynamicsLapDTO `json:"dynamics,omitempty"`
 
+	// Setup Analysis (player car only)
+	SetupAnalysis []SetupLapAnalysisDTO `json:"setupAnalysis,omitempty"`
+	Setup         *CarSetupDTO          `json:"setup,omitempty"`
+
 	// Pit
 	PitStatus         int     `json:"pitStatus"`
 	NumPitStops       int     `json:"numPitStops"`
@@ -145,6 +149,41 @@ type DynamicsLapDTO struct {
 	OversteerPct  float64 `json:"oversteerPct"`
 	LockupCount   int     `json:"lockupCount"`
 	SpinCount     int     `json:"spinCount"`
+}
+
+// SetupLapAnalysisDTO contains per-lap setup analysis metrics
+type SetupLapAnalysisDTO struct {
+	LapNum           int        `json:"lapNum"`
+	AvgStraightSpeed float64    `json:"avgStraightSpeed"`
+	MaxStraightSpeed float64    `json:"maxStraightSpeed"`
+	AvgCorneringG    float64    `json:"avgCorneringG"`
+	WheelspinPct     float64    `json:"wheelspinPct"`
+	TempBalance      [4]float64 `json:"tempBalance"`
+	BottomingPct     float64    `json:"bottomingPct"`
+	VertGSpikeCount  int        `json:"vertGSpikeCount"`
+	FrontLockupPct   float64    `json:"frontLockupPct"`
+	RearLockupPct    float64    `json:"rearLockupPct"`
+	AvgTyrePressure  [4]float64 `json:"avgTyrePressure"`
+	AvgTyreInnerTemp [4]float64 `json:"avgTyreInnerTemp"`
+}
+
+// CarSetupDTO exposes the current car setup values to the frontend
+type CarSetupDTO struct {
+	FrontWing        int        `json:"frontWing"`
+	RearWing         int        `json:"rearWing"`
+	FrontCamber      float32    `json:"frontCamber"`
+	RearCamber       float32    `json:"rearCamber"`
+	FrontToe         float32    `json:"frontToe"`
+	RearToe          float32    `json:"rearToe"`
+	FrontSuspension  int        `json:"frontSuspension"`
+	RearSuspension   int        `json:"rearSuspension"`
+	FrontAntiRollBar int        `json:"frontAntiRollBar"`
+	RearAntiRollBar  int        `json:"rearAntiRollBar"`
+	FrontRideHeight  int        `json:"frontRideHeight"`
+	RearRideHeight   int        `json:"rearRideHeight"`
+	BrakePressure    int        `json:"brakePressure"`
+	EngineBraking    int        `json:"engineBraking"`
+	TyrePressures    [4]float32 `json:"tyrePressures"`
 }
 
 // CarPosition contains GPS position for track map rendering

@@ -52,15 +52,17 @@ type RaceStint struct {
 
 // PlayerSummary captures player-centric race result metrics.
 type PlayerSummary struct {
-	DriverIndex   int         `json:"driverIndex"`
-	Name          string      `json:"name"`
-	TeamID        int         `json:"teamId"`
-	FinalPosition int         `json:"finalPosition"`
-	CompletedLaps int         `json:"completedLaps"`
-	BestLapMS     uint32      `json:"bestLapMs"`
-	LastLapMS     uint32      `json:"lastLapMs"`
-	PitStops      int         `json:"pitStops"`
-	Stints        []RaceStint `json:"stints,omitempty"`
+	DriverIndex   int                       `json:"driverIndex"`
+	Name          string                    `json:"name"`
+	TeamID        int                       `json:"teamId"`
+	FinalPosition int                       `json:"finalPosition"`
+	CompletedLaps int                       `json:"completedLaps"`
+	BestLapMS     uint32                    `json:"bestLapMs"`
+	LastLapMS     uint32                    `json:"lastLapMs"`
+	PitStops      int                       `json:"pitStops"`
+	Stints        []RaceStint               `json:"stints,omitempty"`
+	SetupAnalysis []dto.SetupLapAnalysisDTO `json:"setupAnalysis,omitempty"`
+	Setup         *dto.CarSetupDTO          `json:"setup,omitempty"`
 }
 
 // DriverSummary captures lightweight result metrics for each driver.
@@ -97,6 +99,7 @@ type ReplayFrame struct {
 type ReplayTimeline struct {
 	FrameIntervalMS int              `json:"frameIntervalMs"`
 	TrackMap        *dto.TrackMapDTO `json:"trackMap,omitempty"`
+	Session         *dto.SessionInfo `json:"session,omitempty"`
 	Frames          []ReplayFrame    `json:"frames"`
 }
 
@@ -191,6 +194,13 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 				for i, s := range p.StintHistory {
 					out.Player.Stints[i] = RaceStint{Compound: s.Compound, Laps: s.Laps}
 				}
+			}
+			if len(p.SetupAnalysis) > 0 {
+				out.Player.SetupAnalysis = append([]dto.SetupLapAnalysisDTO(nil), p.SetupAnalysis...)
+			}
+			if p.Setup != nil {
+				setupCopy := *p.Setup
+				out.Player.Setup = &setupCopy
 			}
 		}
 	}

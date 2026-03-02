@@ -9,8 +9,14 @@ import type {
   DriverInfo,
   RaceControlNotification,
   RaceListItem,
+  SessionInfo,
   RaceSummary,
+  SetupLapAnalysis,
+  CarSetup,
 } from '../types/telemetry';
+import { SetupCard } from '../components/setup-analysis/SetupCard';
+import type { Severity } from '../components/setup-analysis/SetupCard';
+import { RecommendationRow } from '../components/setup-analysis/shared/RecommendationRow';
 import styles from './RacesView.module.css';
 
 function formatLap(ms: number): string {
@@ -79,6 +85,272 @@ function normalizeBattleAlertList(list: BattleAlert[] | undefined): BattleAlert[
   });
 }
 
+function mergeReplaySession(
+  frameSession: SessionInfo | null | undefined,
+  replaySession: SessionInfo | undefined,
+): SessionInfo | null {
+  if (!frameSession && !replaySession) return null;
+  if (!frameSession && replaySession) return replaySession;
+  if (!frameSession) return null;
+  if (!replaySession) return frameSession;
+  return {
+    ...replaySession,
+    ...frameSession,
+    marshalZones: frameSession.marshalZones?.length
+      ? frameSession.marshalZones
+      : replaySession.marshalZones,
+    weatherForecast: frameSession.weatherForecast?.length
+      ? frameSession.weatherForecast
+      : replaySession.weatherForecast,
+  };
+}
+
+const RACE_DETAIL_FETCH_RETRIES = 2;
+const RACE_DETAIL_RETRY_BASE_DELAY_MS = 500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function isRetryableDetailError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes('unexpected end of json input') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('socket hang up') ||
+    msg.includes('response body was truncated')
+  );
+}
+
+function parseJsonInWorker<T>(raw: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const source = `
+      self.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          self.postMessage({ ok: true, parsed });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          self.postMessage({ ok: false, message });
+        }
+      };
+    `;
+
+    const blob = new Blob([source], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const worker = new Worker(url);
+
+    const cleanup = () => {
+      worker.terminate();
+      URL.revokeObjectURL(url);
+    };
+
+    worker.onmessage = (event) => {
+      cleanup();
+      if (event.data?.ok) {
+        resolve(event.data.parsed as T);
+        return;
+      }
+      reject(new Error(event.data?.message ?? 'failed to parse JSON'));
+    };
+
+    worker.onerror = () => {
+      cleanup();
+      reject(new Error('worker parse failed'));
+    };
+
+    worker.postMessage(raw);
+  });
+}
+
+async function fetchRaceSummary(url: string, label: string): Promise<RaceSummary> {
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`failed to load ${label} (${res.status})`);
+  }
+
+  const raw = await res.text();
+  if (!raw) {
+    throw new Error('response body was truncated');
+  }
+
+  return parseJsonInWorker<RaceSummary>(raw);
+}
+
+async function fetchRaceSummaryWithRetry(url: string, label: string): Promise<RaceSummary> {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= RACE_DETAIL_FETCH_RETRIES; attempt++) {
+    try {
+      return await fetchRaceSummary(url, label);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableDetailError(error) || attempt === RACE_DETAIL_FETCH_RETRIES) {
+        break;
+      }
+      const backoff = RACE_DETAIL_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      await sleep(backoff);
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error(`failed to load ${label}`);
+}
+
+function buildReplaySummaryFromStream(
+  id: string,
+  raceMeta: RaceListItem,
+  streamMeta: ReplayStreamMetaRecord,
+  frames: ReplayFrame[],
+): RaceSummary {
+  const session = streamMeta.session;
+  return {
+    id,
+    savedAtLocal: raceMeta.savedAtLocal,
+    sessionUID: 0,
+    dataStorageMode: raceMeta.dataStorageMode ?? 'summary',
+    track: {
+      trackId: session?.trackId ?? -1,
+      trackName: session?.trackName ?? raceMeta.trackName ?? '',
+    },
+    session: {
+      sessionType: session?.sessionType ?? raceMeta.sessionType ?? '',
+      totalLaps: session?.totalLaps ?? 0,
+      safetyCar: session?.safetyCar ?? '',
+      weather: session?.weather ?? '',
+      airTemp: session?.airTemp ?? 0,
+      trackTemp: session?.trackTemp ?? 0,
+    },
+    player: {
+      driverIndex: -1,
+      name: raceMeta.playerName ?? '',
+      teamId: -1,
+      finalPosition: raceMeta.finalPosition ?? 0,
+      completedLaps: 0,
+      bestLapMs: 0,
+      lastLapMs: 0,
+      pitStops: 0,
+    },
+    drivers: [],
+    highlights: {
+      notifications: {
+        penalty: 0,
+        warning: 0,
+        info: 0,
+      },
+    },
+    replay: {
+      frameIntervalMs: streamMeta.frameIntervalMs > 0 ? streamMeta.frameIntervalMs : 250,
+      trackMap: streamMeta.trackMap,
+      session: streamMeta.session,
+      frames,
+    },
+  };
+}
+
+function parseReplayStreamLine(line: string): ReplayStreamRecord {
+  const parsed = JSON.parse(line) as ReplayStreamRecord;
+  if (!parsed || typeof parsed !== 'object' || !('type' in parsed)) {
+    throw new Error('invalid replay stream payload');
+  }
+  return parsed;
+}
+
+async function fetchReplaySummaryFromStream(id: string, raceMeta: RaceListItem): Promise<RaceSummary> {
+  const res = await fetch(`/api/replay/${encodeURIComponent(id)}`, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`failed to load replay stream (${res.status})`);
+  }
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.includes('application/x-ndjson')) {
+    throw new Error('replay stream endpoint unavailable (restart backend)');
+  }
+  if (!res.body) {
+    throw new Error('replay stream body unavailable');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let meta: ReplayStreamMetaRecord | null = null;
+  const frames: ReplayFrame[] = [];
+
+  const consumeLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    const record = parseReplayStreamLine(trimmed);
+    if (record.type === 'meta') {
+      meta = record;
+      return;
+    }
+    if (record.type === 'frame') {
+      frames.push(record.frame);
+      return;
+    }
+    if (record.type === 'error') {
+      throw new Error(record.message || 'replay stream failed');
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIdx = buffer.indexOf('\n');
+    while (newlineIdx >= 0) {
+      const line = buffer.slice(0, newlineIdx);
+      buffer = buffer.slice(newlineIdx + 1);
+      consumeLine(line);
+      newlineIdx = buffer.indexOf('\n');
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) {
+    consumeLine(buffer);
+  }
+
+  if (!meta) {
+    throw new Error('missing replay stream metadata');
+  }
+
+  return buildReplaySummaryFromStream(id, raceMeta, meta, frames);
+}
+
+async function fetchReplaySummaryFromStreamWithRetry(
+  id: string,
+  raceMeta: RaceListItem,
+  label: string,
+): Promise<RaceSummary> {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= RACE_DETAIL_FETCH_RETRIES; attempt++) {
+    try {
+      return await fetchReplaySummaryFromStream(id, raceMeta);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableDetailError(error) || attempt === RACE_DETAIL_FETCH_RETRIES) {
+        break;
+      }
+      const backoff = RACE_DETAIL_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+      await sleep(backoff);
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw new Error(lastError.message || `failed to load ${label}`);
+  }
+  throw new Error(`failed to load ${label}`);
+}
+
 const MAX_ERS_ENERGY = 4_000_000;
 const PRIMARY_SERIES_COLOR = '#00d2ff';
 const COMPARE_SERIES_COLOR = '#ff9f43';
@@ -86,6 +358,28 @@ const COMPARE_SERIES_COLOR = '#ff9f43';
 type ReplayTab = 'pitwall' | 'telemetry';
 
 type ReplayFrame = NonNullable<RaceSummary['replay']>['frames'][number];
+
+interface ReplayStreamMetaRecord {
+  type: 'meta';
+  frameIntervalMs: number;
+  trackMap?: NonNullable<RaceSummary['replay']>['trackMap'];
+  session?: SessionInfo;
+}
+
+interface ReplayStreamFrameRecord {
+  type: 'frame';
+  frame: ReplayFrame;
+}
+
+interface ReplayStreamErrorRecord {
+  type: 'error';
+  message?: string;
+}
+
+type ReplayStreamRecord =
+  | ReplayStreamMetaRecord
+  | ReplayStreamFrameRecord
+  | ReplayStreamErrorRecord;
 
 interface ReplayTelemetrySample {
   timeSec: number;
@@ -398,6 +692,62 @@ function TelemetryReplayPanel({ primarySummary, compareSummary, currentTimeSec }
   );
 }
 
+function SavedSetupAnalysisSection({ laps }: { laps: SetupLapAnalysis[]; setup?: CarSetup }) {
+  const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'];
+  const latest = laps[laps.length - 1];
+
+  const getAeroSeverity = (): Severity => 'green';
+  const getTransSeverity = (): Severity => (latest && latest.wheelspinPct > 15 ? 'yellow' : 'green');
+  const getSuspSeverity = (): Severity => (latest && latest.bottomingPct > 10 ? 'yellow' : 'green');
+  const getBrakeSeverity = (): Severity => {
+    if (!latest) return 'green';
+    if (latest.frontLockupPct > 20 || latest.rearLockupPct > 20) return 'red';
+    if (latest.frontLockupPct > 10 || latest.rearLockupPct > 10) return 'yellow';
+    return 'green';
+  };
+  const getTyreSeverity = (): Severity => {
+    if (!latest) return 'green';
+    return latest.avgTyreInnerTemp.some((t) => t > 105) ? 'red' : latest.avgTyreInnerTemp.some((t) => t > 100) ? 'yellow' : 'green';
+  };
+
+  return (
+    <div className={styles.tableWrap}>
+      <h4 className={styles.tableTitle}>Setup Analysis</h4>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 4px' }}>
+        <SetupCard title="Aerodynamics" severity={getAeroSeverity()} readOnly liveStrip={null}
+          table={<table><thead><tr><th>Lap</th><th>Max Speed</th><th>Avg G</th></tr></thead><tbody>
+            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.maxStraightSpeed.toFixed(0)}</td><td>{l.avgCorneringG.toFixed(2)}</td></tr>)}
+          </tbody></table>}
+        />
+        <SetupCard title="Transmission" severity={getTransSeverity()} readOnly liveStrip={null}
+          table={<table><thead><tr><th>Lap</th><th>Wheelspin %</th></tr></thead><tbody>
+            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.wheelspinPct.toFixed(1)}</td></tr>)}
+          </tbody></table>}
+          recommendation={latest && latest.wheelspinPct > 15 ? <RecommendationRow severity="yellow" text="Wheelspin detected — lower on-throttle differential" /> : undefined}
+        />
+        <SetupCard title="Suspension" severity={getSuspSeverity()} readOnly liveStrip={null}
+          table={<table><thead><tr><th>Lap</th><th>Bottoming %</th><th>G Spikes</th></tr></thead><tbody>
+            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.bottomingPct.toFixed(1)}</td><td>{l.vertGSpikeCount}</td></tr>)}
+          </tbody></table>}
+          recommendation={latest && latest.bottomingPct > 10 ? <RecommendationRow severity="yellow" text="Bottoming detected — raise ride height" /> : undefined}
+        />
+        <SetupCard title="Brakes" severity={getBrakeSeverity()} readOnly liveStrip={null}
+          table={<table><thead><tr><th>Lap</th><th>F Lockup %</th><th>R Lockup %</th></tr></thead><tbody>
+            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.frontLockupPct.toFixed(1)}</td><td>{l.rearLockupPct.toFixed(1)}</td></tr>)}
+          </tbody></table>}
+          recommendation={latest && latest.frontLockupPct > latest.rearLockupPct && latest.frontLockupPct > 10 ? <RecommendationRow severity="yellow" text="Front locking more — move bias rearward" /> : undefined}
+        />
+        <SetupCard title="Tyres" severity={getTyreSeverity()} readOnly liveStrip={null}
+          table={<table><thead><tr><th>Lap</th>{WHEEL_LABELS.map((w) => <th key={`p${w}`}>{w} PSI</th>)}{WHEEL_LABELS.map((w) => <th key={`t${w}`}>{w} °C</th>)}</tr></thead><tbody>
+            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td>{l.avgTyrePressure.map((p, i) => <td key={`p${i}`}>{p.toFixed(1)}</td>)}{l.avgTyreInnerTemp.map((t, i) => <td key={`t${i}`}>{t.toFixed(0)}</td>)}</tr>)}
+          </tbody></table>}
+          recommendation={latest && latest.avgTyreInnerTemp.some((t) => t > 100) ? <RecommendationRow severity="yellow" text="Inner temps high — reduce tyre pressure" /> : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function RacesView() {
   const [races, setRaces] = useState<RaceListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -419,6 +769,10 @@ export function RacesView() {
   const setPlaybackActive = useTelemetryStore((state) => state.setPlaybackActive);
   const applyReplayFrame = useTelemetryStore((state) => state.applyReplayFrame);
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
+  const selectedRaceMeta = useMemo(
+    () => races.find((race) => race.id === selectedId) ?? null,
+    [races, selectedId],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -465,11 +819,11 @@ export function RacesView() {
     setCompareDetail(null);
     setCompareError(null);
 
-    fetch(`/api/races/${encodeURIComponent(selectedId)}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`failed to load race detail (${res.status})`);
-        return res.json();
-      })
+    const loadDetailPromise = selectedRaceMeta?.hasReplay
+      ? fetchReplaySummaryFromStreamWithRetry(selectedId, selectedRaceMeta, 'race replay')
+      : fetchRaceSummaryWithRetry(`/api/races/${encodeURIComponent(selectedId)}`, 'race detail');
+
+    loadDetailPromise
       .then((data: RaceSummary) => {
         if (!mounted) return;
         setDetail(data);
@@ -485,10 +839,11 @@ export function RacesView() {
     return () => {
       mounted = false;
     };
-  }, [selectedId]);
+  }, [selectedId, selectedRaceMeta]);
 
   const replayFrames = useMemo(() => detail?.replay?.frames ?? [], [detail?.replay?.frames]);
   const replayTrackMap = detail?.replay?.trackMap;
+  const replaySession = detail?.replay?.session;
   const hasReplay = replayFrames.length > 0;
   const isAdvancedReplay = hasReplay && detail?.dataStorageMode === 'advanced';
 
@@ -515,17 +870,18 @@ export function RacesView() {
     if (!hasReplay) return;
     const frame = replayFrames[frameIndex];
     if (!frame?.pitwall) return;
-    const mergedPitwall =
-      replayTrackMap && !frame.pitwall.trackMap
-        ? { ...frame.pitwall, trackMap: replayTrackMap }
-        : frame.pitwall;
+    const mergedPitwall = {
+      ...frame.pitwall,
+      trackMap: frame.pitwall.trackMap ?? replayTrackMap,
+      session: mergeReplaySession(frame.pitwall.session, replaySession),
+    };
 
     applyReplayFrame({
       pitwall: mergedPitwall,
       raceControl: normalizeRaceControlList(frame.raceControl),
       battleAlerts: normalizeBattleAlertList(frame.battleAlerts),
     });
-  }, [applyReplayFrame, frameIndex, hasReplay, replayFrames, replayTrackMap]);
+  }, [applyReplayFrame, frameIndex, hasReplay, replayFrames, replaySession, replayTrackMap]);
 
   useEffect(() => {
     if (!playing || !hasReplay || replayFrames.length <= 1) return;
@@ -587,11 +943,11 @@ export function RacesView() {
     setLoadingCompare(true);
     setCompareError(null);
 
-    fetch(`/api/races/${encodeURIComponent(compareRaceId)}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`failed to load compare race (${res.status})`);
-        return res.json();
-      })
+    const loadComparePromise = selectedCompareMeta
+      ? fetchReplaySummaryFromStreamWithRetry(compareRaceId, selectedCompareMeta, 'compare replay')
+      : fetchRaceSummaryWithRetry(`/api/races/${encodeURIComponent(compareRaceId)}`, 'compare race');
+
+    loadComparePromise
       .then((data: RaceSummary) => {
         if (!mounted) return;
         if (!data.replay || (data.replay.frames?.length ?? 0) === 0) {
@@ -611,7 +967,7 @@ export function RacesView() {
     return () => {
       mounted = false;
     };
-  }, [compareRaceId]);
+  }, [compareRaceId, selectedCompareMeta]);
 
   const handleDeleteRace = async (raceId: string) => {
     if (deletingId) return;
@@ -933,6 +1289,10 @@ export function RacesView() {
                 </table>
               </div>
             </div>
+
+            {player.setupAnalysis && player.setupAnalysis.length > 0 && (
+              <SavedSetupAnalysisSection laps={player.setupAnalysis} setup={player.setup} />
+            )}
           </div>
         )}
       </section>

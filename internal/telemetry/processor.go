@@ -24,23 +24,24 @@ type RaceSummaryCounts struct {
 
 // ReplayFrame is one timeline snapshot for dashboard replay.
 type ReplayFrame struct {
-	Timestamp   int64                       `json:"timestamp"`
-	Pitwall     *dto.PitwallState           `json:"pitwall"`
-	RaceControl []dto.RaceControlNotification `json:"raceControl,omitempty"`
-	BattleAlerts []dto.BattleAlertDTO       `json:"battleAlerts,omitempty"`
+	Timestamp    int64                         `json:"timestamp"`
+	Pitwall      *dto.PitwallState             `json:"pitwall"`
+	RaceControl  []dto.RaceControlNotification `json:"raceControl,omitempty"`
+	BattleAlerts []dto.BattleAlertDTO          `json:"battleAlerts,omitempty"`
 }
 
 // ReplayTimeline is a complete replay payload for one session.
 type ReplayTimeline struct {
-	FrameIntervalMS int          `json:"frameIntervalMs"`
+	FrameIntervalMS int              `json:"frameIntervalMs"`
 	TrackMap        *dto.TrackMapDTO `json:"trackMap,omitempty"`
-	Frames          []ReplayFrame `json:"frames"`
+	Session         *dto.SessionInfo `json:"session,omitempty"`
+	Frames          []ReplayFrame    `json:"frames"`
 }
 
 const (
-	maxReplayRaceControl = 50
-	maxReplayBattleAlert = 10
-	replayFrameIntervalMS = 250
+	maxReplayRaceControl  = 50
+	maxReplayBattleAlert  = 10
+	replayFrameIntervalMS = 500
 )
 
 // RaceSummarySaveCallback is invoked once per session on race-end events.
@@ -82,6 +83,8 @@ type Processor struct {
 	replayRaceControl []dto.RaceControlNotification
 	replayBattleAlert []dto.BattleAlertDTO
 	replayTrackMap    *dto.TrackMapDTO
+	replaySession     *dto.SessionInfo
+	replayLastFrameTS int64
 }
 
 // NewProcessor creates a new telemetry processor
@@ -137,6 +140,8 @@ func (p *Processor) SetReplayRecording(enabled bool) {
 		p.replayRaceControl = nil
 		p.replayBattleAlert = nil
 		p.replayTrackMap = nil
+		p.replaySession = nil
+		p.replayLastFrameTS = 0
 	}
 }
 
@@ -164,6 +169,7 @@ func (p *Processor) GetReplayTimeline(sessionUID uint64) *ReplayTimeline {
 	return &ReplayTimeline{
 		FrameIntervalMS: replayFrameIntervalMS,
 		TrackMap:        p.replayTrackMap,
+		Session:         p.replaySession,
 		Frames:          frames,
 	}
 }
@@ -235,6 +241,9 @@ func (p *Processor) processPacket(data []byte) {
 	}
 	if parsed.CarSetups != nil {
 		p.pitwallManager.UpdateCarSetups(parsed.CarSetups)
+	}
+	if parsed.MotionEx != nil {
+		p.pitwallManager.UpdateMotionEx(parsed.MotionEx)
 	}
 
 	p.mu.Lock()
@@ -531,6 +540,8 @@ func (p *Processor) observeReplaySession(sessionUID uint64) {
 		p.replayRaceControl = nil
 		p.replayBattleAlert = nil
 		p.replayTrackMap = nil
+		p.replaySession = nil
+		p.replayLastFrameTS = 0
 	}
 }
 
@@ -548,13 +559,19 @@ func (p *Processor) recordReplayFrame(sessionUID uint64, ts int64, pitwallState 
 	if p.replayTrackMap == nil && pitwallState.TrackMap != nil {
 		p.replayTrackMap = pitwallState.TrackMap
 	}
+	if p.replaySession == nil && pitwallState.Session != nil {
+		p.replaySession = copySessionInfo(pitwallState.Session)
+	}
+	if p.replayLastFrameTS != 0 && ts-p.replayLastFrameTS < int64(replayFrameIntervalMS) {
+		return
+	}
+	p.replayLastFrameTS = ts
 
-	pitwallCopy := *pitwallState
-	pitwallCopy.TrackMap = nil
+	pitwallCopy := copyPitwallForReplay(pitwallState)
 
 	frame := ReplayFrame{
 		Timestamp: ts,
-		Pitwall:   &pitwallCopy,
+		Pitwall:   pitwallCopy,
 	}
 	if len(p.replayRaceControl) > 0 {
 		frame.RaceControl = append([]dto.RaceControlNotification(nil), p.replayRaceControl...)
@@ -638,4 +655,79 @@ func (p *Processor) trySaveRaceSummary(sessionUID uint64, trigger string) {
 	}
 
 	p.logger.Info("race summary saved", "sessionUID", sessionUID, "trigger", trigger)
+}
+
+func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {
+	if src == nil {
+		return nil
+	}
+
+	out := &dto.PitwallState{
+		PlayerIndex: src.PlayerIndex,
+		TrackMap:    nil,
+	}
+
+	if src.Session != nil {
+		out.Session = &dto.SessionInfo{
+			Weather:     src.Session.Weather,
+			TrackTemp:   src.Session.TrackTemp,
+			AirTemp:     src.Session.AirTemp,
+			SafetyCar:   src.Session.SafetyCar,
+			SessionType: src.Session.SessionType,
+			TotalLaps:   src.Session.TotalLaps,
+			TrackID:     src.Session.TrackID,
+			TrackName:   src.Session.TrackName,
+			TrackLength: src.Session.TrackLength,
+		}
+	}
+
+	if len(src.Positions) > 0 {
+		out.Positions = append([]dto.CarPosition(nil), src.Positions...)
+	}
+
+	if len(src.Drivers) > 0 {
+		out.Drivers = make([]dto.DriverInfo, len(src.Drivers))
+		for i := range src.Drivers {
+			driver := src.Drivers[i]
+			// Omit per-lap analysis from replay frames (large and repeated).
+			driver.Dynamics = nil
+			driver.SetupAnalysis = nil
+			driver.Setup = nil
+			if len(driver.StintHistory) > 0 {
+				driver.StintHistory = append([]dto.StintInfoDTO(nil), driver.StintHistory...)
+			}
+			if driver.Damage != nil {
+				damageCopy := *driver.Damage
+				driver.Damage = &damageCopy
+			}
+			out.Drivers[i] = driver
+		}
+	}
+
+	return out
+}
+
+func copySessionInfo(src *dto.SessionInfo) *dto.SessionInfo {
+	if src == nil {
+		return nil
+	}
+
+	out := &dto.SessionInfo{
+		Weather:     src.Weather,
+		TrackTemp:   src.TrackTemp,
+		AirTemp:     src.AirTemp,
+		SafetyCar:   src.SafetyCar,
+		SessionType: src.SessionType,
+		TotalLaps:   src.TotalLaps,
+		TrackID:     src.TrackID,
+		TrackName:   src.TrackName,
+		TrackLength: src.TrackLength,
+	}
+	if len(src.MarshalZones) > 0 {
+		out.MarshalZones = append([]dto.MarshalZoneDTO(nil), src.MarshalZones...)
+	}
+	if len(src.WeatherForecast) > 0 {
+		out.WeatherForecast = append([]dto.WeatherForecastDTO(nil), src.WeatherForecast...)
+	}
+	return out
 }

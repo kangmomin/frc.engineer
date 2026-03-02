@@ -38,14 +38,12 @@ export function usePitwallWebSocket(
 ): UsePitwallWebSocketReturn {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
-  // Pull setters from Zustand store
-  const {
-    setConnectionState,
-    setPitwallState,
-    addRaceControlNotification,
-    addBattleAlert,
-    clearNotifications,
-  } = useTelemetryStore();
+  // Subscribe only to action refs so telemetry state updates do not re-render this hook owner.
+  const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
+  const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
+  const addRaceControlNotification = useTelemetryStore((state) => state.addRaceControlNotification);
+  const addBattleAlert = useTelemetryStore((state) => state.addBattleAlert);
+  const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);

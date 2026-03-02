@@ -108,6 +108,8 @@ export interface RacePlayerSummary {
   lastLapMs: number;
   pitStops: number;
   stints?: RaceStint[];
+  setupAnalysis?: SetupLapAnalysis[];
+  setup?: CarSetup;
 }
 
 export interface RaceDriverSummary {
@@ -155,6 +157,7 @@ export interface RaceSummary {
   replay?: {
     frameIntervalMs: number;
     trackMap?: TrackMapData;
+    session?: SessionInfo;
     frames: {
       timestamp: number;
       pitwall: PitwallState;
@@ -319,6 +322,10 @@ export interface DriverInfo {
   // Vehicle Dynamics
   dynamics?: DynamicsLap[];
 
+  // Setup Analysis
+  setupAnalysis?: SetupLapAnalysis[];
+  setup?: CarSetup;
+
   // Pit
   pitStatus: number;
   numPitStops: number;
@@ -353,6 +360,39 @@ export interface DynamicsLap {
   oversteerPct: number;
   lockupCount: number;
   spinCount: number;
+}
+
+export interface CarSetup {
+  frontWing: number;
+  rearWing: number;
+  frontCamber: number;
+  rearCamber: number;
+  frontToe: number;
+  rearToe: number;
+  frontSuspension: number;
+  rearSuspension: number;
+  frontAntiRollBar: number;
+  rearAntiRollBar: number;
+  frontRideHeight: number;
+  rearRideHeight: number;
+  brakePressure: number;
+  engineBraking: number;
+  tyrePressures: number[];
+}
+
+export interface SetupLapAnalysis {
+  lapNum: number;
+  avgStraightSpeed: number;
+  maxStraightSpeed: number;
+  avgCorneringG: number;
+  wheelspinPct: number;
+  tempBalance: number[];
+  bottomingPct: number;
+  vertGSpikeCount: number;
+  frontLockupPct: number;
+  rearLockupPct: number;
+  avgTyrePressure: number[];
+  avgTyreInnerTemp: number[];
 }
 
 export interface CarPosition {

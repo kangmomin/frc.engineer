@@ -410,6 +410,35 @@ func main() {
 		json.NewEncoder(w).Encode(list)
 	})
 
+	// REST API: GET /api/replay/{id} (NDJSON stream: meta + frames)
+	mux.HandleFunc("/api/replay/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		id := strings.TrimPrefix(r.URL.Path, "/api/replay/")
+		id = strings.TrimSuffix(id, "/")
+		if id == "" || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+			http.Error(w, "invalid race id", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Cache-Control", "no-store")
+
+		if err := raceStorage.StreamReplayNDJSON(id, w); err != nil {
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, races.ErrUnsafeID) {
+				http.Error(w, "race summary not found", http.StatusNotFound)
+				return
+			}
+			logger.Error("failed to stream replay", "id", id, "error", err)
+			// If streaming started, status may already be committed; keep body minimal.
+			_, _ = w.Write([]byte(`{"type":"error","message":"failed to stream replay"}` + "\n"))
+			return
+		}
+	})
+
 	// REST API: GET|DELETE /api/races/{id}
 	mux.HandleFunc("/api/races/", func(w http.ResponseWriter, r *http.Request) {
 		id := strings.TrimPrefix(r.URL.Path, "/api/races/")
@@ -421,7 +450,8 @@ func main() {
 
 		switch r.Method {
 		case http.MethodGet:
-			summary, err := raceStorage.Load(id)
+			w.Header().Set("Content-Type", "application/json")
+			err := raceStorage.CopyRawJSON(id, w)
 			if err != nil {
 				if errors.Is(err, os.ErrNotExist) {
 					http.Error(w, "race summary not found", http.StatusNotFound)
@@ -435,9 +465,6 @@ func main() {
 				http.Error(w, "failed to load race summary", http.StatusInternalServerError)
 				return
 			}
-
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(summary)
 
 		case http.MethodDelete:
 			if err := raceStorage.Delete(id); err != nil {
@@ -486,10 +513,14 @@ func main() {
 	}))
 
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.WSPort),
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		Addr:    fmt.Sprintf(":%d", cfg.WSPort),
+		Handler: mux,
+		// Race replay JSON can be large; keep write timeout generous to avoid client-side
+		// "Failed to fetch" on slower disks/networks while preserving sane defaults.
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      3 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
 	}
 
 	// Start HTTP server
@@ -543,6 +574,7 @@ func convertReplayTimeline(in *telemetry.ReplayTimeline) *races.ReplayTimeline {
 	out := &races.ReplayTimeline{
 		FrameIntervalMS: in.FrameIntervalMS,
 		TrackMap:        in.TrackMap,
+		Session:         in.Session,
 		Frames:          make([]races.ReplayFrame, len(in.Frames)),
 	}
 

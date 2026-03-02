@@ -1,0 +1,99 @@
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  user-select: none;
+}
+
+.header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.title {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  flex: 1;
+}
+
+.toggle {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+}
+
+.toggleOpen {
+  transform: rotate(90deg);
+}
+
+.body {
+  border-top: 1px solid var(--bg-panel-border);
+}
+
+.liveStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.tableWrap th {
+  padding: 4px 8px;
+  text-align: right;
+  font-family: var(--font-body);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--bg-panel-border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary);
+}
+
+.tableWrap th:first-child {
+  text-align: left;
+}
+
+.tableWrap td {
+  padding: 3px 8px;
+  text-align: right;
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.tableWrap td:first-child {
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.tableWrap tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tableWrap {
+  max-height: 200px;
+  overflow-y: auto;
+}
