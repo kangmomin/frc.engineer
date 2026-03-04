@@ -6,6 +6,8 @@ import { SuspensionGeometryCard } from '../components/setup-analysis/cards/Suspe
 import { SuspensionCard } from '../components/setup-analysis/cards/SuspensionCard';
 import { BrakesCard } from '../components/setup-analysis/cards/BrakesCard';
 import { TyresCard } from '../components/setup-analysis/cards/TyresCard';
+import { DiagnosisPanel } from '../components/setup-analysis/diagnosis/DiagnosisPanel';
+import type { SymptomId } from '../components/setup-analysis/diagnosis/scoring';
 import styles from './SetupAnalysisView.module.css';
 
 function GuideModal({ onClose }: { onClose: () => void }) {
@@ -256,9 +258,10 @@ function SetupGuideContent() {
   );
 }
 
-type SetupTab = 'speed' | 'chassis' | 'contact';
+type SetupTab = 'diagnosis' | 'speed' | 'chassis' | 'contact';
 
 const TABS: { id: SetupTab; label: string }[] = [
+  { id: 'diagnosis', label: 'Diagnosis' },
   { id: 'speed', label: 'Aero / Trans' },
   { id: 'chassis', label: 'Suspension' },
   { id: 'contact', label: 'Brakes / Tyres' },
@@ -266,7 +269,8 @@ const TABS: { id: SetupTab; label: string }[] = [
 
 export function SetupAnalysisView() {
   const [showGuide, setShowGuide] = useState(false);
-  const [activeTab, setActiveTab] = useState<SetupTab>('speed');
+  const [activeTab, setActiveTab] = useState<SetupTab>('diagnosis');
+  const [selectedSymptoms, setSelectedSymptoms] = useState<Set<SymptomId>>(new Set());
   const pitwallState = useTelemetryStore((state) => state.pitwallState);
   const drivers = pitwallState?.drivers ?? [];
   const playerIndex = pitwallState?.playerIndex ?? 0;
@@ -310,6 +314,20 @@ export function SetupAnalysisView() {
         ))}
       </div>
       <div className={styles.content}>
+        {activeTab === 'diagnosis' && (
+          <DiagnosisPanel
+            driver={player}
+            selectedSymptoms={selectedSymptoms}
+            onToggleSymptom={(id) =>
+              setSelectedSymptoms((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
+          />
+        )}
         {activeTab === 'speed' && (
           <>
             <AerodynamicsCard driver={player} />
