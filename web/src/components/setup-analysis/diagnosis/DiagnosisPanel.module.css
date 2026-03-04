@@ -183,3 +183,36 @@
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-secondary);
 }
+
+/* ── Clamped / Root Causes / Warnings ── */
+.adjClamped {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.rootCauses {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 28px;
+}
+
+.rootCauseRow {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: #ffcc00;
+}
+
+.warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 28px;
+}
+
+.warningRow {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-style: italic;
+  color: var(--text-muted);
+}

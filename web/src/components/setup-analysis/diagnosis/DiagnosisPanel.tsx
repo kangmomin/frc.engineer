@@ -71,14 +71,30 @@ export function DiagnosisPanel({ driver, selectedSymptoms, onToggleSymptom }: Pr
                   )}
                 </div>
                 <div className={styles.cause}>{r.cause}</div>
+                {r.rootCauses && r.rootCauses.length > 0 && (
+                  <div className={styles.rootCauses}>
+                    {r.rootCauses.map((c) => (
+                      <div key={c} className={styles.rootCauseRow}>⚠ {c}</div>
+                    ))}
+                  </div>
+                )}
                 <div className={styles.adjustments}>
                   {r.adjustments.map((a) => (
-                    <div key={a.label} className={styles.adjRow}>
+                    <div key={a.label} className={`${styles.adjRow} ${a.clamped ? styles.adjClamped : ''}`}>
                       <span className={styles.adjLabel}>{a.label}</span>
-                      <span className={styles.adjValue}>{a.value}</span>
+                      <span className={styles.adjValue}>
+                        {a.current && a.target ? `${a.current} → ${a.target}` : a.delta}
+                      </span>
                     </div>
                   ))}
                 </div>
+                {r.warnings && r.warnings.length > 0 && (
+                  <div className={styles.warnings}>
+                    {r.warnings.map((w) => (
+                      <div key={w} className={styles.warningRow}>{w}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
