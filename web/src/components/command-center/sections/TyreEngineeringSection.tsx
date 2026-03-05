@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { DynamicsLap, TireWearDisplayMode } from '../../../types/telemetry';
 import { getTyreColor, getWearStatusColor, getTempStatusColor } from '../../../constants/tyreCompounds';
 import { SectionHeader } from '../shared/SectionHeader';
@@ -7,21 +7,12 @@ import { useTyreInventory } from '../../../hooks/useTyreInventory';
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
 import { INVENTORY_COMPOUNDS, type InventoryCompound } from '../../../types/tyreInventory';
 import { useTelemetryStore } from '../../../store/telemetryStore';
-import { useAuth } from '../../../context/AuthContext';
 import styles from './TyreEngineeringSection.module.css';
 
 type SectionTab = 'tyres' | 'spin';
 
 const WHEEL_POSITIONS = ['FL', 'FR', 'RL', 'RR'] as const;
 const NUM_WHEELS = 4;
-const PRODUCT_SPIN_TAB_PERMISSION = /^product\.[^.]+\.spin_tab$/;
-const WILDCARD_PERMISSION = '*';
-
-function hasSpinTabPermission(permissions: string[]): boolean {
-  return permissions.some(
-    (permission) => permission === WILDCARD_PERMISSION || PRODUCT_SPIN_TAB_PERMISSION.test(permission),
-  );
-}
 
 /** Clamp value to [0, 100] range */
 function clamp(value: number, min: number, max: number): number {
@@ -91,7 +82,6 @@ function DynamicsTab({ laps }: { laps: DynamicsLap[] }) {
 }
 
 export function TyreEngineeringSection() {
-  const { user } = useAuth();
   const pitwallState = useTelemetryStore((state) => state.pitwallState);
   const driver = pitwallState?.drivers.find(d => d.index === pitwallState.playerIndex) ?? null;
   const [activeTab, setActiveTab] = useState<SectionTab>('tyres');
@@ -104,13 +94,6 @@ export function TyreEngineeringSection() {
   const { allocated, remaining, setCompoundAllocation, resetToDefault } = useTyreInventory(
     driver?.stintHistory
   );
-  const canUseSpinTab = useMemo(() => hasSpinTabPermission(user?.permissions ?? []), [user?.permissions]);
-
-  useEffect(() => {
-    if (!canUseSpinTab && activeTab === 'spin') {
-      setActiveTab('tyres');
-    }
-  }, [canUseSpinTab, activeTab]);
 
   // Normalize tyre data to ensure we always have 4 values
   const tyreWear = useMemo(() => normalizeWheelData(driver?.tireWear), [driver?.tireWear]);
@@ -157,14 +140,12 @@ export function TyreEngineeringSection() {
       >
         Tyres
       </button>
-      {canUseSpinTab && (
-        <button
-          className={`${styles.tabButton} ${activeTab === 'spin' ? styles.tabActive : ''}`}
-          onClick={() => setActiveTab('spin')}
-        >
-          Spin
-        </button>
-      )}
+      <button
+        className={`${styles.tabButton} ${activeTab === 'spin' ? styles.tabActive : ''}`}
+        onClick={() => setActiveTab('spin')}
+      >
+        Spin
+      </button>
     </div>
   );
 
@@ -176,7 +157,7 @@ export function TyreEngineeringSection() {
         rightContent={tabButtons}
       />
 
-      {activeTab === 'spin' && canUseSpinTab ? (
+      {activeTab === 'spin' ? (
         <div className={styles.content}>
           <DynamicsTab laps={driver.dynamics ?? []} />
         </div>

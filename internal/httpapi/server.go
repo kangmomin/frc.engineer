@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,30 +10,17 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"frc.engineer/internal/analysis"
-	"frc.engineer/internal/auth"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
 )
 
-type contextKey string
-
-const sessionContextKey contextKey = "session"
-
 // Options contains dependencies for the HTTP API server.
 type Options struct {
 	Logger *slog.Logger
-
-	AuthService *auth.Service
-	Sessions    auth.SessionStore
-
-	SessionTTL          time.Duration
-	SessionCookieName   string
-	SessionCookieSecure bool
 
 	RuntimeConfig *rtconfig.RuntimeConfigManager
 	Forwarder     *udp.Forwarder
@@ -49,16 +35,9 @@ type Options struct {
 	InitialPacketLogging bool
 }
 
-// Server owns HTTP handlers and auth middleware.
+// Server owns HTTP handlers.
 type Server struct {
 	logger *slog.Logger
-
-	authService *auth.Service
-	sessions    auth.SessionStore
-
-	sessionTTL          time.Duration
-	sessionCookieName   string
-	sessionCookieSecure bool
 
 	runtimeConfig *rtconfig.RuntimeConfigManager
 	forwarder     *udp.Forwarder
@@ -77,20 +56,15 @@ type Server struct {
 // NewServer creates a new API server and applies initial runtime state.
 func NewServer(opts Options) *Server {
 	s := &Server{
-		logger:              opts.Logger,
-		authService:         opts.AuthService,
-		sessions:            opts.Sessions,
-		sessionTTL:          opts.SessionTTL,
-		sessionCookieName:   opts.SessionCookieName,
-		sessionCookieSecure: opts.SessionCookieSecure,
-		runtimeConfig:       opts.RuntimeConfig,
-		forwarder:           opts.Forwarder,
-		recorder:            opts.Recorder,
-		parser:              opts.Parser,
-		packetLogDir:        opts.PacketLogDir,
-		trackStore:          opts.TrackStore,
-		pitwallState:        opts.PitwallState,
-		clientCounter:       opts.ClientCount,
+		logger:        opts.Logger,
+		runtimeConfig: opts.RuntimeConfig,
+		forwarder:     opts.Forwarder,
+		recorder:      opts.Recorder,
+		parser:        opts.Parser,
+		packetLogDir:  opts.PacketLogDir,
+		trackStore:    opts.TrackStore,
+		pitwallState:  opts.PitwallState,
+		clientCounter: opts.ClientCount,
 	}
 	if opts.InitialPacketLogging {
 		s.enablePacketLogging()
@@ -100,18 +74,14 @@ func NewServer(opts Options) *Server {
 
 // RegisterRoutes wires all HTTP and WebSocket routes.
 func (s *Server) RegisterRoutes(mux *http.ServeMux, wsHandler http.Handler, distFS fs.FS) {
-	mux.Handle("/ws", s.RequireSession(wsHandler))
+	mux.Handle("/ws", wsHandler)
 	mux.HandleFunc("/health", s.handleHealth)
 
-	mux.HandleFunc("/api/auth/login", s.handleAuthLogin)
-	mux.HandleFunc("/api/auth/me", s.handleAuthMe)
-	mux.HandleFunc("/api/auth/logout", s.handleAuthLogout)
-
-	mux.Handle("/api/config", s.RequireSession(http.HandlerFunc(s.handleConfig)))
-	mux.Handle("/api/tracks", s.RequireSession(http.HandlerFunc(s.handleTracks)))
-	mux.Handle("/api/sessions", s.RequireSession(http.HandlerFunc(s.handleSessions)))
-	mux.Handle("/api/sessions/", s.RequireSession(http.HandlerFunc(s.handleSessionAnalysis)))
-	mux.Handle("/api/debug/pitwall", s.RequireSession(http.HandlerFunc(s.handleDebugPitwall)))
+	mux.HandleFunc("/api/config", s.handleConfig)
+	mux.HandleFunc("/api/tracks", s.handleTracks)
+	mux.HandleFunc("/api/sessions", s.handleSessions)
+	mux.HandleFunc("/api/sessions/", s.handleSessionAnalysis)
+	mux.HandleFunc("/api/debug/pitwall", s.handleDebugPitwall)
 
 	fileServer := http.FileServer(http.FS(distFS))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -133,45 +103,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux, wsHandler http.Handler, dist
 	}))
 }
 
-// StartSessionCleanup periodically deletes expired sessions.
-func (s *Server) StartSessionCleanup(ctx context.Context, interval time.Duration) {
-	if interval <= 0 {
-		interval = 5 * time.Minute
-	}
-
-	ticker := time.NewTicker(interval)
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				removed := s.sessions.CleanupExpired(time.Now().UTC())
-				if removed > 0 {
-					s.logger.Info("expired sessions cleaned", "removed", removed)
-				}
-			}
-		}
-	}()
-}
-
 // Close releases runtime resources.
 func (s *Server) Close() {
 	s.disablePacketLogging()
-}
-
-// RequireSession enforces session auth and adds session info to request context.
-func (s *Server) RequireSession(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session, ok := s.sessionFromRequest(r)
-		if !ok {
-			s.writeUnauthorized(w)
-			return
-		}
-		ctx := context.WithValue(r.Context(), sessionContextKey, session)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -183,78 +117,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"status":  "ok",
 		"clients": clients,
 	})
-}
-
-func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var creds struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&creds); err != nil {
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-
-	result, err := s.authService.Login(creds.Email, creds.Password)
-	if err != nil {
-		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
-		return
-	}
-
-	session, err := s.sessions.Create(result.User, result.AccessToken, s.sessionTTL)
-	if err != nil {
-		s.logger.Error("failed to create session", "error", err)
-		http.Error(w, "failed to create session", http.StatusInternalServerError)
-		return
-	}
-
-	s.setSessionCookie(w, r, session.ID, session.ExpiresAt)
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"user": result.User,
-	})
-}
-
-func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	session, ok := s.sessionFromRequest(r)
-	if !ok {
-		s.writeUnauthorized(w)
-		return
-	}
-
-	if hasAccess, err := s.authService.VerifyProductAccess(session.AccessToken); err == nil && !hasAccess {
-		s.sessions.Delete(session.ID)
-		s.clearSessionCookie(w, r)
-		s.writeUnauthorized(w)
-		return
-	}
-
-	s.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"user":     session.User,
-		"loggedIn": true,
-	})
-}
-
-func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if c, err := r.Cookie(s.sessionCookieName); err == nil {
-		s.sessions.Delete(c.Value)
-	}
-	s.clearSessionCookie(w, r)
-	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -387,46 +249,6 @@ func (s *Server) disablePacketLogging() {
 	s.packetLogger.Close()
 	s.packetLogger = nil
 	s.logger.Info("packet logging disabled")
-}
-
-func (s *Server) sessionFromRequest(r *http.Request) (*auth.Session, bool) {
-	cookie, err := r.Cookie(s.sessionCookieName)
-	if err != nil {
-		return nil, false
-	}
-	return s.sessions.Get(cookie.Value)
-}
-
-func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, sessionID string, expiresAt time.Time) {
-	secure := s.sessionCookieSecure && r.TLS != nil
-	http.SetCookie(w, &http.Cookie{
-		Name:     s.sessionCookieName,
-		Value:    sessionID,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  expiresAt,
-		MaxAge:   int(time.Until(expiresAt).Seconds()),
-	})
-}
-
-func (s *Server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	secure := s.sessionCookieSecure && r.TLS != nil
-	http.SetCookie(w, &http.Cookie{
-		Name:     s.sessionCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   secure,
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Unix(0, 0),
-		MaxAge:   -1,
-	})
-}
-
-func (s *Server) writeUnauthorized(w http.ResponseWriter) {
-	s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, v interface{}) {

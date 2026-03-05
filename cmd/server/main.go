@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"frc.engineer/internal/analysis"
-	"frc.engineer/internal/auth"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
@@ -46,9 +45,6 @@ func main() {
 		"updateHz", cfg.TelemetryUpdateHz,
 		"dataDir", cfg.DataDir,
 	)
-
-	// Initialize auth manager
-	authManager := auth.NewAuthManager()
 
 	// Initialize runtime config manager (loads saved config.json if exists)
 	runtimeCfg := rtconfig.NewRuntimeConfigManager("config.json", cfg.UDPPort, cfg.WSPort)
@@ -84,9 +80,6 @@ func main() {
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	// Start periodic access check (every 5 min)
-	authManager.StartPeriodicCheck(ctx)
 
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
@@ -231,51 +224,6 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"status":"ok","clients":%d}`, hub.ClientCount())
-	})
-
-	// Auth API
-	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var creds struct {
-			Email    string `json:"email"`
-			Password string `json:"password"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&creds); err != nil {
-			http.Error(w, "invalid request", http.StatusBadRequest)
-			return
-		}
-		user, err := authManager.Login(creds.Email, creds.Password)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(user)
-	})
-
-	mux.HandleFunc("/api/auth/me", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		user, loggedIn := authManager.GetState()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"user": user, "loggedIn": loggedIn})
-	})
-
-	mux.HandleFunc("/api/auth/logout", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		authManager.Logout()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 
 	// REST API: GET /api/config
