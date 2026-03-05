@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { SettingsView } from '../../views/SettingsView';
 import { RacesView } from '../../views/RacesView';
 import { SetupAnalysisView } from '../../views/SetupAnalysisView';
+import { GuideView } from '../../views/GuideView';
 import { CommandCenter } from '../command-center/CommandCenter';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useTelemetryStore } from '../../store/telemetryStore';
@@ -16,7 +17,7 @@ function hasSetupTabPermission(permissions: string[]): boolean {
   );
 }
 
-type ViewId = 'command' | 'settings' | 'races' | 'setup';
+type ViewId = 'command' | 'settings' | 'races' | 'setup' | 'guide';
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -54,7 +55,9 @@ export function Layout() {
       ? 'Settings'
       : activeView === 'setup'
         ? 'Setup Analysis'
-        : 'Races';
+        : activeView === 'guide'
+          ? 'Guide'
+          : 'Races';
 
   return (
     <div className={styles.layout}>
@@ -106,6 +109,15 @@ export function Layout() {
               <span className={styles.navLabel}>Races</span>
             </button>
           </li>
+          <li className={styles.navItem}>
+            <button
+              className={`${styles.navButton} ${activeView === 'guide' ? styles.navActive : ''}`}
+              onClick={() => handleNavClick('guide')}
+            >
+              <span className={styles.navIcon}>GD</span>
+              <span className={styles.navLabel}>Guide</span>
+            </button>
+          </li>
         </ul>
 
         <div className={styles.sidebarFooter}>
@@ -145,6 +157,11 @@ export function Layout() {
           {activeView === 'races' && (
             <div className={styles.panel}>
               <RacesView />
+            </div>
+          )}
+          {activeView === 'guide' && (
+            <div className={styles.panel}>
+              <GuideView />
             </div>
           )}
         </div>
