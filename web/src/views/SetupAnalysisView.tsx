@@ -7,6 +7,7 @@ import { SuspensionCard } from '../components/setup-analysis/cards/SuspensionCar
 import { BrakesCard } from '../components/setup-analysis/cards/BrakesCard';
 import { TyresCard } from '../components/setup-analysis/cards/TyresCard';
 import { DiagnosisPanel } from '../components/setup-analysis/diagnosis/DiagnosisPanel';
+import { SetupFeedbackPanel } from '../components/setup-analysis/feedback/SetupFeedbackPanel';
 import type { SymptomId } from '../components/setup-analysis/diagnosis/scoring';
 import styles from './SetupAnalysisView.module.css';
 
@@ -258,13 +259,14 @@ function SetupGuideContent() {
   );
 }
 
-type SetupTab = 'diagnosis' | 'speed' | 'chassis' | 'contact';
+type SetupTab = 'diagnosis' | 'speed' | 'chassis' | 'contact' | 'feedback';
 
 const TABS: { id: SetupTab; label: string }[] = [
   { id: 'diagnosis', label: 'Diagnosis' },
   { id: 'speed', label: 'Aero / Trans' },
   { id: 'chassis', label: 'Suspension' },
   { id: 'contact', label: 'Brakes / Tyres' },
+  { id: 'feedback', label: 'Feedback' },
 ];
 
 export function SetupAnalysisView() {
@@ -345,6 +347,9 @@ export function SetupAnalysisView() {
             <BrakesCard driver={player} />
             <TyresCard driver={player} />
           </>
+        )}
+        {activeTab === 'feedback' && (
+          <SetupFeedbackPanel driver={player} selectedSymptoms={selectedSymptoms} />
         )}
       </div>
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}

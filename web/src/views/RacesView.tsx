@@ -17,6 +17,8 @@ import type {
 import { SetupCard } from '../components/setup-analysis/SetupCard';
 import type { Severity } from '../components/setup-analysis/SetupCard';
 import { RecommendationRow } from '../components/setup-analysis/shared/RecommendationRow';
+import { useSetupFeedbackStore } from '../store/setupFeedbackStore';
+import type { LapFeedback, SetupChangeRecord } from '../store/setupFeedbackStore';
 import styles from './RacesView.module.css';
 
 function formatLap(ms: number): string {
@@ -721,6 +723,108 @@ function TelemetryReplayPanel({ primarySummary, compareSummary, currentTimeSec }
   );
 }
 
+function formatFeedbackTime(ts: number): string {
+  const d = new Date(ts);
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+const RATING_COLORS: Record<string, string> = {
+  good: '#00ff00',
+  neutral: '#ffcc00',
+  bad: '#e10600',
+};
+
+const RATING_LABELS: Record<string, string> = {
+  good: 'Good',
+  neutral: 'Neutral',
+  bad: 'Bad',
+};
+
+function SavedFeedbackSection({
+  feedbacks,
+  setupChanges,
+  onDeleteFeedback,
+  onDeleteSetupChange,
+}: {
+  feedbacks: LapFeedback[];
+  setupChanges: SetupChangeRecord[];
+  onDeleteFeedback: (id: string) => void;
+  onDeleteSetupChange: (id: string) => void;
+}) {
+  if (feedbacks.length === 0 && setupChanges.length === 0) return null;
+
+  return (
+    <div className={styles.tableWrap}>
+      <h4 className={styles.tableTitle}>Setup Feedback & History</h4>
+
+      {feedbacks.length > 0 && (
+        <div style={{ padding: '0 8px 8px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 6 }}>
+            Feedback ({feedbacks.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+            {[...feedbacks].reverse().map((fb) => (
+              <div key={fb.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: 11 }}>
+                <span style={{ fontWeight: 700, color: 'var(--accent-blue)', minWidth: 44 }}>Lap {fb.lapNum}</span>
+                <span style={{ fontWeight: 700, fontSize: 10, color: RATING_COLORS[fb.rating] ?? 'var(--text-muted)', textTransform: 'uppercase' as const }}>{RATING_LABELS[fb.rating] ?? fb.rating}</span>
+                <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{fb.note}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatFeedbackTime(fb.timestamp)}</span>
+                <button
+                  onClick={() => onDeleteFeedback(fb.id)}
+                  title="삭제"
+                  style={{ background: 'none', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: 9, fontWeight: 700, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  X
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {setupChanges.length > 0 && (
+        <div style={{ padding: '0 8px 8px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 6 }}>
+            Setup Changes ({setupChanges.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+            {[...setupChanges].reverse().map((change) => (
+              <div key={change.id} style={{ padding: '6px 8px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: 11 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, color: 'var(--accent-blue)' }}>Lap {change.lapNum}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>{formatFeedbackTime(change.timestamp)}</span>
+                  <button
+                    onClick={() => onDeleteSetupChange(change.id)}
+                    title="삭제"
+                    style={{ background: 'none', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: 9, fontWeight: 700, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  >
+                    X
+                  </button>
+                </div>
+                {change.recommendations.length > 0 && (
+                  <div style={{ paddingLeft: 4, borderLeft: '3px solid rgba(255, 204, 0, 0.4)', marginTop: 4, paddingTop: 2, paddingBottom: 2, background: 'rgba(255, 204, 0, 0.04)' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#ffcc00', marginBottom: 2 }}>추천사항</div>
+                    {change.recommendations.map((rec, ri) => (
+                      <div key={ri} style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                        <span style={{ fontWeight: 700, color: rec.severity === 'red' ? '#e10600' : rec.severity === 'yellow' ? '#ffcc00' : '#00ff00' }}>{rec.title}</span>
+                        {rec.adjustments.map((adj, ai) => (
+                          <span key={ai} style={{ marginLeft: 6 }}>{adj.label}: {adj.current && adj.target ? `${adj.current} → ${adj.target}` : adj.delta}</span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SavedSetupAnalysisSection({ laps }: { laps: SetupLapAnalysis[]; setup?: CarSetup }) {
   const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'];
   const latest = laps[laps.length - 1];
@@ -785,6 +889,11 @@ export function RacesView() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const feedbacks = useSetupFeedbackStore((s) => s.feedbacks);
+  const setupChanges = useSetupFeedbackStore((s) => s.setupChanges);
+  const deleteFeedback = useSetupFeedbackStore((s) => s.deleteFeedback);
+  const deleteSetupChange = useSetupFeedbackStore((s) => s.deleteSetupChange);
 
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -1322,6 +1431,13 @@ export function RacesView() {
             {player.setupAnalysis && player.setupAnalysis.length > 0 && (
               <SavedSetupAnalysisSection laps={player.setupAnalysis} setup={player.setup} />
             )}
+
+            <SavedFeedbackSection
+              feedbacks={feedbacks}
+              setupChanges={setupChanges}
+              onDeleteFeedback={deleteFeedback}
+              onDeleteSetupChange={deleteSetupChange}
+            />
           </div>
         )}
       </section>
