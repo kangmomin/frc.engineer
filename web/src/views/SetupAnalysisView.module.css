@@ -99,6 +99,20 @@
   border-color: var(--accent-blue);
 }
 
+/* ── Overview grid ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 1fr 1fr;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-height: 0;
+}
+
+.grid > * {
+  min-height: 0;
+}
+
 .noData {
   display: flex;
   align-items: center;

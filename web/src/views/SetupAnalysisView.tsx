@@ -259,13 +259,11 @@ function SetupGuideContent() {
   );
 }
 
-type SetupTab = 'diagnosis' | 'speed' | 'chassis' | 'contact' | 'feedback';
+type SetupTab = 'diagnosis' | 'overview' | 'feedback';
 
 const TABS: { id: SetupTab; label: string }[] = [
   { id: 'diagnosis', label: 'Diagnosis' },
-  { id: 'speed', label: 'Aero / Trans' },
-  { id: 'chassis', label: 'Suspension' },
-  { id: 'contact', label: 'Brakes / Tyres' },
+  { id: 'overview', label: 'Overview' },
   { id: 'feedback', label: 'Feedback' },
 ];
 
@@ -330,23 +328,15 @@ export function SetupAnalysisView() {
             }
           />
         )}
-        {activeTab === 'speed' && (
-          <>
+        {activeTab === 'overview' && (
+          <div className={styles.grid}>
             <AerodynamicsCard driver={player} />
-            <TransmissionCard driver={player} />
-          </>
-        )}
-        {activeTab === 'chassis' && (
-          <>
             <SuspensionGeometryCard driver={player} />
-            <SuspensionCard driver={player} />
-          </>
-        )}
-        {activeTab === 'contact' && (
-          <>
             <BrakesCard driver={player} />
+            <TransmissionCard driver={player} />
+            <SuspensionCard driver={player} />
             <TyresCard driver={player} />
-          </>
+          </div>
         )}
         {activeTab === 'feedback' && (
           <SetupFeedbackPanel driver={player} selectedSymptoms={selectedSymptoms} />

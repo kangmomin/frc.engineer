@@ -3,6 +3,8 @@
   border: 1px solid var(--bg-panel-border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
@@ -41,6 +43,9 @@
 
 .body {
   border-top: 1px solid var(--bg-panel-border);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .liveStrip {
@@ -94,6 +99,5 @@
 }
 
 .tableWrap {
-  max-height: 200px;
   overflow-y: auto;
 }
