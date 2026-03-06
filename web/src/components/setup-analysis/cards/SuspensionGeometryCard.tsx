@@ -20,18 +20,30 @@ export function SuspensionGeometryCard({ driver, readOnly }: Props) {
   const recommendations: string[] = [];
 
   if (latest) {
+    const frontMax = Math.max(latest.tempBalance[0], latest.tempBalance[1]);
+    const rearMax = Math.max(latest.tempBalance[2], latest.tempBalance[3]);
+
     // Front inner > surface by >8 degrees C
-    if (latest.tempBalance[0] > 8 || latest.tempBalance[1] > 8) {
-      severity = 'yellow';
-      recommendations.push('Front inner temps high — reduce front camber');
+    if (frontMax > 8) {
+      severity = frontMax > 12 ? 'red' : 'yellow';
+      recommendations.push(
+        `Front inner temp delta ${frontMax.toFixed(1)}°C — reduce front camber (${setup?.frontCamber?.toFixed(2) ?? '?'}°)`
+      );
     }
     // Rear inner > surface by >8 degrees C
-    if (latest.tempBalance[2] > 8 || latest.tempBalance[3] > 8) {
-      severity = 'yellow';
-      recommendations.push('Rear inner temps high — reduce rear camber');
+    if (rearMax > 8) {
+      severity = rearMax > 12 ? 'red' : severity === 'red' ? 'red' : 'yellow';
+      recommendations.push(
+        `Rear inner temp delta ${rearMax.toFixed(1)}°C — reduce rear camber (${setup?.rearCamber?.toFixed(2) ?? '?'}°)`
+      );
     }
-    if (latest.tempBalance[0] > 12 || latest.tempBalance[1] > 12 || latest.tempBalance[2] > 12 || latest.tempBalance[3] > 12) {
-      severity = 'red';
+
+    // Overall high inner temps → pressure adjustment (complements Tyres card)
+    const avgInner = latest.tempBalance.reduce((a, b) => a + b, 0) / 4;
+    if (avgInner > 5 && avgInner <= 8) {
+      recommendations.push(
+        `Average inner-surface delta ${avgInner.toFixed(1)}°C — consider reducing tyre pressures`
+      );
     }
   }
 

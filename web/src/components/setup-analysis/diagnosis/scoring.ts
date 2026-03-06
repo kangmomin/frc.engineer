@@ -7,6 +7,8 @@ export type SymptomId =
   | 'understeer'
   | 'exitOversteer'
   | 'entryOversteer'
+  | 'moreOversteer'
+  | 'moreUndersteer'
   | 'bottoming'
   | 'brakeLockup'
   | 'tyreOverheat'
@@ -395,6 +397,74 @@ const SYMPTOMS: SymptomDef[] = [
     },
   },
   {
+    id: 'moreOversteer',
+    weight: 3,
+    title: '오버스티어 유도',
+    detect: () => false, // user-only
+    cause: '밸런스를 오버스티어 방향으로 조정 → 코너 진입 반응성 향상',
+    adjustments: (d) => {
+      const adjs: Adjustment[] = [];
+      const rootCauses: string[] = [];
+      const warnings: string[] = [];
+
+      adjs.push(makeAdj('Front Wing', 'frontWing', getVal(d, 'frontWing'), 2));
+      adjs.push(makeAdj('Rear Wing', 'rearWing', getVal(d, 'rearWing'), -2));
+      adjs.push(makeAdj('Front Suspension', 'frontSuspension', getVal(d, 'frontSuspension'), -2));
+      adjs.push(makeAdj('Front Anti-Roll Bar', 'frontAntiRollBar', getVal(d, 'frontAntiRollBar'), -2));
+      adjs.push(makeAdj('Rear Suspension', 'rearSuspension', getVal(d, 'rearSuspension'), 2));
+      adjs.push(makeAdj('Rear Anti-Roll Bar', 'rearAntiRollBar', getVal(d, 'rearAntiRollBar'), 2));
+      adjs.push(makeAdj('Off-Throttle Diff', 'diffOffThrottle', getVal(d, 'diffOffThrottle'), -5));
+      adjs.push(makeAdj('Brake Bias', 'brakeBias', getVal(d, 'brakeBias'), -2));
+
+      const rw = getVal(d, 'rearWing');
+      if (rw != null && isExtreme('rearWing', rw) === 'low') {
+        rootCauses.push('Rear Wing이 이미 최소치 근처입니다');
+      }
+
+      if (adjs.some((a) => a.clamped)) {
+        warnings.push('일부 파라미터가 한계에 도달했습니다');
+      }
+      warnings.push('오버스티어 증가 시 후방 안정성이 감소합니다');
+      warnings.push('리어 다운포스 감소 시 직선 속도가 증가할 수 있습니다');
+
+      return { adjustments: adjs, rootCauses, warnings };
+    },
+  },
+  {
+    id: 'moreUndersteer',
+    weight: 3,
+    title: '언더스티어 유도',
+    detect: () => false, // user-only
+    cause: '밸런스를 언더스티어 방향으로 조정 → 후방 안정성 향상',
+    adjustments: (d) => {
+      const adjs: Adjustment[] = [];
+      const rootCauses: string[] = [];
+      const warnings: string[] = [];
+
+      adjs.push(makeAdj('Front Wing', 'frontWing', getVal(d, 'frontWing'), -2));
+      adjs.push(makeAdj('Rear Wing', 'rearWing', getVal(d, 'rearWing'), 2));
+      adjs.push(makeAdj('Front Suspension', 'frontSuspension', getVal(d, 'frontSuspension'), 2));
+      adjs.push(makeAdj('Front Anti-Roll Bar', 'frontAntiRollBar', getVal(d, 'frontAntiRollBar'), 2));
+      adjs.push(makeAdj('Rear Suspension', 'rearSuspension', getVal(d, 'rearSuspension'), -2));
+      adjs.push(makeAdj('Rear Anti-Roll Bar', 'rearAntiRollBar', getVal(d, 'rearAntiRollBar'), -2));
+      adjs.push(makeAdj('Off-Throttle Diff', 'diffOffThrottle', getVal(d, 'diffOffThrottle'), 5));
+      adjs.push(makeAdj('Brake Bias', 'brakeBias', getVal(d, 'brakeBias'), 2));
+
+      const fw = getVal(d, 'frontWing');
+      if (fw != null && isExtreme('frontWing', fw) === 'low') {
+        rootCauses.push('Front Wing이 이미 최소치 근처입니다');
+      }
+
+      if (adjs.some((a) => a.clamped)) {
+        warnings.push('일부 파라미터가 한계에 도달했습니다');
+      }
+      warnings.push('언더스티어 증가 시 코너 진입 반응성이 감소합니다');
+      warnings.push('리어 다운포스 증가 시 직선 속도가 감소할 수 있습니다');
+
+      return { adjustments: adjs, rootCauses, warnings };
+    },
+  },
+  {
     id: 'understeer',
     weight: 3,
     title: '언더스티어',
@@ -517,6 +587,8 @@ export const SYMPTOM_LIST: { id: SymptomId; label: string; desc: string }[] = [
   { id: 'understeer', label: '언더스티어', desc: '코너에서 바깥으로 밀림' },
   { id: 'exitOversteer', label: '탈출 오버스티어', desc: '탈출 시 뒷바퀴 미끄러짐' },
   { id: 'entryOversteer', label: '진입 오버스티어', desc: '진입 시 후방 불안정' },
+  { id: 'moreOversteer', label: '오버스티어 유도', desc: '밸런스를 OS 방향으로' },
+  { id: 'moreUndersteer', label: '언더스티어 유도', desc: '밸런스를 US 방향으로' },
   { id: 'bottoming', label: '바텀아웃', desc: '바닥이 노면에 긁힘' },
   { id: 'brakeLockup', label: '브레이크 락업', desc: '제동 시 휠 잠김' },
   { id: 'tyreOverheat', label: '타이어 과열', desc: '온도 한계 초과' },

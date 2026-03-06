@@ -17,18 +17,32 @@ export function BrakesCard({ driver, readOnly }: Props) {
   const setup = driver.setup;
 
   let severity: Severity = 'green';
-  let recommendation: string | null = null;
+  const recommendations: string[] = [];
 
   if (latest) {
-    if (latest.frontLockupPct > 20 || latest.rearLockupPct > 20) {
+    const totalLockup = Math.max(latest.frontLockupPct, latest.rearLockupPct);
+    if (totalLockup > 20) {
       severity = 'red';
-    } else if (latest.frontLockupPct > 10 || latest.rearLockupPct > 10) {
+    } else if (totalLockup > 10) {
       severity = 'yellow';
     }
+
+    // Bias direction feedback
     if (latest.frontLockupPct > latest.rearLockupPct && latest.frontLockupPct > 10) {
-      recommendation = 'Front locking more than rear — move brake bias rearward';
+      recommendations.push(
+        `Front lockup ${latest.frontLockupPct.toFixed(1)}% > Rear ${latest.rearLockupPct.toFixed(1)}% — move bias rearward (${driver.brakeBias}%)`
+      );
     } else if (latest.rearLockupPct > latest.frontLockupPct && latest.rearLockupPct > 10) {
-      recommendation = 'Rear locking more than front — move brake bias forward';
+      recommendations.push(
+        `Rear lockup ${latest.rearLockupPct.toFixed(1)}% > Front ${latest.frontLockupPct.toFixed(1)}% — move bias forward (${driver.brakeBias}%)`
+      );
+    }
+
+    // Overall lockup → brake pressure feedback
+    if (totalLockup > 20 && setup) {
+      recommendations.push(
+        `High lockup — reduce brake pressure (${setup.brakePressure})`
+      );
     }
   }
 
@@ -65,7 +79,7 @@ export function BrakesCard({ driver, readOnly }: Props) {
           </tbody>
         </table>
       ) : undefined}
-      recommendation={recommendation ? <RecommendationRow severity={severity} text={recommendation} /> : undefined}
+      recommendation={recommendations.length > 0 ? <>{recommendations.map((r, i) => <RecommendationRow key={i} severity={severity} text={r} />)}</> : undefined}
     />
   );
 }

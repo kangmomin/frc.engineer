@@ -12,16 +12,30 @@ interface Props {
 export function TransmissionCard({ driver, readOnly }: Props) {
   const laps = driver.setupAnalysis ?? [];
   const latest = laps[laps.length - 1];
+  const dynamicsLatest = driver.dynamics?.[driver.dynamics.length - 1];
 
   let severity: Severity = 'green';
-  let recommendation: string | null = null;
+  const recommendations: string[] = [];
 
+  // Wheelspin-based on-throttle diff feedback
   if (latest && latest.wheelspinPct > 25) {
     severity = 'red';
-    recommendation = 'Excessive wheelspin — lower on-throttle differential';
+    recommendations.push(
+      `Wheelspin ${latest.wheelspinPct.toFixed(1)}% — lower on-throttle diff (${driver.diffOnThrottle}%)`
+    );
   } else if (latest && latest.wheelspinPct > 15) {
     severity = 'yellow';
-    recommendation = 'Moderate wheelspin — consider lowering on-throttle differential';
+    recommendations.push(
+      `Wheelspin ${latest.wheelspinPct.toFixed(1)}% — consider lowering on-throttle diff (${driver.diffOnThrottle}%)`
+    );
+  }
+
+  // Entry oversteer → increase off-throttle diff for rear stability
+  if (dynamicsLatest && dynamicsLatest.oversteerPct > 15) {
+    severity = severity === 'red' ? 'red' : 'yellow';
+    recommendations.push(
+      `Entry oversteer ${dynamicsLatest.oversteerPct.toFixed(1)}% — increase off-throttle diff (${driver.diffOffThrottle}%) for rear stability`
+    );
   }
 
   return (
@@ -53,7 +67,7 @@ export function TransmissionCard({ driver, readOnly }: Props) {
           </tbody>
         </table>
       ) : undefined}
-      recommendation={recommendation ? <RecommendationRow severity={severity} text={recommendation} /> : undefined}
+      recommendation={recommendations.length > 0 ? <>{recommendations.map((r, i) => <RecommendationRow key={i} severity={severity} text={r} />)}</> : undefined}
     />
   );
 }

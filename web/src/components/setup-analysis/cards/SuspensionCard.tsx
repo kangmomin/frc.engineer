@@ -16,18 +16,33 @@ export function SuspensionCard({ driver, readOnly }: Props) {
   const floorDmg = driver.damage?.floor ?? 0;
 
   let severity: Severity = 'green';
-  let recommendation: string | null = null;
+  const recommendations: string[] = [];
 
+  // Bottoming feedback with ride height values
   if (latest && latest.bottomingPct > 20) {
     severity = 'red';
-    recommendation = 'Severe bottoming — increase ride height immediately';
+    recommendations.push(
+      `Bottoming ${latest.bottomingPct.toFixed(1)}% — raise ride height (F:${setup?.frontRideHeight ?? '?'} / R:${setup?.rearRideHeight ?? '?'})`
+    );
   } else if (latest && latest.bottomingPct > 10) {
     severity = 'yellow';
-    recommendation = 'Bottoming detected — consider raising ride height';
+    recommendations.push(
+      `Bottoming ${latest.bottomingPct.toFixed(1)}% — consider raising ride height (F:${setup?.frontRideHeight ?? '?'} / R:${setup?.rearRideHeight ?? '?'})`
+    );
   }
+
+  // Floor damage
   if (floorDmg > 20) {
     severity = 'red';
-    recommendation = 'Floor damage from bottoming — raise ride height';
+    recommendations.push(`Floor damage ${floorDmg}% — raise ride height to prevent further damage`);
+  }
+
+  // G-spike based suspension stiffness feedback
+  if (latest && latest.vertGSpikeCount > 10 && setup) {
+    severity = severity === 'red' ? 'red' : 'yellow';
+    recommendations.push(
+      `${latest.vertGSpikeCount} G-spikes — soften suspension (F:${setup.frontSuspension} / R:${setup.rearSuspension}) or ARB (F:${setup.frontAntiRollBar} / R:${setup.rearAntiRollBar})`
+    );
   }
 
   return (
@@ -39,6 +54,8 @@ export function SuspensionCard({ driver, readOnly }: Props) {
         <>
           {setup && <SetupValue label="F Height" value={setup.frontRideHeight} />}
           {setup && <SetupValue label="R Height" value={setup.rearRideHeight} />}
+          {setup && <SetupValue label="F Susp" value={setup.frontSuspension} />}
+          {setup && <SetupValue label="R Susp" value={setup.rearSuspension} />}
           {setup && <SetupValue label="F ARB" value={setup.frontAntiRollBar} />}
           {setup && <SetupValue label="R ARB" value={setup.rearAntiRollBar} />}
           <SetupValue label="Bottoming" value={latest?.bottomingPct?.toFixed(1) ?? '-'} unit="%" color={latest && latest.bottomingPct > 10 ? '#ffcc00' : undefined} />
@@ -63,7 +80,7 @@ export function SuspensionCard({ driver, readOnly }: Props) {
           </tbody>
         </table>
       ) : undefined}
-      recommendation={recommendation ? <RecommendationRow severity={severity} text={recommendation} /> : undefined}
+      recommendation={recommendations.length > 0 ? <>{recommendations.map((r, i) => <RecommendationRow key={i} severity={severity} text={r} />)}</> : undefined}
     />
   );
 }
