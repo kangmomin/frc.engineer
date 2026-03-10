@@ -163,7 +163,9 @@ func (pm *PitwallManager) UpdateCarStatus(cs *packets.PacketCarStatusData) {
 func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
 	pm.mu.Lock()
 	pm.lapData = ld
+	carStatus := pm.carStatus
 	pm.mu.Unlock()
+	pm.strategyMgr.Update(carStatus, ld)
 }
 
 // UpdateTelemetry stores the latest telemetry packet (for tire temps)
@@ -245,6 +247,23 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 					AirTempChange:   int(fs.AirTemperatureChange),
 					RainPercentage:  int(fs.RainPercentage),
 				}
+			}
+		}
+		prediction := pm.strategyMgr.GetCrossoverPrediction()
+		if prediction.Available || prediction.Reason != "" {
+			si.CrossoverPrediction = &dto.CrossoverPredictionDTO{
+				Available:          prediction.Available,
+				DryGroup:           prediction.DryGroup,
+				WetGroup:           prediction.WetGroup,
+				CurrentDeltaMS:     prediction.CurrentDeltaMS,
+				TrendDeltaMSPerLap: prediction.TrendDeltaMSPerLap,
+				AvgLapTimeMS:       prediction.AvgLapTimeMS,
+				DrySampleCount:     prediction.DrySampleCount,
+				WetSampleCount:     prediction.WetSampleCount,
+				HistoryDepth:       prediction.HistoryDepth,
+				CurrentDryAvgMS:    prediction.CurrentDryAvgMS,
+				CurrentWetAvgMS:    prediction.CurrentWetAvgMS,
+				Reason:             prediction.Reason,
 			}
 		}
 		state.Session = si

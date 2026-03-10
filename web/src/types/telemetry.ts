@@ -260,6 +260,21 @@ export interface WeatherForecast {
   rainPercentage: number;
 }
 
+export interface CrossoverPrediction {
+  available: boolean;
+  dryGroup: string;
+  wetGroup: string;
+  currentDeltaMs: number;
+  trendDeltaMsPerLap: number;
+  avgLapTimeMs: number;
+  drySampleCount: number;
+  wetSampleCount: number;
+  historyDepth: number;
+  currentDryAvgMs: number;
+  currentWetAvgMs: number;
+  reason?: string;
+}
+
 export interface SessionInfo {
   weather: string;
   trackTemp: number;
@@ -275,6 +290,7 @@ export interface SessionInfo {
   pitStopRejoinPosition?: number;
   marshalZones?: MarshalZone[];
   weatherForecast?: WeatherForecast[];
+  crossoverPrediction?: CrossoverPrediction;
 }
 
 export interface DriverInfo {

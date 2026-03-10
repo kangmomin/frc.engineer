@@ -55,6 +55,206 @@
   animation: strategyBlink 1s steps(2, end) infinite;
 }
 
+.predictorCard {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.predictorWetBias {
+  background:
+    radial-gradient(circle at top right, rgba(0, 110, 255, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(0, 110, 255, 0.08), transparent 42%),
+    var(--bg-primary);
+}
+
+.predictorDryBias {
+  background:
+    radial-gradient(circle at top right, rgba(255, 160, 0, 0.16), transparent 38%),
+    linear-gradient(135deg, rgba(255, 160, 0, 0.08), transparent 42%),
+    var(--bg-primary);
+}
+
+.predictorNeutral {
+  background:
+    radial-gradient(circle at top right, rgba(0, 210, 255, 0.12), transparent 34%),
+    var(--bg-primary);
+}
+
+.predictorHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.predictorHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.predictorTitle {
+  font-family: var(--font-racing);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.7px;
+}
+
+.predictorInputGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.predictorInputLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.predictorInputWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.predictorInput {
+  width: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.predictorInput:focus {
+  outline: none;
+}
+
+.predictorInput::-webkit-outer-spin-button,
+.predictorInput::-webkit-inner-spin-button {
+  margin: 0;
+}
+
+.predictorInputUnit {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.8px;
+}
+
+.predictorGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.predictorStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.predictorStatLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.predictorStatValue {
+  font-family: var(--font-racing);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.predictorFooter {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.predictorMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.predictorRecommendation {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.predictorAction {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.predictorActionGo {
+  color: var(--accent-red);
+  background: rgba(225, 6, 0, 0.16);
+}
+
+.predictorActionWatch {
+  color: var(--accent-yellow);
+  background: rgba(255, 255, 0, 0.12);
+}
+
+.predictorActionHold {
+  color: var(--accent-green);
+  background: rgba(0, 255, 0, 0.12);
+}
+
+.predictorRationale {
+  max-width: 340px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.predictorEmpty {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .assistGrid {
   flex: 1;
   min-height: 0;
@@ -671,6 +871,26 @@
 }
 
 @media (max-width: 900px) {
+  .predictorHeader,
+  .predictorFooter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .predictorInputGroup,
+  .predictorRecommendation {
+    align-items: flex-start;
+  }
+
+  .predictorGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .predictorRationale {
+    max-width: none;
+    text-align: left;
+  }
+
   .summaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

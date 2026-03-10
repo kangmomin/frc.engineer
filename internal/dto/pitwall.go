@@ -44,22 +44,39 @@ type WeatherForecastDTO struct {
 	RainPercentage  int     `json:"rainPercentage"`
 }
 
+// CrossoverPredictionDTO summarizes the latest dry-vs-wet pace crossover model.
+type CrossoverPredictionDTO struct {
+	Available          bool    `json:"available"`
+	DryGroup           string  `json:"dryGroup"`
+	WetGroup           string  `json:"wetGroup"`
+	CurrentDeltaMS     float64 `json:"currentDeltaMs"`
+	TrendDeltaMSPerLap float64 `json:"trendDeltaMsPerLap"`
+	AvgLapTimeMS       float64 `json:"avgLapTimeMs"`
+	DrySampleCount     int     `json:"drySampleCount"`
+	WetSampleCount     int     `json:"wetSampleCount"`
+	HistoryDepth       int     `json:"historyDepth"`
+	CurrentDryAvgMS    float64 `json:"currentDryAvgMs"`
+	CurrentWetAvgMS    float64 `json:"currentWetAvgMs"`
+	Reason             string  `json:"reason,omitempty"`
+}
+
 // SessionInfo contains session-level data (weather, track, safety car)
 type SessionInfo struct {
-	Weather                string               `json:"weather"`
-	TrackTemp              float32              `json:"trackTemp"`
-	AirTemp                float32              `json:"airTemp"`
-	SafetyCar              string               `json:"safetyCar"`
-	SessionType            string               `json:"sessionType"`
-	TotalLaps              int                  `json:"totalLaps"`
-	TrackID                int8                 `json:"trackId"`
-	TrackName              string               `json:"trackName"`
-	TrackLength            int                  `json:"trackLength"`
-	PitStopWindowIdealLap  int                  `json:"pitStopWindowIdealLap,omitempty"`
-	PitStopWindowLatestLap int                  `json:"pitStopWindowLatestLap,omitempty"`
-	PitStopRejoinPosition  int                  `json:"pitStopRejoinPosition,omitempty"`
-	MarshalZones           []MarshalZoneDTO     `json:"marshalZones,omitempty"`
-	WeatherForecast        []WeatherForecastDTO `json:"weatherForecast,omitempty"`
+	Weather                string                  `json:"weather"`
+	TrackTemp              float32                 `json:"trackTemp"`
+	AirTemp                float32                 `json:"airTemp"`
+	SafetyCar              string                  `json:"safetyCar"`
+	SessionType            string                  `json:"sessionType"`
+	TotalLaps              int                     `json:"totalLaps"`
+	TrackID                int8                    `json:"trackId"`
+	TrackName              string                  `json:"trackName"`
+	TrackLength            int                     `json:"trackLength"`
+	PitStopWindowIdealLap  int                     `json:"pitStopWindowIdealLap,omitempty"`
+	PitStopWindowLatestLap int                     `json:"pitStopWindowLatestLap,omitempty"`
+	PitStopRejoinPosition  int                     `json:"pitStopRejoinPosition,omitempty"`
+	MarshalZones           []MarshalZoneDTO        `json:"marshalZones,omitempty"`
+	WeatherForecast        []WeatherForecastDTO    `json:"weatherForecast,omitempty"`
+	CrossoverPrediction    *CrossoverPredictionDTO `json:"crossoverPrediction,omitempty"`
 }
 
 // DriverInfo contains per-driver race data

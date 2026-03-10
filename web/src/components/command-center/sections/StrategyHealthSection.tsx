@@ -67,6 +67,27 @@ interface UndercutAlertState {
   behindMonitor: RivalMonitor | null;
 }
 
+interface InterpolatedForecast {
+  weather: string;
+  rainPercentage: number;
+  timeOffset: number;
+}
+
+interface CrossoverProjectionState {
+  currentDeltaMs: number;
+  predictedDeltaMs: number;
+  effectiveTrendMsPerLap: number;
+  weatherBiasMsPerLap: number;
+  lapsAhead: number;
+  minutesAhead: number;
+  forecastWeather: string;
+  forecastRainPercentage: number;
+  action: string;
+  actionTone: 'go' | 'watch' | 'hold';
+  rationale: string;
+  paybackLaps: number | null;
+}
+
 const DAMAGE_COMPONENTS: Array<{
   key: DamageValueKey;
   label: string;
@@ -417,6 +438,205 @@ function formatPaceDelta(ms: number): string {
   return `${prefix}${(Math.abs(ms) / 1000).toFixed(3)}s`;
 }
 
+function formatCompoundLabel(compound: string | undefined): string {
+  const normalized = (compound ?? '').trim().toLowerCase();
+  if (!normalized) return 'UNKNOWN';
+  if (normalized === 'slick') return 'SLICK';
+  if (normalized === 'inter') return 'INTER';
+  if (normalized === 'wet') return 'WET';
+  return normalized.toUpperCase();
+}
+
+function getCompoundTrackGroup(compound: string | undefined): 'dry' | 'wet' | 'unknown' {
+  switch ((compound ?? '').toLowerCase()) {
+    case 'soft':
+    case 'medium':
+    case 'hard':
+    case 'slick':
+      return 'dry';
+    case 'inter':
+    case 'wet':
+      return 'wet';
+    default:
+      return 'unknown';
+  }
+}
+
+function formatWeatherLabel(weather: string | undefined): string {
+  return (weather ?? 'unknown').replace(/_/g, ' ').toUpperCase();
+}
+
+function formatLapEdge(ms: number): string {
+  return `${(Math.abs(ms) / 1000).toFixed(1)}s/lap`;
+}
+
+function describeAdvantage(deltaMs: number, dryLabel: string, wetLabel: string): string {
+  if (!Number.isFinite(deltaMs) || Math.abs(deltaMs) < 50) return 'PACE PARITY';
+  if (deltaMs > 0) {
+    return `${wetLabel} +${formatLapEdge(deltaMs)}`;
+  }
+  return `${dryLabel} +${formatLapEdge(deltaMs)}`;
+}
+
+function describeTrend(deltaMsPerLap: number, dryLabel: string, wetLabel: string): string {
+  if (!Number.isFinite(deltaMsPerLap) || Math.abs(deltaMsPerLap) < 50) return 'Stable crossover trend';
+  if (deltaMsPerLap > 0) {
+    return `${wetLabel} gaining ${formatLapEdge(deltaMsPerLap)}`;
+  }
+  return `${dryLabel} gaining ${formatLapEdge(deltaMsPerLap)}`;
+}
+
+function getWeatherSeverityScore(weather: string | undefined, rainPercentage: number): number {
+  const normalized = (weather ?? '').toLowerCase();
+  const rainScore = Math.max(0, Math.min(100, rainPercentage)) / 100;
+
+  switch (normalized) {
+    case 'clear':
+      return Math.max(0, rainScore * 0.2);
+    case 'light_cloud':
+      return Math.max(0.05, rainScore * 0.3);
+    case 'overcast':
+      return Math.max(0.15, rainScore * 0.45);
+    case 'light_rain':
+      return Math.max(0.55, rainScore * 0.8);
+    case 'heavy_rain':
+      return Math.max(0.95, rainScore);
+    case 'storm':
+      return Math.max(1.2, rainScore * 1.15);
+    default:
+      return rainScore;
+  }
+}
+
+function interpolateForecastSample(
+  forecasts: SessionInfo['weatherForecast'] | undefined,
+  minutesAhead: number,
+  fallbackWeather: string | undefined,
+  fallbackRainPercentage = 0,
+): InterpolatedForecast {
+  const samples = [...(forecasts ?? [])]
+    .filter((sample) => Number.isFinite(sample.timeOffset))
+    .sort((a, b) => a.timeOffset - b.timeOffset);
+
+  if (samples.length === 0) {
+    return {
+      weather: fallbackWeather ?? 'unknown',
+      rainPercentage: fallbackRainPercentage,
+      timeOffset: Math.max(0, minutesAhead),
+    };
+  }
+
+  if (minutesAhead <= samples[0].timeOffset) {
+    return {
+      weather: samples[0].weather,
+      rainPercentage: samples[0].rainPercentage,
+      timeOffset: samples[0].timeOffset,
+    };
+  }
+
+  for (let i = 1; i < samples.length; i++) {
+    const upper = samples[i];
+    const lower = samples[i - 1];
+    if (minutesAhead > upper.timeOffset) continue;
+
+    const span = upper.timeOffset - lower.timeOffset;
+    const ratio = span > 0 ? (minutesAhead - lower.timeOffset) / span : 0;
+    const rainPercentage = lower.rainPercentage + (upper.rainPercentage - lower.rainPercentage) * ratio;
+
+    return {
+      weather: ratio < 0.5 ? lower.weather : upper.weather,
+      rainPercentage,
+      timeOffset: minutesAhead,
+    };
+  }
+
+  const last = samples[samples.length - 1];
+  return {
+    weather: last.weather,
+    rainPercentage: last.rainPercentage,
+    timeOffset: last.timeOffset,
+  };
+}
+
+function calculateCrossoverProjection(
+  driver: DriverInfo,
+  session: SessionInfo,
+  lapsAhead: number,
+  pitLossSeconds: number,
+): CrossoverProjectionState | null {
+  const model = session.crossoverPrediction;
+  if (!model?.available) return null;
+
+  const clampedLapsAhead = Math.max(1, Math.min(10, Math.round(lapsAhead)));
+  const avgLapTimeMs = model.avgLapTimeMs > 0 ? model.avgLapTimeMs : selectBaselineLap(driver);
+  const minutesAhead = (avgLapTimeMs * clampedLapsAhead) / 60_000;
+  const baselineForecast = interpolateForecastSample(
+    session.weatherForecast,
+    0,
+    session.weather,
+  );
+  const targetForecast = interpolateForecastSample(
+    session.weatherForecast,
+    minutesAhead,
+    session.weather,
+    baselineForecast.rainPercentage,
+  );
+  const currentSeverity = getWeatherSeverityScore(session.weather, baselineForecast.rainPercentage);
+  const futureSeverity = getWeatherSeverityScore(targetForecast.weather, targetForecast.rainPercentage);
+  const weatherBiasMsPerLap = (futureSeverity - currentSeverity) * 1200;
+  const effectiveTrendMsPerLap = model.trendDeltaMsPerLap + weatherBiasMsPerLap;
+  const predictedDeltaMs = model.currentDeltaMs + effectiveTrendMsPerLap * clampedLapsAhead;
+  const playerGroup = getCompoundTrackGroup(driver.tireCompound);
+  const projectedEdgeMs = Math.abs(predictedDeltaMs);
+  const paybackLaps = projectedEdgeMs >= 250 ? (pitLossSeconds * 1000) / projectedEdgeMs : null;
+  const remainingLaps = session.totalLaps > 0 ? Math.max(0, session.totalLaps - driver.currentLapNum) : null;
+
+  let action = 'STAY OUT';
+  let actionTone: CrossoverProjectionState['actionTone'] = 'hold';
+  let rationale = 'No decisive crossover edge yet.';
+
+  if (predictedDeltaMs > 700 && playerGroup === 'dry') {
+    action = model.currentDeltaMs > 250 || clampedLapsAhead <= 2
+      ? `BOX THIS LAP FOR ${formatCompoundLabel(model.wetGroup)}`
+      : `BOX NEXT LAP FOR ${formatCompoundLabel(model.wetGroup)}`;
+    actionTone = projectedEdgeMs > 1800 ? 'go' : 'watch';
+    rationale = `${formatCompoundLabel(model.wetGroup)} crossover building as rain intensity increases.`;
+  } else if (predictedDeltaMs < -700 && playerGroup === 'wet') {
+    action = model.currentDeltaMs < -250 || clampedLapsAhead <= 2
+      ? 'BOX THIS LAP FOR SLICKS'
+      : 'PREPARE SLICKS';
+    actionTone = projectedEdgeMs > 1800 ? 'go' : 'watch';
+    rationale = 'Track is drying enough for slick crossover risk.';
+  } else if (Math.abs(effectiveTrendMsPerLap) > 700 && projectedEdgeMs > 500) {
+    action = 'MONITOR WINDOW';
+    actionTone = 'watch';
+    rationale = predictedDeltaMs > 0
+      ? `${formatCompoundLabel(model.wetGroup)} tyres are taking over quickly.`
+      : 'Slick pace is recovering quickly.';
+  }
+
+  if (paybackLaps != null && remainingLaps != null && paybackLaps > remainingLaps && actionTone !== 'go') {
+    action = 'STAY OUT';
+    actionTone = 'hold';
+    rationale = 'Projected gain does not repay pit loss before the finish.';
+  }
+
+  return {
+    currentDeltaMs: model.currentDeltaMs,
+    predictedDeltaMs,
+    effectiveTrendMsPerLap,
+    weatherBiasMsPerLap,
+    lapsAhead: clampedLapsAhead,
+    minutesAhead,
+    forecastWeather: targetForecast.weather,
+    forecastRainPercentage: targetForecast.rainPercentage,
+    action,
+    actionTone,
+    rationale,
+    paybackLaps,
+  };
+}
+
 function getDamageLevel(value: number): 'safe' | 'warning' | 'danger' {
   if (value < 20) return 'safe';
   if (value <= 50) return 'warning';
@@ -466,6 +686,7 @@ export function StrategyHealthSection() {
   const session = pitwallState?.session ?? null;
   const driver = drivers.find((item) => item.index === pitwallState?.playerIndex) ?? null;
   const stableHealth = useStableHealthSnapshot(driver?.damage, driver?.tireWear);
+  const [predictionLaps, setPredictionLaps] = useState(3);
 
   const pitRejoinRadar = useMemo(() => {
     if (!driver || drivers.length === 0) return null;
@@ -476,6 +697,16 @@ export function StrategyHealthSection() {
     if (!driver || drivers.length === 0) return null;
     return buildUndercutAlert(driver, drivers);
   }, [driver, drivers]);
+
+  const crossoverProjection = useMemo(() => {
+    if (!driver || !session) return null;
+    return calculateCrossoverProjection(
+      driver,
+      session,
+      predictionLaps,
+      getPitLossSeconds(getSafetyCarMode(session.safetyCar)),
+    );
+  }, [driver, predictionLaps, session]);
 
   const safetyCarMode = getSafetyCarMode(session?.safetyCar);
   const strategyBannerActive = safetyCarMode === 'sc' || safetyCarMode === 'vsc';
@@ -550,6 +781,117 @@ export function StrategyHealthSection() {
               <span className={styles.scBannerMessage}>PIT LOSS REDUCED - CONSIDER BOX STRATEGY</span>
             </div>
           )}
+
+          <div
+            className={`${styles.predictorCard} ${
+              crossoverProjection
+                ? crossoverProjection.predictedDeltaMs > 0
+                  ? styles.predictorWetBias
+                  : styles.predictorDryBias
+                : styles.predictorNeutral
+            }`}
+          >
+            <div className={styles.predictorHeader}>
+              <div className={styles.predictorHeading}>
+                <span className={styles.cardLabel}>CROSSOVER PREDICTOR</span>
+                <span className={styles.predictorTitle}>
+                  {session?.crossoverPrediction?.available
+                    ? `${formatCompoundLabel(session.crossoverPrediction.wetGroup)} vs ${formatCompoundLabel(session.crossoverPrediction.dryGroup)}`
+                    : 'Waiting for matched tyre data'}
+                </span>
+              </div>
+
+              <label className={styles.predictorInputGroup}>
+                <span className={styles.predictorInputLabel}>LOOK AHEAD</span>
+                <div className={styles.predictorInputWrap}>
+                  <input
+                    className={styles.predictorInput}
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={predictionLaps}
+                    onChange={(event) => {
+                      const next = Number.parseInt(event.target.value, 10);
+                      setPredictionLaps(Number.isFinite(next) ? Math.max(1, Math.min(10, next)) : 1);
+                    }}
+                  />
+                  <span className={styles.predictorInputUnit}>LAPS</span>
+                </div>
+              </label>
+            </div>
+
+            {crossoverProjection && session?.crossoverPrediction ? (
+              <>
+                <div className={styles.predictorGrid}>
+                  <div className={styles.predictorStat}>
+                    <span className={styles.predictorStatLabel}>CURRENT</span>
+                    <span className={styles.predictorStatValue}>
+                      {describeAdvantage(
+                        crossoverProjection.currentDeltaMs,
+                        formatCompoundLabel(session.crossoverPrediction.dryGroup),
+                        formatCompoundLabel(session.crossoverPrediction.wetGroup),
+                      )}
+                    </span>
+                  </div>
+
+                  <div className={styles.predictorStat}>
+                    <span className={styles.predictorStatLabel}>TREND</span>
+                    <span className={styles.predictorStatValue}>
+                      {describeTrend(
+                        crossoverProjection.effectiveTrendMsPerLap,
+                        formatCompoundLabel(session.crossoverPrediction.dryGroup),
+                        formatCompoundLabel(session.crossoverPrediction.wetGroup),
+                      )}
+                    </span>
+                  </div>
+
+                  <div className={styles.predictorStat}>
+                    <span className={styles.predictorStatLabel}>FORECAST @{crossoverProjection.lapsAhead}L</span>
+                    <span className={styles.predictorStatValue}>
+                      {describeAdvantage(
+                        crossoverProjection.predictedDeltaMs,
+                        formatCompoundLabel(session.crossoverPrediction.dryGroup),
+                        formatCompoundLabel(session.crossoverPrediction.wetGroup),
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={styles.predictorFooter}>
+                  <div className={styles.predictorMeta}>
+                    <span>
+                      {formatWeatherLabel(crossoverProjection.forecastWeather)} {crossoverProjection.forecastRainPercentage.toFixed(0)}% rain in {crossoverProjection.minutesAhead.toFixed(1)} min
+                    </span>
+                    <span>
+                      Samples {session.crossoverPrediction.drySampleCount}/{session.crossoverPrediction.wetSampleCount} | Model {session.crossoverPrediction.historyDepth} laps
+                    </span>
+                    {crossoverProjection.paybackLaps != null && (
+                      <span>Payback {crossoverProjection.paybackLaps.toFixed(1)} laps</span>
+                    )}
+                  </div>
+
+                  <div className={styles.predictorRecommendation}>
+                    <span
+                      className={`${styles.predictorAction} ${
+                        crossoverProjection.actionTone === 'go'
+                          ? styles.predictorActionGo
+                          : crossoverProjection.actionTone === 'watch'
+                            ? styles.predictorActionWatch
+                            : styles.predictorActionHold
+                      }`}
+                    >
+                      {crossoverProjection.action}
+                    </span>
+                    <span className={styles.predictorRationale}>{crossoverProjection.rationale}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className={styles.predictorEmpty}>
+                {session?.crossoverPrediction?.reason ?? 'Need both slick and inter/wet laps to build a crossover model.'}
+              </div>
+            )}
+          </div>
 
           <div className={styles.assistGrid}>
             <div

@@ -681,6 +681,13 @@ func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {
 			PitStopWindowIdealLap:  src.Session.PitStopWindowIdealLap,
 			PitStopWindowLatestLap: src.Session.PitStopWindowLatestLap,
 			PitStopRejoinPosition:  src.Session.PitStopRejoinPosition,
+			CrossoverPrediction:    copyCrossoverPrediction(src.Session.CrossoverPrediction),
+		}
+		if len(src.Session.MarshalZones) > 0 {
+			out.Session.MarshalZones = append([]dto.MarshalZoneDTO(nil), src.Session.MarshalZones...)
+		}
+		if len(src.Session.WeatherForecast) > 0 {
+			out.Session.WeatherForecast = append([]dto.WeatherForecastDTO(nil), src.Session.WeatherForecast...)
 		}
 	}
 
@@ -728,6 +735,7 @@ func copySessionInfo(src *dto.SessionInfo) *dto.SessionInfo {
 		PitStopWindowIdealLap:  src.PitStopWindowIdealLap,
 		PitStopWindowLatestLap: src.PitStopWindowLatestLap,
 		PitStopRejoinPosition:  src.PitStopRejoinPosition,
+		CrossoverPrediction:    copyCrossoverPrediction(src.CrossoverPrediction),
 	}
 	if len(src.MarshalZones) > 0 {
 		out.MarshalZones = append([]dto.MarshalZoneDTO(nil), src.MarshalZones...)
@@ -736,4 +744,12 @@ func copySessionInfo(src *dto.SessionInfo) *dto.SessionInfo {
 		out.WeatherForecast = append([]dto.WeatherForecastDTO(nil), src.WeatherForecast...)
 	}
 	return out
+}
+
+func copyCrossoverPrediction(src *dto.CrossoverPredictionDTO) *dto.CrossoverPredictionDTO {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	return &dst
 }
