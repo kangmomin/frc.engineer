@@ -270,6 +270,9 @@ export interface SessionInfo {
   trackId: number;
   trackName: string;
   trackLength: number;
+  pitStopWindowIdealLap?: number;
+  pitStopWindowLatestLap?: number;
+  pitStopRejoinPosition?: number;
   marshalZones?: MarshalZone[];
   weatherForecast?: WeatherForecast[];
 }

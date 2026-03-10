@@ -40,24 +40,35 @@ type PacketSessionData struct {
 	SafetyCarStatus           uint8 // 0=no safety car, 1=full, 2=virtual, 3=formation lap
 	NumWeatherForecastSamples uint8
 	WeatherForecastSamples    [64]WeatherForecastSample
+	PitStopWindowIdealLap     uint8
+	PitStopWindowLatestLap    uint8
+	PitStopRejoinPosition     uint8
 }
 
 // Session packet field offsets (relative to start of packet)
 const (
-	sessionWeatherOffset          = PacketHeaderSize      // 29
-	sessionTrackTempOffset        = PacketHeaderSize + 1  // 30
-	sessionAirTempOffset          = PacketHeaderSize + 2  // 31
-	sessionTotalLapsOffset        = PacketHeaderSize + 3  // 32
-	sessionTrackLengthOffset      = PacketHeaderSize + 4  // 33-34
-	sessionTypeOffset             = PacketHeaderSize + 6  // 35
-	sessionTrackIDOffset          = PacketHeaderSize + 7  // 36
-	sessionNumMarshalZonesOffset  = PacketHeaderSize + 18 // 47
-	sessionMarshalZonesOffset     = PacketHeaderSize + 19 // 48 (21 zones × 5 bytes each)
-	marshalZoneSize               = 5                     // float32 + int8
-	sessionSafetyCarStatusOffset       = PacketHeaderSize + 19 + (21 * 5) // 153
-	sessionNumForecastOffset           = PacketHeaderSize + 126            // 155
-	sessionForecastOffset              = PacketHeaderSize + 127            // 156
-	weatherForecastSampleSize          = 8
+	sessionWeatherOffset                = PacketHeaderSize                 // 29
+	sessionTrackTempOffset              = PacketHeaderSize + 1             // 30
+	sessionAirTempOffset                = PacketHeaderSize + 2             // 31
+	sessionTotalLapsOffset              = PacketHeaderSize + 3             // 32
+	sessionTrackLengthOffset            = PacketHeaderSize + 4             // 33-34
+	sessionTypeOffset                   = PacketHeaderSize + 6             // 35
+	sessionTrackIDOffset                = PacketHeaderSize + 7             // 36
+	sessionNumMarshalZonesOffset        = PacketHeaderSize + 18            // 47
+	sessionMarshalZonesOffset           = PacketHeaderSize + 19            // 48 (21 zones × 5 bytes each)
+	marshalZoneSize                     = 5                                // float32 + int8
+	sessionSafetyCarStatusOffset        = PacketHeaderSize + 19 + (21 * 5) // 153
+	sessionNumForecastOffset            = PacketHeaderSize + 126           // 155
+	sessionForecastOffset               = PacketHeaderSize + 127           // 156
+	weatherForecastSampleSize           = 8
+	sessionForecastAccuracyOffset       = sessionForecastOffset + (64 * weatherForecastSampleSize)
+	sessionAIDifficultyOffset           = sessionForecastAccuracyOffset + 1
+	sessionSeasonLinkIdentifierOffset   = sessionAIDifficultyOffset + 1
+	sessionWeekendLinkIdentifierOffset  = sessionSeasonLinkIdentifierOffset + 4
+	sessionSessionLinkIdentifierOffset  = sessionWeekendLinkIdentifierOffset + 4
+	sessionPitStopWindowIdealLapOffset  = sessionSessionLinkIdentifierOffset + 4
+	sessionPitStopWindowLatestLapOffset = sessionPitStopWindowIdealLapOffset + 1
+	sessionPitStopRejoinPositionOffset  = sessionPitStopWindowLatestLapOffset + 1
 )
 
 // MinSessionPacketSize is the minimum size needed to parse essential session fields
@@ -123,6 +134,16 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 				RainPercentage:         data[off+7],
 			}
 		}
+	}
+
+	if len(data) > sessionPitStopWindowIdealLapOffset {
+		packet.PitStopWindowIdealLap = data[sessionPitStopWindowIdealLapOffset]
+	}
+	if len(data) > sessionPitStopWindowLatestLapOffset {
+		packet.PitStopWindowLatestLap = data[sessionPitStopWindowLatestLapOffset]
+	}
+	if len(data) > sessionPitStopRejoinPositionOffset {
+		packet.PitStopRejoinPosition = data[sessionPitStopRejoinPositionOffset]
 	}
 
 	return packet, nil

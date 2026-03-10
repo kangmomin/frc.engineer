@@ -50,7 +50,7 @@ func main() {
 	}
 	defer c.Close()
 
-	fmt.Println("Connected! Receiving telemetry data...\n")
+	fmt.Println("Connected! Receiving telemetry data...")
 
 	received := 0
 	done := make(chan struct{})

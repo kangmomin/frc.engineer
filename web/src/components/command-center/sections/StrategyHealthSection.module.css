@@ -7,137 +7,465 @@
 
 .content {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: 3fr 2fr;
   gap: 1px;
   background: var(--bg-panel-border);
   overflow: hidden;
 }
 
-/* Pit Simulation Section */
-.pitSection {
+.strategySection {
   background: var(--bg-primary);
-  padding: var(--spacing-sm) var(--spacing-md);
-  flex-shrink: 0;
-}
-
-.pitHeader {
-  margin-bottom: var(--spacing-sm);
-}
-
-.pitLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.pitContent {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+}
+
+.scBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 7px 12px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 0, 0.24), rgba(255, 135, 0, 0.16)),
+    var(--bg-primary);
+  border-bottom: 1px solid rgba(255, 255, 0, 0.25);
+}
+
+.scBannerMode {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--bg-primary);
+  background: rgba(255, 255, 0, 0.9);
+  border-radius: 999px;
+  padding: 2px 6px;
+  letter-spacing: 0.8px;
+}
+
+.scBannerMessage {
+  flex: 1;
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-yellow);
+  letter-spacing: 0.9px;
+  text-align: right;
+  animation: strategyBlink 1s steps(2, end) infinite;
+}
+
+.assistGrid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 1.15fr 0.85fr;
+  gap: 1px;
+  background: var(--bg-panel-border);
+}
+
+.assistCard {
+  background: var(--bg-primary);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.assistCard::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+}
+
+.rejoinCard {
+  grid-column: 1 / -1;
+}
+
+.cleanAir {
+  background:
+    radial-gradient(circle at top right, rgba(0, 255, 0, 0.16), transparent 42%),
+    linear-gradient(135deg, rgba(0, 255, 0, 0.08), transparent 38%),
+    var(--bg-primary);
+}
+
+.trafficAir {
+  background:
+    radial-gradient(circle at top right, rgba(225, 6, 0, 0.18), transparent 44%),
+    linear-gradient(135deg, rgba(225, 6, 0, 0.08), transparent 38%),
+    var(--bg-primary);
+}
+
+.alertLive {
+  box-shadow: inset 3px 0 0 rgba(225, 6, 0, 0.9);
+}
+
+.alertIdle {
+  box-shadow: inset 3px 0 0 rgba(0, 210, 255, 0.55);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: var(--spacing-sm);
 }
 
-.pitResult {
-  display: flex;
+.cardLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.cardBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.cardBadgeGreen {
+  background: rgba(0, 255, 0, 0.15);
+  color: var(--accent-green);
+}
+
+.cardBadgeRed {
+  background: rgba(225, 6, 0, 0.15);
+  color: var(--accent-red);
+}
+
+.cardBadgeBlue {
+  background: rgba(0, 210, 255, 0.14);
+  color: var(--accent-blue);
+}
+
+.cardBadgeYellow {
+  background: rgba(255, 255, 0, 0.14);
+  color: var(--accent-yellow);
+}
+
+.rejoinMainRow {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
   align-items: center;
   gap: var(--spacing-sm);
 }
 
-.pitNow {
+.positionStack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.positionCaption {
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.positionValue {
+  font-family: var(--font-racing);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.positionArrow {
+  font-family: var(--font-racing);
+  font-size: 18px;
   color: var(--text-secondary);
 }
 
-.positionChange {
+.rejoinMeta {
   display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 
-.currentPos {
+.rejoinLossLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.rejoinLossValue {
   font-family: var(--font-racing);
   font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.arrow {
-  font-size: 14px;
-  color: var(--text-muted);
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
 }
 
-.estimatedPos {
-  font-family: var(--font-racing);
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent-green);
-}
-
-.estimatedPos.posLost {
-  color: var(--accent-red);
-}
-
-.positionsLostBadge {
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 0, 0, 0.15);
-  font-family: var(--font-racing);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-red);
-}
-
-/* Nearby Drivers List */
-.nearbyDrivers {
+.slotCard {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: var(--spacing-xs);
-}
-
-.nearbyDriver {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(255, 255, 255, 0.03);
+  gap: 4px;
+  padding: 9px 10px;
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.nearbyDriver.wouldOvertake {
-  background: rgba(255, 0, 0, 0.08);
-  border-left: 2px solid var(--accent-red);
+.slotLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
 }
 
-.nearbyPos {
+.slotName {
   font-family: var(--font-racing);
-  font-weight: 700;
-  color: var(--text-secondary);
-  min-width: 24px;
-}
-
-.nearbyName {
-  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.nearbyGap {
+.slotGap {
   font-family: var(--font-racing);
-  color: var(--text-muted);
+  font-size: 11px;
+  color: var(--accent-blue);
 }
 
-/* Car Health Section */
+.cardFooter {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.alertCard,
+.scCard {
+  justify-content: flex-start;
+}
+
+.alertTopRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.alertTitle {
+  display: block;
+  font-family: var(--font-racing);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.7px;
+}
+
+.alertSubtitle {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.alertRivalMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.alertRivalName {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.alertGap {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--accent-orange);
+}
+
+.paceCompare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.paceBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--radius-sm);
+}
+
+.paceLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.paceValue {
+  font-family: var(--font-racing);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.alertActionRow {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.paceDelta {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-orange);
+}
+
+.actionText {
+  font-family: var(--font-racing);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.actionCritical {
+  color: var(--accent-red);
+}
+
+.actionHold {
+  color: var(--accent-green);
+}
+
+.monitorRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-top: auto;
+}
+
+.monitorChip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.monitorLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.monitorValue {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.scCardContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.scState {
+  font-family: var(--font-racing);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.7px;
+}
+
+.scInstruction {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  letter-spacing: 0.5px;
+}
+
+.scInstructionBlink {
+  color: var(--accent-yellow);
+  animation: strategyBlink 1s steps(2, end) infinite;
+}
+
+.scMetrics {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.scMetric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.scMetricLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.scMetricValue {
+  font-family: var(--font-racing);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 .healthSection {
   background: var(--bg-primary);
-  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -148,56 +476,89 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
-  flex-shrink: 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .healthLabel {
   font-family: var(--font-body);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-muted);
+  letter-spacing: 0.8px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .allClearBadge {
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 255, 0, 0.15);
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
   font-family: var(--font-racing);
   font-size: 10px;
   font-weight: 700;
   color: var(--accent-green);
+  background: rgba(0, 255, 0, 0.15);
 }
 
 .healthContent {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 0 var(--spacing-md) var(--spacing-md);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* Fault Indicators */
-.faultRow {
-  display: flex;
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
+}
+
+.summaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.summaryLabel {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.summaryValue {
+  font-family: var(--font-racing);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.faultRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
 }
 
 .faultIndicator {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(0, 255, 0, 0.08);
-  border: 1px solid rgba(0, 255, 0, 0.2);
+  gap: var(--spacing-sm);
+  padding: 8px 9px;
   border-radius: var(--radius-sm);
+  border: 1px solid rgba(0, 255, 0, 0.22);
+  background: rgba(0, 255, 0, 0.07);
 }
 
-.faultIndicator.faultActive {
-  background: rgba(255, 0, 0, 0.15);
-  border-color: var(--accent-red);
+.faultActive {
+  border-color: rgba(225, 6, 0, 0.5);
+  background: rgba(225, 6, 0, 0.12);
   animation: faultPulse 1s ease-in-out infinite;
 }
 
@@ -215,15 +576,14 @@
   color: var(--accent-green);
 }
 
-.faultIndicator.faultActive .faultStatus {
+.faultActive .faultStatus {
   color: var(--accent-red);
 }
 
-/* Damage Grid */
 .damageGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--spacing-sm);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px var(--spacing-sm);
 }
 
 .damageItem {
@@ -236,6 +596,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--spacing-sm);
 }
 
 .damageLabel {
@@ -250,46 +611,76 @@
   font-weight: 700;
 }
 
-.damageValue.safe {
-  color: var(--accent-green);
-}
-
-.damageValue.warning {
-  color: var(--accent-yellow);
-}
-
-.damageValue.danger {
-  color: var(--accent-red);
-}
-
 .damageBar {
   width: 100%;
   height: 4px;
-  background: var(--bg-panel-border);
-  border-radius: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
 .damageFill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: inherit;
   transition: width 150ms ease, background-color 150ms ease;
 }
 
-/* No Data State */
+.safe {
+  color: var(--accent-green);
+}
+
+.warning {
+  color: var(--accent-yellow);
+}
+
+.danger {
+  color: var(--accent-red);
+}
+
 .noData {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
   padding: var(--spacing-md);
   text-align: center;
   font-size: 12px;
   color: var(--text-muted);
 }
 
-/* Animations */
+@keyframes strategyBlink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.35;
+  }
+}
+
 @keyframes faultPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
-    opacity: 0.6;
+    opacity: 0.65;
+  }
+}
+
+@media (max-width: 900px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rejoinMainRow {
+    grid-template-columns: repeat(3, auto);
+  }
+
+  .rejoinMeta {
+    grid-column: 1 / -1;
+    align-items: flex-start;
   }
 }

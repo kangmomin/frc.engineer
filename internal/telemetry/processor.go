@@ -669,15 +669,18 @@ func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {
 
 	if src.Session != nil {
 		out.Session = &dto.SessionInfo{
-			Weather:     src.Session.Weather,
-			TrackTemp:   src.Session.TrackTemp,
-			AirTemp:     src.Session.AirTemp,
-			SafetyCar:   src.Session.SafetyCar,
-			SessionType: src.Session.SessionType,
-			TotalLaps:   src.Session.TotalLaps,
-			TrackID:     src.Session.TrackID,
-			TrackName:   src.Session.TrackName,
-			TrackLength: src.Session.TrackLength,
+			Weather:                src.Session.Weather,
+			TrackTemp:              src.Session.TrackTemp,
+			AirTemp:                src.Session.AirTemp,
+			SafetyCar:              src.Session.SafetyCar,
+			SessionType:            src.Session.SessionType,
+			TotalLaps:              src.Session.TotalLaps,
+			TrackID:                src.Session.TrackID,
+			TrackName:              src.Session.TrackName,
+			TrackLength:            src.Session.TrackLength,
+			PitStopWindowIdealLap:  src.Session.PitStopWindowIdealLap,
+			PitStopWindowLatestLap: src.Session.PitStopWindowLatestLap,
+			PitStopRejoinPosition:  src.Session.PitStopRejoinPosition,
 		}
 	}
 
@@ -713,15 +716,18 @@ func copySessionInfo(src *dto.SessionInfo) *dto.SessionInfo {
 	}
 
 	out := &dto.SessionInfo{
-		Weather:     src.Weather,
-		TrackTemp:   src.TrackTemp,
-		AirTemp:     src.AirTemp,
-		SafetyCar:   src.SafetyCar,
-		SessionType: src.SessionType,
-		TotalLaps:   src.TotalLaps,
-		TrackID:     src.TrackID,
-		TrackName:   src.TrackName,
-		TrackLength: src.TrackLength,
+		Weather:                src.Weather,
+		TrackTemp:              src.TrackTemp,
+		AirTemp:                src.AirTemp,
+		SafetyCar:              src.SafetyCar,
+		SessionType:            src.SessionType,
+		TotalLaps:              src.TotalLaps,
+		TrackID:                src.TrackID,
+		TrackName:              src.TrackName,
+		TrackLength:            src.TrackLength,
+		PitStopWindowIdealLap:  src.PitStopWindowIdealLap,
+		PitStopWindowLatestLap: src.PitStopWindowLatestLap,
+		PitStopRejoinPosition:  src.PitStopRejoinPosition,
 	}
 	if len(src.MarshalZones) > 0 {
 		out.MarshalZones = append([]dto.MarshalZoneDTO(nil), src.MarshalZones...)

@@ -199,15 +199,18 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	// Session info
 	if pm.session != nil {
 		si := &dto.SessionInfo{
-			Weather:     weatherString(pm.session.Weather),
-			TrackTemp:   float32(pm.session.TrackTemperature),
-			AirTemp:     float32(pm.session.AirTemperature),
-			SafetyCar:   safetyCarString(pm.session.SafetyCarStatus),
-			SessionType: sessionTypeString(pm.session.SessionType),
-			TotalLaps:   int(pm.session.TotalLaps),
-			TrackID:     pm.session.TrackID,
-			TrackName:   tracks.TrackName(pm.session.TrackID),
-			TrackLength: int(pm.session.TrackLength),
+			Weather:                weatherString(pm.session.Weather),
+			TrackTemp:              float32(pm.session.TrackTemperature),
+			AirTemp:                float32(pm.session.AirTemperature),
+			SafetyCar:              safetyCarString(pm.session.SafetyCarStatus),
+			SessionType:            sessionTypeString(pm.session.SessionType),
+			TotalLaps:              int(pm.session.TotalLaps),
+			TrackID:                pm.session.TrackID,
+			TrackName:              tracks.TrackName(pm.session.TrackID),
+			TrackLength:            int(pm.session.TrackLength),
+			PitStopWindowIdealLap:  int(pm.session.PitStopWindowIdealLap),
+			PitStopWindowLatestLap: int(pm.session.PitStopWindowLatestLap),
+			PitStopRejoinPosition:  int(pm.session.PitStopRejoinPosition),
 		}
 		numZones := int(pm.session.NumMarshalZones)
 		if numZones > 21 {

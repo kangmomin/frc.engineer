@@ -46,17 +46,20 @@ type WeatherForecastDTO struct {
 
 // SessionInfo contains session-level data (weather, track, safety car)
 type SessionInfo struct {
-	Weather         string               `json:"weather"`
-	TrackTemp       float32              `json:"trackTemp"`
-	AirTemp         float32              `json:"airTemp"`
-	SafetyCar       string               `json:"safetyCar"`
-	SessionType     string               `json:"sessionType"`
-	TotalLaps       int                  `json:"totalLaps"`
-	TrackID         int8                 `json:"trackId"`
-	TrackName       string               `json:"trackName"`
-	TrackLength     int                  `json:"trackLength"`
-	MarshalZones    []MarshalZoneDTO     `json:"marshalZones,omitempty"`
-	WeatherForecast []WeatherForecastDTO `json:"weatherForecast,omitempty"`
+	Weather                string               `json:"weather"`
+	TrackTemp              float32              `json:"trackTemp"`
+	AirTemp                float32              `json:"airTemp"`
+	SafetyCar              string               `json:"safetyCar"`
+	SessionType            string               `json:"sessionType"`
+	TotalLaps              int                  `json:"totalLaps"`
+	TrackID                int8                 `json:"trackId"`
+	TrackName              string               `json:"trackName"`
+	TrackLength            int                  `json:"trackLength"`
+	PitStopWindowIdealLap  int                  `json:"pitStopWindowIdealLap,omitempty"`
+	PitStopWindowLatestLap int                  `json:"pitStopWindowLatestLap,omitempty"`
+	PitStopRejoinPosition  int                  `json:"pitStopRejoinPosition,omitempty"`
+	MarshalZones           []MarshalZoneDTO     `json:"marshalZones,omitempty"`
+	WeatherForecast        []WeatherForecastDTO `json:"weatherForecast,omitempty"`
 }
 
 // DriverInfo contains per-driver race data
