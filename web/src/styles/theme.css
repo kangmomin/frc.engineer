@@ -1,17 +1,21 @@
 :root {
   /* Background colors */
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #1a1a1a;
-  --bg-panel: rgba(0, 0, 0, 0.85);
-  --bg-panel-border: rgba(255, 255, 255, 0.1);
+  --bg-primary: #050505;
+  --bg-secondary: #0f0f0f;
+  --bg-panel: rgba(15, 15, 15, 0.95);
+  --bg-panel-hover: rgba(25, 25, 25, 0.95);
+  --bg-panel-border: rgba(255, 255, 255, 0.08);
+  --bg-panel-accent: rgba(225, 6, 0, 0.1);
 
   /* Text colors */
   --text-primary: #ffffff;
-  --text-secondary: #888888;
-  --text-muted: #555555;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666666;
+  --text-f1: #e10600;
 
   /* F1 Accent colors */
   --accent-red: #e10600;
+  --accent-red-hover: #ff0700;
   --accent-green: #00ff00;
   --accent-yellow: #ffff00;
   --accent-blue: #00d2ff;
@@ -20,37 +24,38 @@
 
   /* Delta colors */
   --delta-faster: #00ff00;
-  --delta-slower: #ff0000;
+  --delta-slower: #ff1818;
   --delta-neutral: #ffffff;
 
   /* Pedal colors */
   --throttle-color: #00ff00;
-  --brake-color: #ff0000;
+  --brake-color: #ff1818;
 
   /* RPM bar colors */
   --rpm-low: #00ff00;
   --rpm-mid: #ffff00;
-  --rpm-high: #ff0000;
+  --rpm-high: #ff1818;
 
   /* Gear colors */
-  --gear-reverse: #ff0000;
+  --gear-reverse: #ff1818;
   --gear-neutral: #ffff00;
   --gear-forward: #ffffff;
 
   /* DRS colors */
   --drs-active: #00ff00;
-  --drs-inactive: #444444;
+  --drs-available: #ffff00;
+  --drs-inactive: #333333;
 
   /* Sector colors */
-  --sector-purple: #9b59b6;
+  --sector-purple: #b659ff;
   --sector-green: #00ff00;
   --sector-yellow: #ffff00;
 
   /* Chart colors */
-  --chart-best-lap: #9b59b6;
+  --chart-best-lap: #b659ff;
   --chart-current-lap: #00ff00;
-  --chart-grid: rgba(255, 255, 255, 0.1);
-  --chart-axis: #888888;
+  --chart-grid: rgba(255, 255, 255, 0.05);
+  --chart-axis: #666666;
 
   /* Fonts */
   --font-racing: 'Orbitron', 'Rajdhani', monospace;
@@ -64,13 +69,17 @@
   --spacing-xl: 32px;
 
   /* Border radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
 
   /* Shadows */
-  --shadow-glow: 0 0 10px rgba(0, 210, 255, 0.3);
-  --shadow-panel: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 15px rgba(225, 6, 0, 0.2);
+  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.8);
+
+  /* F1 Specific */
+  --f1-slant: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
+  --f1-slant-reverse: polygon(2% 0, 100% 0, 100% 100%, 0% 100%);
 }
 
 /* Reset and base styles */
@@ -92,90 +101,96 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 /* Common component styles */
 .panel {
   background: var(--bg-panel);
   border: 1px solid var(--bg-panel-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   padding: var(--spacing-md);
+  box-shadow: var(--shadow-panel);
+  position: relative;
+  overflow: hidden;
+}
+
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--accent-red);
+  opacity: 0.5;
 }
 
 .label {
   font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
 }
 
 .value {
   font-family: var(--font-racing);
   font-weight: 700;
+  letter-spacing: -0.5px;
 }
 
 .value-large {
-  font-size: 72px;
-  line-height: 1;
+  font-size: 64px;
+  line-height: 0.9;
 }
 
 .value-medium {
-  font-size: 48px;
-  line-height: 1;
+  font-size: 40px;
+  line-height: 0.9;
 }
 
 .value-small {
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
 }
 
 /* Animation utilities */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.6; }
 }
 
 @keyframes glow {
-  0%, 100% { box-shadow: 0 0 5px currentColor; }
-  50% { box-shadow: 0 0 20px currentColor; }
+  0%, 100% { filter: drop-shadow(0 0 2px currentColor); }
+  50% { filter: drop-shadow(0 0 8px currentColor); }
 }
 
 .animate-pulse {
-  animation: pulse 1s ease-in-out infinite;
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .animate-glow {
-  animation: glow 0.5s ease-in-out infinite;
+  animation: glow 1s ease-in-out infinite;
 }
 
-/* Connection status */
-.connection-indicator {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 12px;
-  color: var(--text-secondary);
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.connection-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
 }
 
-.connection-dot.connected {
-  background-color: var(--accent-green);
-  box-shadow: 0 0 8px var(--accent-green);
+::-webkit-scrollbar-thumb {
+  background: var(--bg-panel-border);
+  border-radius: 3px;
 }
 
-.connection-dot.connecting {
-  background-color: var(--accent-yellow);
-  animation: pulse 1s ease-in-out infinite;
-}
-
-.connection-dot.disconnected,
-.connection-dot.error {
-  background-color: var(--accent-red);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }

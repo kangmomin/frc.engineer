@@ -3,309 +3,217 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-panel);
 }
 
 .tableWrapper {
   flex: 1;
   overflow-y: auto;
   overflow-x: auto;
+  padding: 0 var(--spacing-sm);
 }
 
 .table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0 4px;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .table thead {
   position: sticky;
   top: 0;
-  background: var(--bg-primary);
-  z-index: 1;
+  background: var(--bg-panel);
+  z-index: 2;
 }
 
 .table th {
-  padding: var(--spacing-xs) var(--spacing-sm);
+  padding: var(--spacing-sm);
   text-align: left;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-weight: 700;
+  color: var(--text-muted);
   text-transform: uppercase;
   font-size: 10px;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--bg-panel-border);
-}
-
-.table td {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  white-space: nowrap;
+  letter-spacing: 1.5px;
+  border-bottom: 2px solid var(--bg-panel-border);
 }
 
 .row {
-  transition: background 150ms ease;
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.2s ease;
+  clip-path: var(--f1-slant);
 }
 
 .row:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateX(4px);
 }
 
 .playerRow {
-  background: rgba(0, 210, 255, 0.08);
+  background: rgba(225, 6, 0, 0.15);
+  border-left: 4px solid var(--accent-red);
 }
 
 .playerRow:hover {
-  background: rgba(0, 210, 255, 0.12);
+  background: rgba(225, 6, 0, 0.2);
 }
 
-/* Column widths */
-.colPos {
-  width: 30px;
-  text-align: center;
+.table td {
+  padding: var(--spacing-sm);
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-.colDriver {
-  min-width: 80px;
-}
+/* Column styles */
+.colPos { width: 40px; text-align: center; }
+.colDriver { min-width: 140px; }
+.colGap { width: 100px; }
+.colTyre { width: 60px; }
+.colPits { width: 80px; }
+.colLap { width: 100px; }
+.colSector { width: 70px; }
+.colPace { width: 110px; }
 
-.colGap {
-  width: 70px;
-}
-
-.colTyre {
-  width: 60px;
-}
-
-.colPits {
-  width: auto;
-  min-width: 40px;
-}
-
-.colLap {
-  width: 80px;
-}
-
-.colSector {
-  width: 55px;
-}
-
-.colPace {
-  width: 128px;
-}
-
-.paceInputWrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.paceInputLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.paceInput {
-  width: 48px;
-  height: 22px;
-  border: 1px solid var(--bg-panel-border);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  font-family: var(--font-racing);
-  font-size: 11px;
-  padding: 0 6px;
-}
-
-.paceInput:focus {
-  outline: none;
-  border-color: var(--accent-blue);
-}
-
-.paceInput::-webkit-outer-spin-button,
-.paceInput::-webkit-inner-spin-button {
-  margin: 0;
-}
-
-/* Cell content */
 .position {
   font-family: var(--font-racing);
-  font-weight: 700;
-  font-size: 14px;
+  font-weight: 800;
+  font-size: 16px;
   color: var(--text-primary);
+  font-style: italic;
 }
 
 .driverCell {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.driverName {
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: 0.5px;
-}
-
-.playerDriverInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1.2;
-}
-
-.playerFullName {
-  font-weight: 700;
-  color: var(--text-primary);
-  font-size: 12px;
-  letter-spacing: 0.3px;
-}
-
-.playerTeamName {
-  font-size: 9px;
-  color: #00d2ff;
-  letter-spacing: 0.3px;
-}
-
-.teamName {
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 0.3px;
+  gap: var(--spacing-sm);
 }
 
 .driverInfo {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .fullName {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
-  font-size: 12px;
-  letter-spacing: 0.3px;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
-.nameRow {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.damageAlert {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  font-family: var(--font-racing);
+.teamName {
   font-size: 10px;
-  font-weight: 800;
-  line-height: 1;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
-.wingAlert {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  padding: 0 2px;
-  font-family: var(--font-racing);
-  font-size: 9px;
+.playerFullName {
   font-weight: 800;
-  line-height: 1;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  color: var(--text-primary);
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.playerTeamName {
+  font-size: 10px;
+  color: var(--accent-red);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 .gap {
   font-family: var(--font-racing);
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.gapCell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .drsBadge {
   font-family: var(--font-racing);
   font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-weight: 800;
   color: #000;
-  background: #00e600;
+  background: var(--accent-green);
   padding: 1px 4px;
   border-radius: 2px;
-  line-height: 1;
-}
-
-.pits {
-  font-family: var(--font-racing);
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.stintLog {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.stintDot {
-  font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
 }
 
 .lapTime {
   font-family: var(--font-racing);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
 .sector {
   font-family: var(--font-racing);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.stintDot {
+  font-family: var(--font-racing);
   font-size: 10px;
-  color: var(--text-muted);
-}
-
-.sector.purple {
-  color: var(--sector-purple);
-}
-
-.sector.green {
-  color: var(--sector-green);
-}
-
-.sector.yellow {
-  color: var(--sector-yellow);
+  font-weight: 800;
+  margin-right: 4px;
 }
 
 .paceValue {
   font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.paceFaster {
-  color: var(--delta-faster);
+.paceFaster { color: var(--delta-faster); }
+.paceSlower { color: var(--delta-slower); }
+.paceNeutral { color: var(--text-muted); }
+
+.paceInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  clip-path: var(--f1-slant);
 }
 
-.paceSlower {
-  color: var(--delta-slower);
-}
-
-.paceNeutral {
+.paceInputLabel {
+  font-size: 9px;
+  font-weight: 800;
   color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.paceInput {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 12px;
+  width: 30px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.paceInput:focus { outline: none; }
+
+.damageAlert, .wingAlert {
+  font-family: var(--font-racing);
+  font-weight: 800;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }

@@ -14,10 +14,17 @@ import (
 // Simulates F1 25 UDP telemetry for testing
 
 const (
+	PacketIDMotion       = 0
+	PacketIDSession      = 1
 	PacketIDCarTelemetry = 6
 	PacketIDLapData      = 2
+	PacketIDParticipants = 4
+	PacketIDCarStatus    = 7
 	MaxCars              = 22
 	PacketHeaderSize     = 29
+	ParticipantDataSize  = 57
+	CarStatusDataSize    = 55
+	SessionPacketSize    = 685
 )
 
 func main() {
@@ -25,6 +32,13 @@ func main() {
 	hz := flag.Int("hz", 60, "Packets per second")
 	laps := flag.Int("laps", 3, "Number of laps to simulate")
 	flag.Parse()
+
+	if *hz <= 0 {
+		log.Fatal("hz must be greater than 0")
+	}
+	if *laps <= 0 {
+		log.Fatal("laps must be greater than 0")
+	}
 
 	conn, err := net.Dial("udp", *addr)
 	if err != nil {
@@ -35,7 +49,7 @@ func main() {
 	fmt.Printf("Sending mock F1 25 telemetry to %s at %d Hz\n", *addr, *hz)
 	fmt.Printf("Simulating %d laps...\n", *laps)
 
-	sim := NewSimulator(*laps)
+	sim := NewSimulator(*laps, *hz)
 	ticker := time.NewTicker(time.Second / time.Duration(*hz))
 	defer ticker.Stop()
 
@@ -46,7 +60,30 @@ func main() {
 			return
 		}
 
-		// Send telemetry packet
+		// Slow-changing packets required by the pitwall UI.
+		if frameID == 0 || frameID%uint32(*hz) == 0 {
+			sessionPacket := sim.BuildSessionPacket(frameID)
+			if _, err := conn.Write(sessionPacket); err != nil {
+				log.Printf("Failed to send session: %v", err)
+			}
+
+			participantsPacket := sim.BuildParticipantsPacket(frameID)
+			if _, err := conn.Write(participantsPacket); err != nil {
+				log.Printf("Failed to send participants: %v", err)
+			}
+
+			carStatusPacket := sim.BuildCarStatusPacket(frameID)
+			if _, err := conn.Write(carStatusPacket); err != nil {
+				log.Printf("Failed to send car status: %v", err)
+			}
+		}
+
+		// High-rate packets for dashboard and track map updates.
+		motionPacket := sim.BuildMotionPacket(frameID)
+		if _, err := conn.Write(motionPacket); err != nil {
+			log.Printf("Failed to send motion: %v", err)
+		}
+
 		telemetryPacket := sim.BuildTelemetryPacket(frameID)
 		if _, err := conn.Write(telemetryPacket); err != nil {
 			log.Printf("Failed to send telemetry: %v", err)
@@ -78,6 +115,8 @@ type Simulator struct {
 	LapDistance   float32
 	TotalDistance float32
 	TrackLength   float32
+	TrackID       int8
+	TickRate      int
 
 	// Telemetry
 	Speed    uint16
@@ -102,13 +141,15 @@ type Simulator struct {
 	lapStartTime time.Time
 }
 
-func NewSimulator(laps int) *Simulator {
+func NewSimulator(laps int, hz int) *Simulator {
 	return &Simulator{
 		SessionUID:   rand.Uint64(),
 		PlayerCarIdx: 0,
 		TotalLaps:    laps,
 		CurrentLap:   1,
 		TrackLength:  5800, // Approximate Monaco length in meters
+		TrackID:      10,   // Monza
+		TickRate:     hz,
 		Position:     1,
 		lapStartTime: time.Now(),
 	}
@@ -181,9 +222,10 @@ func (s *Simulator) Tick() {
 		s.Sector = 2
 	}
 
-	// Move forward (average ~200 km/h = 55 m/s, at 60 Hz = ~0.9m per tick)
-	s.LapDistance += float32(s.Speed) / 3.6 / 60.0
-	s.TotalDistance += float32(s.Speed) / 3.6 / 60.0
+	// Move forward using the configured tick rate.
+	distancePerTick := float32(s.Speed) / 3.6 / float32(s.TickRate)
+	s.LapDistance += distancePerTick
+	s.TotalDistance += distancePerTick
 
 	// Check for lap completion
 	if s.LapDistance >= s.TrackLength {
@@ -206,6 +248,41 @@ func formatLapTime(ms uint32) string {
 	seconds := (ms % 60000) / 1000
 	millis := ms % 1000
 	return fmt.Sprintf("%d:%02d.%03d", minutes, seconds, millis)
+}
+
+func (s *Simulator) BuildSessionPacket(frameID uint32) []byte {
+	buf := make([]byte, SessionPacketSize)
+	s.writeHeader(buf, PacketIDSession, frameID)
+
+	buf[29] = 0 // Weather: clear
+	buf[30] = 38
+	buf[31] = 24
+	buf[32] = uint8(s.TotalLaps)
+	binary.LittleEndian.PutUint16(buf[33:35], uint16(s.TrackLength))
+	buf[35] = 15 // Race
+	buf[36] = byte(s.TrackID)
+	buf[47] = 3 // NumMarshalZones
+	writeMarshalZone(buf, 48, 0.00, 1)
+	writeMarshalZone(buf, 53, 0.33, 1)
+	writeMarshalZone(buf, 58, 0.66, 1)
+	buf[153] = 0 // No safety car
+	buf[155] = 2 // Forecast sample count
+	writeForecast(buf, 156, 15, 0, 0, 38, 0, 24, 0, 0)
+	writeForecast(buf, 164, 15, 5, 1, 39, 1, 25, 1, 5)
+
+	idealLap := s.TotalLaps / 2
+	if idealLap < 1 {
+		idealLap = 1
+	}
+	latestLap := idealLap + 3
+	if latestLap > s.TotalLaps {
+		latestLap = s.TotalLaps
+	}
+	buf[682] = uint8(idealLap)
+	buf[683] = uint8(latestLap)
+	buf[684] = 1
+
+	return buf
 }
 
 func (s *Simulator) BuildTelemetryPacket(frameID uint32) []byte {
@@ -231,6 +308,21 @@ func (s *Simulator) BuildTelemetryPacket(frameID uint32) []byte {
 	buf[offset] = 0
 	buf[offset+1] = 255
 	buf[offset+2] = byte(s.Gear)
+
+	return buf
+}
+
+func (s *Simulator) BuildMotionPacket(frameID uint32) []byte {
+	packetSize := PacketHeaderSize + (MaxCars * 60)
+	buf := make([]byte, packetSize)
+
+	s.writeHeader(buf, PacketIDMotion, frameID)
+
+	offset := PacketHeaderSize
+	for i := 0; i < MaxCars; i++ {
+		s.writeMotionData(buf[offset:], i)
+		offset += 60
+	}
 
 	return buf
 }
@@ -261,15 +353,46 @@ func (s *Simulator) BuildLapDataPacket(frameID uint32) []byte {
 	return buf
 }
 
+func (s *Simulator) BuildParticipantsPacket(frameID uint32) []byte {
+	packetSize := PacketHeaderSize + 1 + (MaxCars * ParticipantDataSize)
+	buf := make([]byte, packetSize)
+
+	s.writeHeader(buf, PacketIDParticipants, frameID)
+	buf[PacketHeaderSize] = MaxCars
+
+	offset := PacketHeaderSize + 1
+	for i := 0; i < MaxCars; i++ {
+		s.writeParticipantData(buf[offset:], i)
+		offset += ParticipantDataSize
+	}
+
+	return buf
+}
+
+func (s *Simulator) BuildCarStatusPacket(frameID uint32) []byte {
+	packetSize := PacketHeaderSize + (MaxCars * CarStatusDataSize)
+	buf := make([]byte, packetSize)
+
+	s.writeHeader(buf, PacketIDCarStatus, frameID)
+
+	offset := PacketHeaderSize
+	for i := 0; i < MaxCars; i++ {
+		s.writeCarStatus(buf[offset:], i == int(s.PlayerCarIdx), i)
+		offset += CarStatusDataSize
+	}
+
+	return buf
+}
+
 func (s *Simulator) writeHeader(buf []byte, packetID uint8, frameID uint32) {
-	binary.LittleEndian.PutUint16(buf[0:2], 2025)   // PacketFormat
-	buf[2] = 25                                     // GameYear
-	buf[3] = 1                                      // GameMajorVersion
-	buf[4] = 0                                      // GameMinorVersion
-	buf[5] = 1                                      // PacketVersion
-	buf[6] = packetID                               // PacketID
+	binary.LittleEndian.PutUint16(buf[0:2], 2025) // PacketFormat
+	buf[2] = 25                                   // GameYear
+	buf[3] = 1                                    // GameMajorVersion
+	buf[4] = 0                                    // GameMinorVersion
+	buf[5] = 1                                    // PacketVersion
+	buf[6] = packetID                             // PacketID
 	binary.LittleEndian.PutUint64(buf[7:15], s.SessionUID)
-	binary.LittleEndian.PutUint32(buf[15:19], math.Float32bits(float32(s.tickCount)/60.0))
+	binary.LittleEndian.PutUint32(buf[15:19], math.Float32bits(float32(s.tickCount)/float32(s.TickRate)))
 	binary.LittleEndian.PutUint32(buf[19:23], frameID)
 	binary.LittleEndian.PutUint32(buf[23:27], frameID)
 	buf[27] = s.PlayerCarIdx
@@ -384,7 +507,7 @@ func (s *Simulator) writeLapData(buf []byte, isPlayer bool) {
 		currentLap = uint32(rand.Intn(80000))
 		lapDist = rand.Float32() * 5800
 		totalDist = rand.Float32() * 50000
-		position = uint8(2 + rand.Intn(21))
+		position = uint8(1 + rand.Intn(MaxCars))
 		lapNum = uint8(1 + rand.Intn(3))
 		sector = uint8(rand.Intn(3))
 		lapInvalid = 0
@@ -406,13 +529,17 @@ func (s *Simulator) writeLapData(buf []byte, isPlayer bool) {
 	offset++
 	binary.LittleEndian.PutUint16(buf[offset:], uint16(deltaFront))
 	offset += 2
+	buf[offset] = 0 // DeltaToCarInFrontMinutesPart
+	offset++
 	binary.LittleEndian.PutUint16(buf[offset:], uint16(deltaLeader))
 	offset += 2
-	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0)) // SafetyCarDelta
-	offset += 4
+	buf[offset] = 0 // DeltaToRaceLeaderMinutesPart
+	offset++
 	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(lapDist))
 	offset += 4
 	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(totalDist))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0)) // SafetyCarDelta
 	offset += 4
 	buf[offset] = position
 	offset++
@@ -449,4 +576,217 @@ func (s *Simulator) writeLapData(buf []byte, isPlayer bool) {
 	binary.LittleEndian.PutUint16(buf[offset:], 0) // PitStopTimerInMS
 	offset += 2
 	buf[offset] = 0 // PitStopShouldServePen
+	offset++
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(float32(320+rand.Intn(20)))) // SpeedTrapFastestSpeed
+	offset += 4
+	buf[offset] = lapNum // SpeedTrapFastestLap
+}
+
+func (s *Simulator) writeMotionData(buf []byte, carIdx int) {
+	progress := math.Mod(float64(s.LapDistance/s.TrackLength)+float64(carIdx)/MaxCars, 1.0)
+	angle := progress * 2 * math.Pi
+
+	radiusX := 950.0
+	radiusZ := 650.0
+	x := float32(radiusX * math.Cos(angle))
+	z := float32(radiusZ * math.Sin(angle))
+	speedMS := float64(s.Speed) / 3.6
+	vx := float32(-speedMS * math.Sin(angle))
+	vz := float32(speedMS * math.Cos(angle))
+	yaw := float32(angle + math.Pi/2)
+
+	offset := 0
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(x))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(z))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(vx))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(vz))
+	offset += 4
+
+	forwardX := int16(math.Sin(angle) * 32767)
+	forwardZ := int16(math.Cos(angle) * 32767)
+	rightX := int16(math.Cos(angle) * 32767)
+	rightZ := int16(-math.Sin(angle) * 32767)
+
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(forwardX))
+	offset += 2
+	binary.LittleEndian.PutUint16(buf[offset:], 0)
+	offset += 2
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(forwardZ))
+	offset += 2
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(rightX))
+	offset += 2
+	binary.LittleEndian.PutUint16(buf[offset:], 0)
+	offset += 2
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(rightZ))
+	offset += 2
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(float32(math.Sin(angle)*0.8)))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.15))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.05))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(yaw))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.01))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0))
+}
+
+func (s *Simulator) writeParticipantData(buf []byte, carIdx int) {
+	offset := 0
+	isPlayer := carIdx == int(s.PlayerCarIdx)
+
+	if isPlayer {
+		buf[offset] = 0
+	} else {
+		buf[offset] = 1
+	}
+	offset++
+
+	if isPlayer {
+		buf[offset] = 255
+	} else {
+		buf[offset] = uint8(carIdx)
+	}
+	offset++
+
+	buf[offset] = uint8(carIdx)
+	offset++
+	buf[offset] = uint8(carIdx % 10)
+	offset++
+	if isPlayer {
+		buf[offset] = 1
+	}
+	offset++
+	buf[offset] = uint8(carIdx + 1)
+	offset++
+	buf[offset] = 9 // UK
+	offset++
+
+	name := fmt.Sprintf("AI %02d", carIdx+1)
+	if isPlayer {
+		name = "Mock Driver"
+	}
+	copy(buf[offset:offset+32], []byte(name))
+	offset += 32
+
+	buf[offset] = 1 // YourTelemetry public
+	offset++
+	buf[offset] = 1 // ShowOnlineNames
+	offset++
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(500+carIdx*10))
+	offset += 2
+	buf[offset] = 1 // Platform
+	offset++
+	buf[offset] = 2 // NumColours
+	offset++
+
+	colours := [4][3]uint8{
+		{220, 20, 60},
+		{255, 215, 0},
+		{30, 144, 255},
+		{245, 245, 245},
+	}
+	for _, colour := range colours {
+		copy(buf[offset:offset+3], colour[:])
+		offset += 3
+	}
+}
+
+func (s *Simulator) writeCarStatus(buf []byte, isPlayer bool, carIdx int) {
+	offset := 0
+	fuelInTank := float32(18.5)
+	fuelRemainingLaps := float32(maxInt(1, s.TotalLaps-int(s.CurrentLap)+1))
+	ers := float32(3200000)
+	compound := uint8(17) // medium
+	tyreAge := uint8(maxInt(0, int(s.CurrentLap)-1))
+
+	if !isPlayer {
+		fuelInTank = 12 + rand.Float32()*15
+		fuelRemainingLaps = 2 + rand.Float32()*20
+		ers = 2000000 + rand.Float32()*1500000
+		compounds := []uint8{16, 17, 18}
+		compound = compounds[carIdx%len(compounds)]
+		tyreAge = uint8(rand.Intn(maxInt(1, s.TotalLaps)))
+	}
+
+	buf[offset] = 1 // TractionControl
+	offset++
+	buf[offset] = 1 // ABS
+	offset++
+	buf[offset] = 1 // FuelMix standard
+	offset++
+	buf[offset] = 57 // FrontBrakeBias
+	offset++
+	buf[offset] = 0 // PitLimiterStatus
+	offset++
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(fuelInTank))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(32))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(fuelRemainingLaps))
+	offset += 4
+	binary.LittleEndian.PutUint16(buf[offset:], 15000)
+	offset += 2
+	binary.LittleEndian.PutUint16(buf[offset:], 4000)
+	offset += 2
+	buf[offset] = 8 // MaxGears
+	offset++
+	buf[offset] = s.DRS
+	offset++
+	binary.LittleEndian.PutUint16(buf[offset:], 250)
+	offset += 2
+	buf[offset] = compound // ActualTyreCompound
+	offset++
+	buf[offset] = compound // VisualTyreCompound
+	offset++
+	buf[offset] = tyreAge
+	offset++
+	buf[offset] = 0 // VehicleFIAFlags
+	offset++
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(520000))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(120000))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(ers))
+	offset += 4
+	buf[offset] = 1 // ERSDeployMode
+	offset++
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(120000))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(85000))
+	offset += 4
+	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(140000))
+	offset += 4
+	buf[offset] = 0 // NetworkPaused
+}
+
+func writeMarshalZone(buf []byte, offset int, start float32, flag int8) {
+	binary.LittleEndian.PutUint32(buf[offset:offset+4], math.Float32bits(start))
+	buf[offset+4] = byte(flag)
+}
+
+func writeForecast(buf []byte, offset int, sessionType uint8, timeOffset uint8, weather uint8, trackTemp int8, trackTrend int8, airTemp int8, airTrend int8, rain uint8) {
+	buf[offset] = sessionType
+	buf[offset+1] = timeOffset
+	buf[offset+2] = weather
+	buf[offset+3] = byte(trackTemp)
+	buf[offset+4] = byte(trackTrend)
+	buf[offset+5] = byte(airTemp)
+	buf[offset+6] = byte(airTrend)
+	buf[offset+7] = rain
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

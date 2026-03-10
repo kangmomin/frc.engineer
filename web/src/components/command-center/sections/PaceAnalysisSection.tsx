@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo, useCallback, useSyncExternalStore } from 'react';
 import type { DriverInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
 import { SectionHeader } from '../shared/SectionHeader';
@@ -6,8 +6,6 @@ import { DeltaText } from '../shared/DeltaText';
 import { WeatherBadge, WeatherTimeline, RaceControlLog } from './TrackMapSection';
 import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './PaceAnalysisSection.module.css';
-
-const EMPTY_DRIVERS: DriverInfo[] = [];
 
 interface LapHistoryEntry {
   lapNumber: number;
@@ -18,279 +16,147 @@ interface LapHistoryEntry {
   timestamp: number;
 }
 
-/**
- * Hook to track lap history as the player completes laps
- */
-function useLapHistory(driver: DriverInfo | null, maxLaps: number = 50) {
-  const [lapHistory, setLapHistory] = useState<LapHistoryEntry[]>([]);
-  const lastLapNumRef = useRef<number>(0);
-  const lastDriverIndexRef = useRef<number | null>(null);
-  // Cache sector times from the current lap before they reset on lap transition
-  const cachedS1Ref = useRef<number>(0);
-  const cachedS2Ref = useRef<number>(0);
+// --- Performance Utilities ---
 
-  useEffect(() => {
-    if (!driver) {
-      setLapHistory([]);
-      lastLapNumRef.current = 0;
-      lastDriverIndexRef.current = null;
-      cachedS1Ref.current = 0;
-      cachedS2Ref.current = 0;
-      return;
-    }
-
-    // Detect driver change or session reset (lap number decreased)
-    const isDriverChange = lastDriverIndexRef.current !== null && lastDriverIndexRef.current !== driver.index;
-    const isSessionReset = driver.currentLapNum < lastLapNumRef.current;
-
-    if (isDriverChange || isSessionReset) {
-      setLapHistory([]);
-      lastLapNumRef.current = 0;
-      cachedS1Ref.current = 0;
-      cachedS2Ref.current = 0;
-    }
-
-    lastDriverIndexRef.current = driver.index;
-
-    // Cache sector times while they're available (before lap transition resets them)
-    if (driver.sector1TimeMs > 0) cachedS1Ref.current = driver.sector1TimeMs;
-    if (driver.sector2TimeMs > 0) cachedS2Ref.current = driver.sector2TimeMs;
-
-    const currentLapNum = driver.currentLapNum;
-    const lastLapTime = driver.lastLapTime;
-
-    // Detect lap completion: lap number increased and we have a valid last lap time
-    if (currentLapNum > lastLapNumRef.current && lastLapTime > 0) {
-      const completedLapNum = currentLapNum - 1;
-      const s1 = cachedS1Ref.current > 0 ? cachedS1Ref.current : null;
-      const s2 = cachedS2Ref.current > 0 ? cachedS2Ref.current : null;
-      const s3 = s1 !== null && s2 !== null ? lastLapTime - s1 - s2 : null;
-
-      const newEntry: LapHistoryEntry = {
-        lapNumber: completedLapNum,
-        lapTime: lastLapTime,
-        sector1: s1,
-        sector2: s2,
-        sector3: s3,
-        timestamp: Date.now(),
-      };
-
-      // Reset cached sectors for the new lap
-      cachedS1Ref.current = 0;
-      cachedS2Ref.current = 0;
-
-      setLapHistory(prev => {
-        const existingIndex = prev.findIndex(entry => entry.lapNumber === completedLapNum);
-
-        if (existingIndex >= 0) {
-          if (prev[existingIndex].lapTime !== lastLapTime) {
-            const updated = [...prev];
-            updated[existingIndex] = newEntry;
-            return updated;
-          }
-          return prev;
-        }
-
-        const updated = [...prev, newEntry];
-        if (updated.length > maxLaps) {
-          return updated.slice(-maxLaps);
-        }
-        return updated;
-      });
-    }
-
-    lastLapNumRef.current = currentLapNum;
-  }, [driver, maxLaps]);
-
-  // Memoize derived data to prevent unnecessary re-renders
-  const derivedData = useMemo(() => {
-    if (lapHistory.length === 0) {
-      return {
-        processedHistory: [],
-        bestLapTime: 0,
-      };
-    }
-
-    const bestTime = Math.min(...lapHistory.map(l => l.lapTime));
-    const processedHistory = lapHistory.map(entry => ({
-      ...entry,
-      deltaFromBest: entry.lapTime - bestTime,
-    }));
-
-    return {
-      processedHistory,
-      bestLapTime: bestTime,
-    };
-  }, [lapHistory]);
-
-  return {
-    lapHistory: derivedData.processedHistory,
-    bestLapTime: derivedData.bestLapTime,
-    clearHistory: () => {
-      setLapHistory([]);
-      lastLapNumRef.current = 0;
-    },
-  };
+function useStoreWithEq<T>(
+  selector: (state: ReturnType<typeof useTelemetryStore.getState>) => T,
+  isEqual: (a: T, b: T) => boolean,
+): T {
+  const prev = useRef<T>(selector(useTelemetryStore.getState()));
+  const getSnapshot = useCallback(() => {
+    const next = selector(useTelemetryStore.getState());
+    if (isEqual(prev.current, next)) return prev.current;
+    prev.current = next;
+    return next;
+  }, [selector, isEqual]);
+  return useSyncExternalStore(useTelemetryStore.subscribe, getSnapshot);
 }
 
-// Extended type for processed history with delta
-interface ProcessedLapEntry extends LapHistoryEntry {
-  deltaFromBest: number;
+// --- Stable Selectors & Equality Fns ---
+
+const selectPlayerIndex = (s: ReturnType<typeof useTelemetryStore.getState>) => s.pitwallState?.playerIndex ?? 0;
+const selectNotifications = (s: ReturnType<typeof useTelemetryStore.getState>) => s.raceControlNotifications;
+
+function playerPaceEqual(a: DriverInfo | null, b: DriverInfo | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.currentLapNum === b.currentLapNum && 
+    a.lastLapTime === b.lastLapTime && 
+    a.sector1TimeMs === b.sector1TimeMs && 
+    a.sector2TimeMs === b.sector2TimeMs
+  );
 }
+
+function sessionWeatherEqual(a: any, b: any): boolean {
+  return a?.weather === b?.weather && a?.trackTemp === b?.trackTemp;
+}
+
+// --- Components ---
+
+const LapRow = memo(({ entry, isBest }: { entry: LapHistoryEntry & { deltaFromBest: number }, isBest: boolean }) => (
+  <tr className={`${styles.row} ${isBest ? styles.bestLapRow : ''}`}>
+    <td className={styles.colLap}><span className={styles.lapNumber}>{entry.lapNumber}</span></td>
+    <td className={styles.colTime}><span className={`${styles.lapTime} ${isBest ? styles.bestTime : ''}`}>{formatLapTime(entry.lapTime)}</span></td>
+    <td className={styles.colSector}><span className={styles.sector}>{entry.sector1 ? (entry.sector1/1000).toFixed(3) : '--'}</span></td>
+    <td className={styles.colSector}><span className={styles.sector}>{entry.sector2 ? (entry.sector2/1000).toFixed(3) : '--'}</span></td>
+    <td className={styles.colSector}><span className={styles.sector}>{entry.sector3 ? (entry.sector3/1000).toFixed(3) : '--'}</span></td>
+    <td className={styles.colDelta}>{isBest ? <span className={styles.bestLabel}>BEST</span> : <DeltaText deltaMs={entry.deltaFromBest} size="small" />}</td>
+  </tr>
+));
 
 export function PaceAnalysisSection() {
-  const drivers = useTelemetryStore((state) => state.pitwallState?.drivers ?? EMPTY_DRIVERS);
-  const playerIndex = useTelemetryStore((state) => state.pitwallState?.playerIndex ?? 0);
-  const session = useTelemetryStore((state) => state.pitwallState?.session ?? null);
-  const raceControlNotifications = useTelemetryStore((state) => state.raceControlNotifications);
+  const playerIdx = useTelemetryStore(selectPlayerIndex);
+  
+  const selectPlayer = useCallback((s: ReturnType<typeof useTelemetryStore.getState>) => {
+    return s.pitwallState?.drivers.find(d => d.index === playerIdx) ?? null;
+  }, [playerIdx]);
 
-  const player = drivers.find(d => d.index === playerIndex) ?? null;
+  const player = useStoreWithEq(selectPlayer, playerPaceEqual);
+  
+  const selectSession = useCallback((s: ReturnType<typeof useTelemetryStore.getState>) => s.pitwallState?.session ?? null, []);
+  const session = useStoreWithEq(selectSession, sessionWeatherEqual);
+  
+  const notifications = useStoreWithEq(selectNotifications, (a, b) => a === b);
+  
   const { lapHistory, bestLapTime } = useLapHistory(player);
-
-  // Find the best lap in history for highlighting
-  const bestLapNumber = lapHistory.length > 0
-    ? lapHistory.reduce((best, current) =>
-      current.lapTime < best.lapTime ? current : best
-    ).lapNumber
-    : null;
+  const bestLapNum = useMemo(() => lapHistory.length > 0 ? [...lapHistory].sort((a,b) => a.lapTime - b.lapTime)[0].lapNumber : null, [lapHistory]);
 
   return (
     <div className={styles.container}>
-      <SectionHeader
-        title="Pace Analysis"
-        subtitle={bestLapTime > 0 ? `Best: ${formatLapTime(bestLapTime)}` : undefined}
-        rightContent={<WeatherBadge session={session} />}
-      />
-
-      {/* Weather Timeline */}
-      <div className={styles.weatherTimeline}>
-        <WeatherTimeline forecasts={session?.weatherForecast ?? []} />
-      </div>
-
-      {/* Race Control Log */}
-      <div className={styles.raceControlLog}>
-        <RaceControlLog notifications={raceControlNotifications} />
-      </div>
-
+      <SectionHeader title="Pace Analysis" subtitle={bestLapTime > 0 ? `BEST: ${formatLapTime(bestLapTime)}` : 'WAITING FOR DATA'} rightContent={<WeatherBadge session={session} />} />
+      <div className={styles.weatherTimeline}><WeatherTimeline forecasts={session?.weatherForecast ?? []} /></div>
+      <div className={styles.raceControlLog}><RaceControlLog notifications={notifications} /></div>
+      
       <div className={styles.tableWrapper}>
         {lapHistory.length === 0 ? (
-          <div className={styles.emptyState}>
-            <span className={styles.emptyText}>Waiting for lap data...</span>
-            <span className={styles.emptyHint}>Complete a lap to see pace analysis</span>
-          </div>
+          <div className={styles.emptyState}><span className={styles.emptyText}>Waiting for lap data...</span></div>
         ) : (
           <table className={styles.table}>
-            <thead>
-              <tr>
-                <th className={styles.colLap}>Lap</th>
-                <th className={styles.colTime}>Time</th>
-                <th className={styles.colSector}>S1</th>
-                <th className={styles.colSector}>S2</th>
-                <th className={styles.colSector}>S3</th>
-                <th className={styles.colDelta}>Delta</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...lapHistory].reverse().map(entry => {
-                const isBestLap = entry.lapNumber === bestLapNumber;
-
-                return (
-                  <tr
-                    key={entry.lapNumber}
-                    className={`${styles.row} ${isBestLap ? styles.bestLapRow : ''}`}
-                  >
-                    <td className={styles.colLap}>
-                      <span className={styles.lapNumber}>{entry.lapNumber}</span>
-                    </td>
-                    <td className={styles.colTime}>
-                      <span className={`${styles.lapTime} ${isBestLap ? styles.bestTime : ''}`}>
-                        {formatLapTime(entry.lapTime)}
-                      </span>
-                    </td>
-                    <td className={styles.colSector}>
-                      <span className={styles.sector}>
-                        {entry.sector1 !== null ? formatSectorTime(entry.sector1) : '--'}
-                      </span>
-                    </td>
-                    <td className={styles.colSector}>
-                      <span className={styles.sector}>
-                        {entry.sector2 !== null ? formatSectorTime(entry.sector2) : '--'}
-                      </span>
-                    </td>
-                    <td className={styles.colSector}>
-                      <span className={styles.sector}>
-                        {entry.sector3 !== null ? formatSectorTime(entry.sector3) : '--'}
-                      </span>
-                    </td>
-                    <td className={styles.colDelta}>
-                      {isBestLap ? (
-                        <span className={styles.bestLabel}>BEST</span>
-                      ) : (
-                        <DeltaText deltaMs={entry.deltaFromBest} size="small" />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
+            <thead><tr><th className={styles.colLap}>L</th><th className={styles.colTime}>TIME</th><th className={styles.colSector}>S1</th><th className={styles.colSector}>S2</th><th className={styles.colSector}>S3</th><th className={styles.colDelta}>DELTA</th></tr></thead>
+            <tbody>{[...lapHistory].reverse().map(e => <LapRow key={e.lapNumber} entry={e} isBest={e.lapNumber === bestLapNum} />)}</tbody>
           </table>
         )}
       </div>
 
       {lapHistory.length > 0 && (
         <div className={styles.summary}>
-          <div className={styles.summaryItem}>
-            <span className={styles.summaryLabel}>Avg Pace</span>
-            <span className={styles.summaryValue}>
-              {formatLapTime(calculateAverageLapTime(lapHistory))}
-            </span>
-          </div>
-          <div className={styles.summaryItem}>
-            <span className={styles.summaryLabel}>Consistency</span>
-            <span className={styles.summaryValue}>
-              {formatConsistency(calculateConsistency(lapHistory))}
-            </span>
-          </div>
+          <div className={styles.summaryItem}><span className={styles.summaryLabel}>AVG PACE</span><span className={styles.summaryValue}>{formatLapTime(lapHistory.reduce((s,e)=>s+e.lapTime,0)/lapHistory.length)}</span></div>
+          <div className={styles.summaryItem}><span className={styles.summaryLabel}>CONSISTENCY</span><span className={styles.summaryValue}>{calculateConsistency(lapHistory)}</span></div>
         </div>
       )}
     </div>
   );
 }
 
-/**
- * Format sector time (seconds with milliseconds)
- */
-function formatSectorTime(ms: number): string {
-  const seconds = ms / 1000;
-  return seconds.toFixed(3);
+// --- Utils ---
+
+function useLapHistory(driver: DriverInfo | null, maxLaps: number = 50) {
+  const [lapHistory, setLapHistory] = useState<LapHistoryEntry[]>([]);
+  const lastLapNumRef = useRef<number>(0);
+  const lastDriverIndexRef = useRef<number | null>(null);
+  const cachedS1Ref = useRef<number>(0);
+  const cachedS2Ref = useRef<number>(0);
+
+  useEffect(() => {
+    if (!driver) return;
+    if (lastDriverIndexRef.current !== driver.index || driver.currentLapNum < lastLapNumRef.current) {
+      setLapHistory([]);
+      lastLapNumRef.current = 0;
+      cachedS1Ref.current = 0;
+      cachedS2Ref.current = 0;
+    }
+    lastDriverIndexRef.current = driver.index;
+
+    if (driver.sector1TimeMs > 0) cachedS1Ref.current = driver.sector1TimeMs;
+    if (driver.sector2TimeMs > 0) cachedS2Ref.current = driver.sector2TimeMs;
+
+    if (driver.currentLapNum > lastLapNumRef.current && driver.lastLapTime > 0) {
+      const s1 = cachedS1Ref.current > 0 ? cachedS1Ref.current : null;
+      const s2 = cachedS2Ref.current > 0 ? cachedS2Ref.current : null;
+      const s3 = s1 !== null && s2 !== null ? driver.lastLapTime - s1 - s2 : null;
+      const newEntry = { lapNumber: driver.currentLapNum - 1, lapTime: driver.lastLapTime, sector1: s1, sector2: s2, sector3: s3, timestamp: Date.now() };
+      
+      cachedS1Ref.current = 0;
+      cachedS2Ref.current = 0;
+      setLapHistory(prev => {
+        const next = [...prev, newEntry];
+        return next.length > maxLaps ? next.slice(-maxLaps) : next;
+      });
+    }
+    lastLapNumRef.current = driver.currentLapNum;
+  }, [driver, maxLaps]);
+
+  return useMemo(() => {
+    if (lapHistory.length === 0) return { lapHistory: [], bestLapTime: 0 };
+    const best = Math.min(...lapHistory.map(l => l.lapTime));
+    return { lapHistory: lapHistory.map(l => ({ ...l, deltaFromBest: l.lapTime - best })), bestLapTime: best };
+  }, [lapHistory]);
 }
 
-/**
- * Calculate average lap time from history
- */
-function calculateAverageLapTime(history: ProcessedLapEntry[]): number {
-  if (history.length === 0) return 0;
-  const sum = history.reduce((acc, entry) => acc + entry.lapTime, 0);
-  return Math.round(sum / history.length);
-}
-
-/**
- * Calculate consistency (standard deviation of lap times)
- */
-function calculateConsistency(history: ProcessedLapEntry[]): number {
-  if (history.length < 2) return 0;
-
-  const avg = calculateAverageLapTime(history);
-  const squaredDiffs = history.map(entry => Math.pow(entry.lapTime - avg, 2));
-  const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / history.length;
-  return Math.sqrt(avgSquaredDiff);
-}
-
-/**
- * Format consistency as a readable string
- */
-function formatConsistency(stdDevMs: number): string {
-  if (stdDevMs === 0) return '--';
-  const seconds = stdDevMs / 1000;
-  return `\u00B1${seconds.toFixed(2)}s`;
+function calculateConsistency(history: any[]): string {
+  if (history.length < 2) return '--';
+  const avg = history.reduce((s,e)=>s+e.lapTime,0)/history.length;
+  const dev = Math.sqrt(history.reduce((s,e)=>s+Math.pow(e.lapTime-avg,2),0)/history.length);
+  return `\u00B1${(dev/1000).toFixed(3)}s`;
 }

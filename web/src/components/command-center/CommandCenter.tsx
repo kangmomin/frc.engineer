@@ -14,7 +14,7 @@ export function CommandCenter() {
 
   return (
     <div className={styles.grid}>
-      {/* Row 1 */}
+      {/* Row 0 */}
       <div className={`${styles.cell} ${styles.trackMap}`}>
         <TrackMapSection />
       </div>
@@ -25,7 +25,7 @@ export function CommandCenter() {
         <TyreEngineeringSection />
       </div>
 
-      {/* Row 2 */}
+      {/* Row 1 */}
       <div className={`${styles.cell} ${styles.leaderboard}`}>
         <LeaderboardSection />
       </div>
@@ -44,9 +44,9 @@ export function CommandCenter() {
           <div className={styles.connectionMessage}>
             <div className={`${styles.connectionDot} ${styles[connectionState]}`} />
             <span>
-              {connectionState === 'connecting' && 'Connecting...'}
-              {connectionState === 'disconnected' && 'Disconnected - Reconnecting...'}
-              {connectionState === 'error' && 'Connection Error'}
+              {connectionState === 'connecting' && 'CONNECTING...'}
+              {connectionState === 'disconnected' && 'DISCONNECTED - RECONNECTING...'}
+              {connectionState === 'error' && 'CONNECTION ERROR'}
             </span>
           </div>
         </div>

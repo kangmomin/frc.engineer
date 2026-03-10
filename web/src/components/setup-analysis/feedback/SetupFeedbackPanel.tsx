@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useRef, useCallback, useSyncExternalStore } from 'react';
 import type { DriverInfo } from '../../../types/telemetry';
 import { useSetupFeedbackStore } from '../../../store/setupFeedbackStore';
 import { diagnose, type SymptomId } from '../diagnosis/scoring';
 import type { LapFeedback } from '../../../store/setupFeedbackStore';
+import { useTelemetryStore } from '../../../store/telemetryStore';
 import styles from './SetupFeedbackPanel.module.css';
 
 interface Props {
-  driver: DriverInfo;
   selectedSymptoms: Set<SymptomId>;
 }
 
@@ -18,13 +18,39 @@ const RATING_OPTIONS: { value: LapFeedback['rating']; label: string; color: stri
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  const s = d.getSeconds().toString().padStart(2, '0');
-  return `${h}:${m}:${s}`;
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
 }
 
-function SetupDiffRow({ label, prev, next, unit }: { label: string; prev: number; next: number; unit?: string }) {
+// --- Performance Utilities ---
+
+function useStoreWithEq<T>(
+  selector: (state: ReturnType<typeof useTelemetryStore.getState>) => T,
+  isEqual: (a: T, b: T) => boolean,
+): T {
+  const prev = useRef<T>(selector(useTelemetryStore.getState()));
+  const getSnapshot = useCallback(() => {
+    const next = selector(useTelemetryStore.getState());
+    if (isEqual(prev.current, next)) return prev.current;
+    prev.current = next;
+    return next;
+  }, [selector, isEqual]);
+  return useSyncExternalStore(useTelemetryStore.subscribe, getSnapshot);
+}
+
+// --- Stable Selectors ---
+
+const selectPlayerData = (s: ReturnType<typeof useTelemetryStore.getState>) => {
+  const idx = s.pitwallState?.playerIndex ?? 0;
+  return s.pitwallState?.drivers.find(d => d.index === idx) ?? null;
+};
+
+function driverFeedbackEqual(a: DriverInfo | null, b: DriverInfo | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.currentLapNum === b.currentLapNum && JSON.stringify(a.setup) === JSON.stringify(b.setup);
+}
+
+const SetupDiffRow = memo(({ label, prev, next, unit }: { label: string; prev: number; next: number; unit?: string }) => {
   if (prev === next) return null;
   const delta = next - prev;
   const sign = delta > 0 ? '+' : '';
@@ -38,49 +64,39 @@ function SetupDiffRow({ label, prev, next, unit }: { label: string; prev: number
       </span>
     </div>
   );
-}
+});
 
-export function SetupFeedbackPanel({ driver, selectedSymptoms }: Props) {
+export function SetupFeedbackPanel({ selectedSymptoms }: Props) {
+  const driver = useStoreWithEq(selectPlayerData, driverFeedbackEqual);
   const [note, setNote] = useState('');
   const [rating, setRating] = useState<LapFeedback['rating']>('neutral');
+  
   const {
-    feedbacks,
-    setupChanges,
-    addFeedback,
-    deleteFeedback,
-    resetFeedbacks,
-    checkSetupChange,
-    deleteSetupChange,
-    resetSetupChanges,
-    resetAll,
+    feedbacks, setupChanges, addFeedback, deleteFeedback, resetFeedbacks,
+    checkSetupChange, deleteSetupChange, resetSetupChanges, resetAll,
   } = useSetupFeedbackStore();
 
-  // Check for setup changes whenever driver setup updates
   useEffect(() => {
+    if (!driver) return;
     const results = diagnose(driver, selectedSymptoms);
     checkSetupChange(driver.setup, driver.currentLapNum, results);
-  }, [driver.setup, driver.currentLapNum, selectedSymptoms, checkSetupChange]);
+  }, [driver, selectedSymptoms, checkSetupChange]);
 
   const handleAddFeedback = () => {
-    if (!note.trim()) return;
+    if (!note.trim() || !driver) return;
     addFeedback(driver.currentLapNum, note.trim(), rating);
     setNote('');
     setRating('neutral');
   };
 
-  const handleResetAll = () => {
-    if (window.confirm('모든 피드백과 셋업 변경 기록을 초기화하시겠습니까?')) {
-      resetAll();
-    }
-  };
+  if (!driver) return <div className={styles.empty}>WAITING FOR TELEMETRY...</div>;
 
   return (
     <div className={styles.container}>
-      {/* Add Feedback */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <span className={styles.sectionTitle}>랩 피드백 추가</span>
-          <span className={styles.lapBadge}>Lap {driver.currentLapNum}</span>
+          <span className={styles.sectionTitle}>ADD LAP FEEDBACK</span>
+          <span className={styles.lapBadge}>LAP {driver.currentLapNum}</span>
         </div>
         <div className={styles.inputRow}>
           <div className={styles.ratingGroup}>
@@ -90,55 +106,30 @@ export function SetupFeedbackPanel({ driver, selectedSymptoms }: Props) {
                 className={`${styles.ratingBtn} ${rating === opt.value ? styles.ratingBtnActive : ''}`}
                 style={rating === opt.value ? { borderColor: opt.color, color: opt.color } : undefined}
                 onClick={() => setRating(opt.value)}
-              >
-                {opt.label}
-              </button>
+              >{opt.label}</button>
             ))}
           </div>
           <div className={styles.noteRow}>
-            <input
-              className={styles.noteInput}
-              type="text"
-              placeholder="피드백을 입력하세요..."
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAddFeedback(); }}
-            />
-            <button className={styles.addBtn} onClick={handleAddFeedback} disabled={!note.trim()}>
-              추가
-            </button>
+            <input className={styles.noteInput} type="text" placeholder="ENTER FEEDBACK..." value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleAddFeedback(); }} />
+            <button className={styles.addBtn} onClick={handleAddFeedback} disabled={!note.trim()}>ADD</button>
           </div>
         </div>
       </div>
 
-      {/* Feedback History */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <span className={styles.sectionTitle}>피드백 기록 ({feedbacks.length})</span>
-          {feedbacks.length > 0 && (
-            <button className={styles.resetBtn} onClick={() => { if (window.confirm('피드백 기록을 모두 삭제하시겠습니까?')) resetFeedbacks(); }}>
-              Reset
-            </button>
-          )}
+          <span className={styles.sectionTitle}>FEEDBACK HISTORY ({feedbacks.length})</span>
+          {feedbacks.length > 0 && <button className={styles.resetBtn} onClick={() => { if (window.confirm('Delete all?')) resetFeedbacks(); }}>RESET</button>}
         </div>
-        {feedbacks.length === 0 ? (
-          <div className={styles.empty}>피드백 기록이 없습니다. 위에서 피드백을 추가하세요.</div>
-        ) : (
+        {feedbacks.length === 0 ? <div className={styles.empty}>NO FEEDBACK RECORDED.</div> : (
           <div className={styles.list}>
             {[...feedbacks].reverse().map((fb) => (
               <div key={fb.id} className={styles.feedbackItem}>
                 <div className={styles.feedbackHeader}>
-                  <span className={styles.feedbackLap}>Lap {fb.lapNum}</span>
-                  <span
-                    className={styles.feedbackRating}
-                    style={{ color: RATING_OPTIONS.find((r) => r.value === fb.rating)?.color }}
-                  >
-                    {RATING_OPTIONS.find((r) => r.value === fb.rating)?.label}
-                  </span>
+                  <span className={styles.feedbackLap}>LAP {fb.lapNum}</span>
+                  <span className={styles.feedbackRating} style={{ color: RATING_OPTIONS.find((r) => r.value === fb.rating)?.color }}>{fb.rating.toUpperCase()}</span>
                   <span className={styles.feedbackTime}>{formatTime(fb.timestamp)}</span>
-                  <button className={styles.deleteBtn} onClick={() => deleteFeedback(fb.id)} title="삭제">
-                    X
-                  </button>
+                  <button className={styles.deleteBtn} onClick={() => deleteFeedback(fb.id)}>X</button>
                 </div>
                 <div className={styles.feedbackNote}>{fb.note}</div>
               </div>
@@ -147,28 +138,19 @@ export function SetupFeedbackPanel({ driver, selectedSymptoms }: Props) {
         )}
       </div>
 
-      {/* Setup Change History */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <span className={styles.sectionTitle}>셋업 변경 기록 ({setupChanges.length})</span>
-          {setupChanges.length > 0 && (
-            <button className={styles.resetBtn} onClick={() => { if (window.confirm('셋업 변경 기록을 모두 삭제하시겠습니까?')) resetSetupChanges(); }}>
-              Reset
-            </button>
-          )}
+          <span className={styles.sectionTitle}>SETUP CHANGE LOG ({setupChanges.length})</span>
+          {setupChanges.length > 0 && <button className={styles.resetBtn} onClick={() => { if (window.confirm('Delete all?')) resetSetupChanges(); }}>RESET</button>}
         </div>
-        {setupChanges.length === 0 ? (
-          <div className={styles.empty}>셋업 변경 기록이 없습니다. 셋업을 변경하면 자동으로 기록됩니다.</div>
-        ) : (
+        {setupChanges.length === 0 ? <div className={styles.empty}>NO CHANGES RECORDED.</div> : (
           <div className={styles.list}>
             {[...setupChanges].reverse().map((change) => (
               <div key={change.id} className={styles.changeItem}>
                 <div className={styles.changeHeader}>
-                  <span className={styles.changeLap}>Lap {change.lapNum}</span>
+                  <span className={styles.changeLap}>LAP {change.lapNum}</span>
                   <span className={styles.changeTime}>{formatTime(change.timestamp)}</span>
-                  <button className={styles.deleteBtn} onClick={() => deleteSetupChange(change.id)} title="삭제">
-                    X
-                  </button>
+                  <button className={styles.deleteBtn} onClick={() => deleteSetupChange(change.id)}>X</button>
                 </div>
                 <div className={styles.changeDiffs}>
                   <SetupDiffRow label="Front Wing" prev={change.previousSetup.frontWing} next={change.newSetup.frontWing} />
@@ -187,47 +169,19 @@ export function SetupFeedbackPanel({ driver, selectedSymptoms }: Props) {
                   <SetupDiffRow label="Engine Braking" prev={change.previousSetup.engineBraking} next={change.newSetup.engineBraking} unit="%" />
                   {change.previousSetup.tyrePressures && change.newSetup.tyrePressures &&
                     ['FL', 'FR', 'RL', 'RR'].map((w, i) => (
-                      <SetupDiffRow
-                        key={w}
-                        label={`${w} Tyre PSI`}
-                        prev={change.previousSetup.tyrePressures[i]}
-                        next={change.newSetup.tyrePressures[i]}
-                        unit=" PSI"
-                      />
+                      <SetupDiffRow key={w} label={`${w} Tyre PSI`} prev={change.previousSetup.tyrePressures[i]} next={change.newSetup.tyrePressures[i]} unit=" PSI" />
                     ))
                   }
                 </div>
-                {change.recommendations.length > 0 && (
-                  <div className={styles.changeRecs}>
-                    <span className={styles.changeRecsTitle}>변경 시점 추천사항</span>
-                    {change.recommendations.map((rec, ri) => (
-                      <div key={ri} className={styles.changeRecItem}>
-                        <span className={styles.changeRecSeverity} style={{
-                          color: rec.severity === 'red' ? '#e10600' : rec.severity === 'yellow' ? '#ffcc00' : '#00ff00'
-                        }}>
-                          {rec.title}
-                        </span>
-                        {rec.adjustments.map((adj, ai) => (
-                          <span key={ai} className={styles.changeRecAdj}>
-                            {adj.label}: {adj.current && adj.target ? `${adj.current} → ${adj.target}` : adj.delta}
-                          </span>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Global Reset */}
       {(feedbacks.length > 0 || setupChanges.length > 0) && (
         <div className={styles.globalReset}>
-          <button className={styles.globalResetBtn} onClick={handleResetAll}>
-            전체 초기화
-          </button>
+          <button className={styles.globalResetBtn} onClick={() => { if (window.confirm('Delete all?')) resetAll(); }}>CLEAR ALL DATA</button>
         </div>
       )}
     </div>

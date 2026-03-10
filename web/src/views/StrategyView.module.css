@@ -1,0 +1,78 @@
+.container {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  padding: 24px;
+}
+
+.strategyContent {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+.leftColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.connectionOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.connectionMessage {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.connectionDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.connectionDot.connecting {
+  background: var(--accent-yellow);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.connectionDot.disconnected {
+  background: var(--accent-orange);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.connectionDot.error {
+  background: var(--accent-red);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

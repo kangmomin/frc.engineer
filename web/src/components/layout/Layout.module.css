@@ -3,14 +3,16 @@
   height: 100vh;
   background: var(--bg-primary);
   overflow: hidden;
+  font-family: var(--font-body);
 }
 
 /* Overlay when sidebar is open */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.8);
   z-index: 90;
+  backdrop-filter: blur(4px);
 }
 
 /* Sidebar */
@@ -19,14 +21,15 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: 220px;
+  width: 260px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--bg-panel-border);
   transform: translateX(-100%);
-  transition: transform 200ms ease;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 100;
   display: flex;
   flex-direction: column;
+  box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
 }
 
 .sidebarOpen {
@@ -36,149 +39,103 @@
 .sidebarHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md);
-  border-bottom: 1px solid var(--bg-panel-border);
+  justify-content: center;
+  padding: var(--spacing-xl) var(--spacing-md);
+  border-bottom: 2px solid var(--bg-panel-border);
+  background: var(--bg-panel-accent);
 }
 
 .sidebarTitle {
   font-family: var(--font-racing);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 2px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--accent-red);
+  letter-spacing: 3px;
   text-transform: uppercase;
-}
-
-.splitToggle {
-  background: none;
-  border: 1px solid var(--bg-panel-border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: 16px;
-  cursor: pointer;
-  padding: 2px 6px;
-  line-height: 1;
-}
-
-.splitToggle:hover {
-  color: var(--accent-blue);
-  border-color: var(--accent-blue);
+  font-style: italic;
+  text-shadow: 0 0 10px rgba(225, 6, 0, 0.3);
 }
 
 /* Navigation */
 .navList {
   list-style: none;
   flex: 1;
-  padding: var(--spacing-sm) 0;
+  padding: var(--spacing-md) 0;
 }
 
 .navItem {
-  padding: 0 var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
 }
 
 .navButton {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
   width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: none;
+  padding: 12px var(--spacing-lg);
+  background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-racing);
+  font-size: 12px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   cursor: pointer;
-  transition: all 150ms ease;
+  transition: all 0.2s ease;
+  clip-path: var(--f1-slant);
 }
 
 .navButton:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--text-primary);
+  transform: translateX(5px);
 }
 
 .navActive {
-  background: rgba(0, 210, 255, 0.1);
-  color: var(--accent-blue);
-  border-left: 2px solid var(--accent-blue);
+  background: var(--accent-red) !important;
+  color: #fff !important;
+  box-shadow: 0 0 15px rgba(225, 6, 0, 0.3);
 }
 
 .navIcon {
-  font-size: 16px;
-  width: 20px;
-  text-align: center;
-}
-
-.navLabel {
-  font-size: 13px;
+  font-size: 14px;
+  width: 24px;
+  font-weight: 900;
+  font-style: italic;
 }
 
 /* Sidebar footer */
 .sidebarFooter {
-  padding: var(--spacing-md);
+  padding: var(--spacing-lg);
+  background: rgba(0, 0, 0, 0.3);
   border-top: 1px solid var(--bg-panel-border);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
 }
 
 .connectionStatus {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
 }
 
 .statusDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  transform: rotate(45deg);
 }
 
-.statusDot.connected {
-  background: var(--accent-green);
-  box-shadow: 0 0 8px var(--accent-green);
-}
-
-.statusDot.connecting {
-  background: var(--accent-yellow);
-  animation: pulse 1s ease-in-out infinite;
-}
-
-.statusDot.disconnected,
-.statusDot.error {
-  background: var(--accent-red);
-}
+.statusDot.connected { background: var(--accent-green); box-shadow: 0 0 10px var(--accent-green); }
+.statusDot.connecting { background: var(--accent-yellow); animation: pulse 1s ease-in-out infinite; }
+.statusDot.disconnected, .statusDot.error { background: var(--accent-red); }
 
 .statusText {
-  font-family: var(--font-body);
-  font-size: 11px;
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 800;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.reconnectButton {
-  padding: var(--spacing-xs) var(--spacing-md);
-  font-family: var(--font-body);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 150ms ease;
-}
-
-.reconnectButton:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: var(--accent-blue);
+  letter-spacing: 1.5px;
 }
 
 /* Main area */
@@ -189,120 +146,67 @@
   overflow: hidden;
 }
 
-/* Top bar: hamburger + miniHUD */
 .topBar {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--bg-panel-border);
-  height: 40px;
+  height: 48px;
 }
 
 .topBarTitle {
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
   text-transform: uppercase;
-  letter-spacing: 1px;
-  padding: 0 var(--spacing-md);
+  letter-spacing: 2px;
+  padding: 0 var(--spacing-lg);
+  font-style: italic;
 }
 
 .hamburger {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
-  width: 40px;
-  height: 40px;
-  padding: 10px;
-  background: none;
+  gap: 5px;
+  width: 48px;
+  height: 48px;
+  padding: 14px;
+  background: var(--bg-panel-accent);
   border: none;
   border-right: 1px solid var(--bg-panel-border);
   cursor: pointer;
-  flex-shrink: 0;
 }
 
 .hamburger span {
   display: block;
   width: 100%;
   height: 2px;
-  background: var(--text-secondary);
-  border-radius: 1px;
-  transition: background 150ms ease;
+  background: var(--accent-red);
+  transition: all 0.2s ease;
 }
 
 .hamburger:hover span {
-  background: var(--text-primary);
+  background: #fff;
+  width: 80%;
 }
 
-/* Content containers */
+/* Content */
 .contentContainer {
   flex: 1;
   overflow: hidden;
-  padding: var(--spacing-md);
-}
-
-.splitContainer {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  background: var(--bg-panel-border);
-  overflow: hidden;
+  background: var(--bg-primary);
 }
 
 .panel {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
   height: 100%;
-  background: var(--bg-primary);
-  padding: var(--spacing-md);
+  overflow-y: auto;
+  padding: var(--spacing-lg);
 }
 
-.splitHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: var(--spacing-sm);
-  margin-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--bg-panel-border);
-  flex-shrink: 0;
-}
-
-.splitLabel {
-  font-family: var(--font-body);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.splitClose {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 2px 6px;
-}
-
-.splitClose:hover {
-  color: var(--accent-red);
-}
-
-/* Animations */
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Responsive: stack split on narrow screens */
-@media (max-width: 800px) {
-  .splitContainer {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1fr;
-  }
+  0%, 100% { opacity: 1; transform: rotate(45deg) scale(1); }
+  50% { opacity: 0.5; transform: rotate(45deg) scale(0.8); }
 }

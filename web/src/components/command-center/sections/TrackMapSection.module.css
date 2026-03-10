@@ -3,13 +3,14 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-panel);
 }
 
 .content {
   flex: 1;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  gap: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   background: var(--bg-panel-border);
   overflow: hidden;
 }
@@ -18,84 +19,62 @@
 .weatherBadge {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  clip-path: var(--f1-slant);
 }
 
-.weatherIcon {
-  font-size: 14px;
-}
+.weatherIcon { font-size: 16px; }
 
 .temp {
   font-family: var(--font-racing);
   font-size: 14px;
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 800;
 }
 
 .scBadge {
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
+  padding: 2px 8px;
   font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 700;
-  background: rgba(255, 204, 0, 0.2);
-  color: var(--accent-yellow);
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--accent-yellow);
+  color: #000;
+  clip-path: var(--f1-slant);
 }
 
-.scBadge.scActive {
-  animation: pulse 1s ease-in-out infinite;
-}
+.scBadge.scActive { animation: pulse 1s ease-in-out infinite; }
 
 /* Track Area */
 .trackArea {
-  background: var(--bg-primary);
+  flex: 1;
+  background: var(--bg-panel);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-sm);
+  padding: var(--spacing-md);
   min-height: 0;
 }
 
-.trackSvg {
-  width: 100%;
-  height: 100%;
-}
+.trackSvg { width: 100%; height: 100%; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.05)); }
 
 .noTrack {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
+  font-family: var(--font-racing);
   font-size: 12px;
+  text-transform: uppercase;
 }
 
 /* Weather Timeline */
-.weatherTimeline {
-  background: var(--bg-primary);
-  padding: var(--spacing-xs) var(--spacing-md);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--bg-panel-border) transparent;
-}
-
-.weatherTimeline::-webkit-scrollbar {
-  height: 4px;
-}
-
-.weatherTimeline::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.weatherTimeline::-webkit-scrollbar-thumb {
-  background: var(--bg-panel-border);
-  border-radius: 2px;
-}
-
 .forecastList {
   display: flex;
   gap: var(--spacing-sm);
-  padding-bottom: var(--spacing-xs);
+  padding: 4px;
 }
 
 .forecastItem {
@@ -103,158 +82,53 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
+  padding: 6px 12px;
   background: rgba(255, 255, 255, 0.03);
-  min-width: 48px;
-  flex-shrink: 0;
-  transition: background 150ms ease;
+  min-width: 60px;
+  clip-path: var(--f1-slant);
+  transition: all 0.2s ease;
 }
 
-.forecastItem:first-child {
-  background: rgba(0, 210, 255, 0.1);
-  border: 1px solid rgba(0, 210, 255, 0.3);
-}
+.forecastItem:first-child { background: var(--bg-panel-accent); border-left: 3px solid var(--accent-red); }
+.forecastItem.hasRain { background: rgba(0, 210, 255, 0.15); border-left: 3px solid var(--accent-blue); }
+.forecastItem.highRain { background: rgba(0, 210, 255, 0.3); border-left: 3px solid var(--accent-blue); animation: pulse 2s ease-in-out infinite; }
 
-.forecastItem.hasRain {
-  background: rgba(51, 153, 255, 0.15);
-  border: 1px solid rgba(51, 153, 255, 0.3);
-}
-
-.forecastItem.highRain {
-  background: rgba(51, 153, 255, 0.25);
-  border: 1px solid rgba(51, 153, 255, 0.5);
-  animation: rainPulse 2s ease-in-out infinite;
-}
-
-@keyframes rainPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.forecastTime {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-secondary);
-  font-weight: 600;
-  text-align: center;
-}
-
-.forecastWeather {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.forecastDetails {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-
-.forecastRain {
-  font-family: var(--font-racing);
-  font-size: 10px;
-  color: var(--text-primary);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-  font-weight: 700;
-}
-
-.forecastTemp {
-  font-family: var(--font-racing);
-  font-size: 10px;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.noForecast {
-  font-size: 11px;
-  color: var(--text-muted);
-}
+.forecastTime { font-family: var(--font-racing); font-size: 9px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; }
+.forecastWeather { font-size: 16px; }
+.forecastRain { font-family: var(--font-racing); font-size: 10px; color: var(--accent-blue); font-weight: 800; }
+.forecastTemp { font-family: var(--font-racing); font-size: 11px; color: var(--text-primary); font-weight: 700; }
 
 /* Race Control Log */
-.raceControlLog {
-  background: var(--bg-primary);
-  max-height: 80px;
-  overflow-y: auto;
-}
-
-.notificationList {
-  display: flex;
-  flex-direction: column;
-}
-
 .notification {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-md);
-  border-left: 3px solid transparent;
-  font-size: 11px;
+  gap: var(--spacing-md);
+  padding: 8px var(--spacing-md);
+  border-left: 4px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 1px;
 }
 
-.notification.info {
-  border-left-color: var(--accent-blue);
-}
+.notification.info { border-left-color: var(--accent-blue); }
+.notification.warning { border-left-color: var(--accent-yellow); background: rgba(255, 255, 0, 0.05); }
+.notification.critical { border-left-color: var(--accent-red); background: rgba(225, 6, 0, 0.1); }
 
-.notification.warning {
-  border-left-color: var(--accent-yellow);
-  background: rgba(255, 204, 0, 0.05);
-}
-
-.notification.critical {
-  border-left-color: var(--accent-red);
-  background: rgba(255, 0, 0, 0.05);
-}
-
-.notificationTime {
-  font-family: var(--font-racing);
-  font-size: 10px;
-  color: var(--text-muted);
-  min-width: 55px;
-}
-
-.notificationMessage {
-  color: var(--text-primary);
-  flex: 1;
-}
-
-.noNotifications {
-  padding: var(--spacing-sm) var(--spacing-md);
-  font-size: 11px;
-  color: var(--text-muted);
-}
+.notificationTime { font-family: var(--font-racing); font-size: 10px; font-weight: 800; color: var(--text-muted); min-width: 65px; }
+.notificationMessage { font-family: var(--font-body); font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; }
 
 /* Track Footer */
 .trackFooter {
-  background: var(--bg-primary);
-  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--bg-panel);
+  padding: 12px var(--spacing-md);
+  border-top: 1px solid var(--bg-panel-border);
 }
 
-.footerGrid {
-  display: flex;
-  gap: var(--spacing-lg);
-}
+.footerGrid { display: flex; justify-content: space-around; }
 
-.footerItem {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
+.footerItem { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 
-.footerLabel {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
+.footerLabel { font-family: var(--font-racing); font-size: 9px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
 
-.footerValue {
-  font-family: var(--font-racing);
-  font-size: 12px;
-  color: var(--text-primary);
-}
+.footerValue { font-family: var(--font-racing); font-size: 13px; font-weight: 800; color: var(--text-primary); font-style: italic; }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }

@@ -3,777 +3,51 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg-panel);
 }
 
-.content {
+.damageContentOnly {
   flex: 1;
-  display: grid;
-  grid-template-rows: 3fr 2fr;
-  gap: 1px;
-  background: var(--bg-panel-border);
-  overflow: hidden;
-}
-
-.strategySection {
-  background: var(--bg-primary);
+  padding: var(--spacing-md);
   display: flex;
   flex-direction: column;
-  min-height: 0;
-}
-
-.scBanner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-  padding: 7px 12px;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 0, 0.24), rgba(255, 135, 0, 0.16)),
-    var(--bg-primary);
-  border-bottom: 1px solid rgba(255, 255, 0, 0.25);
-}
-
-.scBannerMode {
-  font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--bg-primary);
-  background: rgba(255, 255, 0, 0.9);
-  border-radius: 999px;
-  padding: 2px 6px;
-  letter-spacing: 0.8px;
-}
-
-.scBannerMessage {
-  flex: 1;
-  font-family: var(--font-racing);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-yellow);
-  letter-spacing: 0.9px;
-  text-align: right;
-  animation: strategyBlink 1s steps(2, end) infinite;
-}
-
-.predictorCard {
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: var(--bg-primary);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.predictorWetBias {
-  background:
-    radial-gradient(circle at top right, rgba(0, 110, 255, 0.18), transparent 38%),
-    linear-gradient(135deg, rgba(0, 110, 255, 0.08), transparent 42%),
-    var(--bg-primary);
-}
-
-.predictorDryBias {
-  background:
-    radial-gradient(circle at top right, rgba(255, 160, 0, 0.16), transparent 38%),
-    linear-gradient(135deg, rgba(255, 160, 0, 0.08), transparent 42%),
-    var(--bg-primary);
-}
-
-.predictorNeutral {
-  background:
-    radial-gradient(circle at top right, rgba(0, 210, 255, 0.12), transparent 34%),
-    var(--bg-primary);
-}
-
-.predictorHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.predictorHeading {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.predictorTitle {
-  font-family: var(--font-racing);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.7px;
-}
-
-.predictorInputGroup {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.predictorInputLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-}
-
-.predictorInputWrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.predictorInput {
-  width: 42px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-racing);
-  font-size: 16px;
-  font-weight: 700;
-  text-align: right;
-}
-
-.predictorInput:focus {
-  outline: none;
-}
-
-.predictorInput::-webkit-outer-spin-button,
-.predictorInput::-webkit-inner-spin-button {
-  margin: 0;
-}
-
-.predictorInputUnit {
-  font-family: var(--font-racing);
-  font-size: 10px;
-  color: var(--text-secondary);
-  letter-spacing: 0.8px;
-}
-
-.predictorGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--spacing-sm);
-}
-
-.predictorStat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 9px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.predictorStatLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-}
-
-.predictorStatValue {
-  font-family: var(--font-racing);
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.35;
-}
-
-.predictorFooter {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.predictorMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-secondary);
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
-.predictorRecommendation {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.predictorAction {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 9px;
-  border-radius: 999px;
-  font-family: var(--font-racing);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-}
-
-.predictorActionGo {
-  color: var(--accent-red);
-  background: rgba(225, 6, 0, 0.16);
-}
-
-.predictorActionWatch {
-  color: var(--accent-yellow);
-  background: rgba(255, 255, 0, 0.12);
-}
-
-.predictorActionHold {
-  color: var(--accent-green);
-  background: rgba(0, 255, 0, 0.12);
-}
-
-.predictorRationale {
-  max-width: 340px;
-  font-family: var(--font-body);
-  font-size: 11px;
-  color: var(--text-secondary);
-  text-align: right;
-}
-
-.predictorEmpty {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.assistGrid {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: 1.15fr 0.85fr;
-  gap: 1px;
-  background: var(--bg-panel-border);
-}
-
-.assistCard {
-  background: var(--bg-primary);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow: hidden;
-  position: relative;
-}
-
-.assistCard::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
-}
-
-.rejoinCard {
-  grid-column: 1 / -1;
-}
-
-.cleanAir {
-  background:
-    radial-gradient(circle at top right, rgba(0, 255, 0, 0.16), transparent 42%),
-    linear-gradient(135deg, rgba(0, 255, 0, 0.08), transparent 38%),
-    var(--bg-primary);
-}
-
-.trafficAir {
-  background:
-    radial-gradient(circle at top right, rgba(225, 6, 0, 0.18), transparent 44%),
-    linear-gradient(135deg, rgba(225, 6, 0, 0.08), transparent 38%),
-    var(--bg-primary);
-}
-
-.alertLive {
-  box-shadow: inset 3px 0 0 rgba(225, 6, 0, 0.9);
-}
-
-.alertIdle {
-  box-shadow: inset 3px 0 0 rgba(0, 210, 255, 0.55);
-}
-
-.cardHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-}
-
-.cardLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-
-.cardBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-}
-
-.cardBadgeGreen {
-  background: rgba(0, 255, 0, 0.15);
-  color: var(--accent-green);
-}
-
-.cardBadgeRed {
-  background: rgba(225, 6, 0, 0.15);
-  color: var(--accent-red);
-}
-
-.cardBadgeBlue {
-  background: rgba(0, 210, 255, 0.14);
-  color: var(--accent-blue);
-}
-
-.cardBadgeYellow {
-  background: rgba(255, 255, 0, 0.14);
-  color: var(--accent-yellow);
-}
-
-.rejoinMainRow {
-  display: grid;
-  grid-template-columns: auto auto auto 1fr;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.positionStack {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.positionCaption {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-.positionValue {
-  font-family: var(--font-racing);
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1;
-}
-
-.positionArrow {
-  font-family: var(--font-racing);
-  font-size: 18px;
-  color: var(--text-secondary);
-}
-
-.rejoinMeta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.rejoinLossLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.rejoinLossValue {
-  font-family: var(--font-racing);
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.slotGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-sm);
-}
-
-.slotCard {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 9px 10px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.slotLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-
-.slotName {
-  font-family: var(--font-racing);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.slotGap {
-  font-family: var(--font-racing);
-  font-size: 11px;
-  color: var(--accent-blue);
-}
-
-.cardFooter {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-secondary);
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-}
-
-.alertCard,
-.scCard {
-  justify-content: flex-start;
-}
-
-.alertTopRow {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-}
-
-.alertTitle {
-  display: block;
-  font-family: var(--font-racing);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.7px;
-}
-
-.alertSubtitle {
-  display: block;
-  margin-top: 2px;
-  font-family: var(--font-body);
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.alertRivalMeta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.alertRivalName {
-  font-family: var(--font-racing);
-  font-size: 11px;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.alertGap {
-  font-family: var(--font-racing);
-  font-size: 11px;
-  color: var(--accent-orange);
-}
-
-.paceCompare {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-sm);
-}
-
-.paceBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 9px;
-  background: rgba(255, 255, 255, 0.035);
-  border-radius: var(--radius-sm);
-}
-
-.paceLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.paceValue {
-  font-family: var(--font-racing);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.alertActionRow {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-}
-
-.paceDelta {
-  font-family: var(--font-racing);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-orange);
-}
-
-.actionText {
-  font-family: var(--font-racing);
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-
-.actionCritical {
-  color: var(--accent-red);
-}
-
-.actionHold {
-  color: var(--accent-green);
-}
-
-.monitorRow {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  margin-top: auto;
-}
-
-.monitorChip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-  padding: 7px 9px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.monitorLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.monitorValue {
-  font-family: var(--font-racing);
-  font-size: 11px;
-  color: var(--text-primary);
-}
-
-.scCardContent {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.scState {
-  font-family: var(--font-racing);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.7px;
-}
-
-.scInstruction {
-  font-family: var(--font-racing);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  line-height: 1.4;
-  letter-spacing: 0.5px;
-}
-
-.scInstructionBlink {
-  color: var(--accent-yellow);
-  animation: strategyBlink 1s steps(2, end) infinite;
-}
-
-.scMetrics {
-  margin-top: auto;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-sm);
-}
-
-.scMetric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 9px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.035);
-}
-
-.scMetricLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.scMetricValue {
-  font-family: var(--font-racing);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.healthSection {
-  background: var(--bg-primary);
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.healthHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.healthLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-
-.allClearBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--accent-green);
-  background: rgba(0, 255, 0, 0.15);
-}
-
-.healthContent {
-  flex: 1;
-  min-height: 0;
+  gap: var(--spacing-lg);
   overflow-y: auto;
-  padding: 10px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--spacing-sm);
-}
-
-.summaryCard {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px 9px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.summaryLabel {
-  font-family: var(--font-body);
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.summaryValue {
-  font-family: var(--font-racing);
-  font-size: 16px;
-  font-weight: 700;
 }
 
 .faultRow {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-sm);
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
 }
 
 .faultIndicator {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-sm);
-  padding: 8px 9px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(0, 255, 0, 0.22);
-  background: rgba(0, 255, 0, 0.07);
-}
-
-.faultActive {
-  border-color: rgba(225, 6, 0, 0.5);
-  background: rgba(225, 6, 0, 0.12);
-  animation: faultPulse 1s ease-in-out infinite;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--bg-panel-border);
+  clip-path: var(--f1-slant);
 }
 
 .faultLabel {
-  font-family: var(--font-body);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-muted);
 }
 
 .faultStatus {
   font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
   color: var(--accent-green);
+}
+
+.faultActive {
+  background: var(--bg-panel-accent);
+  border-color: var(--accent-red);
 }
 
 .faultActive .faultStatus {
@@ -782,125 +56,52 @@
 
 .damageGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px var(--spacing-sm);
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
 }
 
 .damageItem {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .damageHeader {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-sm);
+  align-items: center;
 }
 
 .damageLabel {
-  font-family: var(--font-body);
+  font-family: var(--font-racing);
   font-size: 10px;
-  color: var(--text-secondary);
+  font-weight: 800;
+  color: var(--text-muted);
 }
 
 .damageValue {
   font-family: var(--font-racing);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .damageBar {
-  width: 100%;
   height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  clip-path: var(--f1-slant);
 }
 
 .damageFill {
   height: 100%;
-  border-radius: inherit;
-  transition: width 150ms ease, background-color 150ms ease;
-}
-
-.safe {
-  color: var(--accent-green);
-}
-
-.warning {
-  color: var(--accent-yellow);
-}
-
-.danger {
-  color: var(--accent-red);
 }
 
 .noData {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  min-height: 0;
-  padding: var(--spacing-md);
-  text-align: center;
-  font-size: 12px;
+  height: 100%;
+  font-family: var(--font-racing);
+  font-size: 11px;
   color: var(--text-muted);
-}
-
-@keyframes strategyBlink {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0.35;
-  }
-}
-
-@keyframes faultPulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.65;
-  }
-}
-
-@media (max-width: 900px) {
-  .predictorHeader,
-  .predictorFooter {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .predictorInputGroup,
-  .predictorRecommendation {
-    align-items: flex-start;
-  }
-
-  .predictorGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .predictorRationale {
-    max-width: none;
-    text-align: left;
-  }
-
-  .summaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .rejoinMainRow {
-    grid-template-columns: repeat(3, auto);
-  }
-
-  .rejoinMeta {
-    grid-column: 1 / -1;
-    align-items: flex-start;
-  }
+  text-transform: uppercase;
 }

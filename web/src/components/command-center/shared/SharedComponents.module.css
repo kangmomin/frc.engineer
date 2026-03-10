@@ -9,33 +9,35 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid;
+  border: 1.5px solid;
   border-radius: 50%;
   font-family: var(--font-racing);
-  font-weight: 700;
+  font-weight: 800;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
 }
 
 .tyreIcon.small .tyreCircle {
-  width: 18px;
-  height: 18px;
-  font-size: 10px;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
 }
 
 .tyreIcon.medium .tyreCircle {
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
 }
 
 .tyreIcon.large .tyreCircle {
-  width: 32px;
-  height: 32px;
-  font-size: 16px;
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
 }
 
 .tyreAge {
-  font-family: var(--font-body);
-  font-size: 11px;
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 700;
   color: var(--text-secondary);
 }
 
@@ -45,129 +47,130 @@
 }
 
 .teamColorBar.left {
-  width: 3px;
-  height: 100%;
-  border-radius: 2px;
+  width: 4px;
+  height: 1.5em;
+  border-radius: 1px;
 }
 
 .teamColorBar.top {
   width: 100%;
   height: 3px;
-  border-radius: 2px;
+  border-radius: 1px;
 }
 
 /* Delta Text */
 .deltaText {
   font-family: var(--font-racing);
-  font-weight: 600;
+  font-weight: 700;
+  font-style: italic;
 }
 
-.deltaText.faster {
-  color: var(--delta-faster);
-}
+.deltaText.faster { color: var(--delta-faster); }
+.deltaText.slower { color: var(--delta-slower); }
+.deltaText.neutral { color: var(--delta-neutral); }
 
-.deltaText.slower {
-  color: var(--delta-slower);
-}
-
-.deltaText.neutral {
-  color: var(--delta-neutral);
-}
-
-.deltaText.small {
-  font-size: 11px;
-}
-
-.deltaText.medium {
-  font-size: 13px;
-}
-
-.deltaText.large {
-  font-size: 16px;
-}
+.deltaText.small { font-size: 11px; }
+.deltaText.medium { font-size: 14px; }
+.deltaText.large { font-size: 18px; }
 
 /* Section Header */
 .sectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: 10px var(--spacing-md);
+  background: linear-gradient(90deg, var(--bg-panel-accent) 0%, transparent 100%);
   border-bottom: 1px solid var(--bg-panel-border);
   flex-shrink: 0;
+  position: relative;
+}
+
+.sectionHeader::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 60px;
+  height: 2px;
+  background: var(--accent-red);
 }
 
 .sectionHeaderLeft {
   display: flex;
-  align-items: baseline;
-  gap: var(--spacing-sm);
+  flex-direction: column;
 }
 
 .sectionTitle {
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 700;
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 800;
   color: var(--text-primary);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
   margin: 0;
+  font-style: italic;
 }
 
 .sectionSubtitle {
   font-family: var(--font-body);
   font-size: 11px;
-  color: var(--text-secondary);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .sectionHeaderRight {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
 }
 
 /* Progress Bar */
 .progressBar {
   width: 100%;
-  height: 4px;
-  background: var(--bg-panel-border);
-  border-radius: 2px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 1px;
   overflow: hidden;
+  clip-path: var(--f1-slant);
 }
 
 .progressFill {
   height: 100%;
-  border-radius: 2px;
-  transition: width 150ms ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Status Badge */
 .statusBadge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-body);
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-family: var(--font-racing);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  clip-path: var(--f1-slant);
 }
 
 .statusBadge.safe {
-  background: rgba(0, 255, 0, 0.15);
+  background: rgba(0, 255, 0, 0.2);
   color: var(--accent-green);
 }
 
 .statusBadge.warning {
-  background: rgba(255, 204, 0, 0.15);
+  background: rgba(255, 255, 0, 0.2);
   color: var(--accent-yellow);
 }
 
 .statusBadge.danger {
-  background: rgba(255, 0, 0, 0.15);
+  background: rgba(255, 0, 0, 0.2);
   color: var(--accent-red);
 }
 
 .statusBadge.info {
-  background: rgba(0, 210, 255, 0.15);
+  background: rgba(0, 210, 255, 0.2);
   color: var(--accent-blue);
 }

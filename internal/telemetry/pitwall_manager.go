@@ -336,14 +336,15 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.LastLapTime = float32(ld.LastLapTimeInMS)
 				d.BestLapTime = 0
 				d.PitStatus = int(ld.PitStatus)
+				d.DriverStatus = int(ld.DriverStatus)
 				d.NumPitStops = int(ld.NumPitStops)
 				d.LapDistance = sanitize(ld.LapDistance)
 				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0
 				d.Sector1TimeMs = int(ld.Sector1TimeMinutes)*60000 + int(ld.Sector1TimeInMS)
 				d.Sector2TimeMs = int(ld.Sector2TimeMinutes)*60000 + int(ld.Sector2TimeInMS)
 				d.CurrentSector = int(ld.Sector)
-				d.DeltaToCarInFront = int(ld.DeltaToCarInFrontMSPart)
-				d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderMSPart)
+				d.DeltaToCarInFront = int(ld.DeltaToCarInFrontMinutesPart)*60000 + int(ld.DeltaToCarInFrontMSPart)
+				d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderMinutesPart)*60000 + int(ld.DeltaToRaceLeaderMSPart)
 				d.PitLaneTime = int(ld.PitLaneTimeInLaneInMS)
 			}
 

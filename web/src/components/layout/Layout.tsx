@@ -2,13 +2,14 @@ import { useState, useCallback } from 'react';
 import { SettingsView } from '../../views/SettingsView';
 import { RacesView } from '../../views/RacesView';
 import { SetupAnalysisView } from '../../views/SetupAnalysisView';
+import { StrategyView } from '../../views/StrategyView';
 import { GuideView } from '../../views/GuideView';
 import { CommandCenter } from '../command-center/CommandCenter';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import styles from './Layout.module.css';
 
-type ViewId = 'command' | 'settings' | 'races' | 'setup' | 'guide';
+type ViewId = 'command' | 'strategy' | 'settings' | 'races' | 'setup' | 'guide';
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -25,22 +26,24 @@ export function Layout() {
 
   const getConnectionLabel = () => {
     switch (connectionState) {
-      case 'connected': return 'Connected';
-      case 'connecting': return 'Connecting...';
-      case 'error': return 'Error';
-      default: return 'Disconnected';
+      case 'connected': return '연결됨';
+      case 'connecting': return '연결 중...';
+      case 'error': return '오류';
+      default: return '연결 끊김';
     }
   };
 
   const topBarTitle = activeView === 'command'
     ? 'Command Center'
-    : activeView === 'settings'
-      ? 'Settings'
-      : activeView === 'setup'
-        ? 'Setup Analysis'
-        : activeView === 'guide'
-          ? 'Guide'
-          : 'Races';
+    : activeView === 'strategy'
+      ? '전략'
+      : activeView === 'settings'
+        ? 'Settings'
+        : activeView === 'setup'
+          ? 'Setup Analysis'
+          : activeView === 'guide'
+            ? 'Guide'
+            : 'Races';
 
   return (
     <div className={styles.layout}>
@@ -61,6 +64,15 @@ export function Layout() {
             >
               <span className={styles.navIcon}>CC</span>
               <span className={styles.navLabel}>Command Center</span>
+            </button>
+          </li>
+          <li className={styles.navItem}>
+            <button
+              className={`${styles.navButton} ${activeView === 'strategy' ? styles.navActive : ''}`}
+              onClick={() => handleNavClick('strategy')}
+            >
+              <span className={styles.navIcon}>SG</span>
+              <span className={styles.navLabel}>전략</span>
             </button>
           </li>
           <li className={styles.navItem}>
@@ -125,6 +137,7 @@ export function Layout() {
 
         <div className={styles.contentContainer}>
           {activeView === 'command' && <CommandCenter />}
+          {activeView === 'strategy' && <StrategyView />}
           {activeView === 'settings' && (
             <div className={styles.panel}>
               <SettingsView />

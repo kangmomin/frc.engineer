@@ -5,10 +5,93 @@ export function GuideView() {
     <div className={styles.container}>
       <div className={styles.guide}>
         <div className={styles.guideIntro}>
-          <span className={styles.guideTitle}>Setup Analysis Guide</span>
+          <span className={styles.guideTitle}>F1 Pitwall Engineer Guide</span>
           <span className={styles.guideDesc}>
-            F1 25 차량 셋업을 실시간 텔레메트리 기반으로 분석합니다.
-            6가지 핵심 영역의 데이터를 프레임 단위(60Hz)로 수집하고, 랩별로 요약하여
+            F1 25 실시간 텔레메트리 데이터를 분석하여 최적의 차량 셋업과 레이스 전략을 제안합니다.
+            본 가이드는 각 탭의 데이터 활용법과 결정 지침(Call)을 설명합니다.
+          </span>
+        </div>
+
+        {/* Strategy Tab Guide */}
+        <div className={styles.guideIntro} style={{ marginTop: '40px', borderTop: '1px solid #333', paddingTop: '40px' }}>
+          <span className={styles.guideTitle} style={{ color: 'var(--accent-red)' }}>전략 (Strategy) 탭 활용 가이드</span>
+          <span className={styles.guideDesc}>
+            레이스 중 드라이버에게 "지금 푸시할지(Push), 타이어를 아낄지(Hold), 피트인할지(Box)"에 대한 
+            명확한 지침을 제공하기 위한 엔지니어 전용 지휘소입니다.
+          </span>
+        </div>
+
+        <div className={styles.guideSection}>
+          <div className={styles.guideSectionHeader}>
+            <span className={styles.guideDot} style={{ background: 'var(--accent-red)' }} />
+            <span className={styles.guideSectionTitle}>1. Direct Combat Advisor (교전 어시스트)</span>
+          </div>
+          <span className={styles.guideSectionDesc}>
+            상대 차량과의 페이스 차이와 타이어 마모도를 분석하여 실시간 행동 지침을 내립니다.
+          </span>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel} style={{ color: '#00ff00' }}>PUSH NOW</span>
+            <span className={styles.guideMetricDesc}>내 타이어가 더 신선하고 페이스가 0.4초 이상 빠를 때 추월 시도 지시</span>
+          </div>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel} style={{ color: '#ffcc00' }}>HOLD & MANAGE</span>
+            <span className={styles.guideMetricDesc}>페이스가 비슷하거나 타이어 관리가 필요할 때 페이스 유지 및 타겟 랩 브리핑</span>
+          </div>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel} style={{ color: '#e10600' }}>DEFEND NOW</span>
+            <span className={styles.guideMetricDesc}>뒷차의 추월 위협이 감지될 때 직선 구간 ERS 사용 및 방어 지시</span>
+          </div>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel} style={{ color: '#9c27b0' }}>LIFT & COAST</span>
+            <span className={styles.guideMetricDesc}>타이어나 브레이크 온도가 임계치를 초과하여 쿨링이 시급할 때 연비 주행 지시</span>
+          </div>
+        </div>
+
+        <div className={styles.guideSection}>
+          <div className={styles.guideSectionHeader}>
+            <span className={styles.guideDot} style={{ background: 'var(--accent-red)' }} />
+            <span className={styles.guideSectionTitle}>2. Pace Delta Chart (페이스 트렌드)</span>
+          </div>
+          <span className={styles.guideSectionDesc}>
+            최근 10랩 동안 앞차와의 간격(Gap) 변화를 그래프로 표시합니다.
+          </span>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel}>Green Line</span>
+            <span className={styles.guideMetricDesc}>간격이 줄어들고 있음 (Catching). 현재 페이스가 우위임</span>
+          </div>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel}>Red Line</span>
+            <span className={styles.guideMetricDesc}>간격이 벌어지고 있음 (Falling Back). 페이스 회복 필요</span>
+          </div>
+        </div>
+
+        <div className={styles.guideSection}>
+          <div className={styles.guideSectionHeader}>
+            <span className={styles.guideDot} style={{ background: 'var(--accent-red)' }} />
+            <span className={styles.guideSectionTitle}>3. Master Strategy Board (스틴트 플래너)</span>
+          </div>
+          <span className={styles.guideSectionDesc}>
+            피트 스톱 타이밍과 레이스 전체 흐름을 관리합니다.
+          </span>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel}>Pit Window Radar</span>
+            <span className={styles.guideMetricDesc}>지금 피트인 시 복귀 순위와 해당 위치의 트래픽 여부(Clear/Traffic) 표시</span>
+          </div>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel}>Undercut Alert</span>
+            <span className={styles.guideMetricDesc}>경쟁자가 피트인하면 "BOX TO COVER" 경고 점멸. 언더컷 방어 유도</span>
+          </div>
+          <div className={styles.guideMetric}>
+            <span className={styles.guideMetricLabel}>Weather Alert</span>
+            <span className={styles.guideMetricDesc}>15분 내 비가 예상될 경우 피트 스톱을 늦추도록 알림 제공</span>
+          </div>
+        </div>
+
+        {/* Setup Analysis Guide */}
+        <div className={styles.guideIntro} style={{ marginTop: '40px', borderTop: '1px solid #333', paddingTop: '40px' }}>
+          <span className={styles.guideTitle}>셋업 분석 (Setup Analysis) 가이드</span>
+          <span className={styles.guideDesc}>
+            차량의 기계적 성능을 평가합니다. 6가지 핵심 영역의 데이터를 랩별로 요약하여
             셋업 조정 권고사항을 제공합니다.
           </span>
         </div>
