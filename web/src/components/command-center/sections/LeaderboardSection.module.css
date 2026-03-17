@@ -269,7 +269,7 @@
 .penTooltip {
   display: none;
   position: absolute;
-  top: 100%;
+  bottom: 100%;
   right: 0;
   z-index: 50;
   min-width: 240px;
@@ -314,6 +314,12 @@
 .penTooltipWarning {
   color: #ffbf1f;
   border-left-color: #ffbf1f;
+}
+
+.penTooltipServed {
+  color: var(--accent-green, #00e676);
+  border-left-color: var(--accent-green, #00e676);
+  font-style: italic;
 }
 
 .damageAlert, .wingAlert {

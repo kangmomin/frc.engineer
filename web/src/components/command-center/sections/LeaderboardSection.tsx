@@ -142,7 +142,7 @@ const DriverRow = memo(({
               <div className={styles.penTooltip}>
                 <div className={styles.penTooltipTitle}>Penalties & Warnings</div>
                 {penaltyDetails.map((d, i) => (
-                  <div key={i} className={`${styles.penTooltipRow} ${d.category === 'penalty' ? styles.penTooltipPenalty : styles.penTooltipWarning}`}>
+                  <div key={i} className={`${styles.penTooltipRow} ${d.category === 'penalty' ? styles.penTooltipPenalty : d.category === 'served' ? styles.penTooltipServed : styles.penTooltipWarning}`}>
                     {d.message}
                   </div>
                 ))}
@@ -241,7 +241,11 @@ export function LeaderboardSection() {
       else if (n.category === 'warning') map[n.driverName].warnings++;
       // Strip "[DriverName] " prefix from message for cleaner display
       const msg = (n.message ?? '').replace(/^\[.*?\]\s*/, '');
-      map[n.driverName].details.push({ category: n.category, message: msg });
+      // Include penalty, warning, and "served" info notifications
+      const isServed = n.category === 'info' && /served/i.test(n.message ?? '');
+      if (n.category === 'penalty' || n.category === 'warning' || isServed) {
+        map[n.driverName].details.push({ category: isServed ? 'served' : n.category, message: msg });
+      }
     }
     return map;
   }, [notifications]);
