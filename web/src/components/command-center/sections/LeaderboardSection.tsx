@@ -42,6 +42,7 @@ const DriverRow = memo(({
   bestLapTime,
   penaltyCount,
   warningCount,
+  penaltyDetails,
 }: {
   driver: DriverInfo;
   isPlayer: boolean;
@@ -55,6 +56,7 @@ const DriverRow = memo(({
   bestLapTime: number;
   penaltyCount: number;
   warningCount: number;
+  penaltyDetails: { category: string; message: string }[];
 }) => {
   const gap = idx === 0 ? 'LEADER' : formatGapToLeader(driver.deltaToRaceLeader);
   const damageAlert = getDamageAlertInfo(driver, isPlayer);
@@ -133,8 +135,20 @@ const DriverRow = memo(({
       )}
       {showPen && (
         <td className={styles.colPen}>
-          {penaltyCount > 0 && <span className={`${styles.penBadge} ${styles.penPenalty}`}>P{penaltyCount}</span>}
-          {warningCount > 0 && <span className={`${styles.penBadge} ${styles.penWarning}`}>W{warningCount}</span>}
+          {(penaltyCount > 0 || warningCount > 0) && (
+            <div className={styles.penCellWrap}>
+              {penaltyCount > 0 && <span className={`${styles.penBadge} ${styles.penPenalty}`}>P{penaltyCount}</span>}
+              {warningCount > 0 && <span className={`${styles.penBadge} ${styles.penWarning}`}>W{warningCount}</span>}
+              <div className={styles.penTooltip}>
+                <div className={styles.penTooltipTitle}>Penalties & Warnings</div>
+                {penaltyDetails.map((d, i) => (
+                  <div key={i} className={`${styles.penTooltipRow} ${d.category === 'penalty' ? styles.penTooltipPenalty : styles.penTooltipWarning}`}>
+                    {d.message}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </td>
       )}
       <td className={styles.colSector}>
@@ -219,12 +233,15 @@ export function LeaderboardSection() {
 
   // Penalty/Warning count per driver from race control notifications
   const penCountByDriver = useMemo(() => {
-    const map: Record<string, { penalties: number; warnings: number }> = {};
+    const map: Record<string, { penalties: number; warnings: number; details: { category: string; message: string }[] }> = {};
     for (const n of notifications) {
       if (!n.driverName) continue;
-      if (!map[n.driverName]) map[n.driverName] = { penalties: 0, warnings: 0 };
+      if (!map[n.driverName]) map[n.driverName] = { penalties: 0, warnings: 0, details: [] };
       if (n.category === 'penalty') map[n.driverName].penalties++;
       else if (n.category === 'warning') map[n.driverName].warnings++;
+      // Strip "[DriverName] " prefix from message for cleaner display
+      const msg = (n.message ?? '').replace(/^\[.*?\]\s*/, '');
+      map[n.driverName].details.push({ category: n.category, message: msg });
     }
     return map;
   }, [notifications]);
@@ -310,6 +327,7 @@ export function LeaderboardSection() {
                 bestLapTime={bestLapByDriver[driver.index] ?? 0}
                 penaltyCount={penCountByDriver[driver.name?.trim()]?.penalties ?? 0}
                 warningCount={penCountByDriver[driver.name?.trim()]?.warnings ?? 0}
+                penaltyDetails={penCountByDriver[driver.name?.trim()]?.details ?? []}
               />
             ))}
           </tbody>

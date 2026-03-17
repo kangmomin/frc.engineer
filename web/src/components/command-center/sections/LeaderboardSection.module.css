@@ -258,6 +258,64 @@
   color: #ffbf1f;
 }
 
+/* Penalty tooltip */
+.penCellWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+
+.penTooltip {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  min-width: 240px;
+  max-width: 340px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.penCellWrap:hover .penTooltip {
+  display: block;
+}
+
+.penTooltipTitle {
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: var(--spacing-xs, 4px);
+  padding-bottom: var(--spacing-xs, 4px);
+  border-bottom: 1px solid var(--bg-panel-border);
+}
+
+.penTooltipRow {
+  font-size: 11px;
+  padding: 3px 0;
+  padding-left: 8px;
+  border-left: 2px solid transparent;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.penTooltipPenalty {
+  color: var(--accent-red);
+  border-left-color: var(--accent-red);
+}
+
+.penTooltipWarning {
+  color: #ffbf1f;
+  border-left-color: #ffbf1f;
+}
+
 .damageAlert, .wingAlert {
   font-family: var(--font-racing);
   font-weight: 800;
