@@ -15,11 +15,12 @@ import (
 const (
 	maxBufferedAmount = 64 * 1024 // 64 KB — drop messages if receiver is slow
 
-	sigWriteWait       = 10 * time.Second
-	sigPongWait        = 60 * time.Second
-	sigPingPeriod      = (sigPongWait * 9) / 10 // 54s
-	reconnectBaseDelay = 1 * time.Second
-	reconnectMaxDelay  = 30 * time.Second
+	sigWriteWait          = 10 * time.Second
+	sigPongWait           = 60 * time.Second
+	sigPingPeriod         = (sigPongWait * 9) / 10 // 54s
+	sigHeartbeatPeriod    = 30 * time.Second        // application-level keepalive to survive proxy idle timeouts
+	reconnectBaseDelay    = 1 * time.Second
+	reconnectMaxDelay     = 30 * time.Second
 )
 
 // RequestHandler is called when an engineer sends a request over DataChannel.
@@ -195,10 +196,12 @@ func (pm *PeerManager) Close() {
 	pm.sigMu.Unlock()
 }
 
-// writeSignalingLoop sends periodic pings to keep the signaling connection alive.
+// writeSignalingLoop sends periodic pings and heartbeat messages to keep the signaling connection alive.
 func (pm *PeerManager) writeSignalingLoop() {
-	ticker := time.NewTicker(sigPingPeriod)
-	defer ticker.Stop()
+	pingTicker := time.NewTicker(sigPingPeriod)
+	heartbeatTicker := time.NewTicker(sigHeartbeatPeriod)
+	defer pingTicker.Stop()
+	defer heartbeatTicker.Stop()
 
 	for {
 		select {
@@ -206,7 +209,7 @@ func (pm *PeerManager) writeSignalingLoop() {
 			return
 		case <-pm.writeDone:
 			return
-		case <-ticker.C:
+		case <-pingTicker.C:
 			pm.sigMu.Lock()
 			if pm.sigConn != nil {
 				pm.sigConn.SetWriteDeadline(time.Now().Add(sigWriteWait))
@@ -216,6 +219,9 @@ func (pm *PeerManager) writeSignalingLoop() {
 				}
 			}
 			pm.sigMu.Unlock()
+		case <-heartbeatTicker.C:
+			// Application-level keepalive to survive reverse proxy idle timeouts.
+			pm.sendSignaling(signaling.Message{Type: signaling.TypeHeartbeat})
 		}
 	}
 }
@@ -249,6 +255,8 @@ func (pm *PeerManager) readSignalingLoop() {
 		}
 
 		switch msg.Type {
+		case signaling.TypeHeartbeat:
+			// Ignore heartbeat echo from server.
 		case signaling.TypePeerJoined:
 			pm.onPeerJoined(msg.PeerID)
 		case signaling.TypePeerLeft:

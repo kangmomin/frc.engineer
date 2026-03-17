@@ -433,6 +433,12 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 		_ = p.sendJSON(Message{Type: TypeRoomJoined, PeerID: peerID, RoomCode: msg.RoomCode})
 		return p
 
+	case TypeHeartbeat:
+		// Echo heartbeat back as application-level keepalive.
+		writeMu.Lock()
+		_ = conn.WriteJSON(Message{Type: TypeHeartbeat})
+		writeMu.Unlock()
+
 	case TypeOffer, TypeAnswer, TypeICECandidate:
 		if currentPeer == nil {
 			sendErrorRaw(conn, "not in a room", writeMu)

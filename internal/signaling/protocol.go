@@ -16,6 +16,7 @@ const (
 	TypeAnswer       = "answer"        // receiver → sender (relayed)
 	TypeICECandidate = "ice_candidate" // bidirectional (relayed)
 	TypeError        = "error"         // server → either
+	TypeHeartbeat    = "heartbeat"     // bidirectional keepalive
 )
 
 // Message is the JSON envelope for all signaling communication.
