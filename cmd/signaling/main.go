@@ -6,10 +6,18 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"frc.engineer/internal/signaling"
 	"github.com/gorilla/websocket"
+)
+
+const (
+	writeWait  = 10 * time.Second
+	pongWait   = 60 * time.Second
+	pingPeriod = (pongWait * 9) / 10 // 54s
 )
 
 func main() {
@@ -45,17 +53,50 @@ func main() {
 		}
 		defer conn.Close()
 
+		// Set up read deadline and pong handler for keepalive.
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		conn.SetPongHandler(func(string) error {
+			conn.SetReadDeadline(time.Now().Add(pongWait))
+			return nil
+		})
+
+		// Shared write mutex for this connection — serializes ping writes
+		// with application-level writes (sendJSON, sendErrorRaw).
+		writeMu := &sync.Mutex{}
+
+		// Start ping goroutine.
+		pingDone := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(pingPeriod)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-pingDone:
+					return
+				case <-ticker.C:
+					writeMu.Lock()
+					conn.SetWriteDeadline(time.Now().Add(writeWait))
+					err := conn.WriteMessage(websocket.PingMessage, nil)
+					writeMu.Unlock()
+					if err != nil {
+						return
+					}
+				}
+			}
+		}()
+
 		var currentPeer *signaling.ExportedPeer
 
 		for {
 			_, raw, err := conn.ReadMessage()
 			if err != nil {
+				close(pingDone)
 				if currentPeer != nil {
 					roomManager.RemoveExportedPeer(currentPeer)
 				}
 				return
 			}
-			currentPeer = roomManager.HandleMessageExported(conn, raw, currentPeer)
+			currentPeer = roomManager.HandleMessageExported(conn, raw, currentPeer, writeMu)
 		}
 	})
 

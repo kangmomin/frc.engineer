@@ -16,6 +16,7 @@ const (
 	maxEngineersPerRoom = 8
 	roomTTL             = 1 * time.Hour
 	cleanupInterval     = 60 * time.Second
+	driverGracePeriod   = 2 * time.Minute
 )
 
 // peerRole distinguishes the sender (driver) from receivers (engineers).
@@ -31,23 +32,24 @@ type peer struct {
 	conn     *websocket.Conn
 	role     peerRole
 	roomCode string
-	id       string // unique peer id (only for engineers)
-	mu       sync.Mutex
+	id       string      // unique peer id (only for engineers)
+	writeMu  *sync.Mutex // shared with handler; serializes all conn writes
 }
 
 func (p *peer) sendJSON(msg Message) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
 	return p.conn.WriteJSON(msg)
 }
 
 // Room represents a single signaling room owned by a sender.
 type Room struct {
-	Code      string
-	Driver    *peer
-	Engineers map[string]*peer // peerId → peer
-	CreatedAt time.Time
-	mu        sync.Mutex
+	Code         string
+	Driver       *peer
+	Engineers    map[string]*peer // peerId → peer
+	CreatedAt    time.Time
+	DriverLostAt *time.Time // set when driver disconnects; nil when connected
+	mu           sync.Mutex
 }
 
 // RoomManager manages all active rooms.
@@ -76,7 +78,7 @@ func (rm *RoomManager) Stop() {
 
 // CreateRoom allocates a new room for the given driver connection.
 // Code generation and insertion are atomic to prevent TOCTOU races.
-func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn) (string, error) {
+func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mutex) (string, error) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
@@ -89,6 +91,7 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn) (string, error) {
 		conn:     driverConn,
 		role:     roleDriver,
 		roomCode: code,
+		writeMu:  writeMu,
 	}
 
 	room := &Room{
@@ -104,7 +107,7 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn) (string, error) {
 }
 
 // JoinRoom adds an engineer to an existing room.
-func (rm *RoomManager) JoinRoom(code string, conn *websocket.Conn) (string, error) {
+func (rm *RoomManager) JoinRoom(code string, conn *websocket.Conn, writeMu *sync.Mutex) (string, error) {
 	rm.mu.RLock()
 	room, ok := rm.rooms[code]
 	rm.mu.RUnlock()
@@ -125,18 +128,50 @@ func (rm *RoomManager) JoinRoom(code string, conn *websocket.Conn) (string, erro
 		role:     roleEngineer,
 		roomCode: code,
 		id:       peerID,
+		writeMu:  writeMu,
 	}
 	room.Engineers[peerID] = engineerPeer
 
-	// Notify the driver that a new engineer joined.
-	_ = room.Driver.sendJSON(Message{
-		Type:   TypePeerJoined,
-		PeerID: peerID,
-	})
+	// Notify the driver only if connected.
+	if room.DriverLostAt == nil {
+		_ = room.Driver.sendJSON(Message{
+			Type:   TypePeerJoined,
+			PeerID: peerID,
+		})
+	}
 
 	rm.logger.Info("engineer joined room", "code", code, "peerId", peerID,
 		"engineerCount", len(room.Engineers))
 	return peerID, nil
+}
+
+// RejoinRoom reconnects a driver to an existing room after a transient disconnect.
+func (rm *RoomManager) RejoinRoom(code string, conn *websocket.Conn, writeMu *sync.Mutex) error {
+	rm.mu.RLock()
+	room, ok := rm.rooms[code]
+	rm.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("room %s not found", code)
+	}
+
+	room.mu.Lock()
+	defer room.mu.Unlock()
+
+	// Close old driver connection if still open.
+	if room.Driver != nil {
+		room.Driver.conn.Close()
+	}
+
+	room.Driver = &peer{
+		conn:     conn,
+		role:     roleDriver,
+		roomCode: code,
+		writeMu:  writeMu,
+	}
+	room.DriverLostAt = nil
+
+	rm.logger.Info("driver rejoined room", "code", code)
+	return nil
 }
 
 // Relay forwards an SDP or ICE message from one peer to the target peer within the same room.
@@ -158,6 +193,10 @@ func (rm *RoomManager) Relay(senderPeer *peer, msg Message) {
 			_ = eng.sendJSON(msg)
 		}
 	case roleEngineer:
+		// Drop if driver is temporarily disconnected.
+		if room.DriverLostAt != nil {
+			return
+		}
 		// Engineer → driver
 		msg.PeerID = senderPeer.id
 		_ = room.Driver.sendJSON(msg)
@@ -178,18 +217,15 @@ func (rm *RoomManager) RemovePeer(p *peer) {
 	}
 
 	if p.role == roleDriver {
-		// Driver left: close entire room.
-		delete(rm.rooms, p.roomCode)
+		// Grace period: keep room alive for driver reconnection.
 		rm.mu.Unlock()
 
 		room.mu.Lock()
-		for _, eng := range room.Engineers {
-			_ = eng.sendJSON(Message{Type: TypeRoomClosed})
-			eng.conn.Close()
-		}
+		now := time.Now()
+		room.DriverLostAt = &now
 		room.mu.Unlock()
 
-		rm.logger.Info("room closed (driver left)", "code", p.roomCode)
+		rm.logger.Info("driver disconnected, grace period started", "code", p.roomCode)
 		return
 	}
 
@@ -199,13 +235,16 @@ func (rm *RoomManager) RemovePeer(p *peer) {
 	room.mu.Lock()
 	delete(room.Engineers, p.id)
 	engineerCount := len(room.Engineers)
+	driverLost := room.DriverLostAt != nil
 	room.mu.Unlock()
 
-	// Notify driver.
-	_ = room.Driver.sendJSON(Message{
-		Type:   TypePeerLeft,
-		PeerID: p.id,
-	})
+	// Notify driver only if connected.
+	if !driverLost {
+		_ = room.Driver.sendJSON(Message{
+			Type:   TypePeerLeft,
+			PeerID: p.id,
+		})
+	}
 
 	rm.logger.Info("engineer left room", "code", p.roomCode, "peerId", p.id,
 		"engineerCount", engineerCount)
@@ -255,7 +294,12 @@ func (rm *RoomManager) cleanupExpired() {
 	rm.mu.Lock()
 	var expired []*Room
 	for code, room := range rm.rooms {
-		if now.Sub(room.CreatedAt) > roomTTL {
+		room.mu.Lock()
+		ttlExpired := now.Sub(room.CreatedAt) > roomTTL
+		driverGraceExpired := room.DriverLostAt != nil && now.Sub(*room.DriverLostAt) > driverGracePeriod
+		room.mu.Unlock()
+
+		if ttlExpired || driverGraceExpired {
 			expired = append(expired, room)
 			delete(rm.rooms, code)
 		}
@@ -308,12 +352,12 @@ type ExportedPeer struct {
 }
 
 // HandleMessageExported wraps HandleMessage for use from external packages.
-func (rm *RoomManager) HandleMessageExported(conn *websocket.Conn, raw []byte, ep *ExportedPeer) *ExportedPeer {
+func (rm *RoomManager) HandleMessageExported(conn *websocket.Conn, raw []byte, ep *ExportedPeer, writeMu *sync.Mutex) *ExportedPeer {
 	var cp *peer
 	if ep != nil {
 		cp = ep.p
 	}
-	result := rm.HandleMessage(conn, raw, cp)
+	result := rm.HandleMessage(conn, raw, cp, writeMu)
 	if result == nil {
 		return nil
 	}
@@ -331,41 +375,59 @@ func (rm *RoomManager) RemoveExportedPeer(ep *ExportedPeer) {
 }
 
 // HandleMessage processes an incoming signaling message from a WebSocket connection.
-func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPeer *peer) *peer {
+func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPeer *peer, writeMu *sync.Mutex) *peer {
 	var msg Message
 	if err := json.Unmarshal(raw, &msg); err != nil {
-		sendErrorRaw(conn, "invalid JSON")
+		sendErrorRaw(conn, "invalid JSON", writeMu)
 		return currentPeer
 	}
 
 	switch msg.Type {
 	case TypeRoomCreate:
-		code, err := rm.CreateRoom(conn)
+		code, err := rm.CreateRoom(conn, writeMu)
 		if err != nil {
-			sendErrorRaw(conn, err.Error())
+			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
 		}
 		p := rm.FindPeer(conn, code)
 		if p == nil {
-			sendErrorRaw(conn, "internal error: peer not found after room creation")
+			sendErrorRaw(conn, "internal error: peer not found after room creation", writeMu)
 			return currentPeer
 		}
 		_ = p.sendJSON(Message{Type: TypeRoomCreated, RoomCode: code})
 		return p
 
-	case TypeRoomJoin:
+	case TypeRoomRejoin:
 		if msg.RoomCode == "" {
-			sendErrorRaw(conn, "roomCode required")
+			sendErrorRaw(conn, "roomCode required", writeMu)
 			return currentPeer
 		}
-		peerID, err := rm.JoinRoom(msg.RoomCode, conn)
+		err := rm.RejoinRoom(msg.RoomCode, conn, writeMu)
 		if err != nil {
-			sendErrorRaw(conn, err.Error())
+			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
 		}
 		p := rm.FindPeer(conn, msg.RoomCode)
 		if p == nil {
-			sendErrorRaw(conn, "internal error: peer not found after join")
+			sendErrorRaw(conn, "internal error: peer not found after rejoin", writeMu)
+			return currentPeer
+		}
+		_ = p.sendJSON(Message{Type: TypeRoomCreated, RoomCode: msg.RoomCode})
+		return p
+
+	case TypeRoomJoin:
+		if msg.RoomCode == "" {
+			sendErrorRaw(conn, "roomCode required", writeMu)
+			return currentPeer
+		}
+		peerID, err := rm.JoinRoom(msg.RoomCode, conn, writeMu)
+		if err != nil {
+			sendErrorRaw(conn, err.Error(), writeMu)
+			return currentPeer
+		}
+		p := rm.FindPeer(conn, msg.RoomCode)
+		if p == nil {
+			sendErrorRaw(conn, "internal error: peer not found after join", writeMu)
 			return currentPeer
 		}
 		_ = p.sendJSON(Message{Type: TypeRoomJoined, PeerID: peerID, RoomCode: msg.RoomCode})
@@ -373,22 +435,24 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 
 	case TypeOffer, TypeAnswer, TypeICECandidate:
 		if currentPeer == nil {
-			sendErrorRaw(conn, "not in a room")
+			sendErrorRaw(conn, "not in a room", writeMu)
 			return currentPeer
 		}
 		rm.Relay(currentPeer, msg)
 
 	default:
-		sendErrorRaw(conn, "unknown message type: "+msg.Type)
+		sendErrorRaw(conn, "unknown message type: "+msg.Type, writeMu)
 	}
 
 	return currentPeer
 }
 
 // sendErrorRaw sends an error message on a raw connection (before peer is established).
-// Only safe when no peer.sendJSON is possible on the same conn concurrently.
-func sendErrorRaw(conn *websocket.Conn, errMsg string) {
+// Uses writeMu to serialize with the ping goroutine.
+func sendErrorRaw(conn *websocket.Conn, errMsg string, writeMu *sync.Mutex) {
 	msg := Message{Type: TypeError, Error: errMsg}
 	data, _ := json.Marshal(msg)
+	writeMu.Lock()
+	defer writeMu.Unlock()
 	_ = conn.WriteMessage(websocket.TextMessage, data)
 }

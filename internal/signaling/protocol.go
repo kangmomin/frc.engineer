@@ -6,6 +6,7 @@ import "encoding/json"
 const (
 	TypeRoomCreate   = "room_create"   // sender → server
 	TypeRoomCreated  = "room_created"  // server → sender
+	TypeRoomRejoin   = "room_rejoin"   // sender → server (reconnect to existing room)
 	TypeRoomJoin     = "room_join"     // receiver → server
 	TypeRoomJoined   = "room_joined"   // server → receiver
 	TypePeerJoined   = "peer_joined"   // server → sender

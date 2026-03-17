@@ -5,13 +5,22 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"frc.engineer/internal/signaling"
 	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v4"
 )
 
-const maxBufferedAmount = 64 * 1024 // 64 KB — drop messages if receiver is slow
+const (
+	maxBufferedAmount = 64 * 1024 // 64 KB — drop messages if receiver is slow
+
+	sigWriteWait       = 10 * time.Second
+	sigPongWait        = 60 * time.Second
+	sigPingPeriod      = (sigPongWait * 9) / 10 // 54s
+	reconnectBaseDelay = 1 * time.Second
+	reconnectMaxDelay  = 30 * time.Second
+)
 
 // RequestHandler is called when an engineer sends a request over DataChannel.
 // The returned bytes are sent back as a unicast response.
@@ -29,11 +38,13 @@ type PeerManager struct {
 	channels map[string]*webrtc.DataChannel
 	mu       sync.RWMutex
 
-	roomCode     string
-	onRequest    RequestHandler
+	roomCode      string
+	onRequest     RequestHandler
 	onCountChange func(int) // called when engineer count changes
-	logger       *slog.Logger
-	done         chan struct{}
+	logger        *slog.Logger
+	done          chan struct{}
+	reconnecting  bool
+	writeDone     chan struct{}
 }
 
 // NewPeerManager creates a PeerManager. Call Connect() to start.
@@ -62,40 +73,64 @@ func (pm *PeerManager) RoomCode() string { return pm.roomCode }
 
 // Connect establishes a WebSocket connection to the signaling server and sends room_create.
 func (pm *PeerManager) Connect() error {
-	conn, _, err := websocket.DefaultDialer.Dial(pm.signalingURL, nil)
-	if err != nil {
-		return fmt.Errorf("signaling connect: %w", err)
+	if err := pm.dial(); err != nil {
+		return err
 	}
-	pm.sigConn = conn
 
 	// Send room_create
 	create := signaling.Message{Type: signaling.TypeRoomCreate}
-	if err := conn.WriteJSON(create); err != nil {
-		conn.Close()
+	if err := pm.sigConn.WriteJSON(create); err != nil {
+		pm.sigConn.Close()
 		return fmt.Errorf("send room_create: %w", err)
 	}
 
 	// Read room_created response
 	var resp signaling.Message
-	if err := conn.ReadJSON(&resp); err != nil {
-		conn.Close()
+	if err := pm.sigConn.ReadJSON(&resp); err != nil {
+		pm.sigConn.Close()
 		return fmt.Errorf("read room_created: %w", err)
 	}
 	if resp.Type == signaling.TypeError {
-		conn.Close()
+		pm.sigConn.Close()
 		return fmt.Errorf("signaling error: %s", resp.Error)
 	}
 	if resp.Type != signaling.TypeRoomCreated {
-		conn.Close()
+		pm.sigConn.Close()
 		return fmt.Errorf("unexpected message: %s", resp.Type)
 	}
 
 	pm.roomCode = resp.RoomCode
 	pm.logger.Info("room created on signaling server", "roomCode", pm.roomCode)
 
-	// Start reading signaling messages
-	go pm.readSignalingLoop()
+	pm.startLoops()
 	return nil
+}
+
+// dial establishes a WebSocket connection and installs pong handler + read deadline.
+func (pm *PeerManager) dial() error {
+	conn, _, err := websocket.DefaultDialer.Dial(pm.signalingURL, nil)
+	if err != nil {
+		return fmt.Errorf("signaling connect: %w", err)
+	}
+
+	conn.SetReadDeadline(time.Now().Add(sigPongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(sigPongWait))
+		return nil
+	})
+
+	pm.sigMu.Lock()
+	pm.sigConn = conn
+	pm.sigMu.Unlock()
+
+	return nil
+}
+
+// startLoops launches the read and write (ping) goroutines.
+func (pm *PeerManager) startLoops() {
+	pm.writeDone = make(chan struct{})
+	go pm.readSignalingLoop()
+	go pm.writeSignalingLoop()
 }
 
 // BroadcastAll sends a text message to all connected DataChannels.
@@ -160,9 +195,39 @@ func (pm *PeerManager) Close() {
 	pm.sigMu.Unlock()
 }
 
+// writeSignalingLoop sends periodic pings to keep the signaling connection alive.
+func (pm *PeerManager) writeSignalingLoop() {
+	ticker := time.NewTicker(sigPingPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-pm.done:
+			return
+		case <-pm.writeDone:
+			return
+		case <-ticker.C:
+			pm.sigMu.Lock()
+			if pm.sigConn != nil {
+				pm.sigConn.SetWriteDeadline(time.Now().Add(sigWriteWait))
+				if err := pm.sigConn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					pm.sigMu.Unlock()
+					return
+				}
+			}
+			pm.sigMu.Unlock()
+		}
+	}
+}
+
 func (pm *PeerManager) readSignalingLoop() {
+	roomClosed := false
 	defer func() {
-		pm.logger.Info("signaling connection closed")
+		close(pm.writeDone)
+		if !roomClosed {
+			pm.scheduleReconnect()
+		}
+		pm.logger.Info("signaling read loop exited")
 	}()
 
 	for {
@@ -194,9 +259,131 @@ func (pm *PeerManager) readSignalingLoop() {
 			pm.handleICECandidate(msg.PeerID, msg.Payload)
 		case signaling.TypeRoomClosed:
 			pm.logger.Info("room closed by signaling server")
+			roomClosed = true
 			return
 		case signaling.TypeError:
 			pm.logger.Warn("signaling error", "error", msg.Error)
+		}
+	}
+}
+
+// scheduleReconnect initiates a reconnection attempt if not already in progress.
+func (pm *PeerManager) scheduleReconnect() {
+	select {
+	case <-pm.done:
+		return
+	default:
+	}
+
+	pm.sigMu.Lock()
+	if pm.reconnecting {
+		pm.sigMu.Unlock()
+		return
+	}
+	pm.reconnecting = true
+	pm.sigMu.Unlock()
+
+	go pm.reconnectLoop()
+}
+
+// reconnectLoop attempts to re-establish the signaling connection with exponential backoff.
+func (pm *PeerManager) reconnectLoop() {
+	defer func() {
+		pm.sigMu.Lock()
+		pm.reconnecting = false
+		pm.sigMu.Unlock()
+	}()
+
+	delay := reconnectBaseDelay
+	for {
+		select {
+		case <-pm.done:
+			return
+		default:
+		}
+
+		pm.logger.Info("attempting signaling reconnection", "delay", delay)
+
+		select {
+		case <-pm.done:
+			return
+		case <-time.After(delay):
+		}
+
+		if err := pm.dial(); err != nil {
+			pm.logger.Warn("signaling reconnect failed", "error", err)
+			delay *= 2
+			if delay > reconnectMaxDelay {
+				delay = reconnectMaxDelay
+			}
+			continue
+		}
+
+		// Try room_rejoin with the existing room code.
+		rejoin := signaling.Message{Type: signaling.TypeRoomRejoin, RoomCode: pm.roomCode}
+		pm.sigMu.Lock()
+		err := pm.sigConn.WriteJSON(rejoin)
+		pm.sigMu.Unlock()
+		if err != nil {
+			pm.logger.Warn("failed to send room_rejoin", "error", err)
+			pm.sigConn.Close()
+			delay *= 2
+			if delay > reconnectMaxDelay {
+				delay = reconnectMaxDelay
+			}
+			continue
+		}
+
+		var resp signaling.Message
+		if err := pm.sigConn.ReadJSON(&resp); err != nil {
+			pm.logger.Warn("failed to read rejoin response", "error", err)
+			pm.sigConn.Close()
+			delay *= 2
+			if delay > reconnectMaxDelay {
+				delay = reconnectMaxDelay
+			}
+			continue
+		}
+
+		if resp.Type == signaling.TypeError {
+			// Room expired or not found — fallback to room_create.
+			pm.logger.Warn("room_rejoin failed, creating new room", "error", resp.Error)
+
+			create := signaling.Message{Type: signaling.TypeRoomCreate}
+			pm.sigMu.Lock()
+			err = pm.sigConn.WriteJSON(create)
+			pm.sigMu.Unlock()
+			if err != nil {
+				pm.sigConn.Close()
+				delay *= 2
+				if delay > reconnectMaxDelay {
+					delay = reconnectMaxDelay
+				}
+				continue
+			}
+
+			if err := pm.sigConn.ReadJSON(&resp); err != nil {
+				pm.sigConn.Close()
+				delay *= 2
+				if delay > reconnectMaxDelay {
+					delay = reconnectMaxDelay
+				}
+				continue
+			}
+		}
+
+		if resp.Type == signaling.TypeRoomCreated {
+			pm.roomCode = resp.RoomCode
+			pm.logger.Info("signaling reconnected", "roomCode", pm.roomCode)
+			pm.startLoops()
+			return
+		}
+
+		pm.logger.Warn("unexpected reconnect response", "type", resp.Type)
+		pm.sigConn.Close()
+		delay *= 2
+		if delay > reconnectMaxDelay {
+			delay = reconnectMaxDelay
 		}
 	}
 }
@@ -369,6 +556,7 @@ func (pm *PeerManager) sendSignaling(msg signaling.Message) {
 	if pm.sigConn == nil {
 		return
 	}
+	pm.sigConn.SetWriteDeadline(time.Now().Add(sigWriteWait))
 	if err := pm.sigConn.WriteJSON(msg); err != nil {
 		pm.logger.Error("failed to send signaling message", "type", msg.Type, "error", err)
 	}
