@@ -114,7 +114,19 @@
 .notification.critical { border-left-color: var(--accent-red); background: rgba(225, 6, 0, 0.1); }
 
 .notificationTime { font-family: var(--font-racing); font-size: 10px; font-weight: 800; color: var(--text-muted); min-width: 65px; }
-.notificationMessage { font-family: var(--font-body); font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; }
+.notificationMessage { font-family: var(--font-body); font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
+
+.penaltyBadge {
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--accent-red);
+  padding: 2px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+  animation: pulse 1.5s ease-in-out infinite;
+}
 
 /* Track Footer */
 .trackFooter {

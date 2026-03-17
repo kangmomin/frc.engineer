@@ -62,6 +62,9 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   raceControlNotifications: [],
   addRaceControlNotification: (notification) =>
     set((state) => {
+      if (state.raceControlNotifications.some((n) => n.id === notification.id)) {
+        return state;
+      }
       const updated = [notification, ...state.raceControlNotifications];
       return { raceControlNotifications: updated.slice(0, MAX_NOTIFICATIONS) };
     }),

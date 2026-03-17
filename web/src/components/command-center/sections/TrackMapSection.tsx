@@ -703,17 +703,23 @@ export function RaceControlLog({ notifications }: RaceControlLogProps) {
 
   return (
     <div className={styles.notificationList}>
-      {notifications.slice(0, 5).map((n, idx) => (
-        <div
-          key={`${n.id}-${n.timestamp}-${idx}`}
-          className={`${styles.notification} ${styles[n.severity]}`}
-        >
-          <span className={styles.notificationTime}>
-            {formatTime(n.timestamp)}
-          </span>
-          <span className={styles.notificationMessage}>{n.message}</span>
-        </div>
-      ))}
+      {notifications.slice(0, 5).map((n) => {
+        const penaltyMatch = n.severity === 'critical' && n.category === 'penalty' ? n.message.match(/\((\d+)s\)/) : null;
+        return (
+          <div
+            key={n.id}
+            className={`${styles.notification} ${styles[n.severity]}`}
+          >
+            <span className={styles.notificationTime}>
+              {formatTime(n.timestamp)}
+            </span>
+            <span className={styles.notificationMessage}>{n.message}</span>
+            {penaltyMatch && (
+              <span className={styles.penaltyBadge}>+{penaltyMatch[1]}s</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

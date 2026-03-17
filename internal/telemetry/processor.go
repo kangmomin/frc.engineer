@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"frc.engineer/internal/broadcast"
@@ -74,6 +75,9 @@ type Processor struct {
 	raceSummarySession  uint64
 	raceSummarySaved    bool
 	raceSummaryCounters RaceSummaryCounts
+
+	// Atomic counter for unique race-control notification IDs
+	rcSeq atomic.Int64
 
 	// Replay timeline capture state (summary / advanced storage modes)
 	replayMu          sync.Mutex
@@ -428,6 +432,7 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 			severity = "critical"
 			category = "penalty"
 		} else if penalty.PenaltyType == 4 { // Time penalty
+			severity = "critical"
 			category = "penalty"
 		}
 
@@ -486,7 +491,7 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		notification.Timestamp = time.Now().UnixMilli()
 	}
 	if notification.ID == "" {
-		notification.ID = fmt.Sprintf("rc_%d_%s", notification.Timestamp, notification.Category)
+		notification.ID = fmt.Sprintf("rc_%d_%s_%d", notification.Timestamp, notification.Category, p.rcSeq.Add(1))
 	}
 
 	msg := dto.WSResponse{
