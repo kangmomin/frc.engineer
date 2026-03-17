@@ -1,16 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
-import type {
-  PitwallState,
-  RaceControlNotification,
-  BattleAlert,
-  RaceSummary,
-} from '../types/telemetry';
+import type { PitwallState } from '../types/telemetry';
 import { useTelemetryStore } from '../store/telemetryStore';
-
-interface WebSocketMessage {
-  type: string;
-  data?: unknown;
-}
+import { routeMessage } from './useMessageRouter';
 
 interface UsePitwallWebSocketOptions {
   url?: string;
@@ -65,7 +56,8 @@ export function usePitwallWebSocket(
   }, []);
 
   const connect = useCallback(() => {
-    // Don't connect if unmounted or already connecting/open
+    // Don't connect if URL is empty (remote mode) or unmounted
+    if (!opts.url) return;
     if (!isMountedRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     if (wsRef.current?.readyState === WebSocket.CONNECTING) return;
@@ -114,51 +106,17 @@ export function usePitwallWebSocket(
 
       ws.onmessage = (event) => {
         if (!isMountedRef.current) return;
-        if (useTelemetryStore.getState().playbackActive) return;
 
-        // Skip messages we don't handle (e.g. telemetry at 30Hz) to avoid costly JSON.parse
-        const raw = event.data as string;
-        if (raw.startsWith('{"type":"telemetry"')) return;
-
-        try {
-          const message = JSON.parse(raw) as WebSocketMessage;
-
-          switch (message.type) {
-            case 'pitwallState':
-              // Batch with rAF so React renders at most once per frame
-              pendingPitwallRef.current = message.data as PitwallState;
-              if (!pitwallRafRef.current) {
-                pitwallRafRef.current = requestAnimationFrame(() => {
-                  pitwallRafRef.current = 0;
-                  if (pendingPitwallRef.current) {
-                    setPitwallState(pendingPitwallRef.current);
-                    pendingPitwallRef.current = null;
-                  }
-                });
-              }
-              break;
-
-            case 'raceControl':
-              addRaceControlNotification(normalizeRaceControl(
-                message.data as Partial<RaceControlNotification> | undefined,
-                raceControlSeqRef.current++,
-              ));
-              break;
-
-            case 'battleAlert':
-              addBattleAlert(normalizeBattleAlert(
-                message.data as Partial<BattleAlert> | undefined,
-                battleSeqRef.current++,
-              ));
-              break;
-
-            case 'raceResult':
-              setRaceResult(message.data as RaceSummary);
-              break;
-          }
-        } catch {
-          // Ignore parse errors
-        }
+        routeMessage(
+          event.data as string,
+          { setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult },
+          {
+            pendingPitwall: pendingPitwallRef,
+            pitwallRaf: pitwallRafRef,
+            rcSeq: raceControlSeqRef,
+            battleSeq: battleSeqRef,
+          },
+        );
       };
     } catch {
       if (isMountedRef.current) {
@@ -207,36 +165,4 @@ export function usePitwallWebSocket(
   };
 }
 
-function normalizeRaceControl(
-  raw: Partial<RaceControlNotification> | undefined,
-  seq: number,
-): RaceControlNotification {
-  const timestamp = typeof raw?.timestamp === 'number' ? raw.timestamp : Date.now();
-  const id = raw?.id || `rc-${timestamp}-${seq}`;
-  return {
-    id,
-    timestamp,
-    category: raw?.category ?? 'info',
-    message: raw?.message ?? '',
-    severity: raw?.severity ?? 'info',
-  };
-}
-
-function normalizeBattleAlert(
-  raw: Partial<BattleAlert> | undefined,
-  seq: number,
-): BattleAlert {
-  const timestamp = typeof raw?.timestamp === 'number' ? raw.timestamp : Date.now();
-  const id = raw?.id || `ba-${timestamp}-${seq}`;
-  return {
-    id,
-    timestamp,
-    driverAhead: raw?.driverAhead ?? 'Unknown',
-    driverBehind: raw?.driverBehind ?? 'Unknown',
-    gapSeconds: raw?.gapSeconds ?? 0,
-    closingRatePerLap: raw?.closingRatePerLap ?? 0,
-    estOvertakeLap: raw?.estOvertakeLap ?? 0,
-    side: raw?.side === 'behind' ? 'behind' : 'ahead',
-  };
-}
 

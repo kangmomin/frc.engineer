@@ -1,0 +1,130 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg-primary);
+  padding: var(--spacing-lg);
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-panel-border);
+  padding: 40px 32px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+}
+
+.title {
+  font-family: var(--font-racing);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--accent-red);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-style: italic;
+  margin: 0 0 8px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 28px;
+}
+
+.codeInputs {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.digitInput {
+  width: 56px;
+  height: 64px;
+  font-family: var(--font-mono, monospace);
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+  background: var(--bg-primary);
+  border: 2px solid var(--bg-panel-border);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.digitInput:focus {
+  border-color: var(--accent-red);
+  box-shadow: 0 0 8px rgba(225, 6, 0, 0.3);
+}
+
+.digitInput:disabled {
+  opacity: 0.5;
+}
+
+.urlField {
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.urlLabel {
+  display: block;
+  font-family: var(--font-racing);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.urlInput {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  background: var(--bg-primary);
+  border: 1px solid var(--bg-panel-border);
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.urlInput:focus {
+  border-color: var(--accent-red);
+}
+
+.urlInput:disabled {
+  opacity: 0.5;
+}
+
+.connectButton {
+  width: 100%;
+  padding: 14px;
+  font-family: var(--font-racing);
+  font-size: 14px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  background: var(--accent-red);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  clip-path: var(--f1-slant);
+  transition: opacity 0.2s;
+}
+
+.connectButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.connectButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.error {
+  color: var(--accent-red);
+  font-size: 12px;
+  margin-top: 16px;
+}
