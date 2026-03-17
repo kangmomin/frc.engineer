@@ -132,6 +132,15 @@ export function Layout() {
               <span className={styles.navLabel}>전략</span>
             </button>
           </li>
+          <li className={styles.navItem}>
+            <button
+              className={`${styles.navButton} ${activeView === 'setup' ? styles.navActive : ''}`}
+              onClick={() => handleNavClick('setup')}
+            >
+              <span className={styles.navIcon}>SA</span>
+              <span className={styles.navLabel}>Setup Analysis</span>
+            </button>
+          </li>
           {!isRemoteMode && (
             <>
               <li className={styles.navItem}>
@@ -141,15 +150,6 @@ export function Layout() {
                 >
                   <span className={styles.navIcon}>ST</span>
                   <span className={styles.navLabel}>Settings</span>
-                </button>
-              </li>
-              <li className={styles.navItem}>
-                <button
-                  className={`${styles.navButton} ${activeView === 'setup' ? styles.navActive : ''}`}
-                  onClick={() => handleNavClick('setup')}
-                >
-                  <span className={styles.navIcon}>SA</span>
-                  <span className={styles.navLabel}>Setup Analysis</span>
                 </button>
               </li>
               <li className={styles.navItem}>
@@ -204,7 +204,7 @@ export function Layout() {
               <SettingsView />
             </div>
           )}
-          {activeView === 'setup' && !isRemoteMode && (
+          {activeView === 'setup' && (
             <div className={styles.panel}>
               <SetupAnalysisView />
             </div>

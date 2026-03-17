@@ -8,9 +8,12 @@ import (
 	"math"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/races"
 	"frc.engineer/internal/rtc"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
@@ -31,6 +34,8 @@ func main() {
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &udpPort)
 	}
+
+	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
 
 	fmt.Println("F1 25 Telemetry Sender")
 	fmt.Println("======================")
@@ -55,8 +60,9 @@ func main() {
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
 
-	// Track recorder (read-only, no writes in sender mode)
+	// Track recorder
 	recorder := telemetry.NewTrackRecorder("data", trackStore, logger)
+	recorder.SetEnabled(saveFiles)
 	processor.PitwallManager().SetRecorder(recorder)
 
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
@@ -103,8 +109,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Race summary: broadcast result instead of saving to disk
+	// Race summary storage (optional)
+	var raceStorage *races.FileStorage
+	if saveFiles {
+		var err error
+		raceStorage, err = races.NewFileStorage("data/races", logger)
+		if err != nil {
+			logger.Warn("failed to create race storage, file saving disabled", "error", err)
+		}
+	}
+
 	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, state *dto.PitwallState) error {
+		// Save to disk if enabled
+		if raceStorage != nil {
+			summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
+				Penalty: counts.Penalty,
+				Warning: counts.Warning,
+				Info:    counts.Info,
+			}, time.Now())
+			if _, err := raceStorage.Save(summary); err != nil {
+				logger.Error("failed to save race summary", "error", err)
+			}
+		}
+
+		// Always broadcast to connected engineers
 		result := dto.WSResponse{
 			Type: dto.MessageTypeRaceResult,
 			Data: state,
@@ -126,6 +154,7 @@ func main() {
 	fmt.Printf("  UDP: listening on :%d\n", udpPort)
 	fmt.Printf("  Signaling: connected\n")
 	fmt.Printf("  Room Code: %s\n", peerManager.RoomCode())
+	fmt.Printf("  Save Files: %v\n", saveFiles)
 	fmt.Printf("  Connected Engineers: 0\n")
 	fmt.Println()
 	fmt.Println("Share the room code with your engineer.")
