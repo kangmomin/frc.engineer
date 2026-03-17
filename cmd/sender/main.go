@@ -24,8 +24,7 @@ func main() {
 
 	signalingURL := os.Getenv("SIGNALING_URL")
 	if signalingURL == "" {
-		logger.Error("SIGNALING_URL environment variable is required (e.g. wss://my-signal.fly.dev/ws)")
-		os.Exit(1)
+		signalingURL = "wss://signaling-server-production-23c9.up.railway.app/ws"
 	}
 
 	udpPort := 20777
