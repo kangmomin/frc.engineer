@@ -16,9 +16,10 @@ import (
 const (
 	PacketIDMotion       = 0
 	PacketIDSession      = 1
-	PacketIDCarTelemetry = 6
 	PacketIDLapData      = 2
+	PacketIDEvent        = 3
 	PacketIDParticipants = 4
+	PacketIDCarTelemetry = 6
 	PacketIDCarStatus    = 7
 	MaxCars              = 22
 	PacketHeaderSize     = 29
@@ -96,6 +97,15 @@ func main() {
 		}
 
 		sim.Tick()
+
+		// Send any pending warning/penalty event packets
+		for _, evt := range sim.DrainPendingEvents() {
+			eventPacket := sim.BuildPenaltyEventPacket(frameID, evt)
+			if _, err := conn.Write(eventPacket); err != nil {
+				log.Printf("Failed to send penalty event: %v", err)
+			}
+		}
+
 		frameID++
 
 		// Progress indicator every second
@@ -135,10 +145,39 @@ type Simulator struct {
 	LapInvalid       uint8
 	Position         uint8
 
+	// Warning/Penalty simulation
+	TotalWarnings         uint8
+	CornerCuttingWarnings uint8
+	Penalties             uint8 // accumulated penalty seconds
+	warningSchedule       []float32
+	penaltySchedule       []penaltyEntry
+	warningIdx            int
+	penaltyIdx            int
+	pendingEvents         []penaltyEventData
+
 	// Internal
 	tickCount    int
 	sectorTimes  [3]uint32
 	lapStartTime time.Time
+}
+
+// penaltyEntry defines a scheduled penalty trigger
+type penaltyEntry struct {
+	distance        float32
+	penaltyType     uint8
+	infringementType uint8
+	timePenalty     uint8 // seconds (for time penalty)
+}
+
+// penaltyEventData holds data for a PENA event packet
+type penaltyEventData struct {
+	PenaltyType      uint8
+	InfringementType uint8
+	VehicleIdx       uint8
+	OtherVehicleIdx  uint8
+	Time             uint8
+	LapNum           uint8
+	PlacesGained     uint8
 }
 
 func NewSimulator(laps int, hz int) *Simulator {
@@ -152,6 +191,11 @@ func NewSimulator(laps int, hz int) *Simulator {
 		TickRate:     hz,
 		Position:     1,
 		lapStartTime: time.Now(),
+		// Corner cutting warnings at 3000m, 7500m, 10000m; 5s time penalty at 10000m
+		warningSchedule: []float32{3000, 7500, 10000},
+		penaltySchedule: []penaltyEntry{
+			{distance: 10050, penaltyType: 4, infringementType: 7, timePenalty: 5},
+		},
 	}
 }
 
@@ -226,6 +270,37 @@ func (s *Simulator) Tick() {
 	distancePerTick := float32(s.Speed) / 3.6 / float32(s.TickRate)
 	s.LapDistance += distancePerTick
 	s.TotalDistance += distancePerTick
+
+	// Check warning triggers
+	for s.warningIdx < len(s.warningSchedule) && s.TotalDistance >= s.warningSchedule[s.warningIdx] {
+		s.TotalWarnings++
+		s.CornerCuttingWarnings++
+		s.pendingEvents = append(s.pendingEvents, penaltyEventData{
+			PenaltyType:      5, // Warning
+			InfringementType: 7, // Corner cutting gained time
+			VehicleIdx:       s.PlayerCarIdx,
+			LapNum:           s.CurrentLap,
+		})
+		fmt.Printf("\n[WARNING %d] Corner cutting warning (total distance: %.0fm, lap %d)\n",
+			s.TotalWarnings, s.TotalDistance, s.CurrentLap)
+		s.warningIdx++
+	}
+
+	// Check penalty triggers
+	for s.penaltyIdx < len(s.penaltySchedule) && s.TotalDistance >= s.penaltySchedule[s.penaltyIdx].distance {
+		entry := s.penaltySchedule[s.penaltyIdx]
+		s.Penalties += entry.timePenalty
+		s.pendingEvents = append(s.pendingEvents, penaltyEventData{
+			PenaltyType:      entry.penaltyType,
+			InfringementType: entry.infringementType,
+			VehicleIdx:       s.PlayerCarIdx,
+			Time:             entry.timePenalty,
+			LapNum:           s.CurrentLap,
+		})
+		fmt.Printf("\n[PENALTY] %ds time penalty for corner cutting (total distance: %.0fm, lap %d)\n",
+			entry.timePenalty, s.TotalDistance, s.CurrentLap)
+		s.penaltyIdx++
+	}
 
 	// Check for lap completion
 	if s.LapDistance >= s.TrackLength {
@@ -380,6 +455,34 @@ func (s *Simulator) BuildCarStatusPacket(frameID uint32) []byte {
 		s.writeCarStatus(buf[offset:], i == int(s.PlayerCarIdx), i)
 		offset += CarStatusDataSize
 	}
+
+	return buf
+}
+
+// DrainPendingEvents returns and clears any pending warning/penalty events
+func (s *Simulator) DrainPendingEvents() []penaltyEventData {
+	events := s.pendingEvents
+	s.pendingEvents = nil
+	return events
+}
+
+// BuildPenaltyEventPacket builds a PENA event packet
+func (s *Simulator) BuildPenaltyEventPacket(frameID uint32, evt penaltyEventData) []byte {
+	// Header(29) + EventCode(4) + PenaltyEvent(7) = 40 bytes
+	buf := make([]byte, 40)
+	s.writeHeader(buf, PacketIDEvent, frameID)
+
+	// Event code "PENA"
+	copy(buf[29:33], "PENA")
+
+	// PenaltyEvent data
+	buf[33] = evt.PenaltyType
+	buf[34] = evt.InfringementType
+	buf[35] = evt.VehicleIdx
+	buf[36] = evt.OtherVehicleIdx
+	buf[37] = evt.Time
+	buf[38] = evt.LapNum
+	buf[39] = evt.PlacesGained
 
 	return buf
 }
@@ -553,11 +656,23 @@ func (s *Simulator) writeLapData(buf []byte, isPlayer bool) {
 	offset++
 	buf[offset] = lapInvalid
 	offset++
-	buf[offset] = 0 // Penalties
-	offset++
-	buf[offset] = 0 // TotalWarnings
-	offset++
-	buf[offset] = 0 // CornerCuttingWarnings
+	if isPlayer {
+		buf[offset] = s.Penalties
+	} else {
+		buf[offset] = 0
+	}
+	offset++ // Penalties
+	if isPlayer {
+		buf[offset] = s.TotalWarnings
+	} else {
+		buf[offset] = 0
+	}
+	offset++ // TotalWarnings
+	if isPlayer {
+		buf[offset] = s.CornerCuttingWarnings
+	} else {
+		buf[offset] = 0
+	}
 	offset++
 	buf[offset] = 0 // NumUnservedDriveThroughs
 	offset++
