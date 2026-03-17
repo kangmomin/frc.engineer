@@ -408,7 +408,6 @@ func (p *Processor) checkBattleAlerts(state *dto.PitwallState) {
 // handleEventPacket processes event packets and broadcasts race control notifications
 func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 	event := parsed.Event
-	playerIdx := parsed.Header.PlayerCarIndex
 
 	if isRaceEndEvent(event.EventStringCode) {
 		p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
@@ -419,9 +418,10 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 	switch event.EventStringCode {
 	case packets.EventPenalty:
 		penalty, ok := event.EventDetails.(*packets.PenaltyEvent)
-		if !ok || penalty.VehicleIdx != playerIdx {
+		if !ok {
 			return
 		}
+		driverName := p.pitwallManager.GetDriverName(penalty.VehicleIdx)
 		penaltyStr := packets.PenaltyTypeString(penalty.PenaltyType)
 		infringementStr := packets.InfringementTypeString(penalty.InfringementType)
 
@@ -440,44 +440,66 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		if penalty.Time > 0 {
 			msg = fmt.Sprintf("%s (%ds)", msg, penalty.Time)
 		}
+		if driverName != "" {
+			msg = fmt.Sprintf("[%s] %s", driverName, msg)
+		}
 
 		notification = &dto.RaceControlNotification{
-			Category: category,
-			Message:  msg,
-			Severity: severity,
+			Category:   category,
+			Message:    msg,
+			Severity:   severity,
+			DriverName: driverName,
 		}
 
 	case packets.EventRaceWinner:
 		winner, ok := event.EventDetails.(*packets.RaceWinnerEvent)
-		if !ok || winner.VehicleIdx != playerIdx {
+		if !ok {
 			return
 		}
+		driverName := p.pitwallManager.GetDriverName(winner.VehicleIdx)
+		winnerMsg := "Race Winner!"
+		if driverName != "" {
+			winnerMsg = fmt.Sprintf("[%s] Race Winner!", driverName)
+		}
 		notification = &dto.RaceControlNotification{
-			Category: "info",
-			Message:  "Race Winner!",
-			Severity: "info",
+			Category:   "info",
+			Message:    winnerMsg,
+			Severity:   "info",
+			DriverName: driverName,
 		}
 
 	case packets.EventDriveThroughServed:
 		vehicle, ok := event.EventDetails.(*packets.GenericVehicleEvent)
-		if !ok || vehicle.VehicleIdx != playerIdx {
+		if !ok {
 			return
 		}
+		driverName := p.pitwallManager.GetDriverName(vehicle.VehicleIdx)
+		dtMsg := "Drive-through penalty served"
+		if driverName != "" {
+			dtMsg = fmt.Sprintf("[%s] Drive-through penalty served", driverName)
+		}
 		notification = &dto.RaceControlNotification{
-			Category: "info",
-			Message:  "Drive-through penalty served",
-			Severity: "info",
+			Category:   "info",
+			Message:    dtMsg,
+			Severity:   "info",
+			DriverName: driverName,
 		}
 
 	case packets.EventStopGoServed:
 		vehicle, ok := event.EventDetails.(*packets.StopGoServedEvent)
-		if !ok || vehicle.VehicleIdx != playerIdx {
+		if !ok {
 			return
 		}
+		driverName := p.pitwallManager.GetDriverName(vehicle.VehicleIdx)
+		sgMsg := "Stop-go penalty served"
+		if driverName != "" {
+			sgMsg = fmt.Sprintf("[%s] Stop-go penalty served", driverName)
+		}
 		notification = &dto.RaceControlNotification{
-			Category: "info",
-			Message:  "Stop-go penalty served",
-			Severity: "info",
+			Category:   "info",
+			Message:    sgMsg,
+			Severity:   "info",
+			DriverName: driverName,
 		}
 
 	default:

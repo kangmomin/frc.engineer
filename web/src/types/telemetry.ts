@@ -430,6 +430,7 @@ export interface RaceControlNotification {
   category: 'penalty' | 'warning' | 'info';
   message: string;
   severity: 'critical' | 'warning' | 'info';
+  driverName?: string;
   timestamp: number;
 }
 

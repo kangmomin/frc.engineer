@@ -25,11 +25,12 @@ type BattleAlertDTO struct {
 
 // RaceControlNotification represents a race control event sent to clients
 type RaceControlNotification struct {
-	ID       string `json:"id,omitempty"`
-	Category string `json:"category"` // "penalty", "warning", "info"
-	Message  string `json:"message"`
-	Severity string `json:"severity"` // "critical", "warning", "info"
-	Timestamp int64 `json:"timestamp,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Category   string `json:"category"`             // "penalty", "warning", "info"
+	Message    string `json:"message"`
+	Severity   string `json:"severity"`             // "critical", "warning", "info"
+	DriverName string `json:"driverName,omitempty"`
+	Timestamp  int64  `json:"timestamp,omitempty"`
 }
 
 // WSRequest represents a client request message

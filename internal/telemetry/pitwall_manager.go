@@ -458,6 +458,16 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	return state
 }
 
+// GetDriverName returns the name for a vehicle index, or empty string if unknown.
+func (pm *PitwallManager) GetDriverName(vehicleIdx uint8) string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	if pm.participants == nil || int(vehicleIdx) >= len(pm.participants.Participants) {
+		return ""
+	}
+	return pm.participants.Participants[vehicleIdx].GetName()
+}
+
 // HasData returns true if at least session or motion data has been received
 func (pm *PitwallManager) HasData() bool {
 	pm.mu.RLock()

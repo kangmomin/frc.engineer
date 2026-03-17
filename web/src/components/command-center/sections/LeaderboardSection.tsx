@@ -26,18 +26,22 @@ const selectPlayerIndex = (s: any) => s.pitwallState?.playerIndex ?? 0;
 
 // --- Components ---
 
-const DriverRow = memo(({ 
-  driver, 
-  isPlayer, 
-  idx, 
-  paceDelta, 
-  paceWindowLaps 
-}: { 
-  driver: DriverInfo; 
-  isPlayer: boolean; 
-  idx: number; 
+const DriverRow = memo(({
+  driver,
+  isPlayer,
+  idx,
+  paceDelta,
+  paceWindowLaps,
+  showStints,
+  showLast,
+}: {
+  driver: DriverInfo;
+  isPlayer: boolean;
+  idx: number;
   paceDelta: PaceDeltaResult;
   paceWindowLaps: number;
+  showStints: boolean;
+  showLast: boolean;
 }) => {
   const gap = idx === 0 ? 'LEADER' : formatGapToLeader(driver.deltaToRaceLeader);
   const damageAlert = getDamageAlertInfo(driver, isPlayer);
@@ -93,18 +97,22 @@ const DriverRow = memo(({
       <td className={styles.colTyre}>
         <TyreIcon compound={driver.tireCompound} age={driver.tireAge} size="small" />
       </td>
-      <td className={styles.colPits}>
-        <div className={styles.stintLog}>
-          {buildStintLog(driver).map((compound, idx) => (
-            <span key={idx} className={styles.stintDot} style={{ color: getTyreColor(compound) }}>
-              {getTyreShortLabel(compound)}
-            </span>
-          ))}
-        </div>
-      </td>
-      <td className={styles.colLap}>
-        <span className={styles.lapTime}>{formatLapTime(driver.lastLapTime)}</span>
-      </td>
+      {showStints && (
+        <td className={styles.colPits}>
+          <div className={styles.stintLog}>
+            {buildStintLog(driver).map((compound, idx) => (
+              <span key={idx} className={styles.stintDot} style={{ color: getTyreColor(compound) }}>
+                {getTyreShortLabel(compound)}
+              </span>
+            ))}
+          </div>
+        </td>
+      )}
+      {showLast && (
+        <td className={styles.colLap}>
+          <span className={styles.lapTime}>{formatLapTime(driver.lastLapTime)}</span>
+        </td>
+      )}
       <td className={styles.colSector}>
         <span className={styles.sector}>{driver.sector1TimeMs > 0 ? formatSectorTime(driver.sector1TimeMs) : '--'}</span>
       </td>
@@ -130,6 +138,8 @@ export function LeaderboardSection() {
   
   const [paceWindowInput, setPaceWindowInput] = useState<string>(String(DEFAULT_PACE_WINDOW_LAPS));
   const paceWindowLaps = useMemo(() => parsePaceWindowLaps(paceWindowInput), [paceWindowInput]);
+  const [showStints, setShowStints] = useState(true);
+  const [showLast, setShowLast] = useState(true);
   const deltaHistoryByDriver = useDriverDeltaHistory(drivers);
 
   const sortedDrivers = useMemo(() => {
@@ -159,17 +169,31 @@ export function LeaderboardSection() {
         title="Leaderboard"
         subtitle={session ? `Lap ${leader?.currentLapNum ?? 0} / ${session.totalLaps}` : undefined}
         rightContent={(
-          <div className={styles.paceInputWrap}>
-            <span className={styles.paceInputLabel}>Pace Laps</span>
-            <input
-              className={styles.paceInput}
-              type="number"
-              min={MIN_PACE_WINDOW_LAPS}
-              max={MAX_PACE_WINDOW_LAPS}
-              value={paceWindowInput}
-              onChange={(e) => setPaceWindowInput(e.target.value)}
-              onBlur={() => setPaceWindowInput(String(parsePaceWindowLaps(paceWindowInput)))}
-            />
+          <div className={styles.colToggle}>
+            <button
+              className={`${styles.toggleBtn} ${showStints ? styles.toggleBtnActive : styles.toggleBtnInactive}`}
+              onClick={() => setShowStints(v => !v)}
+            >
+              Stints
+            </button>
+            <button
+              className={`${styles.toggleBtn} ${showLast ? styles.toggleBtnActive : styles.toggleBtnInactive}`}
+              onClick={() => setShowLast(v => !v)}
+            >
+              Last
+            </button>
+            <div className={styles.paceInputWrap}>
+              <span className={styles.paceInputLabel}>Pace Laps</span>
+              <input
+                className={styles.paceInput}
+                type="number"
+                min={MIN_PACE_WINDOW_LAPS}
+                max={MAX_PACE_WINDOW_LAPS}
+                value={paceWindowInput}
+                onChange={(e) => setPaceWindowInput(e.target.value)}
+                onBlur={() => setPaceWindowInput(String(parsePaceWindowLaps(paceWindowInput)))}
+              />
+            </div>
           </div>
         )}
       />
@@ -182,8 +206,8 @@ export function LeaderboardSection() {
               <th className={styles.colDriver}>Driver</th>
               <th className={styles.colGap}>Gap</th>
               <th className={styles.colTyre}>Tyre</th>
-              <th className={styles.colPits}>Stints</th>
-              <th className={styles.colLap}>Last</th>
+              {showStints && <th className={styles.colPits}>Stints</th>}
+              {showLast && <th className={styles.colLap}>Last</th>}
               <th className={styles.colSector}>S1</th>
               <th className={styles.colSector}>S2</th>
               <th className={styles.colSector}>S3</th>
@@ -199,6 +223,8 @@ export function LeaderboardSection() {
                 idx={idx}
                 paceDelta={paceDeltaByDriver[driver.index] ?? { deltaMs: null, lapsUsed: 0, estimated: false }}
                 paceWindowLaps={paceWindowLaps}
+                showStints={showStints}
+                showLast={showLast}
               />
             ))}
           </tbody>

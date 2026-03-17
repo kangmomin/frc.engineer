@@ -176,6 +176,36 @@
 .paceSlower { color: var(--delta-slower); }
 .paceNeutral { color: var(--text-muted); }
 
+.colToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toggleBtn {
+  font-family: var(--font-racing);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  clip-path: var(--f1-slant);
+}
+
+.toggleBtnActive {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+}
+
+.toggleBtnInactive {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+}
+
 .paceInputWrap {
   display: flex;
   align-items: center;
