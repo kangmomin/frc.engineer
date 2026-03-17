@@ -111,17 +111,17 @@
 
 .notification.info { border-left-color: var(--accent-blue); }
 .notification.warning { border-left-color: var(--accent-yellow); background: rgba(255, 255, 0, 0.05); }
-.notification.critical { border-left-color: var(--accent-red); background: rgba(225, 6, 0, 0.1); }
+.notification.critical { border-left-color: #ff4444; background: rgba(255, 68, 68, 0.12); }
 
-.notificationTime { font-family: var(--font-racing); font-size: 10px; font-weight: 800; color: var(--text-muted); min-width: 65px; }
-.notificationMessage { font-family: var(--font-body); font-size: 12px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
+.notificationTime { font-family: var(--font-racing); font-size: 11px; font-weight: 800; color: var(--text-muted); min-width: 65px; }
+.notificationMessage { font-family: var(--font-body); font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; flex: 1; }
 
 .penaltyBadge {
   font-family: var(--font-racing);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: #fff;
-  background: var(--accent-red);
+  background: #ff4444;
   padding: 2px 8px;
   border-radius: 2px;
   white-space: nowrap;

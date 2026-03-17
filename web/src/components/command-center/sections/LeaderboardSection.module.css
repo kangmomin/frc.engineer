@@ -292,7 +292,8 @@
 }
 
 .penTooltipRow {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 600;
   padding: 3px 0;
   padding-left: 8px;
   border-left: 2px solid transparent;
@@ -301,8 +302,8 @@
 }
 
 .penTooltipPenalty {
-  color: var(--accent-red);
-  border-left-color: var(--accent-red);
+  color: #ff4444;
+  border-left-color: #ff4444;
 }
 
 .penTooltipWarning {
