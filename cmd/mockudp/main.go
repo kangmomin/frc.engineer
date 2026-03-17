@@ -155,6 +155,11 @@ type Simulator struct {
 	penaltyIdx            int
 	pendingEvents         []penaltyEventData
 
+	// AI car penalty simulation
+	aiPenaltyStates   map[int]*aiCarPenaltyState
+	aiPenaltyTriggers []aiPenaltyTrigger
+	aiTriggerIdx      int
+
 	// Internal
 	tickCount    int
 	sectorTimes  [3]uint32
@@ -180,7 +185,29 @@ type penaltyEventData struct {
 	PlacesGained     uint8
 }
 
+// aiCarPenaltyState tracks accumulated penalties/warnings for an AI car
+type aiCarPenaltyState struct {
+	totalWarnings         uint8
+	cornerCuttingWarnings uint8
+	penalties             uint8
+}
+
+// aiPenaltyTrigger defines a scheduled penalty/warning for an AI car
+type aiPenaltyTrigger struct {
+	triggerTick      int
+	carIdx           uint8
+	isWarning        bool  // true = warning, false = penalty
+	penaltyType      uint8
+	infringementType uint8
+	timePenalty      uint8 // seconds, only for penalties
+}
+
 func NewSimulator(laps int, hz int) *Simulator {
+	// Build AI penalty/warning triggers spread across the session.
+	// Each lap takes ~25s at simulated speed → total ticks ≈ laps * 25 * hz.
+	totalTicks := laps * 25 * hz
+	aiTriggers := buildAIPenaltySchedule(totalTicks, hz)
+
 	return &Simulator{
 		SessionUID:   rand.Uint64(),
 		PlayerCarIdx: 0,
@@ -196,7 +223,53 @@ func NewSimulator(laps int, hz int) *Simulator {
 		penaltySchedule: []penaltyEntry{
 			{distance: 10050, penaltyType: 4, infringementType: 7, timePenalty: 5},
 		},
+		aiPenaltyStates:   make(map[int]*aiCarPenaltyState),
+		aiPenaltyTriggers: aiTriggers,
 	}
+}
+
+// buildAIPenaltySchedule creates penalty/warning events for AI drivers.
+// Spreads warnings and penalties across 5-6 AI cars during the session.
+func buildAIPenaltySchedule(totalTicks int, hz int) []aiPenaltyTrigger {
+	type eventDef struct {
+		carIdx           uint8
+		fractionOfRace   float64 // when in the session (0.0-1.0) to trigger
+		isWarning        bool
+		penaltyType      uint8
+		infringementType uint8
+		timePenalty      uint8
+	}
+
+	events := []eventDef{
+		// AI 03 (idx 2): warning early, another warning mid-race
+		{carIdx: 2, fractionOfRace: 0.15, isWarning: true, penaltyType: 5, infringementType: 7},
+		{carIdx: 2, fractionOfRace: 0.55, isWarning: true, penaltyType: 5, infringementType: 7},
+		// AI 06 (idx 5): warning then 5s penalty
+		{carIdx: 5, fractionOfRace: 0.25, isWarning: true, penaltyType: 5, infringementType: 4},
+		{carIdx: 5, fractionOfRace: 0.60, isWarning: false, penaltyType: 4, infringementType: 4, timePenalty: 5},
+		// AI 10 (idx 9): 10s penalty mid-race (collision)
+		{carIdx: 9, fractionOfRace: 0.40, isWarning: false, penaltyType: 4, infringementType: 0, timePenalty: 10},
+		// AI 14 (idx 13): two warnings
+		{carIdx: 13, fractionOfRace: 0.30, isWarning: true, penaltyType: 5, infringementType: 7},
+		{carIdx: 13, fractionOfRace: 0.70, isWarning: true, penaltyType: 5, infringementType: 2},
+		// AI 18 (idx 17): warning + 5s penalty late
+		{carIdx: 17, fractionOfRace: 0.50, isWarning: true, penaltyType: 5, infringementType: 7},
+		{carIdx: 17, fractionOfRace: 0.80, isWarning: false, penaltyType: 4, infringementType: 7, timePenalty: 5},
+	}
+
+	triggers := make([]aiPenaltyTrigger, 0, len(events))
+	for _, e := range events {
+		tick := int(float64(totalTicks) * e.fractionOfRace)
+		triggers = append(triggers, aiPenaltyTrigger{
+			triggerTick:      tick,
+			carIdx:           e.carIdx,
+			isWarning:        e.isWarning,
+			penaltyType:      e.penaltyType,
+			infringementType: e.infringementType,
+			timePenalty:      e.timePenalty,
+		})
+	}
+	return triggers
 }
 
 func (s *Simulator) Done() bool {
@@ -300,6 +373,34 @@ func (s *Simulator) Tick() {
 		fmt.Printf("\n[PENALTY] %ds time penalty for corner cutting (total distance: %.0fm, lap %d)\n",
 			entry.timePenalty, s.TotalDistance, s.CurrentLap)
 		s.penaltyIdx++
+	}
+
+	// Check AI penalty triggers
+	for s.aiTriggerIdx < len(s.aiPenaltyTriggers) && s.tickCount >= s.aiPenaltyTriggers[s.aiTriggerIdx].triggerTick {
+		t := s.aiPenaltyTriggers[s.aiTriggerIdx]
+		state, ok := s.aiPenaltyStates[int(t.carIdx)]
+		if !ok {
+			state = &aiCarPenaltyState{}
+			s.aiPenaltyStates[int(t.carIdx)] = state
+		}
+		if t.isWarning {
+			state.totalWarnings++
+			state.cornerCuttingWarnings++
+			fmt.Printf("\n[AI %02d WARNING %d] penaltyType=%d infringement=%d (tick %d)\n",
+				t.carIdx+1, state.totalWarnings, t.penaltyType, t.infringementType, s.tickCount)
+		} else {
+			state.penalties += t.timePenalty
+			fmt.Printf("\n[AI %02d PENALTY] %ds time penalty, penaltyType=%d infringement=%d (tick %d)\n",
+				t.carIdx+1, t.timePenalty, t.penaltyType, t.infringementType, s.tickCount)
+		}
+		s.pendingEvents = append(s.pendingEvents, penaltyEventData{
+			PenaltyType:      t.penaltyType,
+			InfringementType: t.infringementType,
+			VehicleIdx:       t.carIdx,
+			Time:             t.timePenalty,
+			LapNum:           s.CurrentLap,
+		})
+		s.aiTriggerIdx++
 	}
 
 	// Check for lap completion
@@ -413,11 +514,7 @@ func (s *Simulator) BuildLapDataPacket(frameID uint32) []byte {
 	// Write lap data for all cars
 	offset := PacketHeaderSize
 	for i := 0; i < MaxCars; i++ {
-		if i == int(s.PlayerCarIdx) {
-			s.writeLapData(buf[offset:], true)
-		} else {
-			s.writeLapData(buf[offset:], false)
-		}
+		s.writeLapData(buf[offset:], i == int(s.PlayerCarIdx), i)
 		offset += 57
 	}
 
@@ -586,7 +683,7 @@ func (s *Simulator) writeCarTelemetry(buf []byte, isPlayer bool) {
 	}
 }
 
-func (s *Simulator) writeLapData(buf []byte, isPlayer bool) {
+func (s *Simulator) writeLapData(buf []byte, isPlayer bool, carIdx int) {
 	offset := 0
 
 	var lastLap, currentLap uint32
@@ -656,23 +753,21 @@ func (s *Simulator) writeLapData(buf []byte, isPlayer bool) {
 	offset++
 	buf[offset] = lapInvalid
 	offset++
+	var penVal, warnVal, ccWarnVal uint8
 	if isPlayer {
-		buf[offset] = s.Penalties
-	} else {
-		buf[offset] = 0
+		penVal = s.Penalties
+		warnVal = s.TotalWarnings
+		ccWarnVal = s.CornerCuttingWarnings
+	} else if aiState, ok := s.aiPenaltyStates[carIdx]; ok {
+		penVal = aiState.penalties
+		warnVal = aiState.totalWarnings
+		ccWarnVal = aiState.cornerCuttingWarnings
 	}
+	buf[offset] = penVal
 	offset++ // Penalties
-	if isPlayer {
-		buf[offset] = s.TotalWarnings
-	} else {
-		buf[offset] = 0
-	}
+	buf[offset] = warnVal
 	offset++ // TotalWarnings
-	if isPlayer {
-		buf[offset] = s.CornerCuttingWarnings
-	} else {
-		buf[offset] = 0
-	}
+	buf[offset] = ccWarnVal
 	offset++
 	buf[offset] = 0 // NumUnservedDriveThroughs
 	offset++

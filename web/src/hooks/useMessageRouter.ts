@@ -98,6 +98,7 @@ export function normalizeRaceControl(
     category: raw?.category ?? 'info',
     message: raw?.message ?? '',
     severity: raw?.severity ?? 'info',
+    driverName: raw?.driverName,
   };
 }
 
