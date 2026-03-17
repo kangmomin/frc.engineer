@@ -237,6 +237,27 @@
 
 .paceInput:focus { outline: none; }
 
+/* Best Lap & Penalty columns */
+.colBest { width: 100px; }
+.colPen { width: 80px; }
+
+.penBadge {
+  font-family: var(--font-racing);
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 2px;
+  margin-right: 2px;
+}
+.penPenalty {
+  background: rgba(225, 6, 0, 0.3);
+  color: var(--accent-red);
+}
+.penWarning {
+  background: rgba(255, 191, 31, 0.3);
+  color: #ffbf1f;
+}
+
 .damageAlert, .wingAlert {
   font-family: var(--font-racing);
   font-weight: 800;

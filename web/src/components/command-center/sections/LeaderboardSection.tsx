@@ -23,6 +23,9 @@ const PACE_NEUTRAL_THRESHOLD_MS = 50;
 const selectDrivers = (s: any) => s.pitwallState?.drivers ?? EMPTY_DRIVERS;
 const selectSession = (s: any) => s.pitwallState?.session ?? null;
 const selectPlayerIndex = (s: any) => s.pitwallState?.playerIndex ?? 0;
+const selectNotifications = (s: any) => s.raceControlNotifications ?? EMPTY_NOTIFICATIONS;
+
+const EMPTY_NOTIFICATIONS: any[] = [];
 
 // --- Components ---
 
@@ -34,6 +37,11 @@ const DriverRow = memo(({
   paceWindowLaps,
   showStints,
   showLast,
+  showBest,
+  showPen,
+  bestLapTime,
+  penaltyCount,
+  warningCount,
 }: {
   driver: DriverInfo;
   isPlayer: boolean;
@@ -42,6 +50,11 @@ const DriverRow = memo(({
   paceWindowLaps: number;
   showStints: boolean;
   showLast: boolean;
+  showBest: boolean;
+  showPen: boolean;
+  bestLapTime: number;
+  penaltyCount: number;
+  warningCount: number;
 }) => {
   const gap = idx === 0 ? 'LEADER' : formatGapToLeader(driver.deltaToRaceLeader);
   const damageAlert = getDamageAlertInfo(driver, isPlayer);
@@ -113,6 +126,17 @@ const DriverRow = memo(({
           <span className={styles.lapTime}>{formatLapTime(driver.lastLapTime)}</span>
         </td>
       )}
+      {showBest && (
+        <td className={styles.colBest}>
+          <span className={styles.lapTime}>{bestLapTime > 0 ? formatLapTime(bestLapTime) : '--'}</span>
+        </td>
+      )}
+      {showPen && (
+        <td className={styles.colPen}>
+          {penaltyCount > 0 && <span className={`${styles.penBadge} ${styles.penPenalty}`}>P{penaltyCount}</span>}
+          {warningCount > 0 && <span className={`${styles.penBadge} ${styles.penWarning}`}>W{warningCount}</span>}
+        </td>
+      )}
       <td className={styles.colSector}>
         <span className={styles.sector}>{driver.sector1TimeMs > 0 ? formatSectorTime(driver.sector1TimeMs) : '--'}</span>
       </td>
@@ -140,7 +164,10 @@ export function LeaderboardSection() {
   const paceWindowLaps = useMemo(() => parsePaceWindowLaps(paceWindowInput), [paceWindowInput]);
   const [showStints, setShowStints] = useState(true);
   const [showLast, setShowLast] = useState(true);
+  const [showBest, setShowBest] = useState(true);
+  const [showPen, setShowPen] = useState(true);
   const deltaHistoryByDriver = useDriverDeltaHistory(drivers);
+  const notifications = useTelemetryStore(useShallow(selectNotifications));
 
   const sortedDrivers = useMemo(() => {
     return [...drivers].sort((a, b) => a.position - b.position);
@@ -163,6 +190,45 @@ export function LeaderboardSection() {
     return paceMap;
   }, [sortedDrivers, deltaHistoryByDriver, paceWindowLaps]);
 
+  // Best lap tracking: keep minimum valid lastLapTime per driver across updates
+  const bestLapRef = useRef<Record<number, number>>({});
+  useEffect(() => {
+    for (const driver of drivers) {
+      if (driver.lastLapTime > 0) {
+        const prev = bestLapRef.current[driver.index];
+        if (prev === undefined || driver.lastLapTime < prev) {
+          bestLapRef.current[driver.index] = driver.lastLapTime;
+        }
+      }
+    }
+  }, [drivers]);
+  const bestLapByDriver = useMemo(() => {
+    const map: Record<number, number> = {};
+    for (const driver of drivers) {
+      map[driver.index] = bestLapRef.current[driver.index] ?? 0;
+      // Also consider current lastLapTime in case ref hasn't updated yet
+      if (driver.lastLapTime > 0) {
+        const prev = map[driver.index];
+        if (prev === 0 || driver.lastLapTime < prev) {
+          map[driver.index] = driver.lastLapTime;
+        }
+      }
+    }
+    return map;
+  }, [drivers]);
+
+  // Penalty/Warning count per driver from race control notifications
+  const penCountByDriver = useMemo(() => {
+    const map: Record<string, { penalties: number; warnings: number }> = {};
+    for (const n of notifications) {
+      if (!n.driverName) continue;
+      if (!map[n.driverName]) map[n.driverName] = { penalties: 0, warnings: 0 };
+      if (n.category === 'penalty') map[n.driverName].penalties++;
+      else if (n.category === 'warning') map[n.driverName].warnings++;
+    }
+    return map;
+  }, [notifications]);
+
   return (
     <div className={styles.container}>
       <SectionHeader
@@ -181,6 +247,18 @@ export function LeaderboardSection() {
               onClick={() => setShowLast(v => !v)}
             >
               Last
+            </button>
+            <button
+              className={`${styles.toggleBtn} ${showBest ? styles.toggleBtnActive : styles.toggleBtnInactive}`}
+              onClick={() => setShowBest(v => !v)}
+            >
+              Best
+            </button>
+            <button
+              className={`${styles.toggleBtn} ${showPen ? styles.toggleBtnActive : styles.toggleBtnInactive}`}
+              onClick={() => setShowPen(v => !v)}
+            >
+              Pen
             </button>
             <div className={styles.paceInputWrap}>
               <span className={styles.paceInputLabel}>Pace Laps</span>
@@ -208,6 +286,8 @@ export function LeaderboardSection() {
               <th className={styles.colTyre}>Tyre</th>
               {showStints && <th className={styles.colPits}>Stints</th>}
               {showLast && <th className={styles.colLap}>Last</th>}
+              {showBest && <th className={styles.colBest}>Best</th>}
+              {showPen && <th className={styles.colPen}>Pen</th>}
               <th className={styles.colSector}>S1</th>
               <th className={styles.colSector}>S2</th>
               <th className={styles.colSector}>S3</th>
@@ -225,6 +305,11 @@ export function LeaderboardSection() {
                 paceWindowLaps={paceWindowLaps}
                 showStints={showStints}
                 showLast={showLast}
+                showBest={showBest}
+                showPen={showPen}
+                bestLapTime={bestLapByDriver[driver.index] ?? 0}
+                penaltyCount={penCountByDriver[driver.name?.trim()]?.penalties ?? 0}
+                warningCount={penCountByDriver[driver.name?.trim()]?.warnings ?? 0}
               />
             ))}
           </tbody>
