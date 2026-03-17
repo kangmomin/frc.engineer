@@ -260,18 +260,14 @@
 
 /* Penalty tooltip */
 .penCellWrap {
-  position: relative;
   display: inline-flex;
   align-items: center;
   cursor: default;
 }
 
 .penTooltip {
-  display: none;
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  z-index: 50;
+  position: fixed;
+  z-index: 9999;
   min-width: 240px;
   max-width: 340px;
   background: var(--bg-secondary);
@@ -279,10 +275,8 @@
   border-radius: var(--radius-sm);
   padding: var(--spacing-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-
-.penCellWrap:hover .penTooltip {
-  display: block;
+  transform: translate(4px, -100%);
+  pointer-events: none;
 }
 
 .penTooltipTitle {

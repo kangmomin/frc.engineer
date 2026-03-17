@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, memo } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import type { DriverInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
@@ -60,6 +61,15 @@ const DriverRow = memo(({
 }) => {
   const gap = idx === 0 ? 'LEADER' : formatGapToLeader(driver.deltaToRaceLeader);
   const damageAlert = getDamageAlertInfo(driver, isPlayer);
+  const penRef = useRef<HTMLDivElement>(null);
+  const [penTooltipPos, setPenTooltipPos] = useState<{ top: number; left: number } | null>(null);
+
+  const showPenTooltip = useCallback(() => {
+    if (!penRef.current) return;
+    const rect = penRef.current.getBoundingClientRect();
+    setPenTooltipPos({ top: rect.top, left: rect.right });
+  }, []);
+  const hidePenTooltip = useCallback(() => setPenTooltipPos(null), []);
 
   return (
     <tr className={`${styles.row} ${isPlayer ? styles.playerRow : ''}`}>
@@ -136,17 +146,28 @@ const DriverRow = memo(({
       {showPen && (
         <td className={styles.colPen}>
           {(penaltyCount > 0 || warningCount > 0) && (
-            <div className={styles.penCellWrap}>
+            <div
+              ref={penRef}
+              className={styles.penCellWrap}
+              onMouseEnter={showPenTooltip}
+              onMouseLeave={hidePenTooltip}
+            >
               {penaltyCount > 0 && <span className={`${styles.penBadge} ${styles.penPenalty}`}>P{penaltyCount}</span>}
               {warningCount > 0 && <span className={`${styles.penBadge} ${styles.penWarning}`}>W{warningCount}</span>}
-              <div className={styles.penTooltip}>
-                <div className={styles.penTooltipTitle}>Penalties & Warnings</div>
-                {penaltyDetails.map((d, i) => (
-                  <div key={i} className={`${styles.penTooltipRow} ${d.category === 'penalty' ? styles.penTooltipPenalty : d.category === 'served' ? styles.penTooltipServed : styles.penTooltipWarning}`}>
-                    {d.message}
-                  </div>
-                ))}
-              </div>
+              {penTooltipPos && createPortal(
+                <div
+                  className={styles.penTooltip}
+                  style={{ top: penTooltipPos.top, left: penTooltipPos.left }}
+                >
+                  <div className={styles.penTooltipTitle}>Penalties & Warnings</div>
+                  {penaltyDetails.map((d, i) => (
+                    <div key={i} className={`${styles.penTooltipRow} ${d.category === 'penalty' ? styles.penTooltipPenalty : d.category === 'served' ? styles.penTooltipServed : styles.penTooltipWarning}`}>
+                      {d.message}
+                    </div>
+                  ))}
+                </div>,
+                document.body,
+              )}
             </div>
           )}
         </td>
