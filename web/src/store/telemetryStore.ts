@@ -1,10 +1,14 @@
 import { create } from 'zustand';
 import type { PitwallState, ConnectionState, RaceControlNotification, BattleAlert, RaceSummary } from '../types/telemetry';
 
+export type ConnectionMode = 'local' | 'remote';
+
 interface TelemetryState {
   // Connection
   connectionState: ConnectionState;
   setConnectionState: (state: ConnectionState) => void;
+  connectionMode: ConnectionMode;
+  setConnectionMode: (mode: ConnectionMode) => void;
   playbackActive: boolean;
   setPlaybackActive: (active: boolean) => void;
 
@@ -41,6 +45,8 @@ const MAX_BATTLE_ALERTS = 10;
 export const useTelemetryStore = create<TelemetryState>((set) => ({
   connectionState: 'disconnected',
   setConnectionState: (state) => set({ connectionState: state }),
+  connectionMode: 'local',
+  setConnectionMode: (mode) => set({ connectionMode: mode }),
   playbackActive: false,
   setPlaybackActive: (active) => set({ playbackActive: active }),
 

@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"frc.engineer/internal/broadcast"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/packets"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
-	"frc.engineer/internal/websocket"
 )
 
 // RaceSummaryCounts tracks race-control notification totals for persisted summaries.
@@ -50,7 +50,7 @@ type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, s
 // Processor processes telemetry data and broadcasts to WebSocket clients
 type Processor struct {
 	parser          *udp.Parser
-	hub             *websocket.Hub
+	hub             broadcast.Broadcaster
 	deltaCalculator *DeltaCalculator
 	pitwallManager  *PitwallManager
 	battleDetector  *BattleDetector
@@ -88,7 +88,7 @@ type Processor struct {
 }
 
 // NewProcessor creates a new telemetry processor
-func NewProcessor(parser *udp.Parser, hub *websocket.Hub, updateRateHz int, logger *slog.Logger, trackStore *tracks.TrackStore) *Processor {
+func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz int, logger *slog.Logger, trackStore *tracks.TrackStore) *Processor {
 	interval := time.Duration(0)
 	if updateRateHz > 0 {
 		interval = time.Second / time.Duration(updateRateHz)

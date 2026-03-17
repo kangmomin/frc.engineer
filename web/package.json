@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:remote": "tsc -b && vite build --mode remote",
     "lint": "eslint .",
     "preview": "vite preview"
   },
