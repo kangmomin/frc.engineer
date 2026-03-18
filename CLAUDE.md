@@ -2,6 +2,12 @@
 
 ## Release & Deploy
 
+### 바이너리 구분
+| 바이너리 | 소스 | 용도 |
+|---|---|---|
+| `frc-engineer.exe` | `cmd/server` | **로컬 모드** — 게임 PC에서 단독 실행. 웹 대시보드 + UDP 수신 + 분석 올인원 |
+| `frc-engineer-sender.exe` | `cmd/sender` | **센더 모드** — 게임 PC에서 실행하고 WebRTC로 원격 엔지니어에게 전송. 가벼운 바이너리 |
+
 ### Version Source of Truth
 - **`cmd/server/update_notice.go`** 의 `appVersion` 변수가 앱 내 버전 표시의 단일 소스
 - 릴리스 시 반드시 이 값을 릴리스 버전과 동일하게 업데이트할 것
@@ -13,27 +19,30 @@
 1. **버전 업데이트**: `cmd/server/update_notice.go` 의 `appVersion` 을 새 버전으로 변경
 2. **커밋 & 푸시**: 메인 레포 (`kangmomin/frc.engineer`) 에 커밋 후 push
 3. **source-deploy-1 동기화**: `build/source-deploy-1` 에서 `git pull origin main`
-4. **빌드**:
+4. **빌드** (두 바이너리 모두):
    ```bash
    cd build/source-deploy-1
    cd web && npm ci && npm run build && cd ..
    go build -o frc-engineer.exe ./cmd/server
+   go build -o frc-engineer-sender.exe ./cmd/sender
    ```
 5. **바이너리 복사**:
    ```bash
    cp build/source-deploy-1/frc-engineer.exe build/deploy-inspect-1/frc-engineer.exe
+   cp build/source-deploy-1/frc-engineer-sender.exe build/deploy-inspect-1/frc-engineer-sender.exe
    cp build/source-deploy-1/frc-engineer.exe build/artifacts/frc-engineer.exe
+   cp build/source-deploy-1/frc-engineer-sender.exe build/artifacts/frc-engineer-sender.exe
    ```
 6. **deploy 레포 푸시**: `build/deploy-inspect-1` 에서 커밋 & push (태그 포함)
    ```bash
    cd build/deploy-inspect-1
-   git add frc-engineer.exe
+   git add frc-engineer.exe frc-engineer-sender.exe
    git commit -m "deploy: frc-engineer vX.Y.Z"
    git tag vX.Y.Z
    git push origin refs/heads/main:refs/heads/main
    git push origin vX.Y.Z
    ```
-7. **GitHub Release 생성**: `kangmomin/frc.engineer-deploy` 에 릴리스 생성 + exe 에셋 업로드
+7. **GitHub Release 생성**: `kangmomin/frc.engineer-deploy` 에 릴리스 생성 + **두 exe 모두** 에셋 업로드
 8. **메인 레포 태그**: 메인 레포에도 동일 버전 태그 생성 & push
 
 ### Repository Structure

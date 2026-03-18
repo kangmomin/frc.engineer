@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rtc"
@@ -73,6 +74,10 @@ func main() {
 	}
 	parser := udp.NewParser(logger)
 
+	// Create UDP forwarder and attach to listener
+	forwarder := udp.NewForwarder(logger)
+	udpListener.SetForwarder(forwarder)
+
 	// Load track data (for delta calculations)
 	trackStore := tracks.NewTrackStore("data")
 
@@ -94,6 +99,7 @@ func main() {
 	var cfgMu sync.Mutex
 	cfgUDPPort := udpPort
 	cfgSaveFiles := saveFiles
+	cfgForwardTargets := []rtconfig.ForwardTarget{}
 	var raceStorage *races.FileStorage
 	if saveFiles {
 		rs, err := races.NewFileStorage("data/races", logger)
@@ -214,19 +220,23 @@ func main() {
 		cfgMu.Lock()
 		port := cfgUDPPort
 		sf := cfgSaveFiles
+		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
+		copy(ft, cfgForwardTargets)
 		cfgMu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":   port,
-			"saveFiles": sf,
+			"udpPort":        port,
+			"saveFiles":      sf,
+			"forwardTargets": ft,
 		})
 	})
 
 	mux.HandleFunc("PUT /api/config", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			UDPPort   int  `json:"udpPort"`
-			SaveFiles bool `json:"saveFiles"`
+			UDPPort        int                       `json:"udpPort"`
+			SaveFiles      bool                      `json:"saveFiles"`
+			ForwardTargets []rtconfig.ForwardTarget   `json:"forwardTargets"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -239,6 +249,20 @@ func main() {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "port must be 1-65535"})
 			return
+		}
+		if len(body.ForwardTargets) > 16 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "too many forward targets (max 16)"})
+			return
+		}
+		for _, ft := range body.ForwardTargets {
+			if ft.Host == "" || ft.Port < 1 || ft.Port > 65535 {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "invalid forward target: host required, port 1-65535"})
+				return
+			}
 		}
 
 		cfgMu.Lock()
@@ -275,10 +299,17 @@ func main() {
 			logger.Info("save files changed", "enabled", body.SaveFiles)
 		}
 
+		// Update forward targets
+		cfgForwardTargets = make([]rtconfig.ForwardTarget, len(body.ForwardTargets))
+		copy(cfgForwardTargets, body.ForwardTargets)
+		forwarder.UpdateTargets(body.ForwardTargets)
+		logger.Info("forward targets updated", "count", len(body.ForwardTargets))
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":   cfgUDPPort,
-			"saveFiles": cfgSaveFiles,
+			"udpPort":        cfgUDPPort,
+			"saveFiles":      cfgSaveFiles,
+			"forwardTargets": cfgForwardTargets,
 		})
 	})
 
@@ -305,6 +336,7 @@ func main() {
 
 	fmt.Println("\nShutting down...")
 	cancel()
+	forwarder.Close()
 	peerManager.Close()
 	settingsSrv.Shutdown(context.Background())
 	logger.Info("sender shutdown complete")

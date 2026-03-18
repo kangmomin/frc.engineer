@@ -169,6 +169,65 @@
     border: 1px solid #e74c3c33;
   }
 
+  /* Forwarding */
+  .fwd-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .fwd-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .fwd-row input[type="text"],
+  .fwd-row input[type="number"] {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 6px 8px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .fwd-row input[type="text"] { flex: 1; min-width: 0; }
+  .fwd-row input[type="number"] { width: 80px; }
+  .fwd-row input:focus { border-color: #00d2ff; }
+  .fwd-del {
+    background: transparent;
+    border: 1px solid #e74c3c44;
+    border-radius: 4px;
+    color: #e74c3c;
+    font-size: 1rem;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .fwd-del:hover { background: #e74c3c22; }
+  .fwd-add {
+    background: transparent;
+    border: 1px dashed #333;
+    border-radius: 4px;
+    color: #888;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.85rem;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .fwd-add:hover { border-color: #00d2ff; color: #00d2ff; }
+  .fwd-empty {
+    color: #555;
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 8px;
+  }
+
   /* Save button */
   .save-btn {
     display: block;
@@ -250,6 +309,13 @@
     </div>
   </div>
 
+  <!-- UDP Forwarding -->
+  <div class="section">
+    <div class="section-title">UDP Forwarding</div>
+    <div class="fwd-list" id="fwdList"></div>
+    <button class="fwd-add" id="fwdAdd">+ Add Target</button>
+  </div>
+
   <!-- Tracks -->
   <div class="section">
     <div class="section-title">Tracks</div>
@@ -272,6 +338,10 @@
   const $save = document.getElementById('saveFiles');
   const $btn  = document.getElementById('saveBtn');
   const $toast = document.getElementById('toast');
+  const $fwdList = document.getElementById('fwdList');
+  const $fwdAdd = document.getElementById('fwdAdd');
+
+  let forwardTargets = [];
 
   let toastTimer;
   function showToast(msg, ok) {
@@ -280,6 +350,65 @@
     $toast.className = 'toast ' + (ok ? 'ok' : 'err') + ' show';
     toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2500);
   }
+
+  // Forward targets UI
+  function renderForwardTargets() {
+    $fwdList.innerHTML = '';
+    if (forwardTargets.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'fwd-empty';
+      empty.textContent = 'No forwarding targets';
+      $fwdList.appendChild(empty);
+      return;
+    }
+    forwardTargets.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'fwd-row';
+
+      const toggle = document.createElement('label');
+      toggle.className = 'toggle';
+      toggle.style.flexShrink = '0';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = t.enabled;
+      cb.addEventListener('change', () => { forwardTargets[i].enabled = cb.checked; });
+      const slider = document.createElement('span');
+      slider.className = 'slider';
+      toggle.appendChild(cb);
+      toggle.appendChild(slider);
+
+      const host = document.createElement('input');
+      host.type = 'text';
+      host.value = t.host;
+      host.placeholder = 'Host / IP';
+      host.addEventListener('input', () => { forwardTargets[i].host = host.value; });
+
+      const port = document.createElement('input');
+      port.type = 'number';
+      port.min = '1';
+      port.max = '65535';
+      port.value = t.port;
+      port.placeholder = 'Port';
+      port.addEventListener('input', () => { forwardTargets[i].port = parseInt(port.value, 10) || 0; });
+
+      const del = document.createElement('button');
+      del.className = 'fwd-del';
+      del.textContent = '\u00d7';
+      del.addEventListener('click', () => { forwardTargets.splice(i, 1); renderForwardTargets(); });
+
+      row.appendChild(toggle);
+      row.appendChild(host);
+      row.appendChild(port);
+      row.appendChild(del);
+      $fwdList.appendChild(row);
+    });
+  }
+
+  $fwdAdd.addEventListener('click', () => {
+    if (forwardTargets.length >= 16) { showToast('Max 16 targets', false); return; }
+    forwardTargets.push({ host: '', port: 20777, enabled: true });
+    renderForwardTargets();
+  });
 
   // Poll status every 2 seconds
   async function pollStatus() {
@@ -300,6 +429,8 @@
       const d = await r.json();
       $port.value = d.udpPort;
       $save.checked = d.saveFiles;
+      forwardTargets = Array.isArray(d.forwardTargets) ? d.forwardTargets : [];
+      renderForwardTargets();
     } catch {}
   }
 
@@ -313,9 +444,13 @@
         body: JSON.stringify({
           udpPort: parseInt($port.value, 10),
           saveFiles: $save.checked,
+          forwardTargets: forwardTargets,
         }),
       });
       if (r.ok) {
+        const d = await r.json();
+        forwardTargets = Array.isArray(d.forwardTargets) ? d.forwardTargets : [];
+        renderForwardTargets();
         showToast('Settings saved', true);
       } else {
         const d = await r.json().catch(() => ({}));
