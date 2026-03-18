@@ -17,8 +17,8 @@ const (
 )
 
 // appVersion is injected at build time for release binaries:
-// go build -ldflags "-X main.appVersion=v2.5.0" ...
-var appVersion = "v2.5.0"
+// go build -ldflags "-X main.appVersion=v2.6.0" ...
+var appVersion = "v2.6.0"
 
 type githubLatestRelease struct {
 	TagName string `json:"tag_name"`

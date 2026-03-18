@@ -36,6 +36,7 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+	slog.SetDefault(logger)
 
 	signalingURL := os.Getenv("SIGNALING_URL")
 	if signalingURL == "" {
@@ -54,8 +55,15 @@ func main() {
 
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
 
-	fmt.Println("F1 25 Telemetry Sender")
-	fmt.Println("======================")
+	fmt.Println()
+	fmt.Println("  _____ ____   ____")
+	fmt.Println(" |  ___|  _ \\ / ___|")
+	fmt.Println(" | |_  | |_) | |")
+	fmt.Println(" |  _| |  _ <| |___")
+	fmt.Println(" |_|   |_| \\_\\\\____|.engineer")
+	fmt.Println()
+	fmt.Println(" F1 25 Telemetry Sender")
+	fmt.Println(" ━━━━━━━━━━━━━━━━━━━━━━")
 
 	// Create UDP listener & parser
 	udpListener, err := udp.NewListener(udpPort, 2048, logger)
@@ -197,6 +205,11 @@ func main() {
 		})
 	})
 
+	mux.HandleFunc("GET /api/tracks", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(trackStore.ListLoaded())
+	})
+
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.Lock()
 		port := cfgUDPPort
@@ -277,15 +290,13 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("  UDP: listening on :%d\n", udpPort)
-	fmt.Printf("  Signaling: connected\n")
-	fmt.Printf("  Room Code: %s\n", peerManager.RoomCode())
-	fmt.Printf("  Save Files: %v\n", saveFiles)
-	fmt.Printf("  Settings: http://localhost:%s\n", settingsPort)
-	fmt.Printf("  Connected Engineers: 0\n")
+	fmt.Printf("   UDP:       :%d\n", udpPort)
+	fmt.Printf("   Room Code: %s\n", peerManager.RoomCode())
+	fmt.Printf("   Save Files: %v\n", saveFiles)
+	fmt.Printf("   Settings:  http://localhost:%s\n", settingsPort)
 	fmt.Println()
-	fmt.Println("Share the room code with your engineer.")
-	fmt.Println("Press Ctrl+C to stop.")
+	fmt.Println(" Share the room code with your engineer.")
+	fmt.Println(" Press Ctrl+C to stop.")
 
 	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)

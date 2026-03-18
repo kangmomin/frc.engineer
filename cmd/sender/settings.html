@@ -133,6 +133,42 @@
     background: #00d2ff;
   }
 
+  /* Tracks */
+  .tracks-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .tracks-count {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  .tracks-count .loaded { color: #00d2ff; }
+  .tracks-count .total { color: #666; }
+  .track-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .track-tag {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .track-tag.ok {
+    background: #00d2ff15;
+    color: #00d2ff;
+    border: 1px solid #00d2ff33;
+  }
+  .track-tag.missing {
+    background: #e74c3c15;
+    color: #e74c3c;
+    border: 1px solid #e74c3c33;
+  }
+
   /* Save button */
   .save-btn {
     display: block;
@@ -214,6 +250,16 @@
     </div>
   </div>
 
+  <!-- Tracks -->
+  <div class="section">
+    <div class="section-title">Tracks</div>
+    <div class="tracks-summary">
+      <span class="stat-label">Track Data</span>
+      <span class="tracks-count"><span class="loaded" id="tracksLoaded">0</span><span class="total" id="tracksTotal"> / 0</span></span>
+    </div>
+    <div class="track-list" id="trackList"></div>
+  </div>
+
   <button class="save-btn" id="saveBtn">Save</button>
 </div>
 
@@ -282,7 +328,30 @@
     }
   });
 
+  // Load tracks once on page load
+  async function loadTracks() {
+    try {
+      const r = await fetch('/api/tracks');
+      if (!r.ok) return;
+      const tracks = await r.json();
+      const loaded = tracks.filter(t => t.hasData).length;
+      document.getElementById('tracksLoaded').textContent = loaded;
+      document.getElementById('tracksTotal').textContent = ' / ' + tracks.length;
+
+      const $list = document.getElementById('trackList');
+      $list.innerHTML = '';
+      tracks.sort((a, b) => a.name.localeCompare(b.name));
+      for (const t of tracks) {
+        const tag = document.createElement('span');
+        tag.className = 'track-tag ' + (t.hasData ? 'ok' : 'missing');
+        tag.textContent = t.name;
+        $list.appendChild(tag);
+      }
+    } catch {}
+  }
+
   loadConfig();
+  loadTracks();
   pollStatus();
   setInterval(pollStatus, 2000);
 </script>
