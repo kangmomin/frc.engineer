@@ -32,7 +32,7 @@ const STORAGE_MODE_OPTIONS: Array<{
 ];
 
 export function SettingsView() {
-  const { config, tracks, loading, saving, restartRequired, updateConfig } = useSettings();
+  const { config, tracks, loading, saving, updateConfig } = useSettings();
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [wearDisplayMode, setWearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
     'tireWearDisplayMode',
@@ -254,12 +254,6 @@ export function SettingsView() {
             : 'Relative: shows additional wear over N laps (ex: +15%).'}
         </span>
       </div>
-
-      {restartRequired && (
-        <div className={styles.restartWarning}>
-          Restart the program to apply changed ports.
-        </div>
-      )}
 
       {dirty && (
         <button className={styles.btnPrimary} onClick={save} disabled={saving}>

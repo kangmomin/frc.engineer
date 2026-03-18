@@ -9,11 +9,13 @@ import (
 	"io/fs"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -218,6 +220,11 @@ func main() {
 	go hub.Run(ctx)
 	go processor.Start(ctx, udpListener.Packets())
 
+	// HTTP server management (declared early for handler closures)
+	var serverMu sync.Mutex
+	var server *http.Server
+	var restartHTTPServer func(int)
+
 	// Setup HTTP server
 	mux := http.NewServeMux()
 	mux.Handle("/ws", wsHandler)
@@ -265,7 +272,24 @@ func main() {
 					return
 				}
 			}
+			oldCfg := runtimeCfg.Get()
+
+			// UDP port rebind (try before saving config to avoid mismatch on failure)
+			if newCfg.UDPPort != oldCfg.UDPPort {
+				if err := udpListener.Rebind(newCfg.UDPPort); err != nil {
+					http.Error(w, fmt.Sprintf("UDP port %d unavailable: %v", newCfg.UDPPort, err), http.StatusConflict)
+					return
+				}
+				logger.Info("UDP port rebound", "port", newCfg.UDPPort)
+			}
+
 			if err := runtimeCfg.Update(newCfg); err != nil {
+				// Rollback UDP rebind if it happened
+				if newCfg.UDPPort != oldCfg.UDPPort {
+					if rbErr := udpListener.Rebind(oldCfg.UDPPort); rbErr != nil {
+						logger.Error("failed to rollback UDP rebind", "error", rbErr)
+					}
+				}
 				http.Error(w, "failed to save config", http.StatusInternalServerError)
 				return
 			}
@@ -289,6 +313,33 @@ func main() {
 				packetLogger.Close()
 				packetLogger = nil
 				logger.Info("packet logging disabled at runtime")
+			}
+
+			// Backend port hot-reload
+			if newCfg.BackendPort != oldCfg.BackendPort {
+				ln, err := net.Listen("tcp", fmt.Sprintf(":%d", newCfg.BackendPort))
+				if err != nil {
+					// Rollback only backend port in config
+					rollback := newCfg
+					rollback.BackendPort = oldCfg.BackendPort
+					if rbErr := runtimeCfg.Update(rollback); rbErr != nil {
+						logger.Error("failed to rollback backend port in config", "error", rbErr)
+					}
+					http.Error(w, fmt.Sprintf("backend port %d unavailable: %v", newCfg.BackendPort, err), http.StatusConflict)
+					return
+				}
+				ln.Close()
+
+				// Send response before restarting the server
+				json.NewEncoder(w).Encode(newCfg)
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+				go func() {
+					time.Sleep(100 * time.Millisecond)
+					restartHTTPServer(newCfg.BackendPort)
+				}()
+				return
 			}
 
 			json.NewEncoder(w).Encode(newCfg)
@@ -470,15 +521,34 @@ func main() {
 		fileServer.ServeHTTP(w, r)
 	}))
 
-	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.WSPort),
-		Handler: mux,
-		// Race replay JSON can be large; keep write timeout generous to avoid client-side
-		// "Failed to fetch" on slower disks/networks while preserving sane defaults.
-		ReadTimeout:       15 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout:      3 * time.Minute,
-		IdleTimeout:       2 * time.Minute,
+	newHTTPServer := func(port int) *http.Server {
+		return &http.Server{
+			Addr:              fmt.Sprintf(":%d", port),
+			Handler:           mux,
+			ReadTimeout:       15 * time.Second,
+			ReadHeaderTimeout: 10 * time.Second,
+			WriteTimeout:      3 * time.Minute,
+			IdleTimeout:       2 * time.Minute,
+		}
+	}
+
+	server = newHTTPServer(cfg.WSPort)
+
+	restartHTTPServer = func(port int) {
+		serverMu.Lock()
+		oldServer := server
+		newSrv := newHTTPServer(port)
+		server = newSrv
+		serverMu.Unlock()
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		oldServer.Shutdown(shutdownCtx)
+		shutdownCancel()
+
+		logger.Info("HTTP server restarted", "addr", fmt.Sprintf(":%d", port))
+		if err := newSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP server error after restart", "error", err)
+		}
 	}
 
 	// Start HTTP server
@@ -507,10 +577,14 @@ func main() {
 		packetLogger.Close()
 	}
 
+	serverMu.Lock()
+	s := server
+	serverMu.Unlock()
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
+	if err := s.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP server shutdown error", "error", err)
 	}
 

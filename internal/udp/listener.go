@@ -12,6 +12,8 @@ import (
 // Listener handles UDP packet reception from F1 25 game
 type Listener struct {
 	conn       *net.UDPConn
+	mu         sync.Mutex
+	rebindCh   chan *net.UDPConn
 	bufferPool sync.Pool
 	packetChan chan []byte
 	logger     *slog.Logger
@@ -36,7 +38,8 @@ func NewListener(port int, bufferSize int, logger *slog.Logger) (*Listener, erro
 	}
 
 	l := &Listener{
-		conn: conn,
+		conn:     conn,
+		rebindCh: make(chan *net.UDPConn, 1),
 		bufferPool: sync.Pool{
 			New: func() interface{} {
 				buf := make([]byte, packets.MaxPacketSize)
@@ -50,28 +53,80 @@ func NewListener(port int, bufferSize int, logger *slog.Logger) (*Listener, erro
 	return l, nil
 }
 
+// Rebind rebinds the listener to a new port without stopping packet processing.
+func (l *Listener) Rebind(port int) error {
+	addr := &net.UDPAddr{Port: port, IP: net.IPv4zero}
+	newConn, err := net.ListenUDP("udp4", addr)
+	if err != nil {
+		return err
+	}
+	if err := newConn.SetReadBuffer(1024 * 1024); err != nil {
+		l.logger.Warn("failed to set UDP read buffer on rebind", "error", err)
+	}
+
+	l.mu.Lock()
+	oldConn := l.conn
+	l.conn = newConn
+	l.mu.Unlock()
+
+	oldConn.Close()
+	l.rebindCh <- newConn
+
+	return nil
+}
+
 // Start begins listening for UDP packets
 func (l *Listener) Start(ctx context.Context) {
 	l.logger.Info("UDP listener started", "addr", l.conn.LocalAddr().String())
 
 	go func() {
 		<-ctx.Done()
+		l.mu.Lock()
 		l.conn.Close()
+		l.mu.Unlock()
 	}()
 
+	l.mu.Lock()
+	currentConn := l.conn
+	l.mu.Unlock()
+
+	for {
+		l.readLoop(ctx, currentConn)
+
+		if ctx.Err() != nil {
+			l.logger.Info("UDP listener shutting down")
+			return
+		}
+
+		select {
+		case currentConn = <-l.rebindCh:
+			l.logger.Info("UDP listener rebound", "addr", currentConn.LocalAddr().String())
+		case <-ctx.Done():
+			l.logger.Info("UDP listener shutting down")
+			return
+		}
+	}
+}
+
+func (l *Listener) readLoop(ctx context.Context, conn *net.UDPConn) {
 	for {
 		bufPtr := l.bufferPool.Get().(*[]byte)
 		buf := *bufPtr
 
-		n, _, err := l.conn.ReadFromUDP(buf)
+		n, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
+			l.bufferPool.Put(bufPtr)
 			if ctx.Err() != nil {
-				// Context cancelled, clean shutdown
-				l.logger.Info("UDP listener shutting down")
+				return
+			}
+			// Check if this conn was replaced by Rebind
+			l.mu.Lock()
+			replaced := l.conn != conn
+			l.mu.Unlock()
+			if replaced {
 				return
 			}
 			l.logger.Error("UDP read error", "error", err)
-			l.bufferPool.Put(bufPtr)
 			continue
 		}
 
@@ -112,5 +167,7 @@ func (l *Listener) SetForwarder(f *Forwarder) {
 // Close closes the UDP connection
 func (l *Listener) Close() error {
 	close(l.packetChan)
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	return l.conn.Close()
 }

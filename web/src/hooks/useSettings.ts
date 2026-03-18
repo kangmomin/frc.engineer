@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { AppConfig, TrackListItem } from '../types/telemetry';
 
 function getApiBase(): string {
@@ -10,8 +10,6 @@ export function useSettings() {
   const [tracks, setTracks] = useState<TrackListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [restartRequired, setRestartRequired] = useState(false);
-  const initialConfigRef = useRef<AppConfig | null>(null);
 
   const base = getApiBase();
 
@@ -28,9 +26,6 @@ export function useSettings() {
           dataStorageMode: data.dataStorageMode ?? 'resultOnly',
         };
         setConfig(cfg);
-        if (!initialConfigRef.current) {
-          initialConfigRef.current = cfg;
-        }
       }
     } catch (e) {
       console.error('Failed to fetch config:', e);
@@ -56,6 +51,8 @@ export function useSettings() {
   const updateConfig = useCallback(async (newConfig: AppConfig) => {
     setSaving(true);
     try {
+      const backendPortChanged = config && newConfig.backendPort !== config.backendPort;
+
       const res = await fetch(`${base}/api/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -70,23 +67,20 @@ export function useSettings() {
           raceSummaryRecording: data.raceSummaryRecording ?? true,
           dataStorageMode: data.dataStorageMode ?? 'resultOnly',
         };
-
-        const initial = initialConfigRef.current;
-        if (initial) {
-          const portsChanged =
-            saved.udpPort !== initial.udpPort ||
-            saved.backendPort !== initial.backendPort;
-          setRestartRequired(portsChanged);
-        }
-
         setConfig(saved);
+
+        if (backendPortChanged) {
+          setTimeout(() => {
+            window.location.href = `${window.location.protocol}//${window.location.hostname}:${saved.backendPort}${window.location.pathname}`;
+          }, 500);
+        }
       }
     } catch (e) {
       console.error('Failed to update config:', e);
     } finally {
       setSaving(false);
     }
-  }, [base]);
+  }, [base, config]);
 
-  return { config, tracks, loading, saving, restartRequired, updateConfig, refreshTracks: fetchTracks };
+  return { config, tracks, loading, saving, updateConfig, refreshTracks: fetchTracks };
 }
