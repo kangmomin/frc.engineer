@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F1 Sender Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050505;
+    color: #e0e0e0;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 500;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 40px 16px;
+  }
+  .container { width: 100%; max-width: 420px; }
+
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.3rem;
+    color: #00d2ff;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 28px;
+    text-align: center;
+  }
+
+  .section {
+    background: #111;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.7rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+  }
+
+  /* Status */
+  .room-code {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.4rem;
+    font-weight: 700;
+    color: #00d2ff;
+    text-align: center;
+    letter-spacing: 8px;
+    margin-bottom: 12px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 1rem;
+  }
+  .stat-label { color: #888; }
+  .stat-value { color: #e0e0e0; font-weight: 600; }
+
+  /* Settings form */
+  .field { margin-bottom: 16px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: block;
+    font-size: 0.85rem;
+    color: #888;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .field input[type="number"] {
+    width: 100%;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input[type="number"]:focus {
+    border-color: #00d2ff;
+  }
+
+  /* Toggle switch */
+  .toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+  }
+  .toggle input { display: none; }
+  .toggle .slider {
+    position: absolute;
+    inset: 0;
+    background: #333;
+    border-radius: 12px;
+    transition: background 0.2s;
+  }
+  .toggle .slider::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: #888;
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle input:checked + .slider {
+    background: #00d2ff33;
+  }
+  .toggle input:checked + .slider::after {
+    transform: translateX(20px);
+    background: #00d2ff;
+  }
+
+  /* Save button */
+  .save-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid #00d2ff;
+    border-radius: 6px;
+    color: #00d2ff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .save-btn:hover {
+    background: #00d2ff;
+    color: #050505;
+  }
+  .save-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    opacity: 0;
+    transition: transform 0.3s, opacity 0.3s;
+    pointer-events: none;
+    z-index: 100;
+  }
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+  .toast.ok { border-color: #00d2ff; color: #00d2ff; }
+  .toast.err { border-color: #e74c3c; color: #e74c3c; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Sender Settings</h1>
+
+  <!-- Status -->
+  <div class="section">
+    <div class="section-title">Status</div>
+    <div class="room-code" id="roomCode">----</div>
+    <div class="stat-row">
+      <span class="stat-label">Connected Engineers</span>
+      <span class="stat-value" id="engineers">0</span>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="section">
+    <div class="section-title">Settings</div>
+    <div class="field">
+      <label for="udpPort">UDP Port</label>
+      <input type="number" id="udpPort" min="1" max="65535">
+    </div>
+    <div class="field">
+      <div class="toggle-row">
+        <label>Save Files</label>
+        <label class="toggle">
+          <input type="checkbox" id="saveFiles">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <button class="save-btn" id="saveBtn">Save</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const $room = document.getElementById('roomCode');
+  const $eng  = document.getElementById('engineers');
+  const $port = document.getElementById('udpPort');
+  const $save = document.getElementById('saveFiles');
+  const $btn  = document.getElementById('saveBtn');
+  const $toast = document.getElementById('toast');
+
+  let toastTimer;
+  function showToast(msg, ok) {
+    clearTimeout(toastTimer);
+    $toast.textContent = msg;
+    $toast.className = 'toast ' + (ok ? 'ok' : 'err') + ' show';
+    toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2500);
+  }
+
+  // Poll status every 2 seconds
+  async function pollStatus() {
+    try {
+      const r = await fetch('/api/status');
+      if (!r.ok) return;
+      const d = await r.json();
+      $room.textContent = d.roomCode || '----';
+      $eng.textContent = d.connectedEngineers;
+    } catch {}
+  }
+
+  // Load config once on page load
+  async function loadConfig() {
+    try {
+      const r = await fetch('/api/config');
+      if (!r.ok) return;
+      const d = await r.json();
+      $port.value = d.udpPort;
+      $save.checked = d.saveFiles;
+    } catch {}
+  }
+
+  // Save
+  $btn.addEventListener('click', async () => {
+    $btn.disabled = true;
+    try {
+      const r = await fetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          udpPort: parseInt($port.value, 10),
+          saveFiles: $save.checked,
+        }),
+      });
+      if (r.ok) {
+        showToast('Settings saved', true);
+      } else {
+        const d = await r.json().catch(() => ({}));
+        showToast(d.error || 'Save failed', false);
+      }
+    } catch (e) {
+      showToast('Network error', false);
+    } finally {
+      $btn.disabled = false;
+    }
+  });
+
+  loadConfig();
+  pollStatus();
+  setInterval(pollStatus, 2000);
+</script>
+</body>
+</html>

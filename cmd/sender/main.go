@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,13 +23,28 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	// Log to file so the cmd banner stays clean
+	if err := os.MkdirAll("logs", 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create logs dir: %v\n", err)
+		os.Exit(1)
+	}
+	logFile, err := os.OpenFile("logs/sender.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open log file: %v\n", err)
+		os.Exit(1)
+	}
+	logger := slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
 
 	signalingURL := os.Getenv("SIGNALING_URL")
 	if signalingURL == "" {
 		signalingURL = "wss://signaling-server-production-23c9.up.railway.app/ws"
+	}
+
+	settingsPort := os.Getenv("SETTINGS_PORT")
+	if settingsPort == "" {
+		settingsPort = "8099"
 	}
 
 	udpPort := 20777
@@ -64,6 +81,19 @@ func main() {
 	recorder := telemetry.NewTrackRecorder("data", trackStore, logger)
 	recorder.SetEnabled(saveFiles)
 	processor.PitwallManager().SetRecorder(recorder)
+
+	// Runtime config state protected by mutex
+	var cfgMu sync.Mutex
+	cfgUDPPort := udpPort
+	cfgSaveFiles := saveFiles
+	var raceStorage *races.FileStorage
+	if saveFiles {
+		rs, err := races.NewFileStorage("data/races", logger)
+		if err != nil {
+			logger.Warn("failed to create race storage, file saving disabled", "error", err)
+		}
+		raceStorage = rs
+	}
 
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
 	peerManager.SetCountChangeHandler(func(count int) {
@@ -109,25 +139,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Race summary storage (optional)
-	var raceStorage *races.FileStorage
-	if saveFiles {
-		var err error
-		raceStorage, err = races.NewFileStorage("data/races", logger)
-		if err != nil {
-			logger.Warn("failed to create race storage, file saving disabled", "error", err)
-		}
-	}
-
 	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, state *dto.PitwallState) error {
-		// Save to disk if enabled
-		if raceStorage != nil {
+		cfgMu.Lock()
+		rs := raceStorage
+		cfgMu.Unlock()
+
+		if rs != nil {
 			summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
 				Penalty: counts.Penalty,
 				Warning: counts.Warning,
 				Info:    counts.Info,
 			}, time.Now())
-			if _, err := raceStorage.Save(summary); err != nil {
+			if _, err := rs.Save(summary); err != nil {
 				logger.Error("failed to save race summary", "error", err)
 			}
 		}
@@ -151,10 +174,114 @@ func main() {
 	go udpListener.Start(ctx)
 	go processor.Start(ctx, udpListener.Packets())
 
+	// Settings HTTP server
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(settingsHTML)
+	})
+
+	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
+		cfgMu.Lock()
+		port := cfgUDPPort
+		sf := cfgSaveFiles
+		cfgMu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"roomCode":           peerManager.RoomCode(),
+			"connectedEngineers": peerManager.ConnectedCount(),
+			"udpPort":            port,
+			"saveFiles":          sf,
+		})
+	})
+
+	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
+		cfgMu.Lock()
+		port := cfgUDPPort
+		sf := cfgSaveFiles
+		cfgMu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"udpPort":   port,
+			"saveFiles": sf,
+		})
+	})
+
+	mux.HandleFunc("PUT /api/config", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			UDPPort   int  `json:"udpPort"`
+			SaveFiles bool `json:"saveFiles"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+			return
+		}
+		if body.UDPPort < 1 || body.UDPPort > 65535 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "port must be 1-65535"})
+			return
+		}
+
+		cfgMu.Lock()
+		defer cfgMu.Unlock()
+
+		// Rebind UDP port if changed
+		if body.UDPPort != cfgUDPPort {
+			if err := udpListener.Rebind(body.UDPPort); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("rebind failed: %v", err)})
+				return
+			}
+			logger.Info("UDP port changed", "from", cfgUDPPort, "to", body.UDPPort)
+			cfgUDPPort = body.UDPPort
+		}
+
+		// Toggle save files if changed
+		if body.SaveFiles != cfgSaveFiles {
+			cfgSaveFiles = body.SaveFiles
+			recorder.SetEnabled(body.SaveFiles)
+			if body.SaveFiles {
+				if raceStorage == nil {
+					rs, err := races.NewFileStorage("data/races", logger)
+					if err != nil {
+						logger.Warn("failed to create race storage", "error", err)
+					} else {
+						raceStorage = rs
+					}
+				}
+			} else {
+				raceStorage = nil
+			}
+			logger.Info("save files changed", "enabled", body.SaveFiles)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"udpPort":   cfgUDPPort,
+			"saveFiles": cfgSaveFiles,
+		})
+	})
+
+	settingsSrv := &http.Server{Addr: ":" + settingsPort, Handler: mux}
+	go func() {
+		logger.Info("settings server starting", "port", settingsPort)
+		if err := settingsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("settings server failed", "error", err)
+		}
+	}()
+
 	fmt.Printf("  UDP: listening on :%d\n", udpPort)
 	fmt.Printf("  Signaling: connected\n")
 	fmt.Printf("  Room Code: %s\n", peerManager.RoomCode())
 	fmt.Printf("  Save Files: %v\n", saveFiles)
+	fmt.Printf("  Settings: http://localhost:%s\n", settingsPort)
 	fmt.Printf("  Connected Engineers: 0\n")
 	fmt.Println()
 	fmt.Println("Share the room code with your engineer.")
@@ -168,7 +295,9 @@ func main() {
 	fmt.Println("\nShutting down...")
 	cancel()
 	peerManager.Close()
+	settingsSrv.Shutdown(context.Background())
 	logger.Info("sender shutdown complete")
+	logFile.Close()
 }
 
 func cleanF32(v float32) float32 {
