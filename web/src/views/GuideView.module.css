@@ -175,3 +175,70 @@
   color: var(--text-primary);
   font-weight: 600;
 }
+
+/* Tab navigation */
+.guideTabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.guideTab {
+  flex: 1;
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  transition: all 0.15s ease;
+}
+
+.guideTab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.guideTabActive {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border-color: var(--bg-panel-border);
+}
+
+/* Tip box (blue variant of guideRec) */
+.guideTip {
+  margin-top: 4px;
+  margin-left: 16px;
+  padding: 4px 8px;
+  border-left: 3px solid rgba(0, 160, 255, 0.4);
+  background: rgba(0, 160, 255, 0.04);
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.guideTipLabel {
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+/* Sub-section grouping */
+.guideSubLabel {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding-left: 16px;
+  margin-top: 6px;
+  letter-spacing: 0.3px;
+}
