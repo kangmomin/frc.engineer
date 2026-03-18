@@ -39,6 +39,12 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
+	// Auto-update: clean previous update artifacts, then check for updates
+	cleanOldBinary(logger)
+	if err := autoUpdate(logger); err != nil {
+		logger.Warn("auto-update failed, continuing with current version", "error", err)
+	}
+
 	// Load configuration
 	cfg := config.LoadFromEnv()
 	logger.Info("configuration loaded",

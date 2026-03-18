@@ -20,9 +20,16 @@ const (
 // go build -ldflags "-X main.appVersion=v2.6.0" ...
 var appVersion = "v2.6.0"
 
+type githubReleaseAsset struct {
+	Name               string `json:"name"`
+	Size               int64  `json:"size"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
 type githubLatestRelease struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
+	TagName string               `json:"tag_name"`
+	HTMLURL string               `json:"html_url"`
+	Assets  []githubReleaseAsset `json:"assets"`
 }
 
 type semVer struct {
@@ -39,7 +46,7 @@ func printStartupAccessGuide(logger *slog.Logger, port int) {
 
 func checkForUpdateAsync(logger *slog.Logger) {
 	go func() {
-		latestTag, latestURL, hasUpdate, err := checkForNewRelease(appVersion)
+		release, hasUpdate, err := checkForNewRelease(appVersion)
 		if err != nil {
 			logger.Warn("update check failed", "error", err)
 			return
@@ -47,29 +54,30 @@ func checkForUpdateAsync(logger *slog.Logger) {
 		if !hasUpdate {
 			return
 		}
+		latestURL := release.HTMLURL
 		if latestURL == "" {
 			latestURL = deployReleasesURL
 		}
 
 		logger.Warn("new version available",
 			"currentVersion", appVersion,
-			"latestVersion", latestTag,
+			"latestVersion", release.TagName,
 			"url", latestURL,
 		)
 		fmt.Printf("[업데이트 안내] 신규 버전 %s 이(가) 나왔습니다. 현재 버전: %s\n업데이트: %s\n\n",
-			latestTag, appVersion, latestURL)
+			release.TagName, appVersion, latestURL)
 	}()
 }
 
-func checkForNewRelease(currentVersion string) (latestTag string, latestURL string, hasUpdate bool, err error) {
+func checkForNewRelease(currentVersion string) (*githubLatestRelease, bool, error) {
 	current, ok := parseSemVer(currentVersion)
 	if !ok {
-		return "", "", false, fmt.Errorf("invalid current version: %q", currentVersion)
+		return nil, false, fmt.Errorf("invalid current version: %q", currentVersion)
 	}
 
 	req, err := http.NewRequest(http.MethodGet, deployLatestReleaseAPI, nil)
 	if err != nil {
-		return "", "", false, err
+		return nil, false, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "frc.engineer-update-check")
@@ -77,25 +85,25 @@ func checkForNewRelease(currentVersion string) (latestTag string, latestURL stri
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", false, err
+		return nil, false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", false, fmt.Errorf("release API returned status %d", resp.StatusCode)
+		return nil, false, fmt.Errorf("release API returned status %d", resp.StatusCode)
 	}
 
 	var latest githubLatestRelease
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&latest); err != nil {
-		return "", "", false, err
+		return nil, false, err
 	}
 
 	latestParsed, ok := parseSemVer(latest.TagName)
 	if !ok {
-		return latest.TagName, latest.HTMLURL, false, fmt.Errorf("invalid latest tag format: %q", latest.TagName)
+		return &latest, false, fmt.Errorf("invalid latest tag format: %q", latest.TagName)
 	}
 
-	return latest.TagName, latest.HTMLURL, compareSemVer(latestParsed, current) > 0, nil
+	return &latest, compareSemVer(latestParsed, current) > 0, nil
 }
 
 func parseSemVer(version string) (semVer, bool) {
