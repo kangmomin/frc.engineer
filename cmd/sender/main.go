@@ -55,6 +55,7 @@ func main() {
 	}
 
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
+	trackRecording := saveFiles // default: follow saveFiles for backward compat
 
 	fmt.Println()
 	fmt.Println("  _____ ____   ____")
@@ -90,15 +91,16 @@ func main() {
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
 
-	// Track recorder
+	// Track recorder (independently toggled from save files)
 	recorder := telemetry.NewTrackRecorder("data", trackStore, logger)
-	recorder.SetEnabled(saveFiles)
+	recorder.SetEnabled(trackRecording)
 	processor.PitwallManager().SetRecorder(recorder)
 
 	// Runtime config state protected by mutex
 	var cfgMu sync.Mutex
 	cfgUDPPort := udpPort
 	cfgSaveFiles := saveFiles
+	cfgTrackRecording := trackRecording
 	cfgForwardTargets := []rtconfig.ForwardTarget{}
 	var raceStorage *races.FileStorage
 	if saveFiles {
@@ -220,15 +222,17 @@ func main() {
 		cfgMu.Lock()
 		port := cfgUDPPort
 		sf := cfgSaveFiles
+		tr := cfgTrackRecording
 		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
 		copy(ft, cfgForwardTargets)
 		cfgMu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":        port,
-			"saveFiles":      sf,
-			"forwardTargets": ft,
+			"udpPort":         port,
+			"saveFiles":       sf,
+			"trackRecording":  tr,
+			"forwardTargets":  ft,
 		})
 	})
 
@@ -236,6 +240,7 @@ func main() {
 		var body struct {
 			UDPPort        int                       `json:"udpPort"`
 			SaveFiles      bool                      `json:"saveFiles"`
+			TrackRecording bool                      `json:"trackRecording"`
 			ForwardTargets []rtconfig.ForwardTarget   `json:"forwardTargets"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -280,10 +285,9 @@ func main() {
 			cfgUDPPort = body.UDPPort
 		}
 
-		// Toggle save files if changed
+		// Toggle save files (race storage) if changed
 		if body.SaveFiles != cfgSaveFiles {
 			cfgSaveFiles = body.SaveFiles
-			recorder.SetEnabled(body.SaveFiles)
 			if body.SaveFiles {
 				if raceStorage == nil {
 					rs, err := races.NewFileStorage("data/races", logger)
@@ -299,6 +303,13 @@ func main() {
 			logger.Info("save files changed", "enabled", body.SaveFiles)
 		}
 
+		// Toggle track recording independently
+		if body.TrackRecording != cfgTrackRecording {
+			cfgTrackRecording = body.TrackRecording
+			recorder.SetEnabled(body.TrackRecording)
+			logger.Info("track recording changed", "enabled", body.TrackRecording)
+		}
+
 		// Update forward targets
 		cfgForwardTargets = make([]rtconfig.ForwardTarget, len(body.ForwardTargets))
 		copy(cfgForwardTargets, body.ForwardTargets)
@@ -307,9 +318,10 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":        cfgUDPPort,
-			"saveFiles":      cfgSaveFiles,
-			"forwardTargets": cfgForwardTargets,
+			"udpPort":         cfgUDPPort,
+			"saveFiles":       cfgSaveFiles,
+			"trackRecording":  cfgTrackRecording,
+			"forwardTargets":  cfgForwardTargets,
 		})
 	})
 

@@ -307,6 +307,15 @@
         </label>
       </div>
     </div>
+    <div class="field">
+      <div class="toggle-row">
+        <label>Track Recording</label>
+        <label class="toggle">
+          <input type="checkbox" id="trackRecording">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
   </div>
 
   <!-- UDP Forwarding -->
@@ -336,6 +345,7 @@
   const $eng  = document.getElementById('engineers');
   const $port = document.getElementById('udpPort');
   const $save = document.getElementById('saveFiles');
+  const $trackRec = document.getElementById('trackRecording');
   const $btn  = document.getElementById('saveBtn');
   const $toast = document.getElementById('toast');
   const $fwdList = document.getElementById('fwdList');
@@ -429,6 +439,7 @@
       const d = await r.json();
       $port.value = d.udpPort;
       $save.checked = d.saveFiles;
+      $trackRec.checked = d.trackRecording;
       forwardTargets = Array.isArray(d.forwardTargets) ? d.forwardTargets : [];
       renderForwardTargets();
     } catch {}
@@ -444,6 +455,7 @@
         body: JSON.stringify({
           udpPort: parseInt($port.value, 10),
           saveFiles: $save.checked,
+          trackRecording: $trackRec.checked,
           forwardTargets: forwardTargets,
         }),
       });
