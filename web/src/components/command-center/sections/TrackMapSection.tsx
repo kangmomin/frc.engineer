@@ -253,12 +253,70 @@ const FLAG_COLORS: Record<number, string> = {
   4: '#e74c3c', // red
 };
 
-// Represents a car's identity for React reconciliation (not position)
-interface CarEntry {
-  index: number;
-  teamId: number;
+// --- Canvas coordinate transform (replaces SVG viewBox + preserveAspectRatio) ---
+
+interface Transform {
+  scale: number;
+  offsetX: number;
+  offsetZ: number;
+  worldMinX: number;
+  worldMinZ: number;
+}
+
+interface CarVisual {
+  color: string;
+  position: number;
   isPlayer: boolean;
 }
+
+function recalcTransform(canvasW: number, canvasH: number, tm: TrackMapData): Transform {
+  const padding = 50;
+  const worldMinX = tm.minX - padding;
+  const worldMinZ = tm.minZ - padding;
+  const worldW = tm.maxX - tm.minX + padding * 2;
+  const worldH = tm.maxZ - tm.minZ + padding * 2;
+  const scale = Math.min(canvasW / worldW, canvasH / worldH);
+  return {
+    scale,
+    offsetX: (canvasW - worldW * scale) / 2,
+    offsetZ: (canvasH - worldH * scale) / 2,
+    worldMinX,
+    worldMinZ,
+  };
+}
+
+/** Parse SVG M/L/Z path commands and replay onto canvas context */
+function tracePath(ctx: CanvasRenderingContext2D, d: string, t: Transform) {
+  const tokens = d.match(/[MLZ]|[-+]?\d*\.?\d+/g);
+  if (!tokens) return;
+  let i = 0;
+  while (i < tokens.length) {
+    switch (tokens[i]) {
+      case 'M': {
+        const cx = (+tokens[i + 1] - t.worldMinX) * t.scale + t.offsetX;
+        const cz = (+tokens[i + 2] - t.worldMinZ) * t.scale + t.offsetZ;
+        ctx.moveTo(cx, cz);
+        i += 3;
+        break;
+      }
+      case 'L': {
+        const cx = (+tokens[i + 1] - t.worldMinX) * t.scale + t.offsetX;
+        const cz = (+tokens[i + 2] - t.worldMinZ) * t.scale + t.offsetZ;
+        ctx.lineTo(cx, cz);
+        i += 3;
+        break;
+      }
+      case 'Z':
+        ctx.closePath();
+        i += 1;
+        break;
+      default:
+        i += 1;
+    }
+  }
+}
+
+const RACING_FONT = "'Orbitron', 'Rajdhani', monospace";
 
 interface TrackCanvasProps {
   trackMap?: TrackMapData;
@@ -267,158 +325,28 @@ interface TrackCanvasProps {
 }
 
 function TrackCanvas({ trackMap, marshalZones, turns }: TrackCanvasProps) {
-  // Car list: only re-render when cars join/leave or team changes
-  const [carList, setCarList] = useState<CarEntry[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
+  const transformRef = useRef<Transform | null>(null);
+  const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
 
-  // Refs for rAF-driven DOM updates (no React re-renders)
-  const carElems = useRef<Map<number, SVGGElement>>(new Map());
-  const posTextElems = useRef<Map<number, SVGTextElement>>(new Map());
+  const carVisuals = useRef<Map<number, CarVisual>>(new Map());
   const driverMapRef = useRef<{ arr: DriverInfo[]; map: Map<number, DriverInfo> }>({ arr: [], map: new Map() });
   const animPos = useRef<Map<number, {
     x: number; z: number;
     tgtX: number; tgtZ: number;
   }>>(new Map());
   const rafId = useRef(0);
+  const staticDirty = useRef(true);
+  const drawStaticLayerRef = useRef<() => void>(() => {});
 
-  // Clear animated positions when track changes
+  // Clear on track change
   useEffect(() => {
     animPos.current.clear();
+    carVisuals.current.clear();
   }, [trackMap]);
 
-  // Subscribe to positions/drivers outside React render cycle
-  useEffect(() => {
-    const unsub = useTelemetryStore.subscribe((state) => {
-      const positions = state.pitwallState?.positions ?? [];
-      const drivers = state.pitwallState?.drivers ?? [];
-      const pIdx = state.pitwallState?.playerIndex ?? 0;
-
-      // Rebuild driver lookup only when drivers array reference changes
-      const dmRef = driverMapRef.current;
-      if (drivers !== dmRef.arr) {
-        dmRef.arr = drivers;
-        dmRef.map.clear();
-        for (const d of drivers) dmRef.map.set(d.index, d);
-      }
-      const dm = dmRef.map;
-
-      // Single pass: update animation targets, position text, and build car entries
-      const activeIndices = new Set<number>();
-      const newEntries: CarEntry[] = [];
-      for (const p of positions) {
-        activeIndices.add(p.index);
-
-        // Animation targets
-        if (!animPos.current.has(p.index)) {
-          animPos.current.set(p.index, {
-            x: p.x, z: p.z,
-            tgtX: p.x, tgtZ: p.z,
-          });
-          const el = carElems.current.get(p.index);
-          if (el) el.setAttribute('transform', `translate(${p.x},${p.z})`);
-        } else {
-          const s = animPos.current.get(p.index)!;
-          const distSq = (p.x - s.x) ** 2 + (p.z - s.z) ** 2;
-          if (distSq > 10000) {
-            s.x = p.x;
-            s.z = p.z;
-          }
-          s.tgtX = p.x;
-          s.tgtZ = p.z;
-        }
-
-        // Position text + car entry
-        const driver = dm.get(p.index);
-        if (!driver) continue;
-        const textEl = posTextElems.current.get(p.index);
-        if (textEl && textEl.textContent !== String(driver.position)) {
-          textEl.textContent = String(driver.position);
-        }
-        newEntries.push({
-          index: p.index,
-          teamId: driver.teamId,
-          isPlayer: p.index === pIdx,
-        });
-      }
-
-      // Prune stale entries for departed cars
-      if (animPos.current.size > activeIndices.size) {
-        for (const idx of animPos.current.keys()) {
-          if (!activeIndices.has(idx)) animPos.current.delete(idx);
-        }
-      }
-
-      setCarList((prev) => {
-        if (prev.length !== newEntries.length) return newEntries;
-        for (let i = 0; i < prev.length; i++) {
-          if (
-            prev[i].index !== newEntries[i].index ||
-            prev[i].teamId !== newEntries[i].teamId ||
-            prev[i].isPlayer !== newEntries[i].isPlayer
-          ) {
-            return newEntries;
-          }
-        }
-        return prev;
-      });
-    });
-
-    return unsub;
-  }, []);
-
-  // rAF interpolation loop
-  useEffect(() => {
-    let lastTime = performance.now();
-
-    function tick(time: number) {
-      const dtMs = Math.min(time - lastTime, 100);
-      lastTime = time;
-      const smoothing = 1 - Math.exp(-dtMs * 0.015);
-
-      for (const [idx, state] of animPos.current) {
-        let newX = state.x + (state.tgtX - state.x) * smoothing;
-        let newZ = state.z + (state.tgtZ - state.z) * smoothing;
-
-        if (Math.abs(state.tgtX - newX) < 0.01 && Math.abs(state.tgtZ - newZ) < 0.01) {
-          newX = state.tgtX;
-          newZ = state.tgtZ;
-        }
-
-        if (state.x !== newX || state.z !== newZ) {
-          state.x = newX;
-          state.z = newZ;
-          const el = carElems.current.get(idx);
-          if (el) {
-            el.setAttribute('transform', `translate(${newX.toFixed(2)},${newZ.toFixed(2)})`);
-          }
-        }
-      }
-      rafId.current = requestAnimationFrame(tick);
-    }
-
-    rafId.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId.current);
-  }, []);
-
-  // Ref callback factories (stable via useCallback)
-  const setCarRef = useCallback((index: number) => (el: SVGGElement | null) => {
-    if (el) carElems.current.set(index, el);
-    else carElems.current.delete(index);
-  }, []);
-
-  const setPosTextRef = useCallback((index: number) => (el: SVGTextElement | null) => {
-    if (el) posTextElems.current.set(index, el);
-    else posTextElems.current.delete(index);
-  }, []);
-
-  // --- Memoized SVG data (only depends on trackMap / marshalZones) ---
-
-  const viewBox = useMemo(() => {
-    if (!trackMap) return '0 0 100 100';
-    const padding = 50;
-    const width = trackMap.maxX - trackMap.minX + padding * 2;
-    const height = trackMap.maxZ - trackMap.minZ + padding * 2;
-    return `${trackMap.minX - padding} ${trackMap.minZ - padding} ${width} ${height}`;
-  }, [trackMap]);
+  // --- Memoized geometry data (unchanged from SVG version) ---
 
   const sectorData = useMemo(() => {
     if (!trackMap || trackMap.points.length < 2) return [];
@@ -507,6 +435,273 @@ function TrackCanvas({ trackMap, marshalZones, turns }: TrackCanvasProps) {
     return d;
   }, [trackMap]);
 
+  // Mark static layer dirty when geometry or flag data changes
+  useEffect(() => { staticDirty.current = true; }, [trackPath, sectorData, drsZones, sectorFlags, turns]);
+
+  // Static layer draw function — kept in ref so rAF tick always calls the latest version
+  drawStaticLayerRef.current = () => {
+    const off = offscreenRef.current;
+    const t = transformRef.current;
+    if (!off || !t) return;
+    const { w, h, dpr } = sizeRef.current;
+    const ctx = off.getContext('2d')!;
+
+    ctx.clearRect(0, 0, w * dpr, h * dpr);
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Track outline background
+    if (trackPath) {
+      ctx.beginPath();
+      tracePath(ctx, trackPath, t);
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 20 * t.scale;
+      ctx.stroke();
+    }
+
+    // Sector paths (colored when flagged)
+    for (const s of sectorData) {
+      const flag = sectorFlags[s.sector] ?? 0;
+      ctx.beginPath();
+      tracePath(ctx, s.path, t);
+      ctx.strokeStyle = flag > 0 ? (FLAG_COLORS[flag] ?? 'rgba(255,255,255,0.5)') : 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 12 * t.scale;
+      ctx.stroke();
+    }
+
+    // DRS zones
+    ctx.globalAlpha = 0.5;
+    for (const zone of drsZones) {
+      ctx.beginPath();
+      tracePath(ctx, zone.path, t);
+      ctx.strokeStyle = '#00e600';
+      ctx.lineWidth = 16 * t.scale;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Text labels
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Sector labels
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = `700 ${16 * t.scale}px ${RACING_FONT}`;
+    for (const s of sectorData) {
+      const sx = (s.midX - t.worldMinX) * t.scale + t.offsetX;
+      const sz = (s.midZ - t.worldMinZ) * t.scale + t.offsetZ;
+      ctx.fillText(`S${s.sector + 1}`, sx, sz);
+    }
+
+    // DRS labels
+    ctx.fillStyle = '#00e600';
+    ctx.font = `700 ${10 * t.scale}px ${RACING_FONT}`;
+    for (const zone of drsZones) {
+      const dx = (zone.midX - t.worldMinX) * t.scale + t.offsetX;
+      const dz = (zone.midZ - t.worldMinZ) * t.scale + t.offsetZ;
+      ctx.fillText('DRS', dx, dz);
+    }
+
+    // Turn labels
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = `600 ${10 * t.scale}px ${RACING_FONT}`;
+    for (const turn of turns) {
+      const tx = (turn.x - t.worldMinX) * t.scale + t.offsetX;
+      const tz = (turn.z - t.worldMinZ) * t.scale + t.offsetZ;
+      ctx.fillText(`T${turn.num}`, tx, tz);
+    }
+
+    ctx.restore();
+    staticDirty.current = false;
+  };
+
+  // ResizeObserver — HiDPI canvas sizing + transform recalculation
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      const w = Math.round(width);
+      const h = Math.round(height);
+      if (w === 0 || h === 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      sizeRef.current = { w, h, dpr };
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+
+      if (!offscreenRef.current) {
+        offscreenRef.current = document.createElement('canvas');
+      }
+      offscreenRef.current.width = w * dpr;
+      offscreenRef.current.height = h * dpr;
+
+      if (trackMap) {
+        transformRef.current = recalcTransform(w, h, trackMap);
+      }
+      staticDirty.current = true;
+    });
+
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [trackMap]);
+
+  // Redraw static layer after web fonts load
+  useEffect(() => {
+    document.fonts.ready.then(() => { staticDirty.current = true; });
+  }, []);
+
+  // Store subscription — update animation targets and car visuals (no React state)
+  useEffect(() => {
+    const unsub = useTelemetryStore.subscribe((state) => {
+      const positions = state.pitwallState?.positions ?? [];
+      const drivers = state.pitwallState?.drivers ?? [];
+      const pIdx = state.pitwallState?.playerIndex ?? 0;
+
+      const dmRef = driverMapRef.current;
+      if (drivers !== dmRef.arr) {
+        dmRef.arr = drivers;
+        dmRef.map.clear();
+        for (const d of drivers) dmRef.map.set(d.index, d);
+      }
+      const dm = dmRef.map;
+
+      const activeIndices = new Set<number>();
+      for (const p of positions) {
+        activeIndices.add(p.index);
+
+        // Animation targets
+        if (!animPos.current.has(p.index)) {
+          animPos.current.set(p.index, { x: p.x, z: p.z, tgtX: p.x, tgtZ: p.z });
+        } else {
+          const s = animPos.current.get(p.index)!;
+          if ((p.x - s.x) ** 2 + (p.z - s.z) ** 2 > 10000) {
+            s.x = p.x;
+            s.z = p.z;
+          }
+          s.tgtX = p.x;
+          s.tgtZ = p.z;
+        }
+
+        const driver = dm.get(p.index);
+        if (!driver) continue;
+        carVisuals.current.set(p.index, {
+          color: getTeamColor(driver.teamId),
+          position: driver.position,
+          isPlayer: p.index === pIdx,
+        });
+      }
+
+      // Prune departed cars
+      if (animPos.current.size > activeIndices.size) {
+        for (const idx of animPos.current.keys()) {
+          if (!activeIndices.has(idx)) {
+            animPos.current.delete(idx);
+            carVisuals.current.delete(idx);
+          }
+        }
+      }
+    });
+    return unsub;
+  }, []);
+
+  // rAF tick — lerp interpolation + canvas draw
+  useEffect(() => {
+    let lastTime = performance.now();
+
+    function tick(time: number) {
+      const dtMs = Math.min(time - lastTime, 100);
+      lastTime = time;
+      const smoothing = 1 - Math.exp(-dtMs * 0.015);
+
+      // Lerp positions
+      for (const [, state] of animPos.current) {
+        let newX = state.x + (state.tgtX - state.x) * smoothing;
+        let newZ = state.z + (state.tgtZ - state.z) * smoothing;
+        if (Math.abs(state.tgtX - newX) < 0.01 && Math.abs(state.tgtZ - newZ) < 0.01) {
+          newX = state.tgtX;
+          newZ = state.tgtZ;
+        }
+        state.x = newX;
+        state.z = newZ;
+      }
+
+      // Draw
+      const canvas = canvasRef.current;
+      const t = transformRef.current;
+      if (!canvas || !t) {
+        rafId.current = requestAnimationFrame(tick);
+        return;
+      }
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        rafId.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      const { w, h, dpr } = sizeRef.current;
+
+      // Redraw static layer if dirty (data changed, resize, font load)
+      if (staticDirty.current) drawStaticLayerRef.current();
+
+      // Composite: blit static layer then draw dynamic cars on top
+      ctx.clearRect(0, 0, w * dpr, h * dpr);
+      if (offscreenRef.current) ctx.drawImage(offscreenRef.current, 0, 0);
+
+      // Draw cars
+      ctx.save();
+      ctx.scale(dpr, dpr);
+
+      for (const [idx, car] of carVisuals.current) {
+        const pos = animPos.current.get(idx);
+        if (!pos) continue;
+
+        const cx = (pos.x - t.worldMinX) * t.scale + t.offsetX;
+        const cz = (pos.z - t.worldMinZ) * t.scale + t.offsetZ;
+
+        // Player outer glow ring
+        if (car.isPlayer) {
+          ctx.beginPath();
+          ctx.arc(cx, cz, 22 * t.scale, 0, Math.PI * 2);
+          ctx.strokeStyle = '#00FF00';
+          ctx.lineWidth = 2 * t.scale;
+          ctx.globalAlpha = 0.4;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+
+        // Car dot
+        const r = (car.isPlayer ? 16 : 12) * t.scale;
+        ctx.beginPath();
+        ctx.arc(cx, cz, r, 0, Math.PI * 2);
+        ctx.fillStyle = car.color;
+        ctx.globalAlpha = 0.9;
+        ctx.fill();
+        ctx.strokeStyle = car.isPlayer ? '#00FF00' : 'white';
+        ctx.lineWidth = (car.isPlayer ? 4 : 2) * t.scale;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // Position number
+        const fontSize = (car.isPlayer ? 13 : 11) * t.scale;
+        ctx.font = `bold ${fontSize}px ${RACING_FONT}`;
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(car.position), cx, cz);
+      }
+
+      ctx.restore();
+      rafId.current = requestAnimationFrame(tick);
+    }
+
+    rafId.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId.current);
+  }, []);
+
   if (!trackMap || trackMap.points.length === 0) {
     return (
       <div className={styles.noTrack}>
@@ -515,132 +710,7 @@ function TrackCanvas({ trackMap, marshalZones, turns }: TrackCanvasProps) {
     );
   }
 
-  return (
-    <svg viewBox={viewBox} className={styles.trackSvg} preserveAspectRatio="xMidYMid meet">
-      {/* Track outline background */}
-      <path
-        d={trackPath}
-        fill="none"
-        stroke="rgba(255,255,255,0.1)"
-        strokeWidth="20"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-
-      {/* Sector paths: neutral by default, colored when flagged */}
-      {sectorData.map((s, i) => {
-        const flag = sectorFlags[s.sector] ?? 0;
-        const color = flag > 0 ? (FLAG_COLORS[flag] ?? 'rgba(255,255,255,0.5)') : 'rgba(255,255,255,0.5)';
-        return (
-          <path
-            key={i}
-            d={s.path}
-            fill="none"
-            stroke={color}
-            strokeWidth="12"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        );
-      })}
-
-      {/* DRS zone paths */}
-      {drsZones.map((zone, i) => (
-        <path
-          key={`drs-${i}`}
-          d={zone.path}
-          fill="none"
-          stroke="#00e600"
-          strokeWidth="16"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity="0.5"
-        />
-      ))}
-
-      {/* Sector labels */}
-      {sectorData.map((s) => (
-        <text
-          key={`label-${s.sector}`}
-          x={s.midX}
-          y={s.midZ}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="rgba(255,255,255,0.6)"
-          fontSize="16"
-          fontWeight="700"
-          fontFamily="var(--font-racing)"
-        >
-          S{s.sector + 1}
-        </text>
-      ))}
-
-      {/* DRS zone labels */}
-      {drsZones.map((zone, i) => (
-        <text
-          key={`drs-label-${i}`}
-          x={zone.midX}
-          y={zone.midZ}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="#00e600"
-          fontSize="10"
-          fontWeight="700"
-          fontFamily="var(--font-racing)"
-        >
-          DRS
-        </text>
-      ))}
-
-      {/* Turn number labels */}
-      {turns.map((t) => (
-        <text
-          key={`turn-${t.num}`}
-          x={t.x}
-          y={t.z}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="rgba(255,255,255,0.45)"
-          fontSize="10"
-          fontWeight="600"
-          fontFamily="var(--font-racing)"
-        >
-          T{t.num}
-        </text>
-      ))}
-
-      {/* Car positions — transform & position text managed by rAF/subscription, not React */}
-      {carList.map((car) => {
-        const color = getTeamColor(car.teamId);
-        return (
-          <g key={car.index} ref={setCarRef(car.index)}>
-            {car.isPlayer && (
-              <circle cx={0} cy={0} r={22} fill="none" stroke="#00FF00" strokeWidth={2} opacity="0.4" />
-            )}
-            <circle
-              cx={0}
-              cy={0}
-              r={car.isPlayer ? 16 : 12}
-              fill={color}
-              stroke={car.isPlayer ? '#00FF00' : 'white'}
-              strokeWidth={car.isPlayer ? 4 : 2}
-              opacity="0.9"
-            />
-            <text
-              ref={setPosTextRef(car.index)}
-              x={0}
-              y={car.isPlayer ? 4 : 3.5}
-              textAnchor="middle"
-              fill="white"
-              fontSize={car.isPlayer ? 13 : 11}
-              fontWeight="bold"
-              fontFamily="var(--font-racing)"
-            />
-          </g>
-        );
-      })}
-    </svg>
-  );
+  return <canvas ref={canvasRef} className={styles.trackCanvas} />;
 }
 
 const TrackCanvasMemo = memo(TrackCanvas);

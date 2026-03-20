@@ -58,7 +58,7 @@
   min-height: 0;
 }
 
-.trackSvg { width: 100%; height: 100%; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.05)); }
+.trackCanvas { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.05)); }
 
 .noTrack {
   display: flex;
