@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { SettingsView } from '../../views/SettingsView';
 import { RacesView } from '../../views/RacesView';
-import { SetupAnalysisView } from '../../views/SetupAnalysisView';
 import { StrategyView } from '../../views/StrategyView';
 import { GuideView } from '../../views/GuideView';
 import { CommandCenter } from '../command-center/CommandCenter';
@@ -11,7 +10,7 @@ import { useWebRTCDataChannel } from '../../hooks/useWebRTCDataChannel';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import styles from './Layout.module.css';
 
-type ViewId = 'command' | 'strategy' | 'settings' | 'races' | 'setup' | 'guide';
+type ViewId = 'command' | 'strategy' | 'settings' | 'races' | 'guide';
 
 // Remote mode: auto-detect if VITE_SIGNALING_URL was baked into the build (standalone deploy),
 // or explicitly via ?remote query parameter (embedded build).
@@ -76,11 +75,9 @@ export function Layout() {
       ? '전략'
       : activeView === 'settings'
         ? 'Settings'
-        : activeView === 'setup'
-          ? 'Setup Analysis'
-          : activeView === 'guide'
-            ? 'Guide'
-            : 'Races';
+        : activeView === 'guide'
+          ? 'Guide'
+          : 'Races';
 
   // Show RemoteConnect screen if in remote mode and not yet connected
   if (isRemoteMode && !rtcOptions) {
@@ -130,15 +127,6 @@ export function Layout() {
             >
               <span className={styles.navIcon}>SG</span>
               <span className={styles.navLabel}>전략</span>
-            </button>
-          </li>
-          <li className={styles.navItem}>
-            <button
-              className={`${styles.navButton} ${activeView === 'setup' ? styles.navActive : ''}`}
-              onClick={() => handleNavClick('setup')}
-            >
-              <span className={styles.navIcon}>SA</span>
-              <span className={styles.navLabel}>Setup Analysis</span>
             </button>
           </li>
           {!isRemoteMode && (
@@ -202,11 +190,6 @@ export function Layout() {
           {activeView === 'settings' && !isRemoteMode && (
             <div className={styles.panel}>
               <SettingsView />
-            </div>
-          )}
-          {activeView === 'setup' && (
-            <div className={styles.panel}>
-              <SetupAnalysisView />
             </div>
           )}
           {activeView === 'races' && !isRemoteMode && (

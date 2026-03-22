@@ -35,7 +35,6 @@ type PitwallManager struct {
 	trackStore       *tracks.TrackStore
 	recorder         *TrackRecorder
 	dynamicsAnalyzer *DynamicsAnalyzer
-	setupAnalyzer    *SetupAnalyzer
 }
 
 // NewPitwallManager creates a new PitwallManager
@@ -45,7 +44,6 @@ func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackSto
 		trackStore:       trackStore,
 		recorder:         recorder,
 		dynamicsAnalyzer: NewDynamicsAnalyzer(),
-		setupAnalyzer:    NewSetupAnalyzer(),
 	}
 }
 
@@ -115,24 +113,6 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 				ld.CurrentLapNum,
 			)
 
-			// Feed setup analyzer when motion ex data is available
-			if pm.motionEx != nil {
-				pm.setupAnalyzer.ProcessFrame(SetupFrameInput{
-					Speed:           tel.Speed,
-					Steer:           tel.Steer,
-					Throttle:        tel.Throttle,
-					Brake:           tel.Brake,
-					GForceLateral:   car.GForceLateral,
-					GForceVertical:  car.GForceVertical,
-					LapNum:          ld.CurrentLapNum,
-					WheelSlipRatio:  pm.motionEx.WheelSlipRatio,
-					FrontAeroHeight: pm.motionEx.FrontAeroHeight,
-					RearAeroHeight:  pm.motionEx.RearAeroHeight,
-					TireSurfaceTemp: tel.TyresSurfaceTemperature,
-					TireInnerTemp:   tel.TyresInnerTemperature,
-					TyrePressure:    tel.TyresPressure,
-				})
-			}
 		}
 	}
 
@@ -377,36 +357,9 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				}
 			}
 
-			// Vehicle dynamics & setup analysis (player car only)
+			// Vehicle dynamics (player car only)
 			if i == int(pm.playerIndex) {
 				d.Dynamics = pm.dynamicsAnalyzer.GetLapDynamics()
-				d.SetupAnalysis = pm.setupAnalyzer.GetSetupAnalysis()
-
-				if pm.carSetups != nil {
-					setup := &pm.carSetups.CarSetupData[i]
-					d.Setup = &dto.CarSetupDTO{
-						FrontWing:        int(setup.FrontWing),
-						RearWing:         int(setup.RearWing),
-						FrontCamber:      setup.FrontCamber,
-						RearCamber:       setup.RearCamber,
-						FrontToe:         setup.FrontToe,
-						RearToe:          setup.RearToe,
-						FrontSuspension:  int(setup.FrontSuspension),
-						RearSuspension:   int(setup.RearSuspension),
-						FrontAntiRollBar: int(setup.FrontAntiRollBar),
-						RearAntiRollBar:  int(setup.RearAntiRollBar),
-						FrontRideHeight:  int(setup.FrontSuspensionHeight),
-						RearRideHeight:   int(setup.RearSuspensionHeight),
-						BrakePressure:    int(setup.BrakePressure),
-						EngineBraking:    int(setup.EngineBraking),
-						TyrePressures: [4]float32{
-							setup.FrontLeftTyrePressure,
-							setup.FrontRightTyrePressure,
-							setup.RearLeftTyrePressure,
-							setup.RearRightTyrePressure,
-						},
-					}
-				}
 			}
 
 			// F1 game order: [RL, RR, FL, FR] -> DTO order: [FL, FR, RL, RR]

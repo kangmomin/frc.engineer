@@ -59,10 +59,8 @@ type PlayerSummary struct {
 	CompletedLaps int                       `json:"completedLaps"`
 	BestLapMS     uint32                    `json:"bestLapMs"`
 	LastLapMS     uint32                    `json:"lastLapMs"`
-	PitStops      int                       `json:"pitStops"`
-	Stints        []RaceStint               `json:"stints,omitempty"`
-	SetupAnalysis []dto.SetupLapAnalysisDTO `json:"setupAnalysis,omitempty"`
-	Setup         *dto.CarSetupDTO          `json:"setup,omitempty"`
+	PitStops      int         `json:"pitStops"`
+	Stints        []RaceStint `json:"stints,omitempty"`
 }
 
 // DriverSummary captures lightweight result metrics for each driver.
@@ -194,13 +192,6 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 				for i, s := range p.StintHistory {
 					out.Player.Stints[i] = RaceStint{Compound: s.Compound, Laps: s.Laps}
 				}
-			}
-			if len(p.SetupAnalysis) > 0 {
-				out.Player.SetupAnalysis = append([]dto.SetupLapAnalysisDTO(nil), p.SetupAnalysis...)
-			}
-			if p.Setup != nil {
-				setupCopy := *p.Setup
-				out.Player.Setup = &setupCopy
 			}
 		}
 	}

@@ -11,14 +11,7 @@ import type {
   RaceListItem,
   SessionInfo,
   RaceSummary,
-  SetupLapAnalysis,
-  CarSetup,
 } from '../types/telemetry';
-import { SetupCard } from '../components/setup-analysis/SetupCard';
-import type { Severity } from '../components/setup-analysis/SetupCard';
-import { RecommendationRow } from '../components/setup-analysis/shared/RecommendationRow';
-import { useSetupFeedbackStore } from '../store/setupFeedbackStore';
-import type { LapFeedback, SetupChangeRecord } from '../store/setupFeedbackStore';
 import styles from './RacesView.module.css';
 
 function formatLap(ms: number): string {
@@ -723,164 +716,6 @@ function TelemetryReplayPanel({ primarySummary, compareSummary, currentTimeSec }
   );
 }
 
-function formatFeedbackTime(ts: number): string {
-  const d = new Date(ts);
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  return `${h}:${m}`;
-}
-
-const RATING_COLORS: Record<string, string> = {
-  good: '#00ff00',
-  neutral: '#ffcc00',
-  bad: '#e10600',
-};
-
-const RATING_LABELS: Record<string, string> = {
-  good: 'Good',
-  neutral: 'Neutral',
-  bad: 'Bad',
-};
-
-function SavedFeedbackSection({
-  feedbacks,
-  setupChanges,
-  onDeleteFeedback,
-  onDeleteSetupChange,
-}: {
-  feedbacks: LapFeedback[];
-  setupChanges: SetupChangeRecord[];
-  onDeleteFeedback: (id: string) => void;
-  onDeleteSetupChange: (id: string) => void;
-}) {
-  if (feedbacks.length === 0 && setupChanges.length === 0) return null;
-
-  return (
-    <div className={styles.tableWrap}>
-      <h4 className={styles.tableTitle}>Setup Feedback & History</h4>
-
-      {feedbacks.length > 0 && (
-        <div style={{ padding: '0 8px 8px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 6 }}>
-            Feedback ({feedbacks.length})
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
-            {[...feedbacks].reverse().map((fb) => (
-              <div key={fb.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: 11 }}>
-                <span style={{ fontWeight: 700, color: 'var(--accent-blue)', minWidth: 44 }}>Lap {fb.lapNum}</span>
-                <span style={{ fontWeight: 700, fontSize: 10, color: RATING_COLORS[fb.rating] ?? 'var(--text-muted)', textTransform: 'uppercase' as const }}>{RATING_LABELS[fb.rating] ?? fb.rating}</span>
-                <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{fb.note}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatFeedbackTime(fb.timestamp)}</span>
-                <button
-                  onClick={() => onDeleteFeedback(fb.id)}
-                  title="삭제"
-                  style={{ background: 'none', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: 9, fontWeight: 700, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                >
-                  X
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {setupChanges.length > 0 && (
-        <div style={{ padding: '0 8px 8px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 6 }}>
-            Setup Changes ({setupChanges.length})
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
-            {[...setupChanges].reverse().map((change) => (
-              <div key={change.id} style={{ padding: '6px 8px', background: 'var(--bg-primary)', borderRadius: 'var(--radius-sm)', fontSize: 11 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontWeight: 700, color: 'var(--accent-blue)' }}>Lap {change.lapNum}</span>
-                  <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>{formatFeedbackTime(change.timestamp)}</span>
-                  <button
-                    onClick={() => onDeleteSetupChange(change.id)}
-                    title="삭제"
-                    style={{ background: 'none', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', fontSize: 9, fontWeight: 700, width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                  >
-                    X
-                  </button>
-                </div>
-                {change.recommendations.length > 0 && (
-                  <div style={{ paddingLeft: 4, borderLeft: '3px solid rgba(255, 204, 0, 0.4)', marginTop: 4, paddingTop: 2, paddingBottom: 2, background: 'rgba(255, 204, 0, 0.04)' }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#ffcc00', marginBottom: 2 }}>추천사항</div>
-                    {change.recommendations.map((rec, ri) => (
-                      <div key={ri} style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                        <span style={{ fontWeight: 700, color: rec.severity === 'red' ? '#e10600' : rec.severity === 'yellow' ? '#ffcc00' : '#00ff00' }}>{rec.title}</span>
-                        {rec.adjustments.map((adj, ai) => (
-                          <span key={ai} style={{ marginLeft: 6 }}>{adj.label}: {adj.current && adj.target ? `${adj.current} → ${adj.target}` : adj.delta}</span>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SavedSetupAnalysisSection({ laps }: { laps: SetupLapAnalysis[]; setup?: CarSetup }) {
-  const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'];
-  const latest = laps[laps.length - 1];
-
-  const getAeroSeverity = (): Severity => 'green';
-  const getTransSeverity = (): Severity => (latest && latest.wheelspinPct > 15 ? 'yellow' : 'green');
-  const getSuspSeverity = (): Severity => (latest && latest.bottomingPct > 10 ? 'yellow' : 'green');
-  const getBrakeSeverity = (): Severity => {
-    if (!latest) return 'green';
-    if (latest.frontLockupPct > 20 || latest.rearLockupPct > 20) return 'red';
-    if (latest.frontLockupPct > 10 || latest.rearLockupPct > 10) return 'yellow';
-    return 'green';
-  };
-  const getTyreSeverity = (): Severity => {
-    if (!latest) return 'green';
-    return latest.avgTyreInnerTemp.some((t) => t > 105) ? 'red' : latest.avgTyreInnerTemp.some((t) => t > 100) ? 'yellow' : 'green';
-  };
-
-  return (
-    <div className={styles.tableWrap}>
-      <h4 className={styles.tableTitle}>Setup Analysis</h4>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 4px' }}>
-        <SetupCard title="Aerodynamics" severity={getAeroSeverity()} readOnly liveStrip={null}
-          table={<table><thead><tr><th>Lap</th><th>Max Speed</th><th>Avg G</th></tr></thead><tbody>
-            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.maxStraightSpeed.toFixed(0)}</td><td>{l.avgCorneringG.toFixed(2)}</td></tr>)}
-          </tbody></table>}
-        />
-        <SetupCard title="Transmission" severity={getTransSeverity()} readOnly liveStrip={null}
-          table={<table><thead><tr><th>Lap</th><th>Wheelspin %</th></tr></thead><tbody>
-            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.wheelspinPct.toFixed(1)}</td></tr>)}
-          </tbody></table>}
-          recommendation={latest && latest.wheelspinPct > 15 ? <RecommendationRow severity="yellow" text="Wheelspin detected — lower on-throttle differential" /> : undefined}
-        />
-        <SetupCard title="Suspension" severity={getSuspSeverity()} readOnly liveStrip={null}
-          table={<table><thead><tr><th>Lap</th><th>Bottoming %</th><th>G Spikes</th></tr></thead><tbody>
-            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.bottomingPct.toFixed(1)}</td><td>{l.vertGSpikeCount}</td></tr>)}
-          </tbody></table>}
-          recommendation={latest && latest.bottomingPct > 10 ? <RecommendationRow severity="yellow" text="Bottoming detected — raise ride height" /> : undefined}
-        />
-        <SetupCard title="Brakes" severity={getBrakeSeverity()} readOnly liveStrip={null}
-          table={<table><thead><tr><th>Lap</th><th>F Lockup %</th><th>R Lockup %</th></tr></thead><tbody>
-            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td><td>{l.frontLockupPct.toFixed(1)}</td><td>{l.rearLockupPct.toFixed(1)}</td></tr>)}
-          </tbody></table>}
-          recommendation={latest && latest.frontLockupPct > latest.rearLockupPct && latest.frontLockupPct > 10 ? <RecommendationRow severity="yellow" text="Front locking more — move bias rearward" /> : undefined}
-        />
-        <SetupCard title="Tyres" severity={getTyreSeverity()} readOnly liveStrip={null}
-          table={<table><thead><tr><th>Lap</th>{WHEEL_LABELS.map((w) => <th key={`p${w}`}>{w} PSI</th>)}{WHEEL_LABELS.map((w) => <th key={`t${w}`}>{w} °C</th>)}</tr></thead><tbody>
-            {laps.map((l) => <tr key={l.lapNum}><td>{l.lapNum}</td>{l.avgTyrePressure.map((p, i) => <td key={`p${i}`}>{p.toFixed(1)}</td>)}{l.avgTyreInnerTemp.map((t, i) => <td key={`t${i}`}>{t.toFixed(0)}</td>)}</tr>)}
-          </tbody></table>}
-          recommendation={latest && latest.avgTyreInnerTemp.some((t) => t > 100) ? <RecommendationRow severity="yellow" text="Inner temps high — reduce tyre pressure" /> : undefined}
-        />
-      </div>
-    </div>
-  );
-}
-
 export function RacesView() {
   const [races, setRaces] = useState<RaceListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -889,11 +724,6 @@ export function RacesView() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  const feedbacks = useSetupFeedbackStore((s) => s.feedbacks);
-  const setupChanges = useSetupFeedbackStore((s) => s.setupChanges);
-  const deleteFeedback = useSetupFeedbackStore((s) => s.deleteFeedback);
-  const deleteSetupChange = useSetupFeedbackStore((s) => s.deleteSetupChange);
 
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -1428,16 +1258,6 @@ export function RacesView() {
               </div>
             </div>
 
-            {player.setupAnalysis && player.setupAnalysis.length > 0 && (
-              <SavedSetupAnalysisSection laps={player.setupAnalysis} setup={player.setup} />
-            )}
-
-            <SavedFeedbackSection
-              feedbacks={feedbacks}
-              setupChanges={setupChanges}
-              onDeleteFeedback={deleteFeedback}
-              onDeleteSetupChange={deleteSetupChange}
-            />
           </div>
         )}
       </section>

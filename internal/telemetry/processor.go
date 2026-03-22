@@ -728,8 +728,6 @@ func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {
 			driver := src.Drivers[i]
 			// Omit per-lap analysis from replay frames (large and repeated).
 			driver.Dynamics = nil
-			driver.SetupAnalysis = nil
-			driver.Setup = nil
 			if len(driver.StintHistory) > 0 {
 				driver.StintHistory = append([]dto.StintInfoDTO(nil), driver.StintHistory...)
 			}
