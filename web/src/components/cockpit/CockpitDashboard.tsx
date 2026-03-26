@@ -345,6 +345,21 @@ export function CockpitDashboard({
             </div>
 
             <div className={styles.energyColumn}>
+              <div className={styles.setupMetrics}>
+                <MetricTile
+                  label="Brake Bias"
+                  value={player?.brakeBias ? `${player.brakeBias.toFixed(1)}%` : '--'}
+                  tone="tertiary"
+                  className={styles.compactMetricTile}
+                />
+                <MetricTile
+                  label="Diff On Throttle"
+                  value={player?.diffOnThrottle ? `${player.diffOnThrottle}%` : '--'}
+                  tone="primary"
+                  className={styles.compactMetricTile}
+                />
+              </div>
+
               <div className={styles.splitPills}>
                 <div className={styles.splitPill}>
                   <span>Deploy</span>
@@ -357,16 +372,6 @@ export function CockpitDashboard({
               </div>
 
               <div className={styles.energyMetrics}>
-                <MetricTile
-                  label="Diff On Throttle"
-                  value={player?.diffOnThrottle ? `${player.diffOnThrottle}%` : '--'}
-                  tone="primary"
-                />
-                <MetricTile
-                  label="Brake Bias"
-                  value={player?.brakeBias ? `${player.brakeBias.toFixed(1)}%` : '--'}
-                  tone="tertiary"
-                />
                 <MetricTile
                   label="Fuel at Finish"
                   value={fuelMargin}
@@ -469,13 +474,15 @@ function MetricTile({
   label,
   value,
   tone,
+  className,
 }: {
   label: string;
   value: string;
   tone: 'primary' | 'tertiary' | 'secondary' | 'neutral';
+  className?: string;
 }) {
   return (
-    <div className={styles.metricTile}>
+    <div className={className ? `${styles.metricTile} ${className}` : styles.metricTile}>
       <span>{label}</span>
       <strong className={styles[tone]}>{value}</strong>
     </div>
