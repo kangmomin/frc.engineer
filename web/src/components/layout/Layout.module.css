@@ -14,7 +14,7 @@
   z-index: 20;
   border: 0;
   background: rgba(10, 10, 11, 0.7);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(20px);
 }
 
 .drawer {
@@ -35,7 +35,7 @@
       transparent 2px,
       transparent 7px
     );
-  border-left: 1px solid rgba(132, 147, 150, 0.16);
+  border-left: 1px solid rgba(59, 73, 76, 0.15);
   box-shadow: -32px 0 80px rgba(0, 0, 0, 0.44);
 }
 
@@ -45,7 +45,7 @@
   justify-content: space-between;
   gap: 20px;
   padding: 24px 24px 18px;
-  border-bottom: 1px solid rgba(132, 147, 150, 0.12);
+  border-bottom: 1px solid rgba(59, 73, 76, 0.15);
 }
 
 .drawerEyebrow {
@@ -69,7 +69,7 @@
 
 .closeButton {
   padding: 10px 14px;
-  border: 1px solid rgba(132, 147, 150, 0.18);
+  border: 1px solid rgba(59, 73, 76, 0.20);
   background: rgba(53, 52, 54, 0.56);
   color: var(--text-primary);
   font-family: var(--font-racing);
