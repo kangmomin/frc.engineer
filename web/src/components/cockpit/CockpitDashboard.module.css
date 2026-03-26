@@ -1,16 +1,15 @@
 .dashboard {
   --dashboard-gutter: clamp(12px, 1.6vw, 20px);
+  --top-strip-height: minmax(0, 1fr);
+  --bottom-strip-height: clamp(220px, 30vh, 288px);
   position: relative;
   height: 100%;
-  min-height: 0;
   width: 100%;
   padding: var(--dashboard-gutter);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: var(--top-strip-height) var(--bottom-strip-height);
   gap: var(--dashboard-gutter);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
 }
 
 .backdropGlow {
@@ -22,43 +21,38 @@
   pointer-events: none;
 }
 
-.headerBar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  min-height: 40px;
-}
-
 .utilityDock {
-  position: relative;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 4;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .settingsButton,
 .remoteButton {
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(0, 229, 255, 0.25);
-  background: rgba(19, 19, 20, 0.88);
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.18);
   color: var(--accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease;
 }
 
 .remoteButton {
   width: auto;
-  min-width: 64px;
-  padding: 0 14px;
+  min-width: 56px;
+  padding: 0 12px;
   border-radius: 999px;
   font-family: var(--font-racing);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -66,18 +60,17 @@
 
 .settingsButton:hover,
 .remoteButton:hover {
-  transform: scale(1.06);
-  border-color: rgba(0, 229, 255, 0.45);
-  background: rgba(28, 27, 28, 0.96);
+  transform: scale(1.05);
+  background: rgba(0, 229, 255, 0.12);
 }
 
 .remoteActive {
   color: var(--accent-lime);
-  border-color: rgba(205, 255, 19, 0.38);
+  background: rgba(205, 255, 19, 0.14);
 }
 
 .settingsIcon {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
 }
 
@@ -85,24 +78,26 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.84fr);
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
   min-height: 0;
-  flex: 1;
-  align-items: start;
+  overflow: hidden;
 }
 
 .leaderboardShell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
   gap: 16px;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .ribbonGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+  min-height: 48px;
 }
 
 .ribbonCard,
@@ -117,20 +112,19 @@
       transparent 2px,
       transparent 6px
     );
-  border: 1px solid rgba(132, 147, 150, 0.12);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  border: 1px solid rgba(132, 147, 150, 0.08);
   overflow: hidden;
   min-width: 0;
 }
 
 .ribbonCard {
-  min-height: 82px;
-  padding: 12px 16px;
+  min-height: 48px;
+  padding: 0 14px;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
   border-left: 2px solid currentColor;
+  background: rgba(42, 42, 43, 0.92);
 }
 
 .ribbonLabel,
@@ -160,35 +154,43 @@
 
 .ribbonCard strong {
   font-family: var(--font-racing);
-  font-size: clamp(1.35rem, 1vw + 1rem, 1.9rem);
+  font-size: clamp(1.25rem, 0.8vw + 0.9rem, 1.55rem);
   font-weight: 800;
   font-style: italic;
   line-height: 1;
 }
 
 .ribbonCard span:last-child {
-  color: var(--text-muted);
-  font-size: 11px;
+  display: none;
 }
 
 .leaderboardPanel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
+  background:
+    linear-gradient(180deg, rgba(32, 31, 32, 0.96), rgba(32, 31, 32, 0.96)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.015) 0,
+      rgba(255, 255, 255, 0.015) 2px,
+      transparent 2px,
+      transparent 6px
+    );
 }
 
 .tableHeader,
 .tableRow {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1.65fr) 58px minmax(76px, 0.9fr) minmax(76px, 0.9fr) minmax(88px, 0.95fr) 96px;
-  gap: 10px;
+  grid-template-columns: 52px minmax(0, 1.75fr) 56px minmax(72px, 0.95fr) 72px 88px 90px;
+  gap: 8px;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 14px;
 }
 
 .tableHeader {
-  background: rgba(53, 52, 54, 0.88);
-  border-bottom: 1px solid rgba(132, 147, 150, 0.14);
+  background: rgba(53, 52, 54, 0.9);
+  border-bottom: 1px solid rgba(132, 147, 150, 0.12);
 }
 
 .tableBody {
@@ -197,10 +199,10 @@
 }
 
 .tableRow {
-  min-height: 64px;
+  min-height: 54px;
   border-top: 1px solid rgba(132, 147, 150, 0.08);
   font-family: var(--font-racing);
-  font-size: 0.98rem;
+  font-size: 0.92rem;
   color: var(--text-primary);
 }
 
@@ -218,7 +220,7 @@
 }
 
 .positionCell {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   font-weight: 800;
 }
 
@@ -236,7 +238,7 @@
 }
 
 .driverCode {
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -320,7 +322,8 @@
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 16px;
   min-width: 0;
-  align-content: start;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .combatPanel,
@@ -329,14 +332,15 @@
 .energyPanel,
 .damagePanel,
 .environmentPanel {
-  padding: 16px;
+  padding: 14px;
+  min-height: 0;
 }
 
 .combatPanel {
   border-right: 4px solid rgba(255, 82, 92, 0.7);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .strategyPanel {
@@ -351,7 +355,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 1px solid rgba(132, 147, 150, 0.14);
 }
 
@@ -430,7 +434,7 @@
 .strategyRow strong,
 .trafficValue {
   font-family: var(--font-racing);
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 800;
   line-height: 1;
 }
@@ -459,24 +463,25 @@
 
 .progressFooter strong {
   font-family: var(--font-racing);
-  font-size: 1.45rem;
+  font-size: 1.2rem;
 }
 
 .bottomRow {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 0.92fr);
-  gap: 20px;
+  grid-template-columns: 380px minmax(0, 1fr) 272px 320px;
+  gap: 16px;
   min-height: 0;
-  align-items: start;
+  overflow: hidden;
 }
 
 .tyrePanel {
   border-bottom: 4px solid rgba(205, 255, 19, 0.72);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  height: 100%;
 }
 
 .tyreGrid {
@@ -488,12 +493,12 @@
 
 .tyreCard {
   position: relative;
-  min-height: 108px;
-  padding: 12px;
+  min-height: 0;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .tyreCardSplit {
@@ -506,7 +511,7 @@
 .tyreCard strong {
   display: block;
   font-family: var(--font-racing);
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 800;
   line-height: 1;
 }
@@ -522,11 +527,12 @@
 
 .footerStrip {
   margin-top: auto;
-  padding: 12px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  background: rgba(14, 14, 15, 0.8);
 }
 
 .footerStrip strong {
@@ -538,28 +544,32 @@
   border-bottom: 4px solid rgba(0, 229, 255, 0.7);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  height: 100%;
 }
 
 .energyContent {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(156px, 0.42fr) minmax(0, 1fr);
+  gap: 14px;
   min-height: 0;
+  flex: 1;
+  align-items: center;
+  overflow: hidden;
 }
 
 .ersDial {
   position: relative;
-  width: 148px;
-  height: 148px;
+  width: 140px;
+  height: 140px;
   margin: auto;
 }
 
 .ersDialRing {
   --ring-fill: 0%;
   position: relative;
-  width: 148px;
-  height: 148px;
+  width: 140px;
+  height: 140px;
   border-radius: 999px;
   background:
     radial-gradient(circle at center, rgba(19, 19, 20, 0.95) 58%, transparent 59%),
@@ -579,7 +589,7 @@
 .ersDialCenter strong {
   display: block;
   font-family: var(--font-racing);
-  font-size: 2.2rem;
+  font-size: 2rem;
   font-weight: 800;
   line-height: 1;
 }
@@ -607,7 +617,7 @@
 
 .splitPill strong {
   font-family: var(--font-racing);
-  font-size: 1rem;
+  font-size: 0.88rem;
 }
 
 .energyMetrics {
@@ -620,28 +630,33 @@
   border-bottom: 4px solid rgba(255, 82, 92, 0.45);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  height: 100%;
 }
 
 .damageMetric {
-  padding: 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  border-left: 2px solid rgba(205, 255, 19, 0.56);
 }
 
 .environmentPanel {
   border-bottom: 4px solid rgba(186, 201, 204, 0.44);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  height: 100%;
 }
 
 .forecastBlock {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .forecastEmpty {
@@ -652,7 +667,7 @@
 }
 
 .forecastRow {
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -731,14 +746,14 @@
   font-size: 12px;
 }
 
-@media (max-width: 1420px) {
+@media (max-width: 1520px) {
   .bottomRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tableHeader,
   .tableRow {
-    grid-template-columns: 52px minmax(0, 1.5fr) 56px minmax(72px, 0.88fr) minmax(72px, 0.88fr) minmax(84px, 0.9fr) 88px;
+    grid-template-columns: 48px minmax(0, 1.6fr) 52px minmax(72px, 0.88fr) 72px 82px 84px;
   }
 
   .energyContent {
@@ -746,20 +761,29 @@
   }
 }
 
-@media (max-width: 1240px) {
+@media (max-width: 1260px) {
+  .dashboard {
+    grid-template-rows: auto auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
   .topRow {
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .sideRail {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: none;
+    overflow: visible;
   }
 }
 
 @media (max-width: 1080px) {
   .bottomRow {
     grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .tableHeader,
@@ -778,6 +802,9 @@
 @media (max-width: 900px) {
   .dashboard {
     --dashboard-gutter: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
   }
 
   .sideRail,
@@ -787,6 +814,20 @@
   .tyreGrid,
   .energyContent {
     grid-template-columns: 1fr;
+  }
+
+  .utilityDock {
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 6;
+    width: fit-content;
+  }
+
+  .topRow,
+  .leaderboardShell,
+  .bottomRow {
+    overflow: visible;
   }
 
   .combatPanel,
@@ -899,27 +940,38 @@
     --dashboard-gutter: 12px;
   }
 
-  .headerBar {
-    min-height: 36px;
-  }
-
   .utilityDock {
     gap: 8px;
   }
 
   .settingsButton,
   .remoteButton {
-    height: 36px;
+    width: 32px;
+    height: 32px;
   }
 
   .remoteButton {
-    min-width: 56px;
-    padding: 0 12px;
+    min-width: 52px;
+    padding: 0 10px;
     font-size: 10px;
   }
 
   .ribbonGrid {
     grid-template-columns: 1fr;
+  }
+
+  .ribbonCard {
+    min-height: 56px;
+    align-items: flex-start;
+    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ribbonCard span:last-child {
+    display: block;
+    color: var(--text-muted);
+    font-size: 10px;
   }
 
   .tableRow {
