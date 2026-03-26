@@ -449,16 +449,7 @@ function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
               <div className={styles.weatherRibbonIcon}>
                 <WeatherIcon weather={forecast.weather} />
               </div>
-              <div className={styles.weatherRibbonStats}>
-                <div className={styles.weatherRibbonStat}>
-                  <span>Prob</span>
-                  <strong>{`${forecast.rainPercentage}%`}</strong>
-                </div>
-                <div className={styles.weatherRibbonStat}>
-                  <span>Precip</span>
-                  <strong>{formatPrecipAmount(forecast.weather)}</strong>
-                </div>
-              </div>
+              <strong>{forecast.rainPercentage}%</strong>
             </div>
           ))
         )}
@@ -755,15 +746,6 @@ function formatForecastLabel(offsetMinutes: number): string {
   return `+${offsetMinutes}M`;
 }
 
-
-function formatPrecipAmount(weather: string): string {
-  const normalized = weather.replace(/_/g, ' ').toLowerCase();
-  if (normalized === 'clear' || normalized === 'light cloud' || normalized === 'overcast') return '0 mm';
-  if (normalized === 'light rain') return '~2 mm';
-  if (normalized === 'heavy rain') return '~8 mm';
-  if (normalized === 'storm') return '~20 mm';
-  return '— mm';
-}
 
 function getDamageTone(value: number): 'tertiary' | 'primary' | 'secondary' {
   if (value >= 20) return 'secondary';

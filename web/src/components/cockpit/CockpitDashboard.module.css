@@ -192,14 +192,21 @@
 }
 
 .weatherRibbonSlot {
-  flex: 0 0 104px;
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border: 1px solid rgba(59, 73, 76, 0.15);
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
   background: rgba(14, 14, 15, 0.44);
+}
+
+.weatherRibbonSlot strong {
+  font-family: var(--font-racing);
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .weatherRibbonSlots::-webkit-scrollbar {
@@ -229,8 +236,8 @@
 }
 
 .weatherRibbonIcon {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   color: var(--accent);
 }
 
@@ -247,28 +254,6 @@
 .weatherRibbonIcon circle {
   fill: currentColor;
   stroke: none;
-}
-
-.weatherRibbonStats {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px;
-}
-
-.weatherRibbonStat {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.weatherRibbonStat strong {
-  font-family: var(--font-racing);
-  font-size: 0.68rem;
-  font-weight: 800;
-  font-style: italic;
-  line-height: 1;
-  white-space: nowrap;
 }
 
 .weatherRibbonEmpty {
