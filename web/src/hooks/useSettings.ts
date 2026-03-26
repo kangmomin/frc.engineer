@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { mockConfig, mockTracks } from '../mock/mockData';
+import { isMockMode } from '../runtimeFlags';
 import type { AppConfig, TrackListItem } from '../types/telemetry';
 
 function getApiBase(): string {
@@ -14,6 +16,10 @@ export function useSettings() {
   const base = getApiBase();
 
   const fetchConfig = useCallback(async () => {
+    if (isMockMode) {
+      setConfig(mockConfig);
+      return;
+    }
     try {
       const res = await fetch(`${base}/api/config`);
       if (res.ok) {
@@ -33,6 +39,10 @@ export function useSettings() {
   }, [base]);
 
   const fetchTracks = useCallback(async () => {
+    if (isMockMode) {
+      setTracks(mockTracks);
+      return;
+    }
     try {
       const res = await fetch(`${base}/api/tracks`);
       if (res.ok) {
@@ -51,6 +61,11 @@ export function useSettings() {
   const updateConfig = useCallback(async (newConfig: AppConfig) => {
     setSaving(true);
     try {
+      if (isMockMode) {
+        setConfig(newConfig);
+        return;
+      }
+
       const backendPortChanged = config && newConfig.backendPort !== config.backendPort;
 
       const res = await fetch(`${base}/api/config`, {

@@ -1,102 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
-  /* Background colors */
-  --bg-primary: #050505;
-  --bg-secondary: #0f0f0f;
-  --bg-panel: rgba(15, 15, 15, 0.95);
-  --bg-panel-hover: rgba(25, 25, 25, 0.95);
-  --bg-panel-border: rgba(255, 255, 255, 0.08);
-  --bg-panel-accent: rgba(225, 6, 0, 0.1);
+  --bg-primary: #131314;
+  --bg-secondary: #1c1b1c;
+  --bg-panel: rgba(32, 31, 32, 0.92);
+  --bg-panel-hover: rgba(42, 42, 43, 0.95);
+  --bg-panel-border: rgba(132, 147, 150, 0.16);
+  --bg-panel-accent: rgba(0, 229, 255, 0.08);
+  --bg-surface: #201f20;
+  --bg-surface-elevated: #2a2a2b;
+  --border-color: rgba(132, 147, 150, 0.22);
 
-  /* Text colors */
-  --text-primary: #ffffff;
-  --text-secondary: #a0a0a0;
-  --text-muted: #666666;
-  --text-f1: #e10600;
+  --text-primary: #e5e2e3;
+  --text-secondary: #bac9cc;
+  --text-muted: #849396;
+  --text-f1: #00e5ff;
 
-  /* F1 Accent colors */
-  --accent-red: #e10600;
-  --accent-red-hover: #ff0700;
-  --accent-green: #00ff00;
-  --accent-yellow: #ffff00;
-  --accent-blue: #00d2ff;
-  --accent-orange: #ff8700;
-  --accent-purple: #9b59b6;
+  --accent: #00e5ff;
+  --accent-cyan: #00e5ff;
+  --accent-red: #ff525c;
+  --accent-red-hover: #ff737a;
+  --accent-green: #cdff13;
+  --accent-yellow: #c3f5ff;
+  --accent-blue: #00daf3;
+  --accent-orange: #ffb3b2;
+  --accent-purple: #9cf0ff;
+  --accent-lime: #cdff13;
+  --accent-soft: #ffb3b2;
 
-  /* Delta colors */
-  --delta-faster: #00ff00;
-  --delta-slower: #ff1818;
-  --delta-neutral: #ffffff;
+  --delta-faster: #cdff13;
+  --delta-slower: #ff525c;
+  --delta-neutral: #e5e2e3;
 
-  /* Pedal colors */
-  --throttle-color: #00ff00;
-  --brake-color: #ff1818;
+  --throttle-color: #cdff13;
+  --brake-color: #ff525c;
 
-  /* RPM bar colors */
-  --rpm-low: #00ff00;
-  --rpm-mid: #ffff00;
-  --rpm-high: #ff1818;
+  --rpm-low: #cdff13;
+  --rpm-mid: #c3f5ff;
+  --rpm-high: #ff525c;
 
-  /* Gear colors */
-  --gear-reverse: #ff1818;
-  --gear-neutral: #ffff00;
-  --gear-forward: #ffffff;
+  --gear-reverse: #ff525c;
+  --gear-neutral: #c3f5ff;
+  --gear-forward: #e5e2e3;
 
-  /* DRS colors */
-  --drs-active: #00ff00;
-  --drs-available: #ffff00;
-  --drs-inactive: #333333;
+  --drs-active: #cdff13;
+  --drs-available: #c3f5ff;
+  --drs-inactive: #3b494c;
 
-  /* Sector colors */
-  --sector-purple: #b659ff;
-  --sector-green: #00ff00;
-  --sector-yellow: #ffff00;
+  --sector-purple: #9cf0ff;
+  --sector-green: #cdff13;
+  --sector-yellow: #ffb3b2;
 
-  /* Chart colors */
-  --chart-best-lap: #b659ff;
-  --chart-current-lap: #00ff00;
-  --chart-grid: rgba(255, 255, 255, 0.05);
-  --chart-axis: #666666;
+  --chart-best-lap: #9cf0ff;
+  --chart-current-lap: #00e5ff;
+  --chart-grid: rgba(132, 147, 150, 0.1);
+  --chart-axis: #849396;
 
-  /* Fonts */
-  --font-racing: 'Orbitron', 'Rajdhani', monospace;
-  --font-body: 'Rajdhani', sans-serif;
+  --font-racing: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
 
-  /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
-  /* Border radius */
   --radius-sm: 2px;
   --radius-md: 4px;
   --radius-lg: 8px;
 
-  /* Shadows */
-  --shadow-glow: 0 0 15px rgba(225, 6, 0, 0.2);
-  --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.8);
+  --shadow-glow: 0 0 18px rgba(0, 229, 255, 0.18);
+  --shadow-panel: 0 20px 80px rgba(0, 0, 0, 0.36);
 
-  /* F1 Specific */
   --f1-slant: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
   --f1-slant-reverse: polygon(2% 0, 100% 0, 100% 100%, 0% 100%);
 }
 
-/* Reset and base styles */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body, #root {
-  height: 100%;
+html,
+body,
+#root {
+  min-height: 100%;
   width: 100%;
 }
 
 body {
   font-family: var(--font-body);
-  background-color: var(--bg-primary);
+  background:
+    radial-gradient(circle at top left, rgba(0, 229, 255, 0.08), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(205, 255, 19, 0.05), transparent 20%),
+    #131314;
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -105,7 +105,13 @@ body {
   line-height: 1.4;
 }
 
-/* Common component styles */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
 .panel {
   background: var(--bg-panel);
   border: 1px solid var(--bg-panel-border);
@@ -114,17 +120,6 @@ body {
   box-shadow: var(--shadow-panel);
   position: relative;
   overflow: hidden;
-}
-
-.panel::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: var(--accent-red);
-  opacity: 0.5;
 }
 
 .label {
@@ -139,7 +134,7 @@ body {
 .value {
   font-family: var(--font-racing);
   font-weight: 700;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
 }
 
 .value-large {
@@ -157,15 +152,26 @@ body {
   line-height: 1;
 }
 
-/* Animation utilities */
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
 }
 
 @keyframes glow {
-  0%, 100% { filter: drop-shadow(0 0 2px currentColor); }
-  50% { filter: drop-shadow(0 0 8px currentColor); }
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px currentColor);
+  }
+
+  50% {
+    filter: drop-shadow(0 0 10px currentColor);
+  }
 }
 
 .animate-pulse {
@@ -173,24 +179,22 @@ body {
 }
 
 .animate-glow {
-  animation: glow 1s ease-in-out infinite;
+  animation: glow 1.2s ease-in-out infinite;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: rgba(14, 14, 15, 0.84);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-panel-border);
-  border-radius: 3px;
+  background: rgba(132, 147, 150, 0.28);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: rgba(132, 147, 150, 0.45);
 }

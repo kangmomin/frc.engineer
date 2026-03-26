@@ -1,130 +1,126 @@
 .container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  background: var(--bg-primary);
-  padding: var(--spacing-lg);
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(0, 229, 255, 0.08), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(205, 255, 19, 0.05), transparent 20%),
+    #131314;
 }
 
 .card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--bg-panel-border);
-  padding: 40px 32px;
-  max-width: 420px;
-  width: 100%;
-  text-align: center;
+  width: min(440px, 100%);
+  padding: 28px;
+  background:
+    linear-gradient(180deg, rgba(32, 31, 32, 0.94), rgba(14, 14, 15, 0.96)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.015) 0,
+      rgba(255, 255, 255, 0.015) 2px,
+      transparent 2px,
+      transparent 7px
+    );
+  border: 1px solid rgba(132, 147, 150, 0.16);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
 }
 
 .title {
-  font-family: var(--font-racing);
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--accent-red);
-  text-transform: uppercase;
-  letter-spacing: 3px;
-  font-style: italic;
   margin: 0 0 8px;
+  font-family: var(--font-racing);
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .subtitle {
-  font-size: 13px;
-  color: var(--text-muted);
   margin: 0 0 28px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
 .codeInputs {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
 
-.digitInput {
-  width: 56px;
-  height: 64px;
-  font-family: var(--font-mono, monospace);
-  font-size: 28px;
-  font-weight: 700;
-  text-align: center;
-  background: var(--bg-primary);
-  border: 2px solid var(--bg-panel-border);
+.digitInput,
+.urlInput {
+  border: 1px solid rgba(132, 147, 150, 0.18);
+  background: rgba(14, 14, 15, 0.75);
   color: var(--text-primary);
   outline: none;
-  transition: border-color 0.2s;
 }
 
-.digitInput:focus {
-  border-color: var(--accent-red);
-  box-shadow: 0 0 8px rgba(225, 6, 0, 0.3);
+.digitInput {
+  height: 72px;
+  text-align: center;
+  font-family: var(--font-racing);
+  font-size: 2rem;
+  font-weight: 800;
 }
 
-.digitInput:disabled {
-  opacity: 0.5;
+.digitInput:focus,
+.urlInput:focus {
+  border-color: rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.08);
+}
+
+.digitInput:disabled,
+.urlInput:disabled {
+  opacity: 0.55;
 }
 
 .urlField {
   margin-bottom: 24px;
-  text-align: left;
 }
 
 .urlLabel {
   display: block;
-  font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
+  margin-bottom: 8px;
   color: var(--text-secondary);
-  margin-bottom: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .urlInput {
   width: 100%;
-  padding: 10px 12px;
-  font-size: 13px;
-  background: var(--bg-primary);
-  border: 1px solid var(--bg-panel-border);
-  color: var(--text-primary);
-  outline: none;
-  box-sizing: border-box;
-}
-
-.urlInput:focus {
-  border-color: var(--accent-red);
-}
-
-.urlInput:disabled {
-  opacity: 0.5;
+  padding: 12px 14px;
+  font-size: 0.92rem;
 }
 
 .connectButton {
   width: 100%;
   padding: 14px;
+  border: 0;
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.9), rgba(195, 245, 255, 0.86));
+  color: #001f24;
   font-family: var(--font-racing);
-  font-size: 14px;
+  font-size: 0.94rem;
   font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 2px;
-  background: var(--accent-red);
-  color: #fff;
-  border: none;
   cursor: pointer;
-  clip-path: var(--f1-slant);
-  transition: opacity 0.2s;
 }
 
 .connectButton:hover:not(:disabled) {
-  opacity: 0.9;
+  filter: brightness(1.04);
 }
 
 .connectButton:disabled {
-  opacity: 0.4;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 
 .error {
-  color: var(--accent-red);
-  font-size: 12px;
   margin-top: 16px;
+  color: var(--accent-soft);
+  font-size: 0.82rem;
 }

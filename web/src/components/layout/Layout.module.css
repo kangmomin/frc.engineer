@@ -1,212 +1,103 @@
-.layout {
-  display: flex;
-  height: 100vh;
-  background: var(--bg-primary);
+.shell {
+  position: relative;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(0, 229, 255, 0.07), transparent 26%),
+    linear-gradient(180deg, #0a0a0b 0%, #131314 100%);
   overflow: hidden;
-  font-family: var(--font-body);
 }
 
-/* Overlay when sidebar is open */
-.overlay {
+.backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.8);
-  z-index: 90;
-  backdrop-filter: blur(4px);
+  z-index: 20;
+  border: 0;
+  background: rgba(10, 10, 11, 0.7);
+  backdrop-filter: blur(10px);
 }
 
-/* Sidebar */
-.sidebar {
+.drawer {
   position: fixed;
   top: 0;
-  left: 0;
+  right: 0;
   bottom: 0;
-  width: 260px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--bg-panel-border);
-  transform: translateX(-100%);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 100;
+  z-index: 21;
+  width: min(560px, 100vw);
   display: flex;
   flex-direction: column;
-  box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+  background:
+    linear-gradient(180deg, rgba(28, 27, 28, 0.98), rgba(14, 14, 15, 0.98)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.016) 0,
+      rgba(255, 255, 255, 0.016) 2px,
+      transparent 2px,
+      transparent 7px
+    );
+  border-left: 1px solid rgba(132, 147, 150, 0.16);
+  box-shadow: -32px 0 80px rgba(0, 0, 0, 0.44);
 }
 
-.sidebarOpen {
-  transform: translateX(0);
-}
-
-.sidebarHeader {
+.drawerHeader {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-xl) var(--spacing-md);
-  border-bottom: 2px solid var(--bg-panel-border);
-  background: var(--bg-panel-accent);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid rgba(132, 147, 150, 0.12);
 }
 
-.sidebarTitle {
-  font-family: var(--font-racing);
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--accent-red);
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  font-style: italic;
-  text-shadow: 0 0 10px rgba(225, 6, 0, 0.3);
-}
-
-/* Navigation */
-.navList {
-  list-style: none;
-  flex: 1;
-  padding: var(--spacing-md) 0;
-}
-
-.navItem {
-  padding: 2px var(--spacing-sm);
-}
-
-.navButton {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  width: 100%;
-  padding: 12px var(--spacing-lg);
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-family: var(--font-racing);
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  clip-path: var(--f1-slant);
-}
-
-.navButton:hover {
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-primary);
-  transform: translateX(5px);
-}
-
-.navActive {
-  background: var(--accent-red) !important;
-  color: #fff !important;
-  box-shadow: 0 0 15px rgba(225, 6, 0, 0.3);
-}
-
-.navIcon {
-  font-size: 14px;
-  width: 24px;
-  font-weight: 900;
-  font-style: italic;
-}
-
-/* Sidebar footer */
-.sidebarFooter {
-  padding: var(--spacing-lg);
-  background: rgba(0, 0, 0, 0.3);
-  border-top: 1px solid var(--bg-panel-border);
-}
-
-.connectionStatus {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-}
-
-.statusDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  transform: rotate(45deg);
-}
-
-.statusDot.connected { background: var(--accent-green); box-shadow: 0 0 10px var(--accent-green); }
-.statusDot.connecting { background: var(--accent-yellow); animation: pulse 1s ease-in-out infinite; }
-.statusDot.disconnected, .statusDot.error { background: var(--accent-red); }
-
-.statusText {
-  font-family: var(--font-racing);
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-}
-
-/* Main area */
-.main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.topBar {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--bg-panel-border);
-  height: 48px;
-}
-
-.topBarTitle {
-  font-family: var(--font-racing);
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  padding: 0 var(--spacing-lg);
-  font-style: italic;
-}
-
-.hamburger {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-  width: 48px;
-  height: 48px;
-  padding: 14px;
-  background: var(--bg-panel-accent);
-  border: none;
-  border-right: 1px solid var(--bg-panel-border);
-  cursor: pointer;
-}
-
-.hamburger span {
+.drawerEyebrow {
   display: block;
-  width: 100%;
-  height: 2px;
-  background: var(--accent-red);
-  transition: all 0.2s ease;
+  margin-bottom: 6px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
-.hamburger:hover span {
-  background: #fff;
-  width: 80%;
+.drawerTitle {
+  margin: 0;
+  font-family: var(--font-racing);
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text-primary);
 }
 
-/* Content */
-.contentContainer {
+.closeButton {
+  padding: 10px 14px;
+  border: 1px solid rgba(132, 147, 150, 0.18);
+  background: rgba(53, 52, 54, 0.56);
+  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.closeButton:hover {
+  border-color: rgba(0, 229, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.drawerBody {
+  min-height: 0;
   flex: 1;
-  overflow: hidden;
-  background: var(--bg-primary);
+  overflow: auto;
 }
 
-.panel {
-  height: 100%;
-  overflow-y: auto;
-  padding: var(--spacing-lg);
-}
+@media (max-width: 820px) {
+  .drawerHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: rotate(45deg) scale(1); }
-  50% { opacity: 0.5; transform: rotate(45deg) scale(0.8); }
+  .closeButton {
+    width: 100%;
+  }
 }
