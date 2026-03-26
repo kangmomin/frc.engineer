@@ -99,27 +99,29 @@ export function CockpitDashboard({
       <div className={styles.backdropGlow} />
 
       {(showSettingsButton || remoteAction) && (
-        <div className={styles.utilityDock}>
-          {showSettingsButton && (
-            <button
-              type="button"
-              className={styles.settingsButton}
-              onClick={onOpenSettings}
-              aria-label="Open settings"
-            >
-              <span className={styles.settingsIcon}>◎</span>
-            </button>
-          )}
-          {remoteAction && (
-            <button
-              type="button"
-              className={`${styles.remoteButton} ${remoteAction.active ? styles.remoteActive : ''}`}
-              onClick={remoteAction.onClick}
-              aria-label={remoteAction.label}
-            >
-              {remoteAction.label}
-            </button>
-          )}
+        <div className={styles.headerBar}>
+          <div className={styles.utilityDock}>
+            {showSettingsButton && (
+              <button
+                type="button"
+                className={styles.settingsButton}
+                onClick={onOpenSettings}
+                aria-label="Open settings"
+              >
+                <span className={styles.settingsIcon}>◎</span>
+              </button>
+            )}
+            {remoteAction && (
+              <button
+                type="button"
+                className={`${styles.remoteButton} ${remoteAction.active ? styles.remoteActive : ''}`}
+                onClick={remoteAction.onClick}
+                aria-label={remoteAction.label}
+              >
+                {remoteAction.label}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
