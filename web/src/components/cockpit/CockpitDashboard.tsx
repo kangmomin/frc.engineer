@@ -433,13 +433,53 @@ function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
         ) : (
           forecasts.map((forecast) => (
             <div key={forecast.timeOffset} className={styles.weatherRibbonSlot}>
-              <span>{formatForecastLabel(forecast.timeOffset)}</span>
-              <strong>{formatForecastShortWeather(forecast.weather)}</strong>
+              <span className={styles.weatherRibbonTime}>{formatForecastLabel(forecast.timeOffset)}</span>
+              <div className={styles.weatherRibbonIcon}>
+                <WeatherIcon weather={forecast.weather} />
+              </div>
+              <div className={styles.weatherRibbonStats}>
+                <div className={styles.weatherRibbonStat}>
+                  <span>Rain</span>
+                  <strong>{formatRainIntensity(forecast.weather)}</strong>
+                </div>
+                <div className={styles.weatherRibbonStat}>
+                  <span>Prob</span>
+                  <strong>{`${forecast.rainPercentage}%`}</strong>
+                </div>
+              </div>
             </div>
           ))
         )}
       </div>
     </div>
+  );
+}
+
+function WeatherIcon({ weather }: { weather: string }) {
+  const normalized = weather.replace(/_/g, ' ').toLowerCase();
+
+  if (normalized === 'clear') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.5" />
+        <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1" />
+      </svg>
+    );
+  }
+
+  if (normalized === 'light cloud' || normalized === 'overcast') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7.5 18.5h9a4 4 0 0 0 .4-8A5.5 5.5 0 0 0 6.4 9.3 3.8 3.8 0 0 0 7.5 18.5Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.5 15.5h9a4 4 0 0 0 .4-8A5.5 5.5 0 0 0 6.4 6.3 3.8 3.8 0 0 0 7.5 15.5Z" />
+      <path d="M9 17.5l-1 3M13 17.5l-1 3M17 17.5l-1 3" />
+    </svg>
   );
 }
 
@@ -707,6 +747,15 @@ function formatForecastShortWeather(weather: string): string {
   if (normalized === 'heavy rain') return 'HVY RAIN';
   if (normalized === 'storm') return 'STORM';
   return formatForecastWeather(weather);
+}
+
+function formatRainIntensity(weather: string): string {
+  const normalized = weather.replace(/_/g, ' ').toLowerCase();
+  if (normalized === 'clear' || normalized === 'light cloud' || normalized === 'overcast') return 'NONE';
+  if (normalized === 'light rain') return 'LIGHT';
+  if (normalized === 'heavy rain') return 'HEAVY';
+  if (normalized === 'storm') return 'STORM';
+  return formatForecastShortWeather(weather);
 }
 
 function getDamageTone(value: number): 'tertiary' | 'primary' | 'secondary' {
