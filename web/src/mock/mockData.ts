@@ -35,7 +35,7 @@ const BASE_SESSION: SessionInfo = {
     },
     {
       sessionType: 'Race',
-      timeOffset: 10,
+      timeOffset: 5,
       weather: 'light_cloud',
       trackTemp: 41.9,
       trackTempChange: -1,
@@ -45,7 +45,7 @@ const BASE_SESSION: SessionInfo = {
     },
     {
       sessionType: 'Race',
-      timeOffset: 20,
+      timeOffset: 10,
       weather: 'overcast',
       trackTemp: 40.8,
       trackTempChange: -1,

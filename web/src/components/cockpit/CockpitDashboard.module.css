@@ -95,7 +95,7 @@
 
 .ribbonGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(108px, 0.72fr) minmax(132px, 0.88fr) minmax(0, 1.55fr) minmax(124px, 0.85fr);
   gap: 16px;
   min-height: 48px;
 }
@@ -157,6 +157,68 @@
   font-weight: 800;
   font-style: italic;
   line-height: 1;
+}
+
+.lapRibbon {
+  padding-inline: 10px;
+  gap: 8px;
+}
+
+.lapRibbon strong {
+  font-size: clamp(1.05rem, 0.58vw + 0.88rem, 1.3rem);
+}
+
+.weatherRibbon {
+  padding: 0 12px;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.weatherRibbonHeader {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.weatherRibbonSlots {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.weatherRibbonSlot {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.weatherRibbonSlot span,
+.weatherRibbonEmpty {
+  font-size: 9px;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.weatherRibbonSlot strong {
+  font-family: var(--font-racing);
+  font-size: 0.76rem;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.weatherRibbonEmpty {
+  display: flex;
+  align-items: center;
 }
 
 .ribbonCard span:last-child {
@@ -791,6 +853,10 @@
   .energyContent {
     grid-template-columns: 170px minmax(0, 1fr);
   }
+
+  .ribbonGrid {
+    grid-template-columns: minmax(104px, 0.72fr) minmax(124px, 0.88fr) minmax(0, 1.35fr) minmax(118px, 0.85fr);
+  }
 }
 
 @media (max-width: 1260px) {
@@ -991,6 +1057,16 @@
 
   .ribbonGrid {
     grid-template-columns: 1fr;
+  }
+
+  .weatherRibbon {
+    align-items: flex-start;
+    flex-direction: column;
+    padding-block: 10px;
+  }
+
+  .weatherRibbonSlots {
+    width: 100%;
   }
 
   .ribbonCard {

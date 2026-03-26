@@ -74,8 +74,6 @@ export function CockpitDashboard({
   const topForecasts = (session?.weatherForecast ?? []).slice(0, 3);
   const recentNotifications = raceControlNotifications.slice(0, 3);
   const raceStatus = getRaceStatus(session, recentNotifications);
-  const sectorLabel = getSectorLabel(player);
-  const trackCondition = getTrackCondition(session?.weather);
   const ersPct = clamp(player ? (player.ersStoreEnergy / MAX_ERS_ENERGY) * 100 : 0, 0, 100);
   const deploySplit = getErsSplit(player);
   const fuelMargin = getFuelMargin(player, session);
@@ -136,19 +134,15 @@ export function CockpitDashboard({
               value={`${player?.currentLapNum ?? 0}/${session?.totalLaps ?? '--'}`}
               detail={session?.trackName ?? 'No Session'}
               tone="primary"
+              className={styles.lapRibbon}
             />
             <StatRibbon
-              label="Track"
-              value={trackCondition.label}
-              detail={session?.weather?.replace(/_/g, ' ') ?? 'Telemetry Idle'}
-              tone={trackCondition.tone}
+              label="Track Temp"
+              value={session ? `${session.trackTemp.toFixed(1)}°C` : '--'}
+              detail={session ? `Air ${session.airTemp.toFixed(1)}°C` : 'Telemetry Idle'}
+              tone="tertiary"
             />
-            <StatRibbon
-             label="Sector"
-             value={sectorLabel.label}
-              detail={sectorLabel.detail}
-              tone={sectorLabel.tone}
-            />
+            <WeatherRibbon forecasts={topForecasts} />
             <StatRibbon
               label="Status"
               value={raceStatus.label}
@@ -435,17 +429,41 @@ function StatRibbon({
   value,
   detail,
   tone,
+  className,
 }: {
   label: string;
   value: string;
   detail: string;
   tone: 'primary' | 'tertiary' | 'secondary' | 'neutral';
+  className?: string;
 }) {
   return (
-    <div className={`${styles.ribbonCard} ${styles[tone]}`}>
+    <div className={className ? `${styles.ribbonCard} ${styles[tone]} ${className}` : `${styles.ribbonCard} ${styles[tone]}`}>
       <div className={styles.ribbonLabel}>{label}</div>
       <strong>{value}</strong>
       <span>{detail}</span>
+    </div>
+  );
+}
+
+function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
+  return (
+    <div className={`${styles.ribbonCard} ${styles.neutral} ${styles.weatherRibbon}`}>
+      <div className={styles.weatherRibbonHeader}>
+        <div className={styles.ribbonLabel}>Weather</div>
+      </div>
+      <div className={styles.weatherRibbonSlots}>
+        {forecasts.length === 0 ? (
+          <div className={styles.weatherRibbonEmpty}>Forecast pending</div>
+        ) : (
+          forecasts.slice(0, 3).map((forecast) => (
+            <div key={forecast.timeOffset} className={styles.weatherRibbonSlot}>
+              <span>{formatForecastLabel(forecast.timeOffset)}</span>
+              <strong>{formatForecastShortWeather(forecast.weather)}</strong>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -604,17 +622,6 @@ function getTrackCondition(weather?: string): { label: string; tone: 'tertiary' 
   return { label: 'DRY', tone: 'tertiary' };
 }
 
-function getSectorLabel(player: DriverInfo | null): {
-  label: string;
-  detail: string;
-  tone: 'primary' | 'tertiary' | 'secondary';
-} {
-  if (!player) return { label: 'STBY', detail: 'Telemetry Idle', tone: 'primary' };
-  if (player.currentSector === 0) return { label: 'SECTOR 1', detail: 'Live Timing', tone: 'primary' };
-  if (player.currentSector === 1) return { label: 'SECTOR 2', detail: 'Push Window', tone: 'tertiary' };
-  return { label: 'SECTOR 3', detail: 'Closing Split', tone: 'secondary' };
-}
-
 function getRaceStatus(
   session: SessionInfo | null,
   notifications: RaceControlNotification[],
@@ -729,6 +736,17 @@ function formatForecastLabel(offsetMinutes: number): string {
 
 function formatForecastWeather(weather: string): string {
   return weather.replace(/_/g, ' ').toUpperCase();
+}
+
+function formatForecastShortWeather(weather: string): string {
+  const normalized = weather.replace(/_/g, ' ').toLowerCase();
+  if (normalized === 'clear') return 'CLR';
+  if (normalized === 'light cloud') return 'CLD';
+  if (normalized === 'overcast') return 'OVC';
+  if (normalized === 'light rain') return 'LGT RAIN';
+  if (normalized === 'heavy rain') return 'HVY RAIN';
+  if (normalized === 'storm') return 'STORM';
+  return formatForecastWeather(weather);
 }
 
 function getDamageTone(value: number): 'tertiary' | 'primary' | 'secondary' {
