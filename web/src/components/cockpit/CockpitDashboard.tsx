@@ -439,12 +439,12 @@ function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
               </div>
               <div className={styles.weatherRibbonStats}>
                 <div className={styles.weatherRibbonStat}>
-                  <span>Rain</span>
-                  <strong>{formatRainIntensity(forecast.weather)}</strong>
-                </div>
-                <div className={styles.weatherRibbonStat}>
                   <span>Prob</span>
                   <strong>{`${forecast.rainPercentage}%`}</strong>
+                </div>
+                <div className={styles.weatherRibbonStat}>
+                  <span>Precip</span>
+                  <strong>{formatPrecipAmount(forecast.weather)}</strong>
                 </div>
               </div>
             </div>
@@ -734,28 +734,14 @@ function formatForecastLabel(offsetMinutes: number): string {
   return `+${offsetMinutes}M`;
 }
 
-function formatForecastWeather(weather: string): string {
-  return weather.replace(/_/g, ' ').toUpperCase();
-}
 
-function formatForecastShortWeather(weather: string): string {
+function formatPrecipAmount(weather: string): string {
   const normalized = weather.replace(/_/g, ' ').toLowerCase();
-  if (normalized === 'clear') return 'CLR';
-  if (normalized === 'light cloud') return 'CLD';
-  if (normalized === 'overcast') return 'OVC';
-  if (normalized === 'light rain') return 'LGT RAIN';
-  if (normalized === 'heavy rain') return 'HVY RAIN';
-  if (normalized === 'storm') return 'STORM';
-  return formatForecastWeather(weather);
-}
-
-function formatRainIntensity(weather: string): string {
-  const normalized = weather.replace(/_/g, ' ').toLowerCase();
-  if (normalized === 'clear' || normalized === 'light cloud' || normalized === 'overcast') return 'NONE';
-  if (normalized === 'light rain') return 'LIGHT';
-  if (normalized === 'heavy rain') return 'HEAVY';
-  if (normalized === 'storm') return 'STORM';
-  return formatForecastShortWeather(weather);
+  if (normalized === 'clear' || normalized === 'light cloud' || normalized === 'overcast') return '0 mm';
+  if (normalized === 'light rain') return '~2 mm';
+  if (normalized === 'heavy rain') return '~8 mm';
+  if (normalized === 'storm') return '~20 mm';
+  return '— mm';
 }
 
 function getDamageTone(value: number): 'tertiary' | 'primary' | 'secondary' {
