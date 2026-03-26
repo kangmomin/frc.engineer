@@ -7,6 +7,7 @@
   width: 100%;
   padding: var(--dashboard-gutter);
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 392px;
   grid-template-rows: var(--top-strip-height) var(--bottom-strip-height);
   gap: var(--dashboard-gutter);
   overflow: hidden;
@@ -77,8 +78,8 @@
 .topRow {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 392px;
+  grid-column: 1;
+  grid-row: 1;
   gap: 16px;
   min-height: 0;
   overflow: hidden;
@@ -394,6 +395,8 @@
 }
 
 .sideRail {
+  grid-column: 2;
+  grid-row: 1 / span 2;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 16px;
@@ -538,6 +541,8 @@
 }
 
 .bottomRow {
+  grid-column: 1;
+  grid-row: 2;
   position: relative;
   z-index: 1;
   display: grid;
@@ -825,20 +830,29 @@
 
 @media (max-width: 1260px) {
   .dashboard {
-    grid-template-rows: auto auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
 
   .topRow {
-    grid-template-columns: 1fr;
+    grid-column: 1;
+    grid-row: 1;
     overflow: visible;
   }
 
   .sideRail {
+    grid-column: 1;
+    grid-row: 2;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: none;
     overflow: visible;
+  }
+
+  .bottomRow {
+    grid-column: 1;
+    grid-row: 3;
   }
 }
 

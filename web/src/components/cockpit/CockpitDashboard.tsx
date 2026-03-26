@@ -212,80 +212,80 @@ export function CockpitDashboard({
             </div>
           </div>
         </div>
+      </section>
 
-        <div className={styles.sideRail}>
-          <div className={`${styles.panel} ${styles.combatPanel}`}>
-            <PanelTitle title="Combat Command" tone="secondary" />
-            <BattleTarget
-              label="Target Ahead"
-              driver={carAhead}
-              gapLabel={formatAheadGap(player)}
-              paceLabel={formatPaceDelta(aheadAlert)}
-              tone="tertiary"
-            />
-            <div className={styles.progressCard}>
-              <div className={styles.progressHeader}>
-                <span>DRS Status</span>
-                <span className={styles.progressStatus}>
-                  {player && player.deltaToCarInFront != null && player.deltaToCarInFront <= 1000 ? 'ARMED' : 'LOCKED'}
-                </span>
-              </div>
-              <div className={styles.progressTrack}>
-                <div
-                  className={styles.progressFill}
-                  style={{ width: `${getDrsProgress(player)}%` }}
-                />
-              </div>
-              <div className={styles.progressFooter}>
-                <span>Laps to Combat</span>
-                <strong>{formatCombatWindow(aheadAlert, player)}</strong>
-              </div>
+      <div className={styles.sideRail}>
+        <div className={`${styles.panel} ${styles.combatPanel}`}>
+          <PanelTitle title="Combat Command" tone="secondary" />
+          <BattleTarget
+            label="Target Ahead"
+            driver={carAhead}
+            gapLabel={formatAheadGap(player)}
+            paceLabel={formatPaceDelta(aheadAlert)}
+            tone="tertiary"
+          />
+          <div className={styles.progressCard}>
+            <div className={styles.progressHeader}>
+              <span>DRS Status</span>
+              <span className={styles.progressStatus}>
+                {player && player.deltaToCarInFront != null && player.deltaToCarInFront <= 1000 ? 'ARMED' : 'LOCKED'}
+              </span>
             </div>
-            <BattleTarget
-              label="Chaser Behind"
-              driver={carBehind}
-              gapLabel={formatBehindGap(carBehind)}
-              paceLabel={formatPaceDelta(behindAlert)}
-              tone="secondary"
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${getDrsProgress(player)}%` }}
+              />
+            </div>
+            <div className={styles.progressFooter}>
+              <span>Laps to Combat</span>
+              <strong>{formatCombatWindow(aheadAlert, player)}</strong>
+            </div>
+          </div>
+          <BattleTarget
+            label="Chaser Behind"
+            driver={carBehind}
+            gapLabel={formatBehindGap(carBehind)}
+            paceLabel={formatPaceDelta(behindAlert)}
+            tone="secondary"
+          />
+        </div>
+
+        <div className={`${styles.panel} ${styles.strategyPanel}`}>
+          <PanelTitle title="Pit Strategy" tone="primary" />
+          <div className={styles.strategyRow}>
+            <span>Target Tyre</span>
+            <strong style={{ color: getTyreColor(recommendedTyre) }}>
+              {recommendedTyre.toUpperCase()} ({getTyreShortLabel(recommendedTyre)})
+            </strong>
+          </div>
+          <div className={styles.metricGrid}>
+            <MetricTile
+              label="Est. Exit Pos"
+              value={session?.pitStopRejoinPosition ? `P${session.pitStopRejoinPosition}` : '--'}
+              tone="primary"
+            />
+            <MetricTile
+              label="Pit Window"
+              value={pitWindow.label}
+              tone={pitWindow.tone}
             />
           </div>
-
-          <div className={`${styles.panel} ${styles.strategyPanel}`}>
-            <PanelTitle title="Pit Strategy" tone="primary" />
-            <div className={styles.strategyRow}>
-              <span>Target Tyre</span>
-              <strong style={{ color: getTyreColor(recommendedTyre) }}>
-                {recommendedTyre.toUpperCase()} ({getTyreShortLabel(recommendedTyre)})
-              </strong>
+          <div className={styles.trafficCard}>
+            <span className={styles.trafficLabel}>Traffic Status</span>
+            <div className={styles.trafficValueRow}>
+              <strong className={styles.trafficValue}>{trafficStatus.label}</strong>
+              <span>{trafficStatus.detail}</span>
             </div>
-            <div className={styles.metricGrid}>
-              <MetricTile
-                label="Est. Exit Pos"
-                value={session?.pitStopRejoinPosition ? `P${session.pitStopRejoinPosition}` : '--'}
-                tone="primary"
+            <div className={styles.trafficMeter}>
+              <div
+                className={styles.trafficMeterFill}
+                style={{ width: `${trafficStatus.meter}%` }}
               />
-              <MetricTile
-                label="Pit Window"
-                value={pitWindow.label}
-                tone={pitWindow.tone}
-              />
-            </div>
-            <div className={styles.trafficCard}>
-              <span className={styles.trafficLabel}>Traffic Status</span>
-              <div className={styles.trafficValueRow}>
-                <strong className={styles.trafficValue}>{trafficStatus.label}</strong>
-                <span>{trafficStatus.detail}</span>
-              </div>
-              <div className={styles.trafficMeter}>
-                <div
-                  className={styles.trafficMeterFill}
-                  style={{ width: `${trafficStatus.meter}%` }}
-                />
-              </div>
             </div>
           </div>
         </div>
-      </section>
+      </div>
 
       <section className={styles.bottomRow}>
         <div className={`${styles.panel} ${styles.tyrePanel}`}>
