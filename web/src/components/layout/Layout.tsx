@@ -3,22 +3,38 @@ import { SettingsView } from '../../views/SettingsView';
 import { useMockTelemetry } from '../../hooks/useMockTelemetry';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useWebRTCDataChannel } from '../../hooks/useWebRTCDataChannel';
-import { isMockMode, isRemoteMode } from '../../runtimeFlags';
+import { isForcedRemoteMode, isMockMode } from '../../runtimeFlags';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import styles from './Layout.module.css';
 
+const CONNECTION_MODE_KEY = 'frc_connection_mode';
+
 export function Layout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rtcOptions, setRtcOptions] = useState<{ signalingUrl: string; roomCode: string } | null>(null);
+  const [preferredRemoteMode, setPreferredRemoteMode] = useState(() => {
+    if (isForcedRemoteMode) return true;
+    return window.localStorage.getItem(CONNECTION_MODE_KEY) === 'remote';
+  });
 
   const setConnectionMode = useTelemetryStore((state) => state.setConnectionMode);
+  const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
+  const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
+  const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
+  const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
   const connectionState = useTelemetryStore((state) => state.connectionState);
+  const remoteMode = isForcedRemoteMode || preferredRemoteMode;
 
   useEffect(() => {
-    setConnectionMode(isRemoteMode ? 'remote' : 'local');
-  }, [setConnectionMode]);
+    setConnectionMode(remoteMode ? 'remote' : 'local');
+  }, [remoteMode, setConnectionMode]);
+
+  useEffect(() => {
+    if (isForcedRemoteMode) return;
+    window.localStorage.setItem(CONNECTION_MODE_KEY, remoteMode ? 'remote' : 'local');
+  }, [remoteMode]);
 
   useEffect(() => {
     if (!settingsOpen) return undefined;
@@ -31,34 +47,59 @@ export function Layout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [settingsOpen]);
 
-  usePitwallWebSocket(isRemoteMode || isMockMode ? { url: '' } : undefined);
-  useMockTelemetry(isMockMode);
+  usePitwallWebSocket(remoteMode || isMockMode ? { url: '' } : undefined);
+  useMockTelemetry(isMockMode && !remoteMode);
 
   const webrtcOpts = useMemo(() => {
-    if (!isRemoteMode || !rtcOptions) return null;
+    if (!remoteMode || !rtcOptions) return null;
     return rtcOptions;
-  }, [rtcOptions]);
+  }, [remoteMode, rtcOptions]);
 
   const { connectionState: rtcConnectionState } = useWebRTCDataChannel(webrtcOpts);
 
   const handleRemoteConnect = useCallback((signalingUrl: string, roomCode: string) => {
     setRtcOptions({ signalingUrl, roomCode });
+    setPreferredRemoteMode(true);
   }, []);
 
-  if (isRemoteMode && !rtcOptions) {
+  const switchToRemoteMode = useCallback(() => {
+    setPreferredRemoteMode(true);
+    setConnectionState('disconnected');
+    setPitwallState(null);
+    clearNotifications();
+    clearRaceResult();
+  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+
+  const switchToLocalMode = useCallback(() => {
+    if (isForcedRemoteMode) return;
+    setPreferredRemoteMode(false);
+    setRtcOptions(null);
+    setConnectionState('disconnected');
+    setPitwallState(null);
+    clearNotifications();
+    clearRaceResult();
+  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+
+  if (remoteMode && !rtcOptions) {
     return (
       <RemoteConnect
         onConnect={handleRemoteConnect}
         connectionState={connectionState}
+        onCancel={isForcedRemoteMode ? undefined : switchToLocalMode}
+        title="P2P Telemetry Link"
+        subtitle="Enter the engineer room code issued by the sender and connect through the signaling server."
       />
     );
   }
 
-  if (isRemoteMode && rtcOptions && rtcConnectionState === 'failed') {
+  if (remoteMode && rtcOptions && rtcConnectionState === 'failed') {
     return (
       <RemoteConnect
         onConnect={handleRemoteConnect}
         connectionState="error"
+        onCancel={isForcedRemoteMode ? undefined : switchToLocalMode}
+        title="P2P Telemetry Link"
+        subtitle="Connection dropped. Re-enter the room code or fall back to the local telemetry feed."
       />
     );
   }
@@ -67,10 +108,15 @@ export function Layout() {
     <div className={styles.shell}>
       <CockpitDashboard
         onOpenSettings={() => setSettingsOpen(true)}
-        showSettingsButton={!isRemoteMode}
+        showSettingsButton={!isForcedRemoteMode}
+        remoteAction={isForcedRemoteMode ? undefined : {
+          label: remoteMode ? 'Local' : 'P2P',
+          onClick: remoteMode ? switchToLocalMode : switchToRemoteMode,
+          active: remoteMode,
+        }}
       />
 
-      {settingsOpen && !isRemoteMode && (
+      {settingsOpen && !isForcedRemoteMode && (
         <>
           <button
             type="button"

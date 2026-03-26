@@ -97,7 +97,7 @@
 }
 
 .connectButton {
-  width: 100%;
+  flex: 1;
   padding: 14px;
   border: 0;
   background: linear-gradient(135deg, rgba(0, 229, 255, 0.9), rgba(195, 245, 255, 0.86));
@@ -119,8 +119,41 @@
   cursor: not-allowed;
 }
 
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.secondaryButton {
+  padding: 14px 16px;
+  border: 1px solid rgba(132, 147, 150, 0.2);
+  background: rgba(14, 14, 15, 0.68);
+  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  border-color: rgba(0, 229, 255, 0.28);
+}
+
+.secondaryButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .error {
   margin-top: 16px;
   color: var(--accent-soft);
   font-size: 0.82rem;
+}
+
+@media (max-width: 560px) {
+  .actions {
+    flex-direction: column;
+  }
 }

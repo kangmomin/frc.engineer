@@ -17,11 +17,18 @@
   pointer-events: none;
 }
 
-.settingsButton {
+.utilityDock {
   position: absolute;
   top: 14px;
   left: 14px;
   z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settingsButton,
+.remoteButton {
   width: 40px;
   height: 40px;
   border: 1px solid rgba(0, 229, 255, 0.25);
@@ -35,10 +42,28 @@
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
-.settingsButton:hover {
+.remoteButton {
+  width: auto;
+  min-width: 64px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settingsButton:hover,
+.remoteButton:hover {
   transform: scale(1.06);
   border-color: rgba(0, 229, 255, 0.45);
   background: rgba(28, 27, 28, 0.96);
+}
+
+.remoteActive {
+  color: var(--accent-lime);
+  border-color: rgba(205, 255, 19, 0.38);
 }
 
 .settingsIcon {

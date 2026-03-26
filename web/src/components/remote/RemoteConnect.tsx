@@ -4,6 +4,9 @@ import styles from './RemoteConnect.module.css';
 interface RemoteConnectProps {
   onConnect: (signalingUrl: string, roomCode: string) => void;
   connectionState: string;
+  onCancel?: () => void;
+  title?: string;
+  subtitle?: string;
 }
 
 const STORAGE_KEY = 'frc_signaling_url';
@@ -12,7 +15,13 @@ function getDefaultSignalingUrl(): string {
   return localStorage.getItem(STORAGE_KEY) || import.meta.env.VITE_SIGNALING_URL || '';
 }
 
-export function RemoteConnect({ onConnect, connectionState }: RemoteConnectProps) {
+export function RemoteConnect({
+  onConnect,
+  connectionState,
+  onCancel,
+  title = 'Remote Connect',
+  subtitle = "Enter the 4-digit room code from the driver's sender",
+}: RemoteConnectProps) {
   const [digits, setDigits] = useState(['', '', '', '']);
   const [signalingUrl, setSignalingUrl] = useState(getDefaultSignalingUrl);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -74,10 +83,8 @@ export function RemoteConnect({ onConnect, connectionState }: RemoteConnectProps
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <h1 className={styles.title}>Remote Connect</h1>
-        <p className={styles.subtitle}>
-          Enter the 4-digit room code from the driver's sender
-        </p>
+        <h1 className={styles.title}>{title}</h1>
+        <p className={styles.subtitle}>{subtitle}</p>
 
         <div className={styles.codeInputs} onPaste={handlePaste}>
           {digits.map((digit, i) => (
@@ -108,13 +115,25 @@ export function RemoteConnect({ onConnect, connectionState }: RemoteConnectProps
           />
         </div>
 
-        <button
-          className={styles.connectButton}
-          onClick={handleSubmit}
-          disabled={!isReady || isConnecting}
-        >
-          {isConnecting ? 'Connecting...' : 'Connect'}
-        </button>
+        <div className={styles.actions}>
+          {onCancel && (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={onCancel}
+              disabled={isConnecting}
+            >
+              Back to Local
+            </button>
+          )}
+          <button
+            className={styles.connectButton}
+            onClick={handleSubmit}
+            disabled={!isReady || isConnecting}
+          >
+            {isConnecting ? 'Connecting...' : 'Connect'}
+          </button>
+        </div>
 
         {connectionState === 'error' && (
           <p className={styles.error}>Connection failed. Check the room code and signaling URL.</p>

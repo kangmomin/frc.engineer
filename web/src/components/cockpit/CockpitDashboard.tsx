@@ -18,11 +18,17 @@ const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
 interface CockpitDashboardProps {
   onOpenSettings: () => void;
   showSettingsButton: boolean;
+  remoteAction?: {
+    label: string;
+    onClick: () => void;
+    active?: boolean;
+  };
 }
 
 export function CockpitDashboard({
   onOpenSettings,
   showSettingsButton,
+  remoteAction,
 }: CockpitDashboardProps) {
   const {
     pitwallState,
@@ -92,15 +98,29 @@ export function CockpitDashboard({
     <div className={styles.dashboard}>
       <div className={styles.backdropGlow} />
 
-      {showSettingsButton && (
-        <button
-          type="button"
-          className={styles.settingsButton}
-          onClick={onOpenSettings}
-          aria-label="Open settings"
-        >
-          <span className={styles.settingsIcon}>◎</span>
-        </button>
+      {(showSettingsButton || remoteAction) && (
+        <div className={styles.utilityDock}>
+          {showSettingsButton && (
+            <button
+              type="button"
+              className={styles.settingsButton}
+              onClick={onOpenSettings}
+              aria-label="Open settings"
+            >
+              <span className={styles.settingsIcon}>◎</span>
+            </button>
+          )}
+          {remoteAction && (
+            <button
+              type="button"
+              className={`${styles.remoteButton} ${remoteAction.active ? styles.remoteActive : ''}`}
+              onClick={remoteAction.onClick}
+              aria-label={remoteAction.label}
+            >
+              {remoteAction.label}
+            </button>
+          )}
+        </div>
       )}
 
       <section className={styles.topRow}>
