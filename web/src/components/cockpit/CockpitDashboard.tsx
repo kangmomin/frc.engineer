@@ -90,9 +90,14 @@ export function CockpitDashboard({
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
-  const frontWingDamage = Math.max(player?.damage?.frontLeftWing ?? 0, player?.damage?.frontRightWing ?? 0);
-  const floorDamage = Math.max(player?.damage?.floor ?? 0, player?.damage?.diffuser ?? 0);
-  const rearDamage = Math.max(player?.damage?.sidepod ?? 0, player?.damage?.rearWing ?? 0);
+  const damageReadouts = [
+    { label: 'Front Left', value: player?.damage?.frontLeftWing ?? 0 },
+    { label: 'Front Right', value: player?.damage?.frontRightWing ?? 0 },
+    { label: 'Floor', value: player?.damage?.floor ?? 0 },
+    { label: 'Diffuser', value: player?.damage?.diffuser ?? 0 },
+    { label: 'Sidepod', value: player?.damage?.sidepod ?? 0 },
+    { label: 'Rear Wing', value: player?.damage?.rearWing ?? 0 },
+  ];
 
   return (
     <div className={styles.dashboard}>
@@ -339,42 +344,44 @@ export function CockpitDashboard({
               </div>
             </div>
 
-            <div className={styles.splitPills}>
-              <div className={styles.splitPill}>
-                <span>Deploy</span>
-                <strong>{deploySplit.deploy}%</strong>
+            <div className={styles.energyColumn}>
+              <div className={styles.splitPills}>
+                <div className={styles.splitPill}>
+                  <span>Deploy</span>
+                  <strong>{deploySplit.deploy}%</strong>
+                </div>
+                <div className={styles.splitPill}>
+                  <span>Harvest</span>
+                  <strong>{deploySplit.harvest}%</strong>
+                </div>
               </div>
-              <div className={styles.splitPill}>
-                <span>Harvest</span>
-                <strong>{deploySplit.harvest}%</strong>
-              </div>
-            </div>
 
-            <div className={styles.energyMetrics}>
-              <MetricTile
-                label="Diff On Throttle"
-                value={player?.diffOnThrottle ? `${player.diffOnThrottle}%` : '--'}
-                tone="primary"
-              />
-              <MetricTile
-                label="Brake Bias"
-                value={player?.brakeBias ? `${player.brakeBias.toFixed(1)}%` : '--'}
-                tone="tertiary"
-              />
-              <MetricTile
-                label="Fuel at Finish"
-                value={fuelMargin}
-                tone={fuelMargin.startsWith('-') ? 'secondary' : 'tertiary'}
-              />
+              <div className={styles.energyMetrics}>
+                <MetricTile
+                  label="Diff On Throttle"
+                  value={player?.diffOnThrottle ? `${player.diffOnThrottle}%` : '--'}
+                  tone="primary"
+                />
+                <MetricTile
+                  label="Brake Bias"
+                  value={player?.brakeBias ? `${player.brakeBias.toFixed(1)}%` : '--'}
+                  tone="tertiary"
+                />
+                <MetricTile
+                  label="Fuel at Finish"
+                  value={fuelMargin}
+                  tone={fuelMargin.startsWith('-') ? 'secondary' : 'tertiary'}
+                />
+              </div>
             </div>
           </div>
         </div>
 
         <div className={`${styles.panel} ${styles.damagePanel}`}>
           <PanelTitle title="Damage Status" tone="secondary" />
-          <DamageMetric label="Front Wing" value={frontWingDamage} />
-          <DamageMetric label="Floor / Aero" value={floorDamage} />
-          <DamageMetric label="Side / Rear" value={rearDamage} />
+          {damageReadouts.map((damage) => (
+            <DamageMetric key={damage.label} label={damage.label} value={damage.value} />
+          ))}
         </div>
 
         <div className={`${styles.panel} ${styles.environmentPanel}`}>
@@ -507,16 +514,8 @@ function BattleTarget({
 function DamageMetric({ label, value }: { label: string; value: number }) {
   return (
     <div className={styles.damageMetric}>
-      <div className={styles.damageHeader}>
-        <span>{label}</span>
-        <strong className={styles[getDamageTone(value)]}>{`${Math.round(value)}%`}</strong>
-      </div>
-      <div className={styles.damageBar}>
-        <div
-          className={`${styles.damageBarFill} ${styles[getDamageTone(value)]}`}
-          style={{ width: `${clamp(value, 0, 100)}%` }}
-        />
-      </div>
+      <span>{label}</span>
+      <strong className={styles[getDamageTone(value)]}>{`${Math.round(value)}%`}</strong>
     </div>
   );
 }

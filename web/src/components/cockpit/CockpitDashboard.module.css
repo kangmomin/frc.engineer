@@ -137,7 +137,6 @@
 .trafficLabel,
 .footerStrip span,
 .forecastTitle,
-.damageHeader span,
 .tableHeader span,
 .forecastLead span,
 .forecastMeta span,
@@ -392,6 +391,7 @@
 }
 
 .energyContent,
+.energyColumn,
 .forecastBlock {
   min-width: 0;
 }
@@ -405,7 +405,6 @@
 .battleHeader,
 .progressHeader,
 .progressFooter,
-.damageHeader,
 .trafficValueRow,
 .strategyRow {
   display: flex;
@@ -440,8 +439,7 @@
 }
 
 .progressTrack,
-.trafficMeter,
-.damageBar {
+.trafficMeter {
   width: 100%;
   height: 8px;
   overflow: hidden;
@@ -449,8 +447,7 @@
 }
 
 .progressFill,
-.trafficMeterFill,
-.damageBarFill {
+.trafficMeterFill {
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--accent-lime));
 }
@@ -511,7 +508,7 @@
 .tyreCard strong {
   display: block;
   font-family: var(--font-racing);
-  font-size: 1.25rem;
+  font-size: 1.08rem;
   font-weight: 800;
   line-height: 1;
 }
@@ -520,9 +517,14 @@
   text-align: right;
 }
 
+.tyreWearMeta strong {
+  font-size: 0.9rem;
+}
+
 .tyreStatus {
   display: inline-block;
   margin-top: 6px;
+  font-size: 9px;
 }
 
 .footerStrip {
@@ -537,7 +539,7 @@
 
 .footerStrip strong {
   font-family: var(--font-racing);
-  font-size: 1rem;
+  font-size: 0.88rem;
 }
 
 .energyPanel {
@@ -556,6 +558,13 @@
   flex: 1;
   align-items: center;
   overflow: hidden;
+}
+
+.energyColumn {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .ersDial {
@@ -623,23 +632,30 @@
 .energyMetrics {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .damagePanel {
   border-bottom: 4px solid rgba(255, 82, 92, 0.45);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
 }
 
 .damageMetric {
   padding: 10px 12px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border-left: 2px solid rgba(205, 255, 19, 0.56);
+}
+
+.damageMetric strong {
+  font-family: var(--font-racing);
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .environmentPanel {
