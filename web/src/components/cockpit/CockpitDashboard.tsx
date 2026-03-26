@@ -71,7 +71,7 @@ export function CockpitDashboard({
 
   const aheadAlert = battleAlerts.find((alert) => alert.side === 'ahead');
   const behindAlert = battleAlerts.find((alert) => alert.side === 'behind');
-  const topForecasts = (session?.weatherForecast ?? []).slice(0, 3);
+  const topForecasts = session?.weatherForecast ?? [];
   const recentNotifications = raceControlNotifications.slice(0, 3);
   const raceStatus = getRaceStatus(session, recentNotifications);
   const ersPct = clamp(player ? (player.ersStoreEnergy / MAX_ERS_ENERGY) * 100 : 0, 0, 100);
@@ -382,31 +382,6 @@ export function CockpitDashboard({
             <DamageMetric key={damage.label} label={damage.label} value={damage.value} />
           ))}
         </div>
-
-        <div className={`${styles.panel} ${styles.environmentPanel}`}>
-          <PanelTitle title="Environment" tone="neutral" />
-          <div className={styles.metricGrid}>
-            <MetricTile
-              label="Track"
-              value={session ? `${session.trackTemp.toFixed(1)}°C` : '--'}
-              tone="neutral"
-            />
-            <MetricTile
-              label="Air"
-              value={session ? `${session.airTemp.toFixed(1)}°C` : '--'}
-              tone="neutral"
-            />
-          </div>
-          <div className={styles.forecastBlock}>
-            <span className={styles.forecastTitle}>Forecast</span>
-            {topForecasts.length === 0 && (
-              <div className={styles.forecastEmpty}>Forecast unavailable</div>
-            )}
-            {topForecasts.map((forecast) => (
-              <ForecastRow key={forecast.timeOffset} forecast={forecast} />
-            ))}
-          </div>
-        </div>
       </section>
 
       {connectionState !== 'connected' && !playbackActive && (
@@ -456,7 +431,7 @@ function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
         {forecasts.length === 0 ? (
           <div className={styles.weatherRibbonEmpty}>Forecast pending</div>
         ) : (
-          forecasts.slice(0, 3).map((forecast) => (
+          forecasts.map((forecast) => (
             <div key={forecast.timeOffset} className={styles.weatherRibbonSlot}>
               <span>{formatForecastLabel(forecast.timeOffset)}</span>
               <strong>{formatForecastShortWeather(forecast.weather)}</strong>
@@ -541,21 +516,6 @@ function DamageMetric({ label, value }: { label: string; value: number }) {
     <div className={styles.damageMetric}>
       <span>{label}</span>
       <strong className={styles[getDamageTone(value)]}>{`${Math.round(value)}%`}</strong>
-    </div>
-  );
-}
-
-function ForecastRow({ forecast }: { forecast: WeatherForecast }) {
-  return (
-    <div className={styles.forecastRow}>
-      <div className={styles.forecastLead}>
-        <span>{formatForecastLabel(forecast.timeOffset)}</span>
-        <strong>{formatForecastWeather(forecast.weather)}</strong>
-      </div>
-      <div className={styles.forecastMeta}>
-        <span>{`${forecast.rainPercentage}% rain`}</span>
-        <span>{`${forecast.trackTemp.toFixed(0)}° / ${forecast.airTemp.toFixed(0)}°`}</span>
-      </div>
     </div>
   );
 }

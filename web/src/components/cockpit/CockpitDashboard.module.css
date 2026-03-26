@@ -78,7 +78,7 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 392px;
   gap: 16px;
   min-height: 0;
   overflow: hidden;
@@ -136,10 +136,7 @@
 .battleHeader span,
 .trafficLabel,
 .footerStrip span,
-.forecastTitle,
 .tableHeader span,
-.forecastLead span,
-.forecastMeta span,
 .tyreCardLabel,
 .tyreWearMeta span,
 .tyreStatus,
@@ -183,17 +180,35 @@
 .weatherRibbonSlots {
   flex: 1;
   min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  align-items: center;
   gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.55) rgba(255, 255, 255, 0.06);
 }
 
 .weatherRibbonSlot {
-  min-width: 0;
+  flex: 0 0 72px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 4px;
+}
+
+.weatherRibbonSlots::-webkit-scrollbar {
+  height: 5px;
+}
+
+.weatherRibbonSlots::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.weatherRibbonSlots::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.45);
+  border-radius: 999px;
 }
 
 .weatherRibbonSlot span,
@@ -391,8 +406,7 @@
 .strategyPanel,
 .tyrePanel,
 .energyPanel,
-.damagePanel,
-.environmentPanel {
+.damagePanel {
   padding: 14px;
   min-height: 0;
 }
@@ -443,7 +457,6 @@
 .metricTile,
 .tyreCard,
 .damageMetric,
-.forecastRow,
 .splitPill,
 .strategyRow,
 .footerStrip {
@@ -453,8 +466,7 @@
 }
 
 .energyContent,
-.energyColumn,
-.forecastBlock {
+.energyColumn {
   min-width: 0;
 }
 
@@ -529,7 +541,7 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr) 272px 320px;
+  grid-template-columns: 380px minmax(0, 1fr) 272px;
   gap: 16px;
   min-height: 0;
   overflow: hidden;
@@ -736,54 +748,6 @@
   line-height: 1;
 }
 
-.environmentPanel {
-  border-bottom: 4px solid rgba(186, 201, 204, 0.44);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  height: 100%;
-}
-
-.forecastBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
-}
-
-.forecastEmpty {
-  padding: 12px;
-  color: var(--text-secondary);
-  background: rgba(14, 14, 15, 0.52);
-  border: 1px solid rgba(132, 147, 150, 0.1);
-}
-
-.forecastRow {
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.forecastLead,
-.forecastMeta {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.forecastLead strong,
-.forecastMeta strong {
-  font-family: var(--font-racing);
-}
-
-.forecastMeta {
-  text-align: right;
-}
-
 .primary {
   color: var(--accent);
 }
@@ -933,8 +897,7 @@
   .strategyPanel,
   .tyrePanel,
   .energyPanel,
-  .damagePanel,
-  .environmentPanel {
+  .damagePanel {
     padding: 14px;
   }
 
@@ -1018,7 +981,6 @@
     line-height: 1.25;
   }
 
-  .forecastRow,
   .strategyRow,
   .battleHeader,
   .damageHeader,
