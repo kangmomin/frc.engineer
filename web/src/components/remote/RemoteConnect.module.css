@@ -2,6 +2,7 @@
   display: grid;
   place-items: center;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 24px;
   background:
     radial-gradient(circle at top left, rgba(0, 229, 255, 0.08), transparent 24%),
@@ -153,7 +154,43 @@
 }
 
 @media (max-width: 560px) {
+  .container {
+    padding: 16px;
+  }
+
+  .card {
+    padding: 20px;
+  }
+
+  .title {
+    font-size: 1.45rem;
+  }
+
+  .subtitle {
+    margin-bottom: 20px;
+  }
+
+  .codeInputs {
+    gap: 8px;
+  }
+
+  .digitInput {
+    height: 60px;
+    font-size: 1.6rem;
+  }
+
   .actions {
     flex-direction: column;
+  }
+
+  .connectButton,
+  .secondaryButton {
+    width: 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  .codeInputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

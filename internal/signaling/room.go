@@ -14,7 +14,6 @@ import (
 
 const (
 	maxEngineersPerRoom = 8
-	roomTTL             = 1 * time.Hour
 	cleanupInterval     = 60 * time.Second
 	driverGracePeriod   = 2 * time.Minute
 )
@@ -47,7 +46,6 @@ type Room struct {
 	Code         string
 	Driver       *peer
 	Engineers    map[string]*peer // peerId → peer
-	CreatedAt    time.Time
 	DriverLostAt *time.Time // set when driver disconnects; nil when connected
 	mu           sync.Mutex
 }
@@ -98,7 +96,6 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 		Code:      code,
 		Driver:    driverPeer,
 		Engineers: make(map[string]*peer),
-		CreatedAt: time.Now(),
 	}
 
 	rm.rooms[code] = room
@@ -287,19 +284,16 @@ func (rm *RoomManager) cleanupLoop() {
 }
 
 func (rm *RoomManager) cleanupExpired() {
-	now := time.Now()
-
 	// Collect expired rooms under lock, then close connections outside lock
 	// to avoid deadlock (conn.Close triggers ReadMessage error → RemovePeer → rm.mu).
 	rm.mu.Lock()
 	var expired []*Room
 	for code, room := range rm.rooms {
 		room.mu.Lock()
-		ttlExpired := now.Sub(room.CreatedAt) > roomTTL
-		driverGraceExpired := room.DriverLostAt != nil && now.Sub(*room.DriverLostAt) > driverGracePeriod
+		driverGraceExpired := room.DriverLostAt != nil && time.Since(*room.DriverLostAt) > driverGracePeriod
 		room.mu.Unlock()
 
-		if ttlExpired || driverGraceExpired {
+		if driverGraceExpired {
 			expired = append(expired, room)
 			delete(rm.rooms, code)
 		}
