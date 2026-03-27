@@ -245,6 +245,7 @@ export interface PitwallState {
   positions: CarPosition[];
   playerIndex: number;
   trackMap?: TrackMapData;
+  ersComparisonEnabled: boolean;
 }
 
 export interface WeatherForecast {
@@ -324,6 +325,10 @@ export interface DriverInfo {
   ersDeployMode: number;
   ersDeployedThisLap: number;
   ersHarvestedThisLap: number;
+  ersEstimatePct: number;
+  ersEstimateReady: boolean;
+  ersActualPct: number;
+  ersActualReady: boolean;
 
   // Strategy
   stintHistory?: StintInfo[];

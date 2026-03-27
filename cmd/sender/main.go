@@ -48,6 +48,7 @@ func main() {
 	if settingsPort == "" {
 		settingsPort = "8099"
 	}
+	comparePassword := os.Getenv("ERS_COMPARE_PASSWORD")
 
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
@@ -90,11 +91,17 @@ func main() {
 
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
+	compareGate, err := newERSCompareGate(comparePassword)
+	if err != nil {
+		logger.Error("failed to initialize ERS compare gate", "error", err)
+		os.Exit(1)
+	}
 
 	// Track recorder (independently toggled from save files)
 	recorder := telemetry.NewTrackRecorder("data", trackStore, logger)
 	recorder.SetEnabled(trackRecording)
 	processor.PitwallManager().SetRecorder(recorder)
+	processor.PitwallManager().SetERSComparisonEnabled(false)
 
 	// Runtime config state protected by mutex
 	var cfgMu sync.Mutex
@@ -210,6 +217,7 @@ func main() {
 			"connectedEngineers": peerManager.ConnectedCount(),
 			"udpPort":            port,
 			"saveFiles":          sf,
+			"ersCompareEnabled":  compareGate.Enabled(),
 		})
 	})
 
@@ -229,19 +237,19 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":         port,
-			"saveFiles":       sf,
-			"trackRecording":  tr,
-			"forwardTargets":  ft,
+			"udpPort":        port,
+			"saveFiles":      sf,
+			"trackRecording": tr,
+			"forwardTargets": ft,
 		})
 	})
 
 	mux.HandleFunc("PUT /api/config", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			UDPPort        int                       `json:"udpPort"`
-			SaveFiles      bool                      `json:"saveFiles"`
-			TrackRecording bool                      `json:"trackRecording"`
-			ForwardTargets []rtconfig.ForwardTarget   `json:"forwardTargets"`
+			UDPPort        int                      `json:"udpPort"`
+			SaveFiles      bool                     `json:"saveFiles"`
+			TrackRecording bool                     `json:"trackRecording"`
+			ForwardTargets []rtconfig.ForwardTarget `json:"forwardTargets"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -318,11 +326,39 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":         cfgUDPPort,
-			"saveFiles":       cfgSaveFiles,
-			"trackRecording":  cfgTrackRecording,
-			"forwardTargets":  cfgForwardTargets,
+			"udpPort":        cfgUDPPort,
+			"saveFiles":      cfgSaveFiles,
+			"trackRecording": cfgTrackRecording,
+			"forwardTargets": cfgForwardTargets,
 		})
+	})
+
+	mux.HandleFunc("POST /api/ers-compare/unlock", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+			return
+		}
+		if !compareGate.Enable(body.Password) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid compare password"})
+			return
+		}
+		processor.PitwallManager().SetERSComparisonEnabled(true)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"enabled": true})
+	})
+
+	mux.HandleFunc("POST /api/ers-compare/lock", func(w http.ResponseWriter, r *http.Request) {
+		compareGate.Disable()
+		processor.PitwallManager().SetERSComparisonEnabled(false)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
 	})
 
 	settingsSrv := &http.Server{Addr: ":" + settingsPort, Handler: mux}
@@ -337,6 +373,11 @@ func main() {
 	fmt.Printf("   Room Code: %s\n", peerManager.RoomCode())
 	fmt.Printf("   Save Files: %v\n", saveFiles)
 	fmt.Printf("   Settings:  http://localhost:%s\n", settingsPort)
+	if compareGate.SecretGenerated() {
+		fmt.Printf("   ERS Compare PIN: %s\n", compareGate.SecretForDisplay())
+	} else {
+		fmt.Println("   ERS Compare PIN: configured via ERS_COMPARE_PASSWORD")
+	}
 	fmt.Println()
 	fmt.Println(" Share the room code with your engineer.")
 	fmt.Println(" Press Ctrl+C to stop.")

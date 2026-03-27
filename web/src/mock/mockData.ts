@@ -258,6 +258,7 @@ export function buildMockFrame(tick: number): {
     positions: buildPositions(driverFrames),
     playerIndex: PLAYER_INDEX,
     trackMap: TRACK_MAP,
+    ersComparisonEnabled: true,
   };
 
   const player = driverFrames.find((frame) => frame.driver.index === PLAYER_INDEX)?.driver ?? driverFrames[0].driver;
@@ -355,6 +356,11 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
     const ersDeployMode = orderIndex <= 5 ? 3 : orderIndex <= 12 ? 2 : 1;
     const ersDeployedThisLap = clampInt(Math.round(220_000 + progress * 620_000 + driving.throttle * 160_000), 50_000, 1_100_000);
     const ersHarvestedThisLap = clampInt(Math.round(160_000 + driving.brake * 420_000 + (1 - progress) * 110_000), 40_000, 950_000);
+    const ersEstimatePct = clampInt(
+      Math.round((ersStoreEnergy / 4_000_000) * 100 + Math.sin(tick / 9 + orderIndex * 0.4) * 2),
+      0,
+      100,
+    );
 
     const driver: DriverInfo = {
       index: seed.index,
@@ -385,6 +391,10 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
       ersDeployMode,
       ersDeployedThisLap,
       ersHarvestedThisLap,
+      ersEstimatePct,
+      ersEstimateReady: true,
+      ersActualPct: Math.round((ersStoreEnergy / 4_000_000) * 100),
+      ersActualReady: true,
       stintHistory: [
         { compound: orderIndex < 8 ? 'medium' : 'hard', laps: clampInt(currentLapNum - tireAge - 1, 8, 32) },
         { compound: seed.tireCompound, laps: tireAge },

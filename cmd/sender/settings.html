@@ -77,7 +77,8 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  .field input[type="number"] {
+  .field input[type="number"],
+  .field input[type="password"] {
     width: 100%;
     background: #1a1a1a;
     border: 1px solid #333;
@@ -90,7 +91,8 @@
     outline: none;
     transition: border-color 0.2s;
   }
-  .field input[type="number"]:focus {
+  .field input[type="number"]:focus,
+  .field input[type="password"]:focus {
     border-color: #00d2ff;
   }
 
@@ -252,6 +254,46 @@
     opacity: 0.4;
     cursor: default;
   }
+  .secondary-btn {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #bbb;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .secondary-btn:hover {
+    border-color: #00d2ff;
+    color: #00d2ff;
+    background: #00d2ff10;
+  }
+  .compare-status {
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  .compare-status.enabled { color: #00d2ff; }
+  .compare-status.disabled { color: #888; }
+  .compare-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .compare-actions .save-btn,
+  .compare-actions .secondary-btn {
+    width: auto;
+    flex: 1;
+  }
+  .compare-hint {
+    margin-top: 8px;
+    color: #666;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
 
   /* Toast */
   .toast {
@@ -335,6 +377,23 @@
     <div class="track-list" id="trackList"></div>
   </div>
 
+  <div class="section">
+    <div class="section-title">ERS Compare</div>
+    <div class="stat-row">
+      <span class="stat-label">Comparison Mode</span>
+      <span class="compare-status disabled" id="compareStatus">LOCKED</span>
+    </div>
+    <div class="field">
+      <label for="comparePassword">Compare Password</label>
+      <input type="password" id="comparePassword" placeholder="Enter sender compare PIN">
+      <div class="compare-hint">Use the PIN shown in the sender console, or the value from <code>ERS_COMPARE_PASSWORD</code>.</div>
+    </div>
+    <div class="compare-actions">
+      <button class="save-btn" id="unlockCompareBtn">Unlock</button>
+      <button class="secondary-btn" id="lockCompareBtn">Lock</button>
+    </div>
+  </div>
+
   <button class="save-btn" id="saveBtn">Save</button>
 </div>
 
@@ -350,6 +409,10 @@
   const $toast = document.getElementById('toast');
   const $fwdList = document.getElementById('fwdList');
   const $fwdAdd = document.getElementById('fwdAdd');
+  const $compareStatus = document.getElementById('compareStatus');
+  const $comparePassword = document.getElementById('comparePassword');
+  const $unlockCompareBtn = document.getElementById('unlockCompareBtn');
+  const $lockCompareBtn = document.getElementById('lockCompareBtn');
 
   let forwardTargets = [];
 
@@ -428,6 +491,9 @@
       const d = await r.json();
       $room.textContent = d.roomCode || '----';
       $eng.textContent = d.connectedEngineers;
+      const enabled = !!d.ersCompareEnabled;
+      $compareStatus.textContent = enabled ? 'UNLOCKED' : 'LOCKED';
+      $compareStatus.className = 'compare-status ' + (enabled ? 'enabled' : 'disabled');
     } catch {}
   }
 
@@ -472,6 +538,47 @@
       showToast('Network error', false);
     } finally {
       $btn.disabled = false;
+    }
+  });
+
+  $unlockCompareBtn.addEventListener('click', async () => {
+    $unlockCompareBtn.disabled = true;
+    try {
+      const r = await fetch('/api/ers-compare/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: $comparePassword.value }),
+      });
+      if (r.ok) {
+        $comparePassword.value = '';
+        showToast('ERS compare unlocked', true);
+        pollStatus();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        showToast(d.error || 'Unlock failed', false);
+      }
+    } catch {
+      showToast('Network error', false);
+    } finally {
+      $unlockCompareBtn.disabled = false;
+    }
+  });
+
+  $lockCompareBtn.addEventListener('click', async () => {
+    $lockCompareBtn.disabled = true;
+    try {
+      const r = await fetch('/api/ers-compare/lock', { method: 'POST' });
+      if (r.ok) {
+        $comparePassword.value = '';
+        showToast('ERS compare locked', true);
+        pollStatus();
+      } else {
+        showToast('Lock failed', false);
+      }
+    } catch {
+      showToast('Network error', false);
+    } finally {
+      $lockCompareBtn.disabled = false;
     }
   });
 

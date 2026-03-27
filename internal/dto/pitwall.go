@@ -2,11 +2,12 @@ package dto
 
 // PitwallState is the comprehensive state DTO broadcast to pitwall clients
 type PitwallState struct {
-	Session     *SessionInfo  `json:"session"`
-	Drivers     []DriverInfo  `json:"drivers"`
-	Positions   []CarPosition `json:"positions"`
-	PlayerIndex int           `json:"playerIndex"`
-	TrackMap    *TrackMapDTO  `json:"trackMap,omitempty"`
+	Session              *SessionInfo  `json:"session"`
+	Drivers              []DriverInfo  `json:"drivers"`
+	Positions            []CarPosition `json:"positions"`
+	PlayerIndex          int           `json:"playerIndex"`
+	TrackMap             *TrackMapDTO  `json:"trackMap,omitempty"`
+	ERSComparisonEnabled bool          `json:"ersComparisonEnabled"`
 }
 
 // TrackMapDTO holds the full track outline with bounds
@@ -113,6 +114,10 @@ type DriverInfo struct {
 	ERSDeployMode       int     `json:"ersDeployMode"`
 	ERSDeployedThisLap  float32 `json:"ersDeployedThisLap"`
 	ERSHarvestedThisLap float32 `json:"ersHarvestedThisLap"`
+	ERSEstimatePct      int     `json:"ersEstimatePct"`
+	ERSEstimateReady    bool    `json:"ersEstimateReady"`
+	ERSActualPct        int     `json:"ersActualPct"`
+	ERSActualReady      bool    `json:"ersActualReady"`
 
 	// Damage
 	Damage *CarDamage `json:"damage,omitempty"`
@@ -129,10 +134,10 @@ type DriverInfo struct {
 	Dynamics []DynamicsLapDTO `json:"dynamics,omitempty"`
 
 	// Penalties
-	Penalties                int `json:"penalties"`
-	TotalWarnings            int `json:"totalWarnings"`
-	CornerCuttingWarnings    int `json:"cornerCuttingWarnings"`
-	NumUnservedDriveThroughs int `json:"numUnservedDriveThroughs"`
+	Penalties                  int `json:"penalties"`
+	TotalWarnings              int `json:"totalWarnings"`
+	CornerCuttingWarnings      int `json:"cornerCuttingWarnings"`
+	NumUnservedDriveThroughs   int `json:"numUnservedDriveThroughs"`
 	NumUnservedStopGoPenalties int `json:"numUnservedStopGoPenalties"`
 
 	// Pit

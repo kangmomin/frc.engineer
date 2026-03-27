@@ -690,8 +690,9 @@ func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {
 	}
 
 	out := &dto.PitwallState{
-		PlayerIndex: src.PlayerIndex,
-		TrackMap:    nil,
+		PlayerIndex:          src.PlayerIndex,
+		TrackMap:             nil,
+		ERSComparisonEnabled: src.ERSComparisonEnabled,
 	}
 
 	if src.Session != nil {

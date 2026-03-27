@@ -21,20 +21,22 @@ func sanitize(v float32) float32 {
 type PitwallManager struct {
 	mu sync.RWMutex
 
-	session          *packets.PacketSessionData
-	participants     *packets.PacketParticipantsData
-	motion           *packets.PacketMotionData
-	carStatus        *packets.PacketCarStatusData
-	lapData          *packets.PacketLapData
-	telemetry        *packets.PacketCarTelemetryData
-	carDamage        *packets.PacketCarDamageData
-	carSetups        *packets.PacketCarSetupData
-	motionEx         *packets.PacketMotionExData
-	playerIndex      uint8
-	strategyMgr      *StrategyManager
-	trackStore       *tracks.TrackStore
-	recorder         *TrackRecorder
-	dynamicsAnalyzer *DynamicsAnalyzer
+	session           *packets.PacketSessionData
+	participants      *packets.PacketParticipantsData
+	motion            *packets.PacketMotionData
+	carStatus         *packets.PacketCarStatusData
+	lapData           *packets.PacketLapData
+	telemetry         *packets.PacketCarTelemetryData
+	carDamage         *packets.PacketCarDamageData
+	carSetups         *packets.PacketCarSetupData
+	motionEx          *packets.PacketMotionExData
+	playerIndex       uint8
+	strategyMgr       *StrategyManager
+	trackStore        *tracks.TrackStore
+	recorder          *TrackRecorder
+	dynamicsAnalyzer  *DynamicsAnalyzer
+	ersEstimator      *ERSEstimator
+	ersCompareEnabled bool
 }
 
 // NewPitwallManager creates a new PitwallManager
@@ -44,6 +46,7 @@ func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackSto
 		trackStore:       trackStore,
 		recorder:         recorder,
 		dynamicsAnalyzer: NewDynamicsAnalyzer(),
+		ersEstimator:     NewERSEstimator(trackStore),
 	}
 }
 
@@ -51,6 +54,13 @@ func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackSto
 func (pm *PitwallManager) SetRecorder(r *TrackRecorder) {
 	pm.mu.Lock()
 	pm.recorder = r
+	pm.mu.Unlock()
+}
+
+// SetERSComparisonEnabled toggles sending actual-vs-estimate comparison fields.
+func (pm *PitwallManager) SetERSComparisonEnabled(enabled bool) {
+	pm.mu.Lock()
+	pm.ersCompareEnabled = enabled
 	pm.mu.Unlock()
 }
 
@@ -175,7 +185,8 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	defer pm.mu.RUnlock()
 
 	state := &dto.PitwallState{
-		PlayerIndex: int(pm.playerIndex),
+		PlayerIndex:          int(pm.playerIndex),
+		ERSComparisonEnabled: pm.ersCompareEnabled,
 	}
 
 	// Session info
@@ -298,6 +309,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	}
 
 	if numCars > 0 {
+		ersEstimates := pm.ersEstimator.Update(pm.session, pm.participants, pm.lapData, pm.telemetry, pm.carStatus)
 		state.Drivers = make([]dto.DriverInfo, numCars)
 		for i := range numCars {
 			d := &state.Drivers[i]
@@ -345,7 +357,13 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.ERSDeployedThisLap = sanitize(cs.ERSDeployedThisLap)
 				d.ERSHarvestedThisLap = sanitize(cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH)
 				d.BrakeBias = int(cs.FrontBrakeBias)
+				if pm.ersCompareEnabled && ersActualAvailable(pm.participants, pm.playerIndex, i) {
+					d.ERSActualPct = ersPercent(cs.ERSStoreEnergy)
+					d.ERSActualReady = true
+				}
 			}
+			d.ERSEstimatePct = ersEstimates[i].Percent
+			d.ERSEstimateReady = ersEstimates[i].Ready
 
 			if pm.carSetups != nil {
 				setup := &pm.carSetups.CarSetupData[i]
@@ -485,6 +503,27 @@ func clampDamage(v uint8) int {
 		return 100
 	}
 	return int(v)
+}
+
+func ersPercent(energy float32) int {
+	const maxERSEnergy = 4_000_000.0
+	pct := (float64(sanitize(energy)) / maxERSEnergy) * 100
+	if pct < 0 {
+		pct = 0
+	} else if pct > 100 {
+		pct = 100
+	}
+	return int(math.Round(pct))
+}
+
+func ersActualAvailable(participants *packets.PacketParticipantsData, playerIndex uint8, idx int) bool {
+	if idx == int(playerIndex) {
+		return true
+	}
+	if participants == nil || idx < 0 || idx >= len(participants.Participants) {
+		return false
+	}
+	return participants.Participants[idx].YourTelemetry == 1
 }
 
 func tireCompoundString(v uint8) string {

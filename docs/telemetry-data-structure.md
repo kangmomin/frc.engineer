@@ -379,6 +379,22 @@ interface PitwallState {
     positions: CarPosition[];
     playerIndex: number;
     trackMap?: TrackMapData;
+    ersComparisonEnabled: boolean;
+}
+```
+
+### DriverInfo 추가 ERS 필드
+
+```typescript
+interface DriverInfo {
+    ersStoreEnergy: number;       // J, 원본 Car Status 값
+    ersDeployMode: number;        // 0=none, 1=medium, 2=hotlap, 3=overtake
+    ersDeployedThisLap: number;   // J
+    ersHarvestedThisLap: number;  // J
+    ersEstimatePct: number;       // 0-100, 리더보드용 추정치
+    ersEstimateReady: boolean;    // 추정 안정화 전까지 false
+    ersActualPct: number;         // 0-100, sender unlock 시에만 actual 비교값 제공
+    ersActualReady: boolean;      // actual 비교 가능 여부
 }
 ```
 

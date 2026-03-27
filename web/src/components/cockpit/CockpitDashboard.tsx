@@ -51,6 +51,7 @@ export function CockpitDashboard({
 
   const session = pitwallState?.session ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
+  const ersComparisonEnabled = pitwallState?.ersComparisonEnabled ?? false;
 
   const drivers = useMemo(
     () => [...(pitwallState?.drivers ?? [])].sort((a, b) => a.position - b.position),
@@ -181,6 +182,7 @@ export function CockpitDashboard({
               <span>Pos</span>
               <span>Driver</span>
               <span>DRS</span>
+              <span>{ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.'}</span>
               <span>Gap</span>
               <span>Interval</span>
               <span>Last Lap</span>
@@ -221,6 +223,14 @@ export function CockpitDashboard({
                       <span className={driverHasDrs(driver) ? styles.drsActive : styles.drsInactive}>
                         DRS
                       </span>
+                    </span>
+                    <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
+                      <span className={styles[getErsEstimateTone(driver)]}>{formatErsEstimate(driver)}</span>
+                      {ersComparisonEnabled && (
+                        <span className={styles.ersCompareMeta}>
+                          {formatErsCompare(driver)}
+                        </span>
+                      )}
                     </span>
                     <span>{formatGap(driver)}</span>
                     <span>{formatInterval(driver)}</span>
@@ -778,6 +788,26 @@ function getErsModeLabel(player: DriverInfo | null): string {
   if (mode === 2) return 'Balanced';
   if (mode === 1) return 'Build';
   return 'Standby';
+}
+
+function formatErsEstimate(driver: DriverInfo): string {
+  if (!driver.ersEstimateReady) return '--';
+  return `${driver.ersEstimatePct}%`;
+}
+
+function formatErsCompare(driver: DriverInfo): string {
+  if (!driver.ersActualReady) return 'A--';
+  const delta = driver.ersEstimateReady ? driver.ersEstimatePct - driver.ersActualPct : null;
+  if (delta == null) return `A${driver.ersActualPct}%`;
+  const sign = delta > 0 ? '+' : '';
+  return `A${driver.ersActualPct}% Δ${sign}${delta}`;
+}
+
+function getErsEstimateTone(driver: DriverInfo): 'ersHigh' | 'ersMedium' | 'ersLow' | 'ersPending' {
+  if (!driver.ersEstimateReady) return 'ersPending';
+  if (driver.ersEstimatePct >= 65) return 'ersHigh';
+  if (driver.ersEstimatePct >= 35) return 'ersMedium';
+  return 'ersLow';
 }
 
 function getFuelMargin(player: DriverInfo | null, session: SessionInfo | null): string {

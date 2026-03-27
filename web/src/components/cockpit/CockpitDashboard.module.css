@@ -290,7 +290,7 @@
 .tableHeader,
 .tableRow {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1.75fr) 56px minmax(72px, 0.95fr) 72px 88px auto 90px;
+  grid-template-columns: 52px minmax(0, 1.55fr) 56px 72px minmax(72px, 0.95fr) 72px 88px auto 90px;
   gap: 8px;
   align-items: center;
   padding: 10px 14px;
@@ -366,6 +366,27 @@
   display: flex;
 }
 
+.ersCell {
+  justify-self: end;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.ersCellCompare {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.ersCompareMeta {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .drsActive,
 .drsInactive {
   padding: 3px 7px;
@@ -385,6 +406,22 @@
 .drsInactive {
   color: rgba(162, 177, 180, 0.85);
   border: 1px solid rgba(59, 73, 76, 0.4);
+}
+
+.ersHigh {
+  color: var(--accent-lime);
+}
+
+.ersMedium {
+  color: #ffd65a;
+}
+
+.ersLow {
+  color: #ff8d6d;
+}
+
+.ersPending {
+  color: var(--text-muted);
 }
 
 .tyreCell {
@@ -985,15 +1022,15 @@
 
   .tableHeader,
   .tableRow {
-    grid-template-columns: 48px minmax(0, 1.45fr) 52px minmax(72px, 1fr) minmax(72px, 1fr);
+    grid-template-columns: 48px minmax(0, 1.25fr) 52px 72px minmax(72px, 1fr) minmax(72px, 1fr);
   }
 
-  .tableHeader span:nth-child(6),
   .tableHeader span:nth-child(7),
   .tableHeader span:nth-child(8),
-  .tableRow span:nth-child(6),
+  .tableHeader span:nth-child(9),
   .tableRow span:nth-child(7),
-  .tableRow span:nth-child(8) {
+  .tableRow span:nth-child(8),
+  .tableRow span:nth-child(9) {
     display: none;
   }
 }
@@ -1057,10 +1094,10 @@
   }
 
   .tableRow {
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: 44px minmax(0, 1fr) auto auto;
     grid-template-areas:
-      'position driver drs'
-      'position gap interval';
+      'position driver drs ers'
+      'position gap interval interval';
     gap: 8px 10px;
     padding: 12px;
     min-height: unset;
@@ -1083,22 +1120,39 @@
     align-self: start;
   }
 
-  .tableRow> :nth-child(4) {
+  .ersCell {
+    grid-area: ers;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  .ersCell::before {
+    content: 'ERS';
+    margin-bottom: 3px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .tableRow> :nth-child(5) {
     grid-area: gap;
   }
 
-  .tableRow> :nth-child(5) {
+  .tableRow> :nth-child(6) {
     grid-area: interval;
   }
 
-  .tableRow> :nth-child(4),
-  .tableRow> :nth-child(5) {
+  .tableRow> :nth-child(5),
+  .tableRow> :nth-child(6) {
     color: var(--text-secondary);
     font-size: 12px;
   }
 
-  .tableRow> :nth-child(4)::before,
-  .tableRow> :nth-child(5)::before {
+  .tableRow> :nth-child(5)::before,
+  .tableRow> :nth-child(6)::before {
     display: block;
     margin-bottom: 3px;
     font-size: 9px;
@@ -1107,17 +1161,17 @@
     color: var(--text-muted);
   }
 
-  .tableRow> :nth-child(4)::before {
+  .tableRow> :nth-child(5)::before {
     content: 'Gap';
   }
 
-  .tableRow> :nth-child(5)::before {
+  .tableRow> :nth-child(6)::before {
     content: 'Interval';
   }
 
-  .tableRow span:nth-child(6),
   .tableRow span:nth-child(7),
-  .tableRow span:nth-child(8) {
+  .tableRow span:nth-child(8),
+  .tableRow span:nth-child(9) {
     display: none;
   }
 
@@ -1195,7 +1249,7 @@
     grid-template-columns: 40px minmax(0, 1fr) auto;
     grid-template-areas:
       'position driver drs'
-      'gap gap gap'
+      'position ers gap'
       'interval interval interval';
   }
 
