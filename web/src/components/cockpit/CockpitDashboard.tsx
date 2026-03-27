@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor, getTeamName } from '../../constants/teamColors';
-import { getTyreColor, getTyreShortLabel } from '../../constants/tyreCompounds';
+import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
+import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type {
   DriverInfo,
   RaceControlNotification,
   SessionInfo,
+  TireWearDisplayMode,
   WeatherForecast,
 } from '../../types/telemetry';
 import { clamp, formatLapTime } from '../../utils/formatters';
@@ -14,6 +16,7 @@ import styles from './CockpitDashboard.module.css';
 
 const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
+const PREDICTION_LAPS = 10;
 
 interface CockpitDashboardProps {
   onOpenSettings: () => void;
@@ -85,6 +88,18 @@ export function CockpitDashboard({
   const projectedBoxLap = averageWearPerLap > 0
     ? Math.max(0, Math.floor((80 - averageWear) / averageWearPerLap))
     : null;
+  const [wearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
+    'tireWearDisplayMode',
+    'absolute',
+    (v) => (v === 'absolute' || v === 'relative' ? v : null),
+  );
+  const tireAge = Math.max(player?.tireAge ?? 0, 1);
+  const wheelWearPrediction = wheelWear.map((wear) => {
+    const wearPerLap = player?.tireAge ? wear / tireAge : 0;
+    const delta = wearPerLap * PREDICTION_LAPS;
+    const absolute = Math.min(wear + delta, 100);
+    return { delta: Math.round(delta), absolute: Math.round(absolute) };
+  });
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
@@ -309,6 +324,15 @@ export function CockpitDashboard({
           <div className={styles.tyreGrid}>
             {WHEEL_LABELS.map((label, index) => {
               const tempTone = getTemperatureTone(wheelCoreTemp[index]);
+              const pred = wheelWearPrediction[index];
+              const hasPrediction = player?.tireAge && player.tireAge > 0;
+              const predValue = wearDisplayMode === 'absolute' ? pred.absolute : pred.delta;
+              const predLabel = wearDisplayMode === 'absolute'
+                ? `${predValue}%`
+                : `+${predValue}%`;
+              const predColor = wearDisplayMode === 'absolute'
+                ? getWearStatusColor(pred.absolute)
+                : undefined;
               return (
                 <div key={label} className={styles.tyreCard}>
                   <span className={styles.tyreCardLabel}>{label}</span>
@@ -322,6 +346,14 @@ export function CockpitDashboard({
                     <div className={styles.tyreWearMeta}>
                       <strong>{Math.round(wheelWear[index])}%</strong>
                       <span>Wear</span>
+                      {hasPrediction && (
+                        <span
+                          className={styles.tyrePrediction}
+                          style={predColor ? { color: predColor } : undefined}
+                        >
+                          {PREDICTION_LAPS}L → {predLabel}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

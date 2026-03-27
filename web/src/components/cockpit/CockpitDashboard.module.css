@@ -624,6 +624,16 @@
   font-size: 0.9rem;
 }
 
+.tyrePrediction {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  color: var(--color-accent-primary, #00e5ff);
+}
+
 .tyreStatus {
   display: inline-block;
   margin-top: 6px;
