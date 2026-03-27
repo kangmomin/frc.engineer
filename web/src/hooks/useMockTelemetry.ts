@@ -1,12 +1,20 @@
-import { useEffect } from 'react';
-import { buildMockFrame } from '../mock/mockData';
+import { useEffect, useRef } from 'react';
+import type { PitwallState } from '../types/telemetry';
+import { buildMockMessages } from '../mock/mockData';
 import { useTelemetryStore } from '../store/telemetryStore';
+import { routeMessage } from './useMessageRouter';
 
 export function useMockTelemetry(enabled: boolean) {
   const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
-  const setRaceControlNotifications = useTelemetryStore((state) => state.setRaceControlNotifications);
-  const setBattleAlerts = useTelemetryStore((state) => state.setBattleAlerts);
+  const addRaceControlNotification = useTelemetryStore((state) => state.addRaceControlNotification);
+  const addBattleAlert = useTelemetryStore((state) => state.addBattleAlert);
+  const setRaceResult = useTelemetryStore((state) => state.setRaceResult);
+
+  const pendingPitwallRef = useRef<PitwallState | null>(null);
+  const pitwallRafRef = useRef(0);
+  const raceControlSeqRef = useRef(0);
+  const battleSeqRef = useRef(0);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -14,18 +22,33 @@ export function useMockTelemetry(enabled: boolean) {
     let tick = 0;
 
     const applyFrame = () => {
-      const frame = buildMockFrame(tick++);
       setConnectionState('connected');
-      setPitwallState(frame.pitwallState);
-      setRaceControlNotifications(frame.raceControl);
-      setBattleAlerts(frame.battleAlerts);
+
+      const messages = buildMockMessages(tick++);
+      for (const message of messages) {
+        routeMessage(
+          message,
+          { setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult },
+          {
+            pendingPitwall: pendingPitwallRef,
+            pitwallRaf: pitwallRafRef,
+            rcSeq: raceControlSeqRef,
+            battleSeq: battleSeqRef,
+          },
+        );
+      }
     };
 
     applyFrame();
-    const intervalId = window.setInterval(applyFrame, 1500);
+    const intervalId = window.setInterval(applyFrame, 250);
 
     return () => {
       window.clearInterval(intervalId);
+      pendingPitwallRef.current = null;
+      if (pitwallRafRef.current) {
+        cancelAnimationFrame(pitwallRafRef.current);
+        pitwallRafRef.current = 0;
+      }
     };
-  }, [enabled, setBattleAlerts, setConnectionState, setPitwallState, setRaceControlNotifications]);
+  }, [addBattleAlert, addRaceControlNotification, enabled, setConnectionState, setPitwallState, setRaceResult]);
 }
