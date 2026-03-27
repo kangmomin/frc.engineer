@@ -626,11 +626,11 @@
 
 .tyrePrediction {
   display: block;
-  margin-top: 3px;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  opacity: 0.85;
+  margin-top: 4px;
+  font-family: var(--font-racing);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   color: var(--color-accent-primary, #00e5ff);
 }
 
@@ -642,17 +642,59 @@
 
 .footerStrip {
   margin-top: auto;
-  padding: 10px 12px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   background: rgba(14, 14, 15, 0.8);
 }
 
-.footerStrip strong {
+.predictionInput {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.lapInput {
+  width: 40px;
+  padding: 3px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
   font-family: var(--font-racing);
-  font-size: 0.88rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.lapInput::-webkit-inner-spin-button,
+.lapInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.lapInput:focus {
+  outline: none;
+  border-color: var(--color-accent-primary, #00e5ff);
+}
+
+.predictionSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.predictionChip {
+  font-family: var(--font-racing);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-accent-primary, #00e5ff);
 }
 
 .energyPanel {

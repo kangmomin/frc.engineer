@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor, getTeamName } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
@@ -16,7 +16,7 @@ import styles from './CockpitDashboard.module.css';
 
 const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
-const PREDICTION_LAPS = 10;
+const DEFAULT_PREDICTION_LAPS = 10;
 
 interface CockpitDashboardProps {
   onOpenSettings: () => void;
@@ -85,18 +85,16 @@ export function CockpitDashboard({
   const wheelWear = normalizeWheelData(player?.tireWear);
   const averageWear = wheelWear.reduce((sum, value) => sum + value, 0) / WHEEL_LABELS.length;
   const averageWearPerLap = player?.tireAge ? averageWear / Math.max(player.tireAge, 1) : 0;
-  const projectedBoxLap = averageWearPerLap > 0
-    ? Math.max(0, Math.floor((80 - averageWear) / averageWearPerLap))
-    : null;
   const [wearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
     'tireWearDisplayMode',
     'absolute',
     (v) => (v === 'absolute' || v === 'relative' ? v : null),
   );
+  const [predictionLaps, setPredictionLaps] = useState(DEFAULT_PREDICTION_LAPS);
   const tireAge = Math.max(player?.tireAge ?? 0, 1);
   const wheelWearPrediction = wheelWear.map((wear) => {
     const wearPerLap = player?.tireAge ? wear / tireAge : 0;
-    const delta = wearPerLap * PREDICTION_LAPS;
+    const delta = wearPerLap * predictionLaps;
     const absolute = Math.min(wear + delta, 100);
     return { delta: Math.round(delta), absolute: Math.round(absolute) };
   });
@@ -326,11 +324,12 @@ export function CockpitDashboard({
               const tempTone = getTemperatureTone(wheelCoreTemp[index]);
               const pred = wheelWearPrediction[index];
               const hasPrediction = player?.tireAge && player.tireAge > 0;
-              const predValue = wearDisplayMode === 'absolute' ? pred.absolute : pred.delta;
-              const predLabel = wearDisplayMode === 'absolute'
-                ? `${predValue}%`
-                : `+${predValue}%`;
-              const predColor = wearDisplayMode === 'absolute'
+              const predLabel = hasPrediction
+                ? wearDisplayMode === 'absolute'
+                  ? `${pred.absolute}%`
+                  : `+${pred.delta}%`
+                : '--';
+              const predColor = hasPrediction && wearDisplayMode === 'absolute'
                 ? getWearStatusColor(pred.absolute)
                 : undefined;
               return (
@@ -346,14 +345,12 @@ export function CockpitDashboard({
                     <div className={styles.tyreWearMeta}>
                       <strong>{Math.round(wheelWear[index])}%</strong>
                       <span>Wear</span>
-                      {hasPrediction && (
-                        <span
-                          className={styles.tyrePrediction}
-                          style={predColor ? { color: predColor } : undefined}
-                        >
-                          {PREDICTION_LAPS}L → {predLabel}
-                        </span>
-                      )}
+                      <span
+                        className={styles.tyrePrediction}
+                        style={predColor ? { color: predColor } : undefined}
+                      >
+                        {predictionLaps}L → {predLabel}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -361,10 +358,41 @@ export function CockpitDashboard({
             })}
           </div>
           <div className={styles.footerStrip}>
-            <span>N-Lap Prediction</span>
-            <strong>
-              {projectedBoxLap == null ? 'BOX DATA PENDING' : `BOX IN: ${projectedBoxLap} LAPS`}
-            </strong>
+            <div className={styles.predictionInput}>
+              <label htmlFor="pred-laps">Predict after</label>
+              <input
+                id="pred-laps"
+                className={styles.lapInput}
+                type="number"
+                min={1}
+                max={99}
+                value={predictionLaps}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!isNaN(v) && v >= 1 && v <= 99) setPredictionLaps(v);
+                }}
+              />
+              <span>laps</span>
+            </div>
+            <div className={styles.predictionSummary}>
+              {WHEEL_LABELS.map((label, index) => {
+                const pred = wheelWearPrediction[index];
+                const hasPred = player?.tireAge && player.tireAge > 0;
+                const text = hasPred
+                  ? wearDisplayMode === 'absolute'
+                    ? `${pred.absolute}%`
+                    : `+${pred.delta}%`
+                  : '--';
+                const color = hasPred && wearDisplayMode === 'absolute'
+                  ? getWearStatusColor(pred.absolute)
+                  : undefined;
+                return (
+                  <span key={label} className={styles.predictionChip} style={color ? { color } : undefined}>
+                    {label} {text}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </div>
 
