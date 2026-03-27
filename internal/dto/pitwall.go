@@ -128,6 +128,13 @@ type DriverInfo struct {
 	// Vehicle Dynamics
 	Dynamics []DynamicsLapDTO `json:"dynamics,omitempty"`
 
+	// Penalties
+	Penalties                int `json:"penalties"`
+	TotalWarnings            int `json:"totalWarnings"`
+	CornerCuttingWarnings    int `json:"cornerCuttingWarnings"`
+	NumUnservedDriveThroughs int `json:"numUnservedDriveThroughs"`
+	NumUnservedStopGoPenalties int `json:"numUnservedStopGoPenalties"`
+
 	// Pit
 	PitStatus         int     `json:"pitStatus"`
 	DriverStatus      int     `json:"driverStatus"`

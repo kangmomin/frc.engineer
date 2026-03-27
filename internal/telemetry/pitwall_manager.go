@@ -326,6 +326,11 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.DeltaToCarInFront = int(ld.DeltaToCarInFrontMinutesPart)*60000 + int(ld.DeltaToCarInFrontMSPart)
 				d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderMinutesPart)*60000 + int(ld.DeltaToRaceLeaderMSPart)
 				d.PitLaneTime = int(ld.PitLaneTimeInLaneInMS)
+				d.Penalties = int(ld.Penalties)
+				d.TotalWarnings = int(ld.TotalWarnings)
+				d.CornerCuttingWarnings = int(ld.CornerCuttingWarnings)
+				d.NumUnservedDriveThroughs = int(ld.NumUnservedDriveThroughs)
+				d.NumUnservedStopGoPenalties = int(ld.NumUnservedStopGoPenalties)
 			}
 
 			if pm.carStatus != nil {
