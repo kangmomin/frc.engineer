@@ -93,7 +93,7 @@
 
 .leaderboardShell {
   display: grid;
-  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 16px;
   min-width: 0;
   min-height: 0;
@@ -119,6 +119,7 @@
       transparent 6px);
   border: 1px solid rgba(59, 73, 76, 0.15);
   overflow: hidden;
+  overflow-y: auto;
   min-width: 0;
 }
 
@@ -638,6 +639,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .tyreCard strong {
@@ -679,6 +681,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
   background: rgba(14, 14, 15, 0.8);
 }
 
@@ -741,12 +744,11 @@
 
 .energyContent {
   display: grid;
-  grid-template-columns: minmax(156px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: minmax(132px, 0.42fr) minmax(120px, 1fr);
   gap: 14px;
   min-height: 0;
   flex: 1;
   align-items: center;
-  overflow: hidden;
 }
 
 .energyColumn {
@@ -953,6 +955,10 @@
     overflow: visible;
   }
 
+  .leaderboardPanel {
+    max-height: 60vh;
+  }
+
   .sideRail {
     grid-column: 1;
     grid-row: 2;
@@ -1021,6 +1027,10 @@
   .leaderboardShell,
   .bottomRow {
     overflow: visible;
+  }
+
+  .leaderboardPanel {
+    max-height: 50vh;
   }
 
   .combatPanel,
