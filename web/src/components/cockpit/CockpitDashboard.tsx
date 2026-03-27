@@ -184,6 +184,7 @@ export function CockpitDashboard({
               <span>Gap</span>
               <span>Interval</span>
               <span>Last Lap</span>
+              <span>Pen</span>
               <span>Tyre Age</span>
             </div>
 
@@ -224,6 +225,7 @@ export function CockpitDashboard({
                     <span>{formatGap(driver)}</span>
                     <span>{formatInterval(driver)}</span>
                     <span>{formatLapTime(driver.lastLapTime)}</span>
+                    <PenaltyCell driver={driver} />
                     <span className={styles.tyreCell}>
                       <span
                         className={styles.tyreDot}
@@ -629,6 +631,51 @@ function DamageMetric({ label, value }: { label: string; value: number }) {
       <span>{label}</span>
       <strong className={styles[getDamageTone(value)]}>{`${Math.round(value)}%`}</strong>
     </div>
+  );
+}
+
+function PenaltyCell({ driver }: { driver: DriverInfo }) {
+  const warnings = driver.totalWarnings ?? 0;
+  const timePen = driver.penalties ?? 0;
+  const dt = driver.numUnservedDriveThroughs ?? 0;
+  const sg = driver.numUnservedStopGoPenalties ?? 0;
+  const hasPenalty = warnings > 0 || timePen > 0 || dt > 0 || sg > 0;
+
+  if (!hasPenalty) {
+    return <span className={styles.penaltyCell}>--</span>;
+  }
+
+  const badges: string[] = [];
+  if (warnings > 0) badges.push(`W${warnings}`);
+  if (timePen > 0) badges.push(`+${timePen}s`);
+  if (dt > 0) badges.push(`DT${dt}`);
+  if (sg > 0) badges.push(`SG${sg}`);
+
+  const details: string[] = [];
+  if (warnings > 0) {
+    const cc = driver.cornerCuttingWarnings ?? 0;
+    const other = warnings - cc;
+    if (cc > 0) details.push(`Corner cutting: ${cc}`);
+    if (other > 0) details.push(`Other warnings: ${other}`);
+  }
+  if (timePen > 0) details.push(`Time penalty: +${timePen}s`);
+  if (dt > 0) details.push(`Drive-through: ${dt} unserved`);
+  if (sg > 0) details.push(`Stop-go: ${sg} unserved`);
+
+  return (
+    <span className={styles.penaltyCell} title={details.join('\n')}>
+      {badges.map((badge) => {
+        const isWarning = badge.startsWith('W');
+        return (
+          <span
+            key={badge}
+            className={isWarning ? styles.penaltyBadgeWarn : styles.penaltyBadgePen}
+          >
+            {badge}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 

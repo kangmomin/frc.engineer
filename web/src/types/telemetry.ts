@@ -339,6 +339,13 @@ export interface DriverInfo {
   // Vehicle Dynamics
   dynamics?: DynamicsLap[];
 
+  // Penalties
+  penalties: number;
+  totalWarnings: number;
+  cornerCuttingWarnings: number;
+  numUnservedDriveThroughs: number;
+  numUnservedStopGoPenalties: number;
+
   // Pit
   pitStatus: number;
   driverStatus: number;
