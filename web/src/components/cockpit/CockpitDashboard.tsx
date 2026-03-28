@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor, getTeamName } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
@@ -8,6 +8,8 @@ import type {
   DriverInfo,
   RaceControlNotification,
   SessionInfo,
+  StrategyGuideResponse,
+  StrategyRacePlan,
   TireWearDisplayMode,
   WeatherForecast,
 } from '../../types/telemetry';
@@ -18,9 +20,31 @@ const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEFAULT_PREDICTION_LAPS = 10;
 const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
+const STRATEGY_UNLOCK_PASSWORD = 'mer260329';
+const STRATEGY_UNLOCK_STORAGE_KEY = 'strategyGuideUnlocked';
 
 type SectorBestTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
+type StrategyWindowStatus = 'open' | 'soon' | 'complete';
+
+type StrategyPanelData = {
+  guideActive: boolean;
+  titleDetail?: string;
+  targetTyre: string;
+  targetTyreReason?: string;
+  pitWindowLabel: string;
+  pitWindowTone: 'primary' | 'secondary' | 'tertiary' | 'neutral';
+  primaryMetric: {
+    label: string;
+    value: string;
+    tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';
+  };
+  detailLabel: string;
+  detailValue: string;
+  detailMeta: string;
+  meter: number;
+  notes?: string;
+};
 
 interface CockpitDashboardProps {
   onOpenSettings: () => void;
@@ -83,6 +107,7 @@ export function CockpitDashboard({
   const topForecasts = session?.weatherForecast ?? [];
   const recentNotifications = raceControlNotifications.slice(0, 3);
   const raceStatus = getRaceStatus(session, recentNotifications);
+  const sessionTrackId = session?.trackId ?? null;
   const ersPct = clamp(player ? (player.ersStoreEnergy / MAX_ERS_ENERGY) * 100 : 0, 0, 100);
   const deploySplit = getErsSplit(player);
   const fuelMargin = getFuelMargin(player, session);
@@ -97,6 +122,15 @@ export function CockpitDashboard({
     (v) => (v === 'absolute' || v === 'relative' ? v : null),
   );
   const [predictionLaps, setPredictionLaps] = useState(DEFAULT_PREDICTION_LAPS);
+  const [strategyGuideUnlocked, setStrategyGuideUnlocked, resetStrategyGuideUnlocked] = useLocalStorage<boolean>(
+    STRATEGY_UNLOCK_STORAGE_KEY,
+    false,
+    (value) => (typeof value === 'boolean' ? value : null),
+  );
+  const [strategyPasswordInput, setStrategyPasswordInput] = useState('');
+  const [strategyUnlockError, setStrategyUnlockError] = useState('');
+  const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
+  const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
   const tireAge = Math.max(player?.tireAge ?? 0, 1);
   const wheelWearPrediction = wheelWear.map((wear) => {
     const wearPerLap = player?.tireAge ? wear / tireAge : 0;
@@ -107,6 +141,10 @@ export function CockpitDashboard({
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
+  const strategyPanel = useMemo(
+    () => buildStrategyPanelData(player, session, strategyGuide, recommendedTyre, pitWindow, trafficStatus),
+    [pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
+  );
   const damageReadouts = [
     { label: 'Front Left', value: player?.damage?.frontLeftWing ?? 0 },
     { label: 'Front Right', value: player?.damage?.frontRightWing ?? 0 },
@@ -115,6 +153,62 @@ export function CockpitDashboard({
     { label: 'Sidepod', value: player?.damage?.sidepod ?? 0 },
     { label: 'Rear Wing', value: player?.damage?.rearWing ?? 0 },
   ];
+
+  useEffect(() => {
+    if (!strategyGuideUnlocked || sessionTrackId == null) {
+      setStrategyGuide(null);
+      setStrategyGuideLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setStrategyGuideLoading(true);
+
+    fetch(`/api/strategy/guide?trackId=${sessionTrackId}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`strategy guide request failed: ${response.status}`);
+        }
+        return response.json() as Promise<StrategyGuideResponse>;
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setStrategyGuide(data);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to fetch strategy guide:', error);
+          setStrategyGuide(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStrategyGuideLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionTrackId, strategyGuideUnlocked]);
+
+  function handleStrategyUnlock() {
+    if (strategyPasswordInput === STRATEGY_UNLOCK_PASSWORD) {
+      setStrategyGuideUnlocked(true);
+      setStrategyPasswordInput('');
+      setStrategyUnlockError('');
+      return;
+    }
+    setStrategyUnlockError('Invalid strategy code');
+  }
+
+  function handleStrategyLock() {
+    resetStrategyGuideUnlocked();
+    setStrategyGuide(null);
+    setStrategyPasswordInput('');
+    setStrategyUnlockError('');
+  }
 
   return (
     <div className={styles.dashboard}>
@@ -296,38 +390,88 @@ export function CockpitDashboard({
         </div>
 
         <div className={`${styles.panel} ${styles.strategyPanel}`}>
-          <PanelTitle title="Pit Strategy" tone="primary" />
+          <PanelTitle title="Pit Strategy" tone="primary" detail={strategyPanel.titleDetail} />
           <div className={styles.strategyRow}>
             <span>Target Tyre</span>
-            <strong style={{ color: getTyreColor(recommendedTyre) }}>
-              {recommendedTyre.toUpperCase()} ({getTyreShortLabel(recommendedTyre)})
+            <strong style={{ color: getTyreColor(strategyPanel.targetTyre) }}>
+              {strategyPanel.targetTyre.toUpperCase()} ({getTyreShortLabel(strategyPanel.targetTyre)})
             </strong>
           </div>
+          {strategyPanel.targetTyreReason && (
+            <span className={styles.strategySupportText}>{strategyPanel.targetTyreReason}</span>
+          )}
           <div className={styles.metricGrid}>
             <MetricTile
-              label="Est. Exit Pos"
-              value={session?.pitStopRejoinPosition ? `P${session.pitStopRejoinPosition}` : '--'}
-              tone="primary"
+              label={strategyPanel.primaryMetric.label}
+              value={strategyPanel.primaryMetric.value}
+              tone={strategyPanel.primaryMetric.tone}
             />
             <MetricTile
               label="Pit Window"
-              value={pitWindow.label}
-              tone={pitWindow.tone}
+              value={strategyPanel.pitWindowLabel}
+              tone={strategyPanel.pitWindowTone}
             />
           </div>
           <div className={styles.trafficCard}>
-            <span className={styles.trafficLabel}>Traffic Status</span>
+            <span className={styles.trafficLabel}>{strategyPanel.detailLabel}</span>
             <div className={styles.trafficValueRow}>
-              <strong className={styles.trafficValue}>{trafficStatus.label}</strong>
-              <span>{trafficStatus.detail}</span>
+              <strong className={styles.trafficValue}>{strategyPanel.detailValue}</strong>
+              <span>{strategyPanel.detailMeta}</span>
             </div>
             <div className={styles.trafficMeter}>
               <div
                 className={styles.trafficMeterFill}
-                style={{ width: `${trafficStatus.meter}%` }}
+                style={{ width: `${strategyPanel.meter}%` }}
               />
             </div>
           </div>
+          {strategyPanel.notes && (
+            <div className={styles.strategyNotes}>{strategyPanel.notes}</div>
+          )}
+          {!strategyGuideUnlocked ? (
+            <div className={styles.strategyUnlockCard}>
+              <span className={styles.strategyUnlockLabel}>Strategy Data Unlock</span>
+              <div className={styles.strategyUnlockRow}>
+                <input
+                  className={styles.strategyUnlockInput}
+                  type="password"
+                  value={strategyPasswordInput}
+                  placeholder="Enter code"
+                  onChange={(event) => {
+                    setStrategyPasswordInput(event.target.value);
+                    if (strategyUnlockError) {
+                      setStrategyUnlockError('');
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      handleStrategyUnlock();
+                    }
+                  }}
+                />
+                <button type="button" className={styles.strategyUnlockButton} onClick={handleStrategyUnlock}>
+                  Unlock
+                </button>
+              </div>
+              <span className={styles.strategySupportText}>
+                Unlock to use numeric track strategy data for this panel.
+              </span>
+              {strategyUnlockError && <span className={styles.strategyUnlockError}>{strategyUnlockError}</span>}
+            </div>
+          ) : (
+            <div className={styles.strategyUnlockMeta}>
+              <span className={styles.strategyUnlockStatus}>
+                {strategyGuideLoading
+                  ? 'Loading strategy guide...'
+                  : strategyPanel.guideActive
+                    ? 'Numeric strategy guide active'
+                    : 'Guide unavailable, using heuristic fallback'}
+              </span>
+              <button type="button" className={styles.strategyLockButton} onClick={handleStrategyLock}>
+                Lock
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -954,6 +1098,201 @@ function getPitWindow(
     return { label: 'OPEN', tone: 'tertiary' };
   }
   return { label: 'LATE', tone: 'secondary' };
+}
+
+function buildStrategyPanelData(
+  player: DriverInfo | null,
+  session: SessionInfo | null,
+  strategyGuide: StrategyGuideResponse | null,
+  recommendedTyre: string,
+  pitWindow: { label: string; tone: 'tertiary' | 'secondary' | 'primary' },
+  trafficStatus: { label: string; detail: string; meter: number },
+): StrategyPanelData {
+  const guideTrack = strategyGuide?.track;
+  const raceStrategy = guideTrack?.race_strategy;
+  const primaryPlan = guideTrack ? getPrimaryStrategyPlan(guideTrack, session?.totalLaps ?? 0) : null;
+  const nextPit = primaryPlan && player ? getNextPitWindow(primaryPlan, player.currentLapNum) : null;
+  const targetTyre = getStrategyTargetTyre(primaryPlan, nextPit, recommendedTyre);
+
+  if (guideTrack && raceStrategy?.available) {
+    const pitWindowLabel = nextPit
+      ? `${nextPit.status === 'open' ? 'OPEN ' : ''}${formatLapRange(nextPit.range)}`
+      : 'COMPLETE';
+    const pitWindowTone = nextPit ? getStrategyWindowTone(nextPit.status) : 'neutral';
+    const currentOrTargetCompound = normalizeStrategyCompound(player?.tireCompound) ?? normalizeStrategyCompound(targetTyre);
+    const compoundSummary = buildCompoundSummary(guideTrack, strategyGuide?.tyreTemps, currentOrTargetCompound);
+
+    return {
+      guideActive: true,
+      titleDetail: 'Numeric guide active',
+      targetTyre,
+      targetTyreReason: primaryPlan ? `${primaryPlan.tyres.map((tyre) => getTyreShortLabel(tyre)).join(' - ')}` : undefined,
+      pitWindowLabel,
+      pitWindowTone,
+      primaryMetric: {
+        label: session && guideTrack.track_info.lap_count && session.totalLaps > guideTrack.track_info.laps_50pct ? '100% Plan' : 'Primary Plan',
+        value: primaryPlan ? primaryPlan.tyres.map((tyre) => getTyreShortLabel(tyre)).join(' - ') : '--',
+        tone: 'primary',
+      },
+      detailLabel: 'Data Guide',
+      detailValue: formatStrategyGuideHeadline(raceStrategy),
+      detailMeta: compoundSummary,
+      meter: nextPit ? getPitWindowMeter(player?.currentLapNum ?? 0, nextPit.range, nextPit.status) : 100,
+      notes: raceStrategy.notes,
+    };
+  }
+
+  if (guideTrack) {
+    const compoundSummary = buildCompoundSummary(
+      guideTrack,
+      strategyGuide?.tyreTemps,
+      normalizeStrategyCompound(player?.tireCompound) ?? normalizeStrategyCompound(recommendedTyre),
+    );
+
+    return {
+      guideActive: false,
+      titleDetail: 'Track data only',
+      targetTyre: recommendedTyre,
+      targetTyreReason: `${guideTrack.track_info.circuit_length_km.toFixed(3)}km · ${guideTrack.track_info.drs_zones} DRS`,
+      pitWindowLabel: pitWindow.label,
+      pitWindowTone: pitWindow.tone,
+      primaryMetric: {
+        label: 'Fuel 50%',
+        value: raceStrategy?.starting_fuel_50pct_kg ? `${raceStrategy.starting_fuel_50pct_kg.toFixed(1)}kg` : '--',
+        tone: 'primary',
+      },
+      detailLabel: 'Tyre Data',
+      detailValue: compoundSummary.split(' · ')[0] ?? '--',
+      detailMeta: compoundSummary.split(' · ').slice(1).join(' · ') || 'Race plan unavailable for this track.',
+      meter: 0,
+      notes: 'Race strategy plan is missing, heuristic recommendations remain active.',
+    };
+  }
+
+  return {
+    guideActive: false,
+    targetTyre: recommendedTyre,
+    pitWindowLabel: pitWindow.label,
+    pitWindowTone: pitWindow.tone,
+    primaryMetric: {
+      label: 'Est. Exit Pos',
+      value: session?.pitStopRejoinPosition ? `P${session.pitStopRejoinPosition}` : '--',
+      tone: 'primary',
+    },
+    detailLabel: 'Traffic Status',
+    detailValue: trafficStatus.label,
+    detailMeta: trafficStatus.detail,
+    meter: trafficStatus.meter,
+  };
+}
+
+function getPrimaryStrategyPlan(track: StrategyGuideResponse['track'], totalLaps: number): StrategyRacePlan | null {
+  const raceStrategy = track.race_strategy;
+  if (!raceStrategy?.available) return null;
+  if (track.track_info.lap_count && totalLaps >= track.track_info.lap_count && raceStrategy.plan_100pct) {
+    return raceStrategy.plan_100pct;
+  }
+  if (totalLaps > track.track_info.laps_50pct && raceStrategy.plan_100pct) {
+    return raceStrategy.plan_100pct;
+  }
+  return raceStrategy.plan_a ?? raceStrategy.plan_b ?? raceStrategy.plan_100pct ?? null;
+}
+
+function getNextPitWindow(
+  plan: StrategyRacePlan,
+  currentLap: number,
+): { range: StrategyRacePlan['pit_windows'][number]; index: number; status: StrategyWindowStatus } | null {
+  for (let index = 0; index < plan.pit_windows.length; index += 1) {
+    const range = plan.pit_windows[index];
+    if (currentLap < range.start_lap) {
+      return { range, index, status: 'soon' };
+    }
+    if (currentLap <= range.end_lap) {
+      return { range, index, status: 'open' };
+    }
+  }
+  return null;
+}
+
+function getStrategyTargetTyre(
+  plan: StrategyRacePlan | null,
+  nextPit: { index: number } | null,
+  fallback: string,
+): string {
+  if (!plan || nextPit == null) return fallback;
+  return plan.tyres[nextPit.index + 1] ?? fallback;
+}
+
+function getStrategyWindowTone(status: StrategyWindowStatus): 'primary' | 'secondary' | 'tertiary' | 'neutral' {
+  if (status === 'open') return 'tertiary';
+  if (status === 'soon') return 'primary';
+  return 'neutral';
+}
+
+function getPitWindowMeter(currentLap: number, range: StrategyRacePlan['pit_windows'][number], status: StrategyWindowStatus): number {
+  if (status === 'complete') return 100;
+  if (currentLap < range.start_lap) {
+    return clamp((currentLap / Math.max(range.start_lap, 1)) * 100, 0, 100);
+  }
+  const span = Math.max(range.end_lap - range.start_lap + 1, 1);
+  return clamp(((currentLap - range.start_lap + 1) / span) * 100, 0, 100);
+}
+
+function formatLapRange(range: StrategyRacePlan['pit_windows'][number]): string {
+  if (range.start_lap === range.end_lap) return `L${range.start_lap}`;
+  return `L${range.start_lap}-${range.end_lap}`;
+}
+
+function formatStrategyGuideHeadline(raceStrategy: NonNullable<StrategyGuideResponse['track']['race_strategy']>): string {
+  const parts: string[] = [];
+  if (raceStrategy.starting_fuel_50pct_kg) {
+    parts.push(`Fuel ${raceStrategy.starting_fuel_50pct_kg.toFixed(1)}kg`);
+  }
+  if (raceStrategy.pit_stop_time_lost_s) {
+    parts.push(`Pit Loss ${raceStrategy.pit_stop_time_lost_s.toFixed(1)}s`);
+  }
+  return parts.join(' · ') || 'Guide ready';
+}
+
+function buildCompoundSummary(
+  track: StrategyGuideResponse['track'],
+  tyreTemps: StrategyGuideResponse['tyreTemps'] | undefined,
+  compoundKey: string | null,
+): string {
+  if (!compoundKey) return 'Compound data unavailable';
+  const wear = track.tyre_strategy.wear_per_lap[compoundKey];
+  const life = track.tyre_strategy.tyre_life_50pct[compoundKey];
+  const peakTemps = tyreTemps?.compounds[compoundToStrategyTempKey(track, compoundKey)]?.peak_temps_c ?? [];
+
+  const parts: string[] = [];
+  if (peakTemps.length > 0) {
+    parts.push(`Peak ${formatPeakTemps(peakTemps)}`);
+  }
+  if (wear) {
+    parts.push(`Wear ${wear.display}/lap`);
+  }
+  if (life) {
+    parts.push(`Life ${life.laps}L@50%`);
+  }
+  return parts.join(' · ') || 'Compound data unavailable';
+}
+
+function compoundToStrategyTempKey(track: StrategyGuideResponse['track'], compoundKey: string): string {
+  return track.tyre_strategy.compounds[compoundKey] ?? compoundKey;
+}
+
+function formatPeakTemps(peakTemps: number[]): string {
+  if (peakTemps.length === 1) return `${peakTemps[0]}°C`;
+  return `${peakTemps[0]}-${peakTemps[peakTemps.length - 1]}°C`;
+}
+
+function normalizeStrategyCompound(compound?: string | null): string | null {
+  if (!compound) return null;
+  const normalized = compound.trim().toLowerCase();
+  if (normalized === 'soft' || normalized === 'medium' || normalized === 'hard' || normalized === 'inter' || normalized === 'wet') {
+    return normalized;
+  }
+  return null;
 }
 
 function getTrafficStatus(carBehind: DriverInfo | null): { label: string; detail: string; meter: number } {

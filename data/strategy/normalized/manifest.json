@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-03-28T18:22:56Z",
+  "source_root": "data/strategy",
+  "track_count": 24,
+  "tracks": [
+    "abu-dhabi",
+    "australia",
+    "austria",
+    "azerbaijan",
+    "bahrain",
+    "belgium",
+    "brazil",
+    "britain",
+    "canada",
+    "china",
+    "hungary",
+    "imola",
+    "italy",
+    "japan",
+    "las-vegas",
+    "mexico",
+    "miami",
+    "monaco",
+    "netherlands",
+    "qatar",
+    "saudi-arabia",
+    "singapore",
+    "spain",
+    "texas"
+  ],
+  "tyre_compounds": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "C5",
+    "C6",
+    "inter",
+    "wet"
+  ]
+}

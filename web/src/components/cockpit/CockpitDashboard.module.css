@@ -641,6 +641,85 @@
   gap: 12px;
 }
 
+.strategySupportText,
+.strategyNotes,
+.strategyUnlockLabel,
+.strategyUnlockStatus,
+.strategyUnlockError {
+  font-size: 11px;
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.strategySupportText,
+.strategyUnlockLabel,
+.strategyUnlockStatus {
+  color: var(--text-secondary);
+}
+
+.strategyNotes {
+  padding: 10px 12px;
+  color: var(--text-muted);
+  background: rgba(14, 14, 15, 0.52);
+  border: 1px solid rgba(59, 73, 76, 0.15);
+}
+
+.strategyUnlockCard,
+.strategyUnlockMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(14, 14, 15, 0.52);
+  border: 1px solid rgba(59, 73, 76, 0.15);
+}
+
+.strategyUnlockRow {
+  display: flex;
+  gap: 8px;
+}
+
+.strategyUnlockInput {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(59, 73, 76, 0.28);
+  background: rgba(7, 11, 14, 0.78);
+  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 0.86rem;
+}
+
+.strategyUnlockInput:focus {
+  outline: none;
+  border-color: rgba(0, 229, 255, 0.55);
+}
+
+.strategyUnlockButton,
+.strategyLockButton {
+  padding: 10px 14px;
+  border: 1px solid rgba(59, 73, 76, 0.28);
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--accent);
+  font-family: var(--font-racing);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.strategyUnlockButton:hover,
+.strategyLockButton:hover {
+  border-color: rgba(0, 229, 255, 0.45);
+  background: rgba(0, 229, 255, 0.16);
+}
+
+.strategyUnlockError {
+  color: var(--accent-soft);
+}
+
 .metricGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1260,6 +1339,11 @@
   .trafficValueRow,
   .footerStrip {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .strategyUnlockRow {
+    width: 100%;
     flex-direction: column;
   }
 

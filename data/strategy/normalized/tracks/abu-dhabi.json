@@ -1,0 +1,417 @@
+{
+  "track": "abu-dhabi",
+  "source": {
+    "url": "https://simracingsetup.com/setups/f1-25-setups-pro/tracks/abu-dhabi/",
+    "scraped_at": "2026-03-21T03:51:33.493656+00:00"
+  },
+  "track_info": {
+    "lap_count": 58,
+    "laps_50pct": 29,
+    "circuit_length_km": 5.281,
+    "lap_record_display": "1:25.637",
+    "lap_record_ms": 85637,
+    "drs_zones": 2,
+    "pole_position_side": "right",
+    "pit_limit_kph": 80,
+    "pit_limit_mph": 49
+  },
+  "tyre_strategy": {
+    "compounds": {
+      "hard": "C3",
+      "medium": "C4",
+      "soft": "C5"
+    },
+    "wear_per_lap": {
+      "hard": {
+        "display": "4-5%",
+        "min_pct": 4,
+        "max_pct": 5
+      },
+      "medium": {
+        "display": "5-6%",
+        "min_pct": 5,
+        "max_pct": 6
+      },
+      "soft": {
+        "display": "9-10%",
+        "min_pct": 9,
+        "max_pct": 10,
+        "description": "Tyre wear per lap."
+      }
+    },
+    "tyre_life_50pct": {
+      "hard": {
+        "laps": 20,
+        "description": "How long the hard tyre lasts."
+      },
+      "medium": {
+        "laps": 16,
+        "description": "How long the medium tyre lasts."
+      },
+      "soft": {
+        "laps": 9,
+        "description": "How long the soft tyre lasts."
+      }
+    }
+  },
+  "quali_strategy": {
+    "fuel_amount_kg": 5,
+    "outlap_time_ms": 150000,
+    "starting_tyre_temp_c": 80,
+    "enable_ers_turn": 16,
+    "enable_ers_display": "Before Turn 16"
+  },
+  "race_strategy": {
+    "available": true,
+    "laps_50pct": 29,
+    "starting_fuel_50pct_kg": 52.9,
+    "plan_a": {
+      "tyres": [
+        "medium",
+        "hard"
+      ],
+      "pit_window_display": "Lap 11-13",
+      "pit_windows": [
+        {
+          "start_lap": 11,
+          "end_lap": 13
+        }
+      ],
+      "description": "The fastest race strategy."
+    },
+    "plan_b": {
+      "tyres": [
+        "hard",
+        "medium",
+        "medium"
+      ],
+      "pit_window_display": "Lap 12-14 \u0026 20-22",
+      "pit_windows": [
+        {
+          "start_lap": 12,
+          "end_lap": 14
+        },
+        {
+          "start_lap": 20,
+          "end_lap": 22
+        }
+      ],
+      "description": "Alternate race strategy."
+    },
+    "plan_100pct": {
+      "tyres": [
+        "medium",
+        "hard",
+        "hard"
+      ],
+      "pit_window_display": "Lap 14-16 \u0026 35-37",
+      "pit_windows": [
+        {
+          "start_lap": 14,
+          "end_lap": 16
+        },
+        {
+          "start_lap": 35,
+          "end_lap": 37
+        }
+      ],
+      "description": "100% race strategy."
+    },
+    "pit_stop_time_lost_s": 19.7,
+    "notes": "You can swap the medium tyre for soft if you can make it last. Track is very difficult on tyre wear though, so a medium - hard is recommended for safety."
+  },
+  "setup_type_descriptions": {
+    "esports": "The fastest possible setup specifically for competitive online racing.",
+    "intermediate": "Ideal for mixed conditions and wet races where the rain isn't too heavy.",
+    "istvan_puki": "Setup created by pro F1 sim racer Istvan Puki, designed for league racing.",
+    "low_downforce": "A low drag setup variant, only to be used when racing the AI.",
+    "safe": "A more stable car setup. Ideal for longer races or casual players.",
+    "wet": "Only to be used in heavy rain conditions."
+  },
+  "setups": {
+    "dry": [
+      {
+        "name": "Istvan Puki Quali Setup",
+        "id": "istvan-puki-quali-setup",
+        "front_wing": 32,
+        "rear_wing": 19,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 20,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 19,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29,
+        "front_left_pressure": 29,
+        "rear_right_pressure": 20.5,
+        "rear_left_pressure": 20.5,
+        "updated_date": "2025-11-14"
+      },
+      {
+        "name": "Istvan Puki Race Setup",
+        "id": "istvan-puki-race-setup",
+        "front_wing": 19,
+        "rear_wing": 19,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 25,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 15,
+        "front_ride_height": 18,
+        "rear_ride_height": 40,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 28.5,
+        "front_left_pressure": 28.5,
+        "rear_right_pressure": 20.5,
+        "rear_left_pressure": 20.5,
+        "updated_date": "2025-11-14"
+      },
+      {
+        "name": "Esports Quali Setup",
+        "id": "esports-quali-setup",
+        "front_wing": 35,
+        "rear_wing": 20,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 20,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 19,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 20.5,
+        "rear_left_pressure": 20.5,
+        "updated_date": "2025-10-31"
+      },
+      {
+        "name": "Esports Race Setup",
+        "id": "esports-race-setup",
+        "front_wing": 25,
+        "rear_wing": 18,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 10,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 25.8,
+        "rear_left_pressure": 25.8,
+        "updated_date": "2025-10-31"
+      },
+      {
+        "name": "Low Downforce Setup",
+        "id": "low-downforce-setup",
+        "front_wing": 20,
+        "rear_wing": 13,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 10,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 25.8,
+        "rear_left_pressure": 25.8,
+        "updated_date": "2025-10-31"
+      },
+      {
+        "name": "Safe Quali Setup",
+        "id": "safe-quali-setup",
+        "front_wing": 35,
+        "rear_wing": 29,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 25,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 10,
+        "front_ride_height": 20,
+        "rear_ride_height": 41,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 20.5,
+        "rear_left_pressure": 20.5,
+        "updated_date": "2025-10-31"
+      },
+      {
+        "name": "Safe Race Setup",
+        "id": "safe-race-setup",
+        "front_wing": 25,
+        "rear_wing": 20,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 5,
+        "front_ride_height": 21,
+        "rear_ride_height": 42,
+        "brake_bias": 55,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 25.8,
+        "rear_left_pressure": 25.8,
+        "updated_date": "2025-10-31"
+      },
+      {
+        "name": "Legacy Setup",
+        "id": "legacy-setup",
+        "front_wing": 38,
+        "rear_wing": 35,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 25,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 9,
+        "rear_anti_roll_bar": 19,
+        "front_ride_height": 20,
+        "rear_ride_height": 48,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 23.6,
+        "rear_left_pressure": 23.6,
+        "updated_date": "2025-06-06",
+        "notes": "Our original Esports car setup before our big setup updates. Here for those that still want to use it."
+      }
+    ],
+    "wet": [
+      {
+        "name": "Intermediate Setup",
+        "id": "intermediate-setup",
+        "front_wing": 42,
+        "rear_wing": 39,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 25,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 4,
+        "front_anti_roll_bar": 9,
+        "rear_anti_roll_bar": 20,
+        "front_ride_height": 20,
+        "rear_ride_height": 47,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 25.8,
+        "rear_left_pressure": 25.8,
+        "updated_date": "2025-07-08"
+      },
+      {
+        "name": "Wet Setup",
+        "id": "wet-setup",
+        "front_wing": 44,
+        "rear_wing": 40,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 2,
+        "front_anti_roll_bar": 11,
+        "rear_anti_roll_bar": 20,
+        "front_ride_height": 20,
+        "rear_ride_height": 48,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 25.8,
+        "rear_left_pressure": 25.8,
+        "updated_date": "2025-07-08"
+      },
+      {
+        "name": "Wet Setup By Istvan",
+        "id": "wet-setup-by-istvan",
+        "front_wing": 44,
+        "rear_wing": 35,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 20,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 15,
+        "front_ride_height": 18,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 26.5,
+        "front_left_pressure": 26.5,
+        "rear_right_pressure": 20.5,
+        "rear_left_pressure": 20.5,
+        "updated_date": "2025-11-27"
+      }
+    ]
+  },
+  "ers_guide": {
+    "track_map_url": "https://simracingsetup.com/wp-content/themes/neve-child/assets/track_maps/trackmap_abu_dhabi_ers_728.svg"
+  },
+  "hotlap_video_url": "https://youtu.be/hNtjfhdUbC4"
+}

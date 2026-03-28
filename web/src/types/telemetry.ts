@@ -388,6 +388,91 @@ export interface DynamicsLap {
   spinCount: number;
 }
 
+export interface StrategyGuideResponse {
+  track: StrategyTrackGuide;
+  tyreTemps: StrategyTyreTempDataset;
+}
+
+export interface StrategyTrackGuide {
+  track: string;
+  source: {
+    url: string;
+    scraped_at: string;
+  };
+  track_info: {
+    lap_count?: number;
+    laps_50pct: number;
+    circuit_length_km: number;
+    lap_record_display: string;
+    lap_record_ms: number;
+    drs_zones: number;
+    pole_position_side: string;
+    pit_limit_kph: number;
+    pit_limit_mph: number;
+  };
+  tyre_strategy: {
+    compounds: Record<string, string>;
+    wear_per_lap: Record<string, StrategyRangeValue>;
+    tyre_life_50pct: Record<string, StrategyLapValue>;
+  };
+  quali_strategy?: {
+    fuel_amount_kg: number;
+    outlap_time_ms: number;
+    starting_tyre_temp_c: number;
+    enable_ers_turn: number;
+    enable_ers_display: string;
+  };
+  race_strategy?: {
+    available: boolean;
+    laps_50pct?: number;
+    starting_fuel_50pct_kg?: number;
+    plan_a?: StrategyRacePlan;
+    plan_b?: StrategyRacePlan;
+    plan_100pct?: StrategyRacePlan;
+    pit_stop_time_lost_s?: number;
+    notes?: string;
+  };
+  setup_type_descriptions: Record<string, string | null>;
+  hotlap_video_url?: string;
+}
+
+export interface StrategyRangeValue {
+  display: string;
+  min_pct: number;
+  max_pct: number;
+  description?: string;
+}
+
+export interface StrategyLapValue {
+  laps: number;
+  description?: string;
+}
+
+export interface StrategyRacePlan {
+  tyres: string[];
+  pit_window_display: string;
+  pit_windows: Array<{
+    start_lap: number;
+    end_lap: number;
+  }>;
+  description?: string;
+}
+
+export interface StrategyTyreTempDataset {
+  compounds: Record<string, StrategyTyreCompound>;
+}
+
+export interface StrategyTyreCompound {
+  peak_temps_c: number[];
+  points: StrategyTyreTempPoint[];
+}
+
+export interface StrategyTyreTempPoint {
+  temp_c: number;
+  grip_pct: number;
+  zone: string;
+}
+
 export interface CarPosition {
   index: number;
   x: number;

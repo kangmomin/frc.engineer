@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +25,7 @@ import (
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/storage"
+	"frc.engineer/internal/strategydata"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
@@ -230,6 +232,14 @@ func main() {
 	var serverMu sync.Mutex
 	var server *http.Server
 	var restartHTTPServer func(int)
+
+	// Load normalized strategy guide data if available.
+	strategyStore, err := strategydata.LoadStore(filepath.Join("data", "strategy", "normalized"))
+	if err != nil {
+		logger.Warn("strategy guide data unavailable", "error", err)
+	} else {
+		logger.Info("strategy guide data loaded", "tracks", strategyStore.TrackCount())
+	}
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
@@ -507,6 +517,45 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		state := processor.PitwallManager().BuildState()
 		json.NewEncoder(w).Encode(state)
+	})
+
+	mux.HandleFunc("/api/strategy/guide", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if strategyStore == nil {
+			http.Error(w, "strategy guide unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
+		trackIDParam := strings.TrimSpace(r.URL.Query().Get("trackId"))
+		if trackIDParam == "" {
+			http.Error(w, "trackId is required", http.StatusBadRequest)
+			return
+		}
+		trackIDValue, err := strconv.Atoi(trackIDParam)
+		if err != nil {
+			http.Error(w, "invalid trackId", http.StatusBadRequest)
+			return
+		}
+
+		trackGuide := strategyStore.TrackByID(int8(trackIDValue))
+		if trackGuide == nil {
+			http.Error(w, "strategy guide not found", http.StatusNotFound)
+			return
+		}
+
+		response := struct {
+			Track     *strategydata.NormalizedTrackFile       `json:"track"`
+			TyreTemps *strategydata.NormalizedTyreTempDataset `json:"tyreTemps"`
+		}{
+			Track:     trackGuide,
+			TyreTemps: strategyStore.TyreTemps(),
+		}
+
+		json.NewEncoder(w).Encode(response)
 	})
 
 	// Serve embedded frontend (SPA fallback)

@@ -1,0 +1,662 @@
+{
+  "compounds": {
+    "C1": {
+      "peak_temps_c": [
+        100
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 94.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 94.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 95.5,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 96.5,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 97.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 99,
+          "zone": "good"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 99.7,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 99.9,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 99.5,
+          "zone": "good"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 99,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 98.3,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 97.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 97.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 96.6,
+          "zone": "normal"
+        }
+      ]
+    },
+    "C2": {
+      "peak_temps_c": [
+        90
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 94.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 95.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 96,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 97.1,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 98.2,
+          "zone": "good"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 99.4,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 99.9,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 99.6,
+          "zone": "good"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 99.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 98.5,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 97.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 97.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 96.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 96.2,
+          "zone": "normal"
+        }
+      ]
+    },
+    "C3": {
+      "peak_temps_c": [
+        80,
+        90
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 95,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 95.5,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 96.4,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 97.6,
+          "zone": "good"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 99.2,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 99.8,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 99.3,
+          "zone": "good"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 98.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 98.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 97.5,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 96.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 96.3,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 96,
+          "zone": "normal"
+        }
+      ]
+    },
+    "C4": {
+      "peak_temps_c": [
+        80
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 95.4,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 96,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 96.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 98.2,
+          "zone": "good"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 99.5,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 99.9,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 99.5,
+          "zone": "good"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 99,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 98.4,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 97.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 97.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 96.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 95.9,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 95.6,
+          "zone": "normal"
+        }
+      ]
+    },
+    "C5": {
+      "peak_temps_c": [
+        70,
+        80
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 95.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 96.5,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 97.5,
+          "zone": "good"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 99.2,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 99.8,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 99.3,
+          "zone": "good"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 98.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 98,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 97.4,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 96.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 96.1,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 95.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 95.3,
+          "zone": "normal"
+        }
+      ]
+    },
+    "C6": {
+      "peak_temps_c": [
+        70
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 96.3,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 97.1,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 97.9,
+          "zone": "good"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 99.5,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 99.8,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 99.4,
+          "zone": "good"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 98.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 98.1,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 97.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 97,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 96.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 95.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 95.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 94.7,
+          "zone": "normal"
+        }
+      ]
+    },
+    "inter": {
+      "peak_temps_c": [
+        70
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 98.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 98.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 99.6,
+          "zone": "good"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 99.9,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 99.4,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 98.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 98.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 97.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 97.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 96.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 96.3,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 95.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 95.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 95,
+          "zone": "normal"
+        }
+      ]
+    },
+    "wet": {
+      "peak_temps_c": [
+        60
+      ],
+      "points": [
+        {
+          "temp_c": 30,
+          "grip_pct": 98.5,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 40,
+          "grip_pct": 99.2,
+          "zone": "good"
+        },
+        {
+          "temp_c": 50,
+          "grip_pct": 99.8,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 60,
+          "grip_pct": 100,
+          "zone": "peak"
+        },
+        {
+          "temp_c": 70,
+          "grip_pct": 99.5,
+          "zone": "near_peak"
+        },
+        {
+          "temp_c": 80,
+          "grip_pct": 98.7,
+          "zone": "good"
+        },
+        {
+          "temp_c": 90,
+          "grip_pct": 98.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 100,
+          "grip_pct": 97.6,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 110,
+          "grip_pct": 97.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 120,
+          "grip_pct": 96.7,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 130,
+          "grip_pct": 96.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 140,
+          "grip_pct": 95.8,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 150,
+          "grip_pct": 95.2,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 160,
+          "grip_pct": 94.9,
+          "zone": "normal"
+        },
+        {
+          "temp_c": 170,
+          "grip_pct": 94.6,
+          "zone": "normal"
+        }
+      ]
+    }
+  }
+}
