@@ -48,6 +48,9 @@ const (
 // RaceSummarySaveCallback is invoked once per session on race-end events.
 type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, state *dto.PitwallState) error
 
+// PitwallStateObserver is invoked when a new pitwall snapshot is emitted.
+type PitwallStateObserver func(sessionUID uint64, capturedAt time.Time, state *dto.PitwallState)
+
 // Processor processes telemetry data and broadcasts to WebSocket clients
 type Processor struct {
 	parser          *udp.Parser
@@ -89,6 +92,7 @@ type Processor struct {
 	replayTrackMap    *dto.TrackMapDTO
 	replaySession     *dto.SessionInfo
 	replayLastFrameTS int64
+	pitwallObserver   PitwallStateObserver
 }
 
 // NewProcessor creates a new telemetry processor
@@ -131,6 +135,13 @@ func (p *Processor) SetRaceSummaryRecording(enabled bool) {
 	p.raceSummaryMu.Lock()
 	p.raceSummaryEnabled = enabled
 	p.raceSummaryMu.Unlock()
+}
+
+// SetPitwallStateObserver sets an optional callback for emitted pitwall snapshots.
+func (p *Processor) SetPitwallStateObserver(observer PitwallStateObserver) {
+	p.mu.Lock()
+	p.pitwallObserver = observer
+	p.mu.Unlock()
 }
 
 // SetReplayRecording toggles timeline snapshot capture used by summary/advanced storage.
@@ -270,12 +281,32 @@ func (p *Processor) processPacket(data []byte) {
 	}
 
 	now := time.Now()
+	var (
+		pitwallState    *dto.PitwallState
+		pitwallObserver PitwallStateObserver
+		dashData        *dto.Dashboard
+	)
 
 	// Broadcast pitwallState at ~4 Hz (250ms interval)
 	if now.Sub(p.lastPitwallSend) >= 250*time.Millisecond && p.pitwallManager.HasData() {
 		p.lastPitwallSend = now
-		pitwallState := p.pitwallManager.BuildState()
+		pitwallState = p.pitwallManager.BuildState()
+		pitwallObserver = p.pitwallObserver
+	}
 
+	// Check rate limit for telemetry dashboard
+	if now.Sub(p.lastSend) < p.minInterval {
+		p.mu.Unlock()
+	} else {
+		// Build and send dashboard data
+		if p.latestTelemetry != nil && p.latestLapData != nil && p.latestHeader != nil {
+			dashData = p.buildDashboardData()
+			p.lastSend = now
+		}
+		p.mu.Unlock()
+	}
+
+	if pitwallState != nil {
 		msg := dto.WSResponse{
 			Type: dto.MessageTypePitwallState,
 			Data: pitwallState,
@@ -290,29 +321,18 @@ func (p *Processor) processPacket(data []byte) {
 		// Battle detection: check gap trends on lap change
 		p.checkBattleAlerts(pitwallState)
 		p.recordReplayFrame(parsed.Header.SessionUID, now.UnixMilli(), pitwallState)
+		if pitwallObserver != nil {
+			pitwallObserver(parsed.Header.SessionUID, now, pitwallState)
+		}
 	}
 
-	// Check rate limit for telemetry dashboard
-	if now.Sub(p.lastSend) < p.minInterval {
-		p.mu.Unlock()
-		return
-	}
-
-	// Build and send dashboard data
-	if p.latestTelemetry != nil && p.latestLapData != nil && p.latestHeader != nil {
-		dashData := p.buildDashboardData()
-		p.lastSend = now
-		p.mu.Unlock()
-
+	if dashData != nil {
 		jsonData, err := json.Marshal(dashData)
 		if err != nil {
 			p.logger.Error("failed to marshal dashboard data", "error", err)
 			return
 		}
-
 		p.hub.Broadcast(jsonData)
-	} else {
-		p.mu.Unlock()
 	}
 }
 

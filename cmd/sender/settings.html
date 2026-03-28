@@ -294,6 +294,44 @@
     font-size: 0.82rem;
     line-height: 1.35;
   }
+  .compare-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .compare-metric {
+    background: #161616;
+    border: 1px solid #242424;
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .compare-metric-label {
+    color: #777;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    margin-bottom: 4px;
+  }
+  .compare-metric-value {
+    color: #f0f0f0;
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+  .compare-log {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #1f1f1f;
+  }
+  .compare-log code {
+    display: block;
+    margin-top: 6px;
+    color: #9fdfff;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    word-break: break-all;
+    white-space: normal;
+  }
 
   /* Toast */
   .toast {
@@ -392,6 +430,36 @@
       <button class="save-btn" id="unlockCompareBtn">Unlock</button>
       <button class="secondary-btn" id="lockCompareBtn">Lock</button>
     </div>
+    <div class="compare-metrics">
+      <div class="compare-metric">
+        <div class="compare-metric-label">Current Error</div>
+        <div class="compare-metric-value" id="compareCurrentError">--</div>
+      </div>
+      <div class="compare-metric">
+        <div class="compare-metric-label">Session MAE</div>
+        <div class="compare-metric-value" id="compareMae">--</div>
+      </div>
+      <div class="compare-metric">
+        <div class="compare-metric-label">Session Bias</div>
+        <div class="compare-metric-value" id="compareBias">--</div>
+      </div>
+      <div class="compare-metric">
+        <div class="compare-metric-label">Within ±10pp</div>
+        <div class="compare-metric-value" id="compareWithin10">--</div>
+      </div>
+      <div class="compare-metric">
+        <div class="compare-metric-label">Samples</div>
+        <div class="compare-metric-value" id="compareSamples">0</div>
+      </div>
+      <div class="compare-metric">
+        <div class="compare-metric-label">Comparable Drivers</div>
+        <div class="compare-metric-value" id="compareDrivers">0</div>
+      </div>
+    </div>
+    <div class="compare-log">
+      <span class="stat-label">Latest Log File</span>
+      <code id="compareLogPath">--</code>
+    </div>
   </div>
 
   <button class="save-btn" id="saveBtn">Save</button>
@@ -413,6 +481,13 @@
   const $comparePassword = document.getElementById('comparePassword');
   const $unlockCompareBtn = document.getElementById('unlockCompareBtn');
   const $lockCompareBtn = document.getElementById('lockCompareBtn');
+  const $compareCurrentError = document.getElementById('compareCurrentError');
+  const $compareMae = document.getElementById('compareMae');
+  const $compareBias = document.getElementById('compareBias');
+  const $compareWithin10 = document.getElementById('compareWithin10');
+  const $compareSamples = document.getElementById('compareSamples');
+  const $compareDrivers = document.getElementById('compareDrivers');
+  const $compareLogPath = document.getElementById('compareLogPath');
 
   let forwardTargets = [];
 
@@ -422,6 +497,32 @@
     $toast.textContent = msg;
     $toast.className = 'toast ' + (ok ? 'ok' : 'err') + ' show';
     toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2500);
+  }
+
+  function formatSignedPP(value, digits = 0) {
+    const scale = 10 ** digits;
+    const rounded = Math.round(value * scale) / scale;
+    const text = digits > 0 ? rounded.toFixed(digits) : String(Math.round(rounded));
+    return (rounded > 0 ? '+' : '') + text + 'pp';
+  }
+
+  function formatRate(value) {
+    return Math.round(value * 10) / 10 + '%';
+  }
+
+  function formatPP(value) {
+    return (Math.round(value * 10) / 10).toFixed(1) + 'pp';
+  }
+
+  function renderCompareMetrics(metrics) {
+    const data = metrics || {};
+    $compareCurrentError.textContent = data.currentErrorReady ? formatSignedPP(data.currentErrorPP || 0) : '--';
+    $compareMae.textContent = data.sampleCount > 0 ? formatPP(data.sessionMaePP || 0) : '--';
+    $compareBias.textContent = data.sampleCount > 0 ? formatSignedPP(data.sessionBiasPP || 0, 1) : '--';
+    $compareWithin10.textContent = data.sampleCount > 0 ? formatRate(data.within10Rate || 0) : '--';
+    $compareSamples.textContent = data.sampleCount || 0;
+    $compareDrivers.textContent = data.comparableDrivers || 0;
+    $compareLogPath.textContent = data.logPath || '--';
   }
 
   // Forward targets UI
@@ -494,6 +595,7 @@
       const enabled = !!d.ersCompareEnabled;
       $compareStatus.textContent = enabled ? 'UNLOCKED' : 'LOCKED';
       $compareStatus.className = 'compare-status ' + (enabled ? 'enabled' : 'disabled');
+      renderCompareMetrics(d.ersCompareMetrics);
     } catch {}
   }
 

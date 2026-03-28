@@ -96,6 +96,8 @@ func main() {
 		logger.Error("failed to initialize ERS compare gate", "error", err)
 		os.Exit(1)
 	}
+	compareMonitor := newERSCompareMonitor("logs/ers_compare", logger)
+	processor.SetPitwallStateObserver(compareMonitor.Observe)
 
 	// Track recorder (independently toggled from save files)
 	recorder := telemetry.NewTrackRecorder("data", trackStore, logger)
@@ -218,6 +220,7 @@ func main() {
 			"udpPort":            port,
 			"saveFiles":          sf,
 			"ersCompareEnabled":  compareGate.Enabled(),
+			"ersCompareMetrics":  compareMonitor.Snapshot(),
 		})
 	})
 
@@ -356,6 +359,7 @@ func main() {
 
 	mux.HandleFunc("POST /api/ers-compare/lock", func(w http.ResponseWriter, r *http.Request) {
 		compareGate.Disable()
+		compareMonitor.Reset()
 		processor.PitwallManager().SetERSComparisonEnabled(false)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
@@ -391,6 +395,7 @@ func main() {
 	cancel()
 	forwarder.Close()
 	peerManager.Close()
+	compareMonitor.Close()
 	settingsSrv.Shutdown(context.Background())
 	logger.Info("sender shutdown complete")
 	logFile.Close()
