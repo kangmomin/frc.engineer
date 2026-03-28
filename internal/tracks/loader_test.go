@@ -54,6 +54,45 @@ func TestListRecordedFilesSupportsLegacySuffix(t *testing.T) {
 	}
 }
 
+func TestFindRecordedFileAndLoadPreview(t *testing.T) {
+	dir := t.TempDir()
+	writeTrackFile(t, filepath.Join(dir, "monza_recorded.txt"))
+
+	store := &TrackStore{dataDir: dir}
+
+	info, path, ok := store.FindRecordedFile("monza")
+	if !ok {
+		t.Fatal("expected recorded file to be found")
+	}
+	if info.Filename != "monza_recorded.txt" {
+		t.Fatalf("unexpected filename: %s", info.Filename)
+	}
+	if path != filepath.Join(dir, "monza_recorded.txt") {
+		t.Fatalf("unexpected path: %s", path)
+	}
+
+	preview, err := store.LoadRecordedPreview("monza_recorded")
+	if err != nil {
+		t.Fatalf("LoadRecordedPreview failed: %v", err)
+	}
+	if preview.Name != "monza" {
+		t.Fatalf("unexpected preview name: %s", preview.Name)
+	}
+	if preview.TrackMap == nil || len(preview.TrackMap.Points) != 1 {
+		t.Fatalf("unexpected preview track map: %#v", preview.TrackMap)
+	}
+}
+
+func TestNewTrackStoreLoadsRecordedFallback(t *testing.T) {
+	dir := t.TempDir()
+	writeTrackFile(t, filepath.Join(dir, "monza_recorded.txt"))
+
+	store := NewTrackStore(dir)
+	if track := store.Get(10); track == nil || len(track.Points) != 1 {
+		t.Fatalf("expected monza recorded fallback to load, got %#v", track)
+	}
+}
+
 func writeTrackFile(t *testing.T, path string) {
 	t.Helper()
 	content := "track metadata\ndist,pos_z,pos_x,pos_y,drs,sector\n0.0,0.0,0.0,0.0,0,0\n"

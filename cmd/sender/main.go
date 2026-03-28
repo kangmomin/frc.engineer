@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -81,7 +82,8 @@ func main() {
 	udpListener.SetForwarder(forwarder)
 
 	// Load track data (for delta calculations)
-	trackStore := tracks.NewTrackStore("data")
+	trackDataDir := filepath.Join("data", "tracks")
+	trackStore := tracks.NewTrackStore(trackDataDir)
 
 	// Create peer manager
 	peerManager := rtc.NewPeerManager(signalingURL, logger)
@@ -100,10 +102,11 @@ func main() {
 	processor.SetPitwallStateObserver(compareMonitor.Observe)
 
 	// Track recorder (independently toggled from save files)
-	recorder := telemetry.NewTrackRecorder("data", trackStore, logger)
+	recorder := telemetry.NewTrackRecorder(trackDataDir, trackStore, logger)
 	recorder.SetEnabled(trackRecording)
 	processor.PitwallManager().SetRecorder(recorder)
 	processor.PitwallManager().SetERSComparisonEnabled(false)
+	trackState := senderProcessorTrackState{processor: processor}
 
 	// Runtime config state protected by mutex
 	var cfgMu sync.Mutex
@@ -221,12 +224,26 @@ func main() {
 			"saveFiles":          sf,
 			"ersCompareEnabled":  compareGate.Enabled(),
 			"ersCompareMetrics":  compareMonitor.Snapshot(),
+			"currentTrack":       getCurrentTrack(trackState, trackStore),
 		})
 	})
 
 	mux.HandleFunc("GET /api/tracks", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(trackStore.ListLoaded())
+	})
+
+	mux.HandleFunc("GET /api/tracks/current-preview", func(w http.ResponseWriter, r *http.Request) {
+		preview, err := getCurrentTrackPreview(trackState, trackStore)
+		if err != nil {
+			logger.Error("failed to load current track preview", "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load current track preview"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(preview)
 	})
 
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
@@ -249,10 +266,11 @@ func main() {
 
 	mux.HandleFunc("PUT /api/config", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			UDPPort        int                      `json:"udpPort"`
-			SaveFiles      bool                     `json:"saveFiles"`
-			TrackRecording bool                     `json:"trackRecording"`
-			ForwardTargets []rtconfig.ForwardTarget `json:"forwardTargets"`
+			UDPPort                            int                      `json:"udpPort"`
+			SaveFiles                          bool                     `json:"saveFiles"`
+			TrackRecording                     bool                     `json:"trackRecording"`
+			TrackRecordingOverwriteApprovedFor string                   `json:"trackRecordingOverwriteApprovedFor"`
+			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -283,6 +301,20 @@ func main() {
 
 		cfgMu.Lock()
 		defer cfgMu.Unlock()
+
+		if body.TrackRecording && !cfgTrackRecording {
+			currentTrack := getCurrentTrack(trackState, trackStore)
+			if currentTrack != nil && currentTrack.HasRecordedPreview && body.TrackRecordingOverwriteApprovedFor != currentTrack.Filename {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				json.NewEncoder(w).Encode(map[string]any{
+					"error":                    "recorded track data already exists for the current track",
+					"requiresOverwriteConfirm": true,
+					"currentTrack":             currentTrack,
+				})
+				return
+			}
+		}
 
 		// Rebind UDP port if changed
 		if body.UDPPort != cfgUDPPort {

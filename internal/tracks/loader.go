@@ -82,6 +82,8 @@ func NewTrackStore(dataDir string) *TrackStore {
 		patterns := []string{
 			filepath.Join(dataDir, name+"_2020_racingline.txt"),
 			filepath.Join(dataDir, name+"_racingline.txt"),
+			filepath.Join(dataDir, name+recordedFileSuffix),
+			filepath.Join(dataDir, name+legacyRecordedFileSuffix),
 		}
 
 		var loaded bool
@@ -143,6 +145,13 @@ type RecordedFileInfo struct {
 	Filename string `json:"filename"`
 }
 
+// RecordedTrackPreview describes a saved track file plus its parsed map data.
+type RecordedTrackPreview struct {
+	Name     string        `json:"name"`
+	Filename string        `json:"filename"`
+	TrackMap *TrackMapData `json:"trackMap"`
+}
+
 const (
 	recordedFileSuffix       = "_recorded.txt"
 	legacyRecordedFileSuffix = "_record.txt"
@@ -178,6 +187,51 @@ func NormalizeRecordedTrackName(name string) string {
 		return "unknown"
 	}
 	return normalized
+}
+
+func recordedFileCandidates(name string) []string {
+	normalized := NormalizeRecordedTrackName(name)
+	if normalized == "unknown" {
+		return nil
+	}
+	return []string{
+		normalized + recordedFileSuffix,
+		normalized + legacyRecordedFileSuffix,
+	}
+}
+
+// FindRecordedFile returns the first matching recorded file for a track name.
+func (ts *TrackStore) FindRecordedFile(trackName string) (RecordedFileInfo, string, bool) {
+	normalized := NormalizeRecordedTrackName(trackName)
+	for _, candidate := range recordedFileCandidates(normalized) {
+		path := filepath.Join(ts.dataDir, candidate)
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		return RecordedFileInfo{
+			Name:     normalized,
+			Filename: candidate,
+		}, path, true
+	}
+	return RecordedFileInfo{}, "", false
+}
+
+// LoadRecordedPreview returns parsed track data for a recorded file matching trackName.
+func (ts *TrackStore) LoadRecordedPreview(trackName string) (*RecordedTrackPreview, error) {
+	info, path, ok := ts.FindRecordedFile(trackName)
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	data, err := loadCSV(path)
+	if err != nil {
+		return nil, err
+	}
+	return &RecordedTrackPreview{
+		Name:     info.Name,
+		Filename: info.Filename,
+		TrackMap: data,
+	}, nil
 }
 
 // ListRecordedFiles scans the data directory for recorded track files.
