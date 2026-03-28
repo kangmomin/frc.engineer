@@ -11,12 +11,16 @@ import type {
   TireWearDisplayMode,
   WeatherForecast,
 } from '../../types/telemetry';
-import { clamp, formatLapTime } from '../../utils/formatters';
+import { clamp, formatDelta, formatLapTime } from '../../utils/formatters';
 import styles from './CockpitDashboard.module.css';
 
 const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEFAULT_PREDICTION_LAPS = 10;
+const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
+
+type SectorBestTimes = [number, number, number];
+type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
 
 interface CockpitDashboardProps {
   onOpenSettings: () => void;
@@ -62,6 +66,7 @@ export function CockpitDashboard({
     () => drivers.find((driver) => driver.index === playerIndex) ?? null,
     [drivers, playerIndex],
   );
+  const sectorBestTimes = useMemo(() => getSectorBestTimes(drivers), [drivers]);
 
   const carAhead = useMemo(() => {
     if (!player) return null;
@@ -185,6 +190,7 @@ export function CockpitDashboard({
               <span>{ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.'}</span>
               <span>Gap</span>
               <span>Interval</span>
+              <span>Sector Δ</span>
               <span>Last Lap</span>
               <span>Pen</span>
               <span>Tyre Age</span>
@@ -234,6 +240,7 @@ export function CockpitDashboard({
                     </span>
                     <span>{formatGap(driver)}</span>
                     <span>{formatInterval(driver)}</span>
+                    <SectorDeltaCell driver={driver} sectorBestTimes={sectorBestTimes} />
                     <span>{formatLapTime(driver.lastLapTime)}</span>
                     <PenaltyCell driver={driver} />
                     <span className={styles.tyreCell}>
@@ -689,6 +696,38 @@ function PenaltyCell({ driver }: { driver: DriverInfo }) {
   );
 }
 
+function SectorDeltaCell({
+  driver,
+  sectorBestTimes,
+}: {
+  driver: DriverInfo;
+  sectorBestTimes: SectorBestTimes;
+}) {
+  const sectorTimes = getDriverSectorTimes(driver);
+
+  return (
+    <span className={styles.sectorCell}>
+      {SECTOR_LABELS.map((label, index) => {
+        const sectorTime = sectorTimes[index];
+        const bestTime = sectorBestTimes[index];
+        const delta = sectorTime > 0 && bestTime > 0 ? sectorTime - bestTime : null;
+        const title = sectorTime > 0 ? `${label} ${formatLapTime(sectorTime)}` : `${label} pending`;
+
+        return (
+          <span
+            key={label}
+            className={`${styles.sectorChip} ${styles[getSectorDeltaTone(delta)]}`}
+            title={title}
+          >
+            <span className={styles.sectorChipLabel}>{label}</span>
+            <span className={styles.sectorChipValue}>{formatSectorDelta(delta)}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 function abbreviateDriver(name: string, fallbackIndex?: number): string {
   const trimmed = name?.trim();
   if (!trimmed) return fallbackIndex != null ? `P${fallbackIndex}` : '---';
@@ -727,6 +766,64 @@ function formatCombatWindow(alert: { gapSeconds: number; closingRatePerLap: numb
   if (!alert || alert.closingRatePerLap <= 0 || !player) return '--';
   const laps = alert.gapSeconds / Math.max(alert.closingRatePerLap, 0.1);
   return laps.toFixed(1);
+}
+
+function formatSectorDelta(deltaMs: number | null): string {
+  if (deltaMs == null) return '--';
+  return formatDelta(deltaMs);
+}
+
+function getSectorDeltaTone(deltaMs: number | null): SectorDeltaTone {
+  if (deltaMs == null) return 'sectorPending';
+  if (deltaMs <= 0) return 'sectorBest';
+  if (deltaMs <= 250) return 'sectorGood';
+  return 'sectorSlow';
+}
+
+function getSectorBestTimes(drivers: DriverInfo[]): SectorBestTimes {
+  const bestTimes: SectorBestTimes = [0, 0, 0];
+
+  drivers.forEach((driver) => {
+    const sectorTimes = getDriverSectorTimes(driver);
+    sectorTimes.forEach((sectorTime, index) => {
+      if (sectorTime <= 0) return;
+      if (bestTimes[index] === 0 || sectorTime < bestTimes[index]) {
+        bestTimes[index] = sectorTime;
+      }
+    });
+  });
+
+  return bestTimes;
+}
+
+function getDriverSectorTimes(driver: DriverInfo): SectorBestTimes {
+  return [
+    normalizeSectorTime(driver.sector1TimeMs),
+    normalizeSectorTime(driver.sector2TimeMs),
+    getDriverSector3TimeMs(driver),
+  ];
+}
+
+function getDriverSector3TimeMs(driver: DriverInfo): number {
+  const lapTime = Math.round(driver.lastLapTime ?? 0);
+  const sector1 = normalizeSectorTime(driver.sector1TimeMs);
+  const sector2 = normalizeSectorTime(driver.sector2TimeMs);
+
+  if (lapTime <= 0 || sector1 <= 0 || sector2 <= 0) {
+    return 0;
+  }
+
+  const sector3 = lapTime - sector1 - sector2;
+  if (sector3 <= 0 || sector3 >= lapTime) {
+    return 0;
+  }
+
+  return sector3;
+}
+
+function normalizeSectorTime(value: number | undefined): number {
+  if (!value || value <= 0) return 0;
+  return Math.round(value);
 }
 
 function driverHasDrs(driver: DriverInfo): boolean {
