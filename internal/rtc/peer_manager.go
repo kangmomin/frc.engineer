@@ -15,12 +15,12 @@ import (
 const (
 	maxBufferedAmount = 64 * 1024 // 64 KB — drop messages if receiver is slow
 
-	sigWriteWait          = 10 * time.Second
-	sigPongWait           = 60 * time.Second
-	sigPingPeriod         = (sigPongWait * 9) / 10 // 54s
-	sigHeartbeatPeriod    = 30 * time.Second        // application-level keepalive to survive proxy idle timeouts
-	reconnectBaseDelay    = 1 * time.Second
-	reconnectMaxDelay     = 30 * time.Second
+	sigWriteWait       = 10 * time.Second
+	sigPongWait        = 60 * time.Second
+	sigPingPeriod      = (sigPongWait * 9) / 10 // 54s
+	sigHeartbeatPeriod = 30 * time.Second       // application-level keepalive to survive proxy idle timeouts
+	reconnectBaseDelay = 1 * time.Second
+	reconnectMaxDelay  = 30 * time.Second
 )
 
 // RequestHandler is called when an engineer sends a request over DataChannel.
@@ -39,7 +39,10 @@ type PeerManager struct {
 	channels map[string]*webrtc.DataChannel
 	mu       sync.RWMutex
 
+	roomID        string
 	roomCode      string
+	roomName      string
+	roomPassword  string
 	onRequest     RequestHandler
 	onCountChange func(int) // called when engineer count changes
 	logger        *slog.Logger
@@ -69,6 +72,36 @@ func (pm *PeerManager) SetCountChangeHandler(h func(int)) {
 	pm.onCountChange = h
 }
 
+// SetRoomMetadata stores room list metadata used for room creation and updates.
+func (pm *PeerManager) SetRoomMetadata(name, password string) {
+	pm.sigMu.Lock()
+	pm.roomName = name
+	pm.roomPassword = password
+	pm.sigMu.Unlock()
+}
+
+// UpdateRoomMetadata updates the active signaling room metadata if connected.
+func (pm *PeerManager) UpdateRoomMetadata(name, password string) {
+	pm.sigMu.Lock()
+	pm.roomName = name
+	pm.roomPassword = password
+	connected := pm.sigConn != nil
+	roomID := pm.roomID
+	pm.sigMu.Unlock()
+
+	if connected && roomID != "" {
+		pm.sendSignaling(signaling.Message{
+			Type:     signaling.TypeRoomUpdate,
+			RoomID:   roomID,
+			RoomName: name,
+			Password: password,
+		})
+	}
+}
+
+// RoomID returns the stable room id assigned by the signaling server.
+func (pm *PeerManager) RoomID() string { return pm.roomID }
+
 // RoomCode returns the current room code assigned by the signaling server.
 func (pm *PeerManager) RoomCode() string { return pm.roomCode }
 
@@ -79,7 +112,12 @@ func (pm *PeerManager) Connect() error {
 	}
 
 	// Send room_create
-	create := signaling.Message{Type: signaling.TypeRoomCreate}
+	create := signaling.Message{
+		Type:     signaling.TypeRoomCreate,
+		RoomID:   pm.roomID,
+		RoomName: pm.roomName,
+		Password: pm.roomPassword,
+	}
 	if err := pm.sigConn.WriteJSON(create); err != nil {
 		pm.sigConn.Close()
 		return fmt.Errorf("send room_create: %w", err)
@@ -100,8 +138,9 @@ func (pm *PeerManager) Connect() error {
 		return fmt.Errorf("unexpected message: %s", resp.Type)
 	}
 
+	pm.roomID = resp.RoomID
 	pm.roomCode = resp.RoomCode
-	pm.logger.Info("room created on signaling server", "roomCode", pm.roomCode)
+	pm.logger.Info("room created on signaling server", "roomId", pm.roomID, "roomCode", pm.roomCode)
 
 	pm.startLoops()
 	return nil
@@ -269,6 +308,14 @@ func (pm *PeerManager) readSignalingLoop() {
 			pm.logger.Info("room closed by signaling server")
 			roomClosed = true
 			return
+		case signaling.TypeRoomUpdated:
+			if msg.RoomID != "" {
+				pm.roomID = msg.RoomID
+			}
+			if msg.RoomCode != "" {
+				pm.roomCode = msg.RoomCode
+			}
+			pm.logger.Info("room metadata updated on signaling server", "roomId", pm.roomID, "roomCode", pm.roomCode)
 		case signaling.TypeError:
 			pm.logger.Warn("signaling error", "error", msg.Error)
 		}
@@ -327,8 +374,13 @@ func (pm *PeerManager) reconnectLoop() {
 			continue
 		}
 
-		// Try room_rejoin with the existing room code.
-		rejoin := signaling.Message{Type: signaling.TypeRoomRejoin, RoomCode: pm.roomCode}
+		// Try room_rejoin with the stable room id.
+		rejoin := signaling.Message{
+			Type:     signaling.TypeRoomRejoin,
+			RoomID:   pm.roomID,
+			RoomName: pm.roomName,
+			Password: pm.roomPassword,
+		}
 		pm.sigMu.Lock()
 		err := pm.sigConn.WriteJSON(rejoin)
 		pm.sigMu.Unlock()
@@ -354,10 +406,15 @@ func (pm *PeerManager) reconnectLoop() {
 		}
 
 		if resp.Type == signaling.TypeError {
-			// Room expired or not found — fallback to room_create.
+			// Room expired or not found — fallback to room_create with the same stable room id.
 			pm.logger.Warn("room_rejoin failed, creating new room", "error", resp.Error)
 
-			create := signaling.Message{Type: signaling.TypeRoomCreate}
+			create := signaling.Message{
+				Type:     signaling.TypeRoomCreate,
+				RoomID:   pm.roomID,
+				RoomName: pm.roomName,
+				Password: pm.roomPassword,
+			}
 			pm.sigMu.Lock()
 			err = pm.sigConn.WriteJSON(create)
 			pm.sigMu.Unlock()
@@ -381,8 +438,11 @@ func (pm *PeerManager) reconnectLoop() {
 		}
 
 		if resp.Type == signaling.TypeRoomCreated {
+			if resp.RoomID != "" {
+				pm.roomID = resp.RoomID
+			}
 			pm.roomCode = resp.RoomCode
-			pm.logger.Info("signaling reconnected", "roomCode", pm.roomCode)
+			pm.logger.Info("signaling reconnected", "roomId", pm.roomID, "roomCode", pm.roomCode)
 			pm.startLoops()
 			return
 		}

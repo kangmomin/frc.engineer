@@ -78,6 +78,7 @@
     letter-spacing: 0.5px;
   }
   .field input[type="number"],
+  .field input[type="text"],
   .field input[type="password"] {
     width: 100%;
     background: #1a1a1a;
@@ -92,6 +93,7 @@
     transition: border-color 0.2s;
   }
   .field input[type="number"]:focus,
+  .field input[type="text"]:focus,
   .field input[type="password"]:focus {
     border-color: #00d2ff;
   }
@@ -491,6 +493,14 @@
     <div class="section-title">Status</div>
     <div class="room-code" id="roomCode">----</div>
     <div class="stat-row">
+      <span class="stat-label">Room Name</span>
+      <span class="stat-value" id="roomNameStatus">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Access</span>
+      <span class="stat-value" id="roomProtectedStatus">OPEN</span>
+    </div>
+    <div class="stat-row">
       <span class="stat-label">Connected Engineers</span>
       <span class="stat-value" id="engineers">0</span>
     </div>
@@ -502,6 +512,14 @@
     <div class="field">
       <label for="udpPort">UDP Port</label>
       <input type="number" id="udpPort" min="1" max="65535">
+    </div>
+    <div class="field">
+      <label for="roomName">Room Name</label>
+      <input type="text" id="roomName" maxlength="48" placeholder="Sender Room">
+    </div>
+    <div class="field">
+      <label for="roomPassword">Room Password</label>
+      <input type="password" id="roomPassword" maxlength="64" placeholder="Optional room password">
     </div>
     <div class="field">
       <div class="toggle-row">
@@ -622,8 +640,12 @@
 
 <script>
   const $room = document.getElementById('roomCode');
+  const $roomNameStatus = document.getElementById('roomNameStatus');
+  const $roomProtectedStatus = document.getElementById('roomProtectedStatus');
   const $eng  = document.getElementById('engineers');
   const $port = document.getElementById('udpPort');
+  const $roomName = document.getElementById('roomName');
+  const $roomPassword = document.getElementById('roomPassword');
   const $save = document.getElementById('saveFiles');
   const $trackRec = document.getElementById('trackRecording');
   const $btn  = document.getElementById('saveBtn');
@@ -975,6 +997,8 @@
       if (!r.ok) return;
       const d = await r.json();
       $room.textContent = d.roomCode || '----';
+      $roomNameStatus.textContent = d.roomName || '--';
+      $roomProtectedStatus.textContent = d.roomProtected ? 'LOCKED' : 'OPEN';
       $eng.textContent = d.connectedEngineers;
       const enabled = !!d.ersCompareEnabled;
       $compareStatus.textContent = enabled ? 'UNLOCKED' : 'LOCKED';
@@ -1005,6 +1029,8 @@
       if (!r.ok) return;
       const d = await r.json();
       $port.value = d.udpPort;
+      $roomName.value = d.roomName || '';
+      $roomPassword.value = d.roomPassword || '';
       $save.checked = d.saveFiles;
       $trackRec.checked = d.trackRecording;
       savedTrackRecording = !!d.trackRecording;
@@ -1028,6 +1054,8 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           udpPort: parseInt($port.value, 10),
+          roomName: $roomName.value,
+          roomPassword: $roomPassword.value,
           saveFiles: $save.checked,
           trackRecording: $trackRec.checked,
           trackRecordingOverwriteApprovedFor: approvedOverwriteFilename,

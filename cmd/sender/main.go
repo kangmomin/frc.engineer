@@ -50,6 +50,15 @@ func main() {
 		settingsPort = "8099"
 	}
 	comparePassword := os.Getenv("ERS_COMPARE_PASSWORD")
+	roomName := strings.TrimSpace(os.Getenv("SENDER_ROOM_NAME"))
+	if roomName == "" {
+		if host, err := os.Hostname(); err == nil && strings.TrimSpace(host) != "" {
+			roomName = strings.TrimSpace(host)
+		} else {
+			roomName = "Sender Room"
+		}
+	}
+	roomPassword := os.Getenv("SENDER_ROOM_PASSWORD")
 
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
@@ -87,6 +96,7 @@ func main() {
 
 	// Create peer manager
 	peerManager := rtc.NewPeerManager(signalingURL, logger)
+	peerManager.SetRoomMetadata(roomName, roomPassword)
 
 	// Create DataChannel broadcaster
 	broadcaster := rtc.NewDataChannelBroadcaster(peerManager)
@@ -113,6 +123,8 @@ func main() {
 	cfgUDPPort := udpPort
 	cfgSaveFiles := saveFiles
 	cfgTrackRecording := trackRecording
+	cfgRoomName := roomName
+	cfgRoomPassword := roomPassword
 	cfgForwardTargets := []rtconfig.ForwardTarget{}
 	var raceStorage *races.FileStorage
 	if saveFiles {
@@ -214,11 +226,15 @@ func main() {
 		cfgMu.Lock()
 		port := cfgUDPPort
 		sf := cfgSaveFiles
+		rn := cfgRoomName
+		rp := cfgRoomPassword
 		cfgMu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"roomCode":           peerManager.RoomCode(),
+			"roomName":           rn,
+			"roomProtected":      rp != "",
 			"connectedEngineers": peerManager.ConnectedCount(),
 			"udpPort":            port,
 			"saveFiles":          sf,
@@ -251,6 +267,8 @@ func main() {
 		port := cfgUDPPort
 		sf := cfgSaveFiles
 		tr := cfgTrackRecording
+		rn := cfgRoomName
+		rp := cfgRoomPassword
 		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
 		copy(ft, cfgForwardTargets)
 		cfgMu.Unlock()
@@ -260,6 +278,8 @@ func main() {
 			"udpPort":        port,
 			"saveFiles":      sf,
 			"trackRecording": tr,
+			"roomName":       rn,
+			"roomPassword":   rp,
 			"forwardTargets": ft,
 		})
 	})
@@ -270,6 +290,8 @@ func main() {
 			SaveFiles                          bool                     `json:"saveFiles"`
 			TrackRecording                     bool                     `json:"trackRecording"`
 			TrackRecordingOverwriteApprovedFor string                   `json:"trackRecordingOverwriteApprovedFor"`
+			RoomName                           string                   `json:"roomName"`
+			RoomPassword                       string                   `json:"roomPassword"`
 			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -301,6 +323,12 @@ func main() {
 
 		cfgMu.Lock()
 		defer cfgMu.Unlock()
+
+		nextRoomName := strings.TrimSpace(body.RoomName)
+		if nextRoomName == "" {
+			nextRoomName = "Sender Room"
+		}
+		nextRoomPassword := body.RoomPassword
 
 		if body.TrackRecording && !cfgTrackRecording {
 			currentTrack := getCurrentTrack(trackState, trackStore)
@@ -353,6 +381,13 @@ func main() {
 			logger.Info("track recording changed", "enabled", body.TrackRecording)
 		}
 
+		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword {
+			cfgRoomName = nextRoomName
+			cfgRoomPassword = nextRoomPassword
+			peerManager.UpdateRoomMetadata(cfgRoomName, cfgRoomPassword)
+			logger.Info("room metadata changed", "roomName", cfgRoomName, "protected", cfgRoomPassword != "")
+		}
+
 		// Update forward targets
 		cfgForwardTargets = make([]rtconfig.ForwardTarget, len(body.ForwardTargets))
 		copy(cfgForwardTargets, body.ForwardTargets)
@@ -364,6 +399,8 @@ func main() {
 			"udpPort":        cfgUDPPort,
 			"saveFiles":      cfgSaveFiles,
 			"trackRecording": cfgTrackRecording,
+			"roomName":       cfgRoomName,
+			"roomPassword":   cfgRoomPassword,
 			"forwardTargets": cfgForwardTargets,
 		})
 	})
@@ -406,6 +443,7 @@ func main() {
 	}()
 
 	fmt.Printf("   UDP:       :%d\n", udpPort)
+	fmt.Printf("   Room Name: %s\n", cfgRoomName)
 	fmt.Printf("   Room Code: %s\n", peerManager.RoomCode())
 	fmt.Printf("   Save Files: %v\n", saveFiles)
 	fmt.Printf("   Settings:  http://localhost:%s\n", settingsPort)

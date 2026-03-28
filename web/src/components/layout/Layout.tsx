@@ -13,7 +13,7 @@ const CONNECTION_MODE_KEY = 'frc_connection_mode';
 
 export function Layout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rtcOptions, setRtcOptions] = useState<{ signalingUrl: string; roomCode: string } | null>(null);
+  const [rtcOptions, setRtcOptions] = useState<{ signalingUrl: string; roomId: string; password: string } | null>(null);
   const [preferredRemoteMode, setPreferredRemoteMode] = useState(() => {
     if (isForcedRemoteMode) return true;
     return window.localStorage.getItem(CONNECTION_MODE_KEY) === 'remote';
@@ -57,8 +57,8 @@ export function Layout() {
 
   const { connectionState: rtcConnectionState } = useWebRTCDataChannel(webrtcOpts);
 
-  const handleRemoteConnect = useCallback((signalingUrl: string, roomCode: string) => {
-    setRtcOptions({ signalingUrl, roomCode });
+  const handleRemoteConnect = useCallback((signalingUrl: string, roomId: string, password: string) => {
+    setRtcOptions({ signalingUrl, roomId, password });
     setPreferredRemoteMode(true);
   }, []);
 
@@ -87,19 +87,23 @@ export function Layout() {
         connectionState={connectionState}
         onCancel={isForcedRemoteMode ? undefined : switchToLocalMode}
         title="P2P Telemetry Link"
-        subtitle="Enter the engineer room code issued by the sender and connect through the signaling server."
+        subtitle="Pick an active sender room from the signaling server, then enter its password to join."
       />
     );
   }
 
-  if (remoteMode && rtcOptions && rtcConnectionState === 'failed') {
+  if (
+    remoteMode &&
+    rtcOptions &&
+    (rtcConnectionState === 'failed' || connectionState === 'error' || connectionState === 'disconnected')
+  ) {
     return (
       <RemoteConnect
         onConnect={handleRemoteConnect}
         connectionState="error"
         onCancel={isForcedRemoteMode ? undefined : switchToLocalMode}
         title="P2P Telemetry Link"
-        subtitle="Connection dropped. Re-enter the room code or fall back to the local telemetry feed."
+        subtitle="Connection dropped. Pick the room again and retry, or fall back to the local telemetry feed."
       />
     );
   }

@@ -5,7 +5,8 @@ import { routeMessage } from './useMessageRouter';
 
 interface UseWebRTCOptions {
   signalingUrl: string;
-  roomCode: string;
+  roomId: string;
+  password: string;
 }
 
 interface UseWebRTCReturn {
@@ -70,8 +71,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   useEffect(() => {
     if (!options) return;
 
-    const { signalingUrl, roomCode } = options;
-    if (!signalingUrl || !roomCode) return;
+    const { signalingUrl, roomId, password } = options;
+    if (!signalingUrl || !roomId) return;
 
     isMountedRef.current = true;
 
@@ -178,7 +179,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     ws.onopen = () => {
       if (!isMountedRef.current) { ws.close(); return; }
-      ws.send(JSON.stringify({ type: 'room_join', roomCode }));
+      ws.send(JSON.stringify({ type: 'room_join', roomId, password }));
     };
 
     ws.onclose = () => {
@@ -217,6 +218,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         case 'error':
           console.error('Signaling error:', msg.error);
           setConnectionState('error');
+          cleanup();
           break;
       }
     };
@@ -227,7 +229,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     };
     // Re-run when connection params change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options?.signalingUrl, options?.roomCode]);
+  }, [options?.signalingUrl, options?.roomId, options?.password]);
 
   return { disconnect, connectionState: rtcState };
 }
