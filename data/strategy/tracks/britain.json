@@ -1,0 +1,437 @@
+{
+  "setup_type_descriptions": {
+    "istvan_puki": "Setup created by pro F1 sim racer Istvan Puki, designed for league racing.",
+    "esports": "The fastest possible setup specifically for competitive online racing.",
+    "safe": "A more stable car setup. Ideal for longer races or casual players.",
+    "low_downforce": "A low drag setup variant, only to be used when racing the AI.",
+    "intermediate": "Ideal for mixed conditions and wet races where the rain isn't too heavy.",
+    "wet": "Only to be used in heavy rain conditions."
+  },
+  "setups": {
+    "dry": [
+      {
+        "name": "Istvan Puki Quali Setup",
+        "id": "istvan-puki-quali-setup",
+        "front_wing": 17,
+        "rear_wing": 0,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 20,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 21.5,
+        "rear_left_pressure": 21.5,
+        "updated": "20/01/2026",
+        "notes": null
+      },
+      {
+        "name": "Istvan Puki Race Setup",
+        "id": "istvan-puki-race-setup",
+        "front_wing": 14,
+        "rear_wing": 0,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 2,
+        "front_anti_roll_bar": 2,
+        "rear_anti_roll_bar": 13,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29,
+        "front_left_pressure": 29,
+        "rear_right_pressure": 21,
+        "rear_left_pressure": 21,
+        "updated": "20/01/2026",
+        "notes": null
+      },
+      {
+        "name": "Esports Quali Setup",
+        "id": "esports-quali-setup",
+        "front_wing": 8,
+        "rear_wing": 0,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 25,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 26.5,
+        "rear_left_pressure": 26.5,
+        "updated": "09/09/2025",
+        "notes": null
+      },
+      {
+        "name": "Esports Race Setup",
+        "id": "esports-race-setup",
+        "front_wing": 9,
+        "rear_wing": 3,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 26.5,
+        "rear_left_pressure": 26.5,
+        "updated": "09/09/2025",
+        "notes": null
+      },
+      {
+        "name": "Safe Quali Setup",
+        "id": "safe-quali-setup",
+        "front_wing": 9,
+        "rear_wing": 2,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 5,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 18,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 26.5,
+        "rear_left_pressure": 26.5,
+        "updated": "09/09/2025",
+        "notes": null
+      },
+      {
+        "name": "Safe Race Setup",
+        "id": "safe-race-setup",
+        "front_wing": 10,
+        "rear_wing": 5,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 35,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 5,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 18,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 26.5,
+        "rear_left_pressure": 26.5,
+        "updated": "09/09/2025",
+        "notes": null
+      },
+      {
+        "name": "Legacy Setup",
+        "id": "legacy-setup",
+        "front_wing": 25,
+        "rear_wing": 23,
+        "on_throttle_differential": 80,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 10,
+        "front_anti_roll_bar": 6,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 21,
+        "rear_ride_height": 42,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 23.6,
+        "rear_left_pressure": 23.6,
+        "updated": "05/06/2025",
+        "notes": "Our original Esports car setup before our big setup updates. Here for those that still want to use it."
+      }
+    ],
+    "wet": [
+      {
+        "name": "Intermediate Setup",
+        "id": "intermediate-setup",
+        "front_wing": 20,
+        "rear_wing": 15,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 4,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 26.5,
+        "rear_left_pressure": 26.5,
+        "updated": "26/09/2025",
+        "notes": null
+      },
+      {
+        "name": "Wet Setup",
+        "id": "wet-setup",
+        "front_wing": 32,
+        "rear_wing": 35,
+        "on_throttle_differential": 90,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 8,
+        "front_anti_roll_bar": 6,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 22,
+        "rear_ride_height": 45,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 20.5,
+        "rear_left_pressure": 20.5,
+        "updated": "06/06/2025",
+        "notes": null
+      },
+      {
+        "name": "Wet Setup By Istvan",
+        "id": "wet-setup-by-istvan",
+        "front_wing": 36,
+        "rear_wing": 24,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 20,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 40,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 20,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 54,
+        "brake_pressure": 100,
+        "front_right_pressure": 27,
+        "front_left_pressure": 27,
+        "rear_right_pressure": 20.5,
+        "rear_left_pressure": 20.5,
+        "updated": "27/11/2025",
+        "notes": null
+      },
+      {
+        "name": "Reverse Track Setups",
+        "id": "reverse-setups",
+        "notes": null,
+        "updated": null
+      },
+      {
+        "name": "Reverse Setup Quali",
+        "id": "reverse-setup-quali",
+        "front_wing": 11,
+        "rear_wing": 3,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 25,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 21,
+        "front_ride_height": 20,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 25.5,
+        "rear_left_pressure": 25.5,
+        "updated": "29/09/2025",
+        "notes": null
+      },
+      {
+        "name": "Reverse Setup Race",
+        "id": "reverse-setup-race",
+        "front_wing": 8,
+        "rear_wing": 0,
+        "on_throttle_differential": 100,
+        "off_throttle_differential": 30,
+        "front_camber": -3.5,
+        "rear_camber": -2,
+        "front_toe": 0,
+        "rear_toe": 0.1,
+        "front_suspension": 41,
+        "rear_suspension": 1,
+        "front_anti_roll_bar": 1,
+        "rear_anti_roll_bar": 19,
+        "front_ride_height": 21,
+        "rear_ride_height": 40,
+        "brake_bias": 53,
+        "brake_pressure": 100,
+        "front_right_pressure": 29.5,
+        "front_left_pressure": 29.5,
+        "rear_right_pressure": 25.5,
+        "rear_left_pressure": 25.5,
+        "updated": "29/09/2025",
+        "notes": null
+      }
+    ]
+  },
+  "tyre_strategy": {
+    "compounds": {
+      "soft": "C4",
+      "medium": "C3",
+      "hard": "C2"
+    },
+    "wear_per_lap": {
+      "soft": {
+        "value": "8-9%",
+        "description": "Tyre wear per lap."
+      },
+      "medium": {
+        "value": "6-7%"
+      },
+      "hard": {
+        "value": "4-5%"
+      }
+    },
+    "tyre_life_50pct": {
+      "soft": {
+        "laps": 10,
+        "description": "How long the soft tyre lasts."
+      },
+      "medium": {
+        "laps": 13,
+        "description": "How long the medium tyre lasts."
+      },
+      "hard": {
+        "laps": 20,
+        "description": "How long the hard tyre lasts."
+      }
+    }
+  },
+  "quali_strategy": {
+    "fuel_amount": {
+      "value": "5kg",
+      "description": "Fuel required to complete a single flying lap."
+    },
+    "outlap_time": {
+      "value": "2:30",
+      "description": "Time taken to complete an outlap."
+    },
+    "starting_tyre_temps": {
+      "value": "85°C",
+      "description": "Optimal tyre temps at the start of the lap."
+    },
+    "enable_ers": {
+      "value": "Before Turn 16",
+      "description": "Turn on ERS hotlap mode at this time."
+    }
+  },
+  "race_strategy": {
+    "laps_50pct": 26,
+    "starting_fuel_50pct": {
+      "value": "50.4kg",
+      "description": "How much to fuel your car before the race."
+    },
+    "plan_a": {
+      "tyres": [
+        "medium",
+        "hard"
+      ],
+      "pit_window": "Lap 9-11",
+      "description": "The fastest race strategy."
+    },
+    "plan_b": {
+      "tyres": [
+        "soft",
+        "hard"
+      ],
+      "pit_window": "Lap 7-10",
+      "description": "Alternate race strategy."
+    },
+    "plan_100pct": {
+      "tyres": [
+        "medium",
+        "hard"
+      ],
+      "pit_window": "Lap 22-24",
+      "description": "100% race strategy."
+    },
+    "pit_stop_time_lost": {
+      "value": "24s",
+      "description": "Time lost during a pit stop including tyre change."
+    },
+    "notes": "Undercut from medium to hard is powerful. Updated tyre compounds result in increased wear. Beware of soft tyres overheating if using during a race. Two stop strategy is too slow due to pit loss time. In a 100% race, aim for 2.3% wear on hards. If more than this, you will need to 2-stop, using a M-M-H strategy, pitting on lap 16 and 33."
+  },
+  "track_info": {
+    "lap_count": 52,
+    "laps_50pct": 26,
+    "circuit_length": "5.891km",
+    "lap_record": "1:27.097",
+    "drs_zones": 2,
+    "pole_position": "Left Side",
+    "pit_limit": "60kph / 37mph"
+  },
+  "ers_guide": {
+    "track_map_url": "https://simracingsetup.com/wp-content/themes/neve-child/assets/track_maps/trackmap_britain_ers.svg"
+  },
+  "hotlap_video": "https://youtu.be/OSGa5GZQOI0",
+  "track": "britain",
+  "url": "https://simracingsetup.com/setups/f1-25-setups-pro/tracks/britain/",
+  "scraped_at": "2026-03-21T03:50:47.624534+00:00"
+}

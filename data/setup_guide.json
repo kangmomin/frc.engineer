@@ -1,0 +1,261 @@
+{
+  "aerodynamics": {
+    "values": ["front_wing", "rear_wing"],
+    "front_wing": {
+      "name": "Front Wing Aero",
+      "range": [0, 50],
+      "unit": "",
+      "description": "프론트 다운포스 조절. 높을수록 프론트 그립 증가.",
+      "increase_effect": "프론트 그립 증가, 언더스티어 감소, 직선 속도 감소",
+      "decrease_effect": "프론트 그립 감소, 직선 속도 증가, 언더스티어 증가"
+    },
+    "rear_wing": {
+      "name": "Rear Wing Aero",
+      "range": [0, 50],
+      "unit": "",
+      "description": "리어 다운포스 조절. 높을수록 리어 그립 증가.",
+      "increase_effect": "리어 그립 증가, 오버스티어 감소, 직선 속도 감소",
+      "decrease_effect": "리어 그립 감소, 직선 속도 증가, 오버스티어 증가"
+    }
+  },
+  "transmission": {
+    "values": ["on_throttle_differential", "off_throttle_differential"],
+    "on_throttle_differential": {
+      "name": "On Throttle Differential",
+      "range": [50, 100],
+      "unit": "%",
+      "description": "가속 시 좌우 바퀴 잠김 정도. 높을수록 양쪽 바퀴가 동일 속도로 회전.",
+      "increase_effect": "코너 출구 안정성 증가, 트랙션 증가, 회전성 감소",
+      "decrease_effect": "코너 출구 회전성 증가, 트랙션 감소, 가속 시 오버스티어 유발 가능"
+    },
+    "off_throttle_differential": {
+      "name": "Off Throttle Differential",
+      "range": [50, 100],
+      "unit": "%",
+      "description": "감속/엔진 브레이크 시 좌우 바퀴 잠김 정도.",
+      "increase_effect": "브레이킹 안정성 증가, 코너 진입 안정성 증가",
+      "decrease_effect": "코너 진입 회전성 증가, 브레이킹 시 리어 불안정"
+    }
+  },
+  "geometry": {
+    "values": ["front_camber", "rear_camber", "front_toe", "rear_toe"],
+    "front_camber": {
+      "name": "Front Camber",
+      "range": [-3.50, -2.50],
+      "step": 0.10,
+      "unit": "°",
+      "description": "프론트 타이어 기울기 (네거티브 캠버). 값이 작을수록(더 네거티브) 코너링 시 접지면 증가.",
+      "increase_effect": "더 네거티브 → 코너링 그립 증가, 직선 그립 감소, 타이어 내측 마모 증가",
+      "decrease_effect": "덜 네거티브 → 직선 그립/안정성 증가, 코너링 그립 감소"
+    },
+    "rear_camber": {
+      "name": "Rear Camber",
+      "range": [-2.00, -1.00],
+      "step": 0.10,
+      "unit": "°",
+      "description": "리어 타이어 기울기. 프론트와 동일 원리.",
+      "increase_effect": "더 네거티브 → 리어 코너링 그립 증가",
+      "decrease_effect": "덜 네거티브 → 리어 직선 안정성 증가"
+    },
+    "front_toe": {
+      "name": "Front Toe",
+      "range": [0.00, 0.25],
+      "step": 0.01,
+      "unit": "°",
+      "description": "프론트 토 아웃. 값이 높을수록 타이어가 바깥을 향함.",
+      "increase_effect": "코너 진입 반응성 증가, 턴인 개선, 직선 안정성 감소, 타이어 마모 증가",
+      "decrease_effect": "직선 안정성 증가, 코너 진입 반응성 감소"
+    },
+    "rear_toe": {
+      "name": "Rear Toe",
+      "range": [0.00, 0.50],
+      "step": 0.01,
+      "unit": "°",
+      "description": "리어 토 인. 값이 높을수록 리어 안정성 증가.",
+      "increase_effect": "리어 안정성 증가, 약간의 드래그 증가, 오버스티어 감소",
+      "decrease_effect": "리어 안정성 감소, 드래그 감소, 직선 속도 미세 증가"
+    }
+  },
+  "suspension": {
+    "values": ["front_suspension", "rear_suspension", "front_anti_roll_bar", "rear_anti_roll_bar", "front_ride_height", "rear_ride_height"],
+    "front_suspension": {
+      "name": "Front Suspension Stiffness",
+      "range": [1, 50],
+      "unit": "",
+      "description": "프론트 서스펜션 강성. 높을수록 딱딱함.",
+      "increase_effect": "프론트 반응성 증가, 커브 진입이 더 예리해짐, 커브에서 불안정 가능",
+      "decrease_effect": "프론트 안정성 증가, 커브 진입이 부드러워짐, 반응성 감소"
+    },
+    "rear_suspension": {
+      "name": "Rear Suspension Stiffness",
+      "range": [1, 50],
+      "unit": "",
+      "description": "리어 서스펜션 강성.",
+      "increase_effect": "리어 반응성 증가, 트랙션 감소 가능",
+      "decrease_effect": "리어 안정성/트랙션 증가, 반응성 감소"
+    },
+    "front_anti_roll_bar": {
+      "name": "Front Anti-Roll Bar",
+      "range": [1, 50],
+      "unit": "",
+      "description": "프론트 안티롤바 강성. 롤(좌우 기울어짐)을 제어.",
+      "increase_effect": "프론트 롤 감소, 코너 반응성 증가, 언더스티어 증가 가능",
+      "decrease_effect": "프론트 롤 증가, 프론트 기계적 그립 증가, 언더스티어 감소"
+    },
+    "rear_anti_roll_bar": {
+      "name": "Rear Anti-Roll Bar",
+      "range": [1, 50],
+      "unit": "",
+      "description": "리어 안티롤바 강성.",
+      "increase_effect": "리어 롤 감소, 오버스티어 증가 가능",
+      "decrease_effect": "리어 롤 증가, 리어 기계적 그립 증가, 오버스티어 감소"
+    },
+    "front_ride_height": {
+      "name": "Front Ride Height",
+      "range": [1, 50],
+      "unit": "",
+      "description": "프론트 차고. 낮을수록 공기역학적 이점.",
+      "increase_effect": "커브에서 차가 바닥에 닿는 것 방지, 프론트 다운포스 감소",
+      "decrease_effect": "프론트 다운포스 증가, 커브에서 바닥 접촉 위험"
+    },
+    "rear_ride_height": {
+      "name": "Rear Ride Height",
+      "range": [1, 70],
+      "unit": "",
+      "description": "리어 차고.",
+      "increase_effect": "리어 안정성 증가, 공기저항 약간 증가",
+      "decrease_effect": "리어 다운포스 증가, 바닥 접촉 위험"
+    }
+  },
+  "brakes": {
+    "values": ["brake_bias", "brake_pressure"],
+    "brake_bias": {
+      "name": "Brake Bias",
+      "range": [50, 70],
+      "unit": "%",
+      "description": "프론트/리어 브레이크 배분. 높을수록 프론트 비중 높음.",
+      "increase_effect": "프론트 브레이크 비중 증가, 리어 잠김 감소, 브레이킹 시 언더스티어",
+      "decrease_effect": "리어 브레이크 비중 증가, 브레이킹 시 오버스티어/불안정"
+    },
+    "brake_pressure": {
+      "name": "Brake Pressure",
+      "range": [50, 100],
+      "unit": "%",
+      "description": "전체 브레이크 압력. 높을수록 제동력 강함.",
+      "increase_effect": "제동 거리 감소, 타이어 잠김 위험 증가",
+      "decrease_effect": "제동 거리 증가, 타이어 잠김 위험 감소, 더 부드러운 브레이킹"
+    }
+  },
+  "tyres": {
+    "values": ["front_right_pressure", "front_left_pressure", "rear_right_pressure", "rear_left_pressure"],
+    "front_right_pressure": {
+      "name": "Front Right Tyre Pressure",
+      "range": [21.0, 30.0],
+      "step": 0.1,
+      "unit": "psi",
+      "description": "프론트 우측 타이어 압력."
+    },
+    "front_left_pressure": {
+      "name": "Front Left Tyre Pressure",
+      "range": [21.0, 30.0],
+      "step": 0.1,
+      "unit": "psi",
+      "description": "프론트 좌측 타이어 압력."
+    },
+    "rear_right_pressure": {
+      "name": "Rear Right Tyre Pressure",
+      "range": [20.0, 27.0],
+      "step": 0.1,
+      "unit": "psi",
+      "description": "리어 우측 타이어 압력."
+    },
+    "rear_left_pressure": {
+      "name": "Rear Left Tyre Pressure",
+      "range": [20.0, 27.0],
+      "step": 0.1,
+      "unit": "psi",
+      "description": "리어 좌측 타이어 압력."
+    },
+    "general_effects": {
+      "increase_effect": "타이어 온도 상승 빠름, 최적 온도 도달 빠름, 과열 위험, 그립 피크 높지만 좁은 온도대",
+      "decrease_effect": "타이어 온도 상승 느림, 과열 방지, 더 넓은 온도대에서 안정적 그립"
+    }
+  },
+  "tuning_tips": {
+    "understeer_entry": {
+      "problem": "코너 진입 시 언더스티어 (차가 바깥으로 밀림)",
+      "adjustments": [
+        "프론트 윙 +1~2",
+        "프론트 안티롤바 -1~3",
+        "프론트 토 +0.01~0.02",
+        "프론트 라이드하이트 -1~2"
+      ]
+    },
+    "understeer_mid": {
+      "problem": "코너 중간 언더스티어",
+      "adjustments": [
+        "프론트 윙 +1~2",
+        "리어 안티롤바 +1~3",
+        "프론트 캠버 -0.1~0.2 (더 네거티브)"
+      ]
+    },
+    "oversteer_entry": {
+      "problem": "코너 진입 시 오버스티어 (리어가 빠짐)",
+      "adjustments": [
+        "리어 윙 +1~2",
+        "리어 안티롤바 -1~3",
+        "오프 스로틀 디퍼런셜 +5~10",
+        "브레이크 바이어스 +1~2"
+      ]
+    },
+    "oversteer_exit": {
+      "problem": "코너 출구 오버스티어 (가속 시 리어 빠짐)",
+      "adjustments": [
+        "온 스로틀 디퍼런셜 +5~10",
+        "리어 윙 +1~2",
+        "리어 서스펜션 -1~3"
+      ]
+    },
+    "low_traction": {
+      "problem": "트랙션 부족 (가속 시 휠스핀)",
+      "adjustments": [
+        "온 스로틀 디퍼런셜 -5~10",
+        "리어 윙 +1~2",
+        "리어 타이어 압력 -0.2~0.5"
+      ]
+    },
+    "brake_instability": {
+      "problem": "브레이킹 시 불안정",
+      "adjustments": [
+        "브레이크 바이어스 +1~2 (프론트로)",
+        "브레이크 압력 -5",
+        "오프 스로틀 디퍼런셜 +5~10"
+      ]
+    },
+    "tyre_overheating": {
+      "problem": "타이어 과열 (그립 급락)",
+      "adjustments": [
+        "타이어 압력 -0.3~0.5",
+        "캠버 줄이기 (덜 네거티브) +0.1~0.2",
+        "토 줄이기 -0.01~0.02"
+      ]
+    },
+    "tyre_cold": {
+      "problem": "타이어가 충분히 가열되지 않음",
+      "adjustments": [
+        "타이어 압력 +0.3~0.5",
+        "캠버 늘리기 (더 네거티브) -0.1~0.2",
+        "토 늘리기 +0.01~0.02"
+      ]
+    },
+    "straight_speed_low": {
+      "problem": "직선 속도 부족",
+      "adjustments": [
+        "프론트 윙 -1~3",
+        "리어 윙 -1~3",
+        "프론트/리어 라이드하이트 -1~2",
+        "리어 토 -0.02~0.05"
+      ]
+    }
+  }
+}

@@ -1,0 +1,618 @@
+{
+  "C1": [
+    {
+      "temp": "30°C",
+      "grip": "94.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "94.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "50°C",
+      "grip": "95.5%",
+      "zone": "normal"
+    },
+    {
+      "temp": "60°C",
+      "grip": "96.5%",
+      "zone": "normal"
+    },
+    {
+      "temp": "70°C",
+      "grip": "97.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "80°C",
+      "grip": "99.0%",
+      "zone": "good"
+    },
+    {
+      "temp": "90°C",
+      "grip": "99.7%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "100°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "110°C",
+      "grip": "99.9%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "120°C",
+      "grip": "99.5%",
+      "zone": "good"
+    },
+    {
+      "temp": "130°C",
+      "grip": "99.0%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "98.3%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "97.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "97.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "96.6%",
+      "zone": "normal"
+    }
+  ],
+  "C2": [
+    {
+      "temp": "30°C",
+      "grip": "94.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "95.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "50°C",
+      "grip": "96.0%",
+      "zone": "normal"
+    },
+    {
+      "temp": "60°C",
+      "grip": "97.1%",
+      "zone": "normal"
+    },
+    {
+      "temp": "70°C",
+      "grip": "98.2%",
+      "zone": "good"
+    },
+    {
+      "temp": "80°C",
+      "grip": "99.4%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "90°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "100°C",
+      "grip": "99.9%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "110°C",
+      "grip": "99.6%",
+      "zone": "good"
+    },
+    {
+      "temp": "120°C",
+      "grip": "99.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "130°C",
+      "grip": "98.5%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "97.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "97.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "96.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "96.2%",
+      "zone": "normal"
+    }
+  ],
+  "C3": [
+    {
+      "temp": "30°C",
+      "grip": "95.0%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "95.5%",
+      "zone": "normal"
+    },
+    {
+      "temp": "50°C",
+      "grip": "96.4%",
+      "zone": "normal"
+    },
+    {
+      "temp": "60°C",
+      "grip": "97.6%",
+      "zone": "good"
+    },
+    {
+      "temp": "70°C",
+      "grip": "99.2%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "80°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "90°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "100°C",
+      "grip": "99.8%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "110°C",
+      "grip": "99.3%",
+      "zone": "good"
+    },
+    {
+      "temp": "120°C",
+      "grip": "98.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "130°C",
+      "grip": "98.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "97.5%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "96.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "96.3%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "96.0%",
+      "zone": "normal"
+    }
+  ],
+  "C4": [
+    {
+      "temp": "30°C",
+      "grip": "95.4%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "96.0%",
+      "zone": "normal"
+    },
+    {
+      "temp": "50°C",
+      "grip": "96.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "60°C",
+      "grip": "98.2%",
+      "zone": "good"
+    },
+    {
+      "temp": "70°C",
+      "grip": "99.5%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "80°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "90°C",
+      "grip": "99.9%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "100°C",
+      "grip": "99.5%",
+      "zone": "good"
+    },
+    {
+      "temp": "110°C",
+      "grip": "99.0%",
+      "zone": "normal"
+    },
+    {
+      "temp": "120°C",
+      "grip": "98.4%",
+      "zone": "normal"
+    },
+    {
+      "temp": "130°C",
+      "grip": "97.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "97.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "96.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "95.9%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "95.6%",
+      "zone": "normal"
+    }
+  ],
+  "C5": [
+    {
+      "temp": "30°C",
+      "grip": "95.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "96.5%",
+      "zone": "normal"
+    },
+    {
+      "temp": "50°C",
+      "grip": "97.5%",
+      "zone": "good"
+    },
+    {
+      "temp": "60°C",
+      "grip": "99.2%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "70°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "80°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "90°C",
+      "grip": "99.8%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "100°C",
+      "grip": "99.3%",
+      "zone": "good"
+    },
+    {
+      "temp": "110°C",
+      "grip": "98.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "120°C",
+      "grip": "98.0%",
+      "zone": "normal"
+    },
+    {
+      "temp": "130°C",
+      "grip": "97.4%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "96.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "96.1%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "95.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "95.3%",
+      "zone": "normal"
+    }
+  ],
+  "C6": [
+    {
+      "temp": "30°C",
+      "grip": "96.3%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "97.1%",
+      "zone": "normal"
+    },
+    {
+      "temp": "50°C",
+      "grip": "97.9%",
+      "zone": "good"
+    },
+    {
+      "temp": "60°C",
+      "grip": "99.5%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "70°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "80°C",
+      "grip": "99.8%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "90°C",
+      "grip": "99.4%",
+      "zone": "good"
+    },
+    {
+      "temp": "100°C",
+      "grip": "98.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "110°C",
+      "grip": "98.1%",
+      "zone": "normal"
+    },
+    {
+      "temp": "120°C",
+      "grip": "97.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "130°C",
+      "grip": "97.0%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "96.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "95.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "95.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "94.7%",
+      "zone": "normal"
+    }
+  ],
+  "inter": [
+    {
+      "temp": "30°C",
+      "grip": "98.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "98.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "50°C",
+      "grip": "99.6%",
+      "zone": "good"
+    },
+    {
+      "temp": "60°C",
+      "grip": "99.9%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "70°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "80°C",
+      "grip": "99.4%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "90°C",
+      "grip": "98.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "100°C",
+      "grip": "98.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "110°C",
+      "grip": "97.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "120°C",
+      "grip": "97.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "130°C",
+      "grip": "96.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "96.3%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "95.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "95.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "95.0%",
+      "zone": "normal"
+    }
+  ],
+  "wet": [
+    {
+      "temp": "30°C",
+      "grip": "98.5%",
+      "zone": "normal"
+    },
+    {
+      "temp": "40°C",
+      "grip": "99.2%",
+      "zone": "good"
+    },
+    {
+      "temp": "50°C",
+      "grip": "99.8%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "60°C",
+      "grip": "100%",
+      "zone": "peak"
+    },
+    {
+      "temp": "70°C",
+      "grip": "99.5%",
+      "zone": "near_peak"
+    },
+    {
+      "temp": "80°C",
+      "grip": "98.7%",
+      "zone": "good"
+    },
+    {
+      "temp": "90°C",
+      "grip": "98.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "100°C",
+      "grip": "97.6%",
+      "zone": "normal"
+    },
+    {
+      "temp": "110°C",
+      "grip": "97.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "120°C",
+      "grip": "96.7%",
+      "zone": "normal"
+    },
+    {
+      "temp": "130°C",
+      "grip": "96.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "140°C",
+      "grip": "95.8%",
+      "zone": "normal"
+    },
+    {
+      "temp": "150°C",
+      "grip": "95.2%",
+      "zone": "normal"
+    },
+    {
+      "temp": "160°C",
+      "grip": "94.9%",
+      "zone": "normal"
+    },
+    {
+      "temp": "170°C",
+      "grip": "94.6%",
+      "zone": "normal"
+    }
+  ]
+}
