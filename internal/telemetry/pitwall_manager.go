@@ -309,7 +309,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	}
 
 	if numCars > 0 {
-		ersEstimates := pm.ersEstimator.Update(pm.session, pm.participants, pm.lapData, pm.telemetry, pm.carStatus)
+		ersEstimates := pm.ersEstimator.Update(pm.session, pm.participants, pm.lapData, pm.telemetry, pm.carStatus, pm.playerIndex)
 		state.Drivers = make([]dto.DriverInfo, numCars)
 		for i := range numCars {
 			d := &state.Drivers[i]

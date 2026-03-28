@@ -54,6 +54,7 @@ type ersCarState struct {
 	lastDeployJ         float64
 	lastHarvestJ        float64
 	lastActualEnergyJ   float64
+	lastActualKnown     bool
 	lapStartEnergyJ     float64
 	lapStartDeployJ     float64
 	lapStartHarvestJ    float64
@@ -90,6 +91,7 @@ func (e *ERSEstimator) Update(
 	lapData *packets.PacketLapData,
 	telemetry *packets.PacketCarTelemetryData,
 	carStatus *packets.PacketCarStatusData,
+	playerIndex uint8,
 ) [packets.MaxCars]ERSEstimate {
 	var out [packets.MaxCars]ERSEstimate
 	if lapData == nil || telemetry == nil || carStatus == nil {
@@ -137,8 +139,8 @@ func (e *ERSEstimator) Update(
 		car := &e.cars[i]
 		deployTotal := maxFloat64(float64(sanitize(status.ERSDeployedThisLap)), 0)
 		harvestTotal := maxFloat64(float64(sanitize(status.ERSHarvestedThisLapMGUK+status.ERSHarvestedThisLapMGUH)), 0)
-		actualEnergy := maxFloat64(float64(sanitize(status.ERSStoreEnergy)), 0)
-		isPublic := participants != nil && participants.Participants[i].YourTelemetry == 1
+		actualEnergy := clampFloat64(float64(sanitize(status.ERSStoreEnergy)), 0, ersEstimateMaxEnergyJ)
+		hasActual := ersActualAvailable(participants, playerIndex, i)
 
 		if car.initialized && lapNum > 0 && car.lastLapNum > 0 && lapNum < car.lastLapNum {
 			e.cars[i] = ersCarState{}
@@ -146,7 +148,7 @@ func (e *ERSEstimator) Update(
 		}
 
 		if !car.initialized {
-			e.initializeCar(car, lapNum, lapDistance, sessionTime, float64(tel.Speed), deployTotal, harvestTotal, actualEnergy)
+			e.initializeCar(car, lapNum, lapDistance, sessionTime, float64(tel.Speed), deployTotal, harvestTotal, actualEnergy, hasActual)
 			out[i] = e.snapshotCar(car)
 			continue
 		}
@@ -155,7 +157,7 @@ func (e *ERSEstimator) Update(
 		progressValid := sessionTime > car.lastSessionTime && sessionTime-car.lastSessionTime <= 2.0
 		progressValid = progressValid && (lapChanged || lapDistance+ersEstimateProgressTolerance >= car.lastLapDistance)
 
-		if isPublic && actualEnergy > 0 && car.lastActualEnergyJ > 0 && progressValid && !lapChanged {
+		if hasActual && car.lastActualKnown && progressValid && !lapChanged {
 			bucket := e.bucketIndex(lapDistance)
 			phase := classifyERSPhase(float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), float64(tel.Speed)-car.lastSpeed, int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
 			e.recordCalibration(bucket, phase, actualEnergy-car.lastActualEnergyJ, sessionTime-car.lastSessionTime)
@@ -168,21 +170,32 @@ func (e *ERSEstimator) Update(
 			car.lapStartHarvestJ = harvestTotal
 		}
 
+		deployDelta := 0.0
+		harvestDelta := 0.0
+		if !lapChanged {
+			deployDelta = maxFloat64(deployTotal-car.lastDeployJ, 0)
+			harvestDelta = maxFloat64(harvestTotal-car.lastHarvestJ, 0)
+		}
+
 		if progressValid {
-			bucket := e.bucketIndex(lapDistance)
-			phase := classifyERSPhase(float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), float64(tel.Speed)-car.lastSpeed, int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
-			rate := estimateERSRate(phase, float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
-			rate = e.applyCalibration(bucket, phase, rate)
-			car.energyJ = clampFloat64(car.energyJ+(rate*(sessionTime-car.lastSessionTime)), 0, ersEstimateMaxEnergyJ)
+			if deployDelta > 0 || harvestDelta > 0 {
+				car.energyJ = clampFloat64(car.energyJ+harvestDelta-deployDelta, 0, ersEstimateMaxEnergyJ)
+			} else {
+				bucket := e.bucketIndex(lapDistance)
+				phase := classifyERSPhase(float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), float64(tel.Speed)-car.lastSpeed, int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
+				rate := estimateERSRate(phase, float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
+				rate = e.applyCalibration(bucket, phase, rate)
+				car.energyJ = clampFloat64(car.energyJ+(rate*(sessionTime-car.lastSessionTime)), 0, ersEstimateMaxEnergyJ)
+			}
 			car.validSteps++
 		}
 
 		if deployTotal > car.lastDeployJ+250 || harvestTotal > car.lastHarvestJ+250 {
 			car.seenCounterMovement = true
 		}
-		if !lapChanged && (deployTotal > car.lapStartDeployJ || harvestTotal > car.lapStartHarvestJ) {
-			expected := car.lapStartEnergyJ + maxFloat64(harvestTotal-car.lapStartHarvestJ, 0) - maxFloat64(deployTotal-car.lapStartDeployJ, 0)
-			car.energyJ = clampFloat64((car.energyJ*0.65)+(expected*0.35), 0, ersEstimateMaxEnergyJ)
+
+		if hasActual {
+			car.energyJ = reanchorERSEnergy(car.energyJ, actualEnergy)
 		}
 
 		car.lastSessionTime = sessionTime
@@ -191,10 +204,12 @@ func (e *ERSEstimator) Update(
 		car.lastSpeed = float64(tel.Speed)
 		car.lastDeployJ = deployTotal
 		car.lastHarvestJ = harvestTotal
-		if actualEnergy > 0 {
+		if hasActual {
 			car.lastActualEnergyJ = actualEnergy
+			car.lastActualKnown = true
 		} else {
 			car.lastActualEnergyJ = 0
+			car.lastActualKnown = false
 		}
 
 		out[i] = e.snapshotCar(car)
@@ -212,10 +227,15 @@ func (e *ERSEstimator) initializeCar(
 	deployTotal float64,
 	harvestTotal float64,
 	actualEnergy float64,
+	hasActual bool,
 ) {
+	initialEnergy := ersEstimateDefaultEnergyJ
+	if hasActual {
+		initialEnergy = actualEnergy
+	}
 	*car = ersCarState{
 		initialized:       true,
-		energyJ:           ersEstimateDefaultEnergyJ,
+		energyJ:           initialEnergy,
 		lastSessionTime:   sessionTime,
 		lastLapNum:        lapNum,
 		lastLapDistance:   lapDistance,
@@ -223,7 +243,8 @@ func (e *ERSEstimator) initializeCar(
 		lastDeployJ:       deployTotal,
 		lastHarvestJ:      harvestTotal,
 		lastActualEnergyJ: actualEnergy,
-		lapStartEnergyJ:   ersEstimateDefaultEnergyJ,
+		lastActualKnown:   hasActual,
+		lapStartEnergyJ:   initialEnergy,
 		lapStartDeployJ:   deployTotal,
 		lapStartHarvestJ:  harvestTotal,
 	}
@@ -407,6 +428,26 @@ func buildERSTrackProfile(store *tracks.TrackStore, trackID int8, trackLength fl
 	}
 
 	return profile
+}
+
+func reanchorERSEnergy(estimate float64, actual float64) float64 {
+	actual = clampFloat64(actual, 0, ersEstimateMaxEnergyJ)
+	diff := math.Abs(estimate - actual)
+
+	gain := 0.25
+	switch {
+	case diff >= 1_500_000:
+		gain = 0.98
+	case diff >= 600_000:
+		gain = 0.85
+	case diff >= 200_000:
+		gain = 0.55
+	}
+	if actual <= 200_000 && estimate > actual {
+		gain = math.Max(gain, 0.98)
+	}
+
+	return clampFloat64((estimate*(1-gain))+(actual*gain), 0, ersEstimateMaxEnergyJ)
 }
 
 func resolveEstimatorSessionUID(
