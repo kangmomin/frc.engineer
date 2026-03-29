@@ -10,8 +10,6 @@ import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import styles from './Layout.module.css';
 
-const REMOTE_SESSION_KEY = 'frc_remote_session';
-
 interface RemoteRTCOptions {
   signalingUrl: string;
   roomId: string;
@@ -27,28 +25,8 @@ function readRemoteQuery(): Partial<RemoteRTCOptions> {
   };
 }
 
-function readStoredRemoteSession(): RemoteRTCOptions | null {
-  try {
-    const raw = window.sessionStorage.getItem(REMOTE_SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as RemoteRTCOptions;
-    if (!parsed.roomId || !parsed.signalingUrl) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 function buildInitialRemoteOptions(): RemoteRTCOptions | null {
   const query = readRemoteQuery();
-  const stored = readStoredRemoteSession();
-
-  if (stored && stored.roomId === query.roomId) {
-    return {
-      ...stored,
-      signalingUrl: query.signalingUrl || stored.signalingUrl,
-    };
-  }
 
   if (query.roomId && query.signalingUrl) {
     return {
@@ -59,17 +37,24 @@ function buildInitialRemoteOptions(): RemoteRTCOptions | null {
     };
   }
 
-  return stored;
+  return null;
 }
 
 function persistRemoteSession(options: RemoteRTCOptions) {
-  window.sessionStorage.setItem(REMOTE_SESSION_KEY, JSON.stringify(options));
-
   const params = new URLSearchParams(window.location.search);
   params.set('remote', '1');
   params.set('roomId', options.roomId);
   params.set('signalingUrl', options.signalingUrl);
 
+  const nextQuery = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+}
+
+function clearRemoteQuery() {
+  const params = new URLSearchParams(window.location.search);
+  params.delete('remote');
+  params.delete('roomId');
+  params.delete('signalingUrl');
   const nextQuery = params.toString();
   window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
 }
@@ -86,6 +71,12 @@ export function Layout() {
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
   const connectionState = useTelemetryStore((state) => state.connectionState);
+
+  useEffect(() => {
+    window.sessionStorage.removeItem('frc_remote_session');
+    window.sessionStorage.removeItem('frc_signaling_url');
+    window.localStorage.removeItem('frc_signaling_url');
+  }, []);
 
   useEffect(() => {
     setConnectionMode('remote');
@@ -129,6 +120,17 @@ export function Layout() {
     clearRaceResult();
   }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
 
+  const goToMainScreen = useCallback(() => {
+    clearRemoteQuery();
+    setRtcOptions(null);
+    setConnectAttempted(false);
+    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+    setConnectionState('disconnected');
+    setPitwallState(null);
+    clearNotifications();
+    clearRaceResult();
+  }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
+
   if (!rtcOptions) {
     return (
       <RemoteConnect
@@ -136,10 +138,10 @@ export function Layout() {
         connectionState={connectionState}
         title="P2P Telemetry Link"
         subtitle="Pick an active sender room from the signaling server, then enter its password to join."
-        initialSignalingUrl={readRemoteQuery().signalingUrl || readStoredRemoteSession()?.signalingUrl || ''}
-        initialRoomId={readRemoteQuery().roomId || readStoredRemoteSession()?.roomId || ''}
-        initialPassword={readStoredRemoteSession()?.password || ''}
-        initialPermissionsCode={readStoredRemoteSession()?.permissionsCode || ''}
+        initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
+        initialRoomId={readRemoteQuery().roomId || ''}
+        initialPassword=""
+        initialPermissionsCode=""
       />
     );
   }
@@ -153,6 +155,8 @@ export function Layout() {
       <RemoteConnect
         onConnect={handleRemoteConnect}
         connectionState="error"
+        onCancel={goToMainScreen}
+        cancelLabel="Main Screen"
         title="P2P Telemetry Link"
         subtitle="Connection dropped. Pick the room again and retry."
         initialSignalingUrl={rtcOptions.signalingUrl}

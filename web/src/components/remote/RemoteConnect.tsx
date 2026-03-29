@@ -6,6 +6,7 @@ interface RemoteConnectProps {
   onConnect: (signalingUrl: string, roomId: string, password: string, permissionsCode: string) => void;
   connectionState: string;
   onCancel?: () => void;
+  cancelLabel?: string;
   title?: string;
   subtitle?: string;
   initialSignalingUrl?: string;
@@ -28,10 +29,8 @@ interface PermissionCodeEntry {
   permissions: FeaturePermissions;
 }
 
-const STORAGE_KEY = 'frc_signaling_url';
-
 function getDefaultSignalingUrl(): string {
-  return localStorage.getItem(STORAGE_KEY) || import.meta.env.VITE_SIGNALING_URL || '';
+  return import.meta.env.VITE_SIGNALING_URL || '';
 }
 
 function getRoomsEndpoint(signalingUrl: string): string {
@@ -70,6 +69,7 @@ export function RemoteConnect({
   onConnect,
   connectionState,
   onCancel,
+  cancelLabel = 'Back',
   title = 'Remote Connect',
   subtitle = 'Choose a sender room and enter its password to join the live telemetry stream.',
   initialSignalingUrl = '',
@@ -234,7 +234,6 @@ export function RemoteConnect({
 
   const handleSubmit = useCallback(() => {
     if (!selectedRoom || !signalingUrl) return;
-    localStorage.setItem(STORAGE_KEY, signalingUrl);
     onConnect(
       signalingUrl,
       selectedRoom.roomId,
@@ -500,7 +499,7 @@ export function RemoteConnect({
               onClick={onCancel}
               disabled={isConnecting}
             >
-              Back
+              {cancelLabel}
             </button>
           )}
           <button

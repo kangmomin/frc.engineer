@@ -16,8 +16,6 @@ interface PermissionCodeEntry {
   permissions: FeaturePermissions;
 }
 
-const SIGNALING_STORAGE_KEY = 'frc_signaling_url';
-
 const STORAGE_MODE_OPTIONS: Array<{
   value: DataStorageMode;
   label: string;
@@ -41,7 +39,14 @@ const STORAGE_MODE_OPTIONS: Array<{
 ];
 
 function getDefaultSignalingUrl(): string {
-  return localStorage.getItem(SIGNALING_STORAGE_KEY) || import.meta.env.VITE_SIGNALING_URL || '';
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const queryValue = params.get('signalingUrl');
+    if (queryValue) {
+      return queryValue;
+    }
+  }
+  return import.meta.env.VITE_SIGNALING_URL || '';
 }
 
 function getPermissionCodesEndpoint(signalingUrl: string, code?: string): string {
@@ -75,11 +80,7 @@ export function SettingsView() {
     'absolute',
     (v) => (v === 'absolute' || v === 'relative' ? v : null),
   );
-  const [signalingUrl, setSignalingUrl] = useLocalStorage<string>(
-    SIGNALING_STORAGE_KEY,
-    getDefaultSignalingUrl(),
-    (value) => (typeof value === 'string' ? value : null),
-  );
+  const [signalingUrl, setSignalingUrl] = useState(getDefaultSignalingUrl);
   const [permissionCodes, setPermissionCodes] = useState<PermissionCodeEntry[]>([]);
   const [permissionDraft, setPermissionDraft] = useState<PermissionCodeEntry>(createEmptyPermissionCode);
   const [selectedPermissionCode, setSelectedPermissionCode] = useState('');
