@@ -214,6 +214,34 @@
     font-size: 0.84rem;
     line-height: 1.45;
   }
+  .track-preview-names {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .track-preview-name-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid #233743;
+    border-radius: 6px;
+    background: rgba(10, 21, 27, 0.82);
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+  .track-preview-name-label {
+    color: #7f97a1;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    white-space: nowrap;
+  }
+  .track-preview-name-value {
+    color: #e3f6ff;
+    font-weight: 700;
+    text-align: right;
+    word-break: break-word;
+  }
   .track-preview-status {
     padding: 4px 8px;
     border-radius: 999px;
@@ -549,6 +577,16 @@
           </div>
           <span class="track-preview-status pending" id="trackPreviewStatus">Review</span>
         </div>
+        <div class="track-preview-names">
+          <div class="track-preview-name-row">
+            <span class="track-preview-name-label">Current Track</span>
+            <span class="track-preview-name-value" id="trackPreviewCurrentName">--</span>
+          </div>
+          <div class="track-preview-name-row">
+            <span class="track-preview-name-label">Saved Track</span>
+            <span class="track-preview-name-value" id="trackPreviewSavedName">--</span>
+          </div>
+        </div>
         <div class="track-preview-meta" id="trackPreviewMeta"></div>
         <div class="track-preview-legend">
           <span class="legend-chip"><span class="legend-swatch" style="background:#43d4ff"></span>Sector 1</span>
@@ -657,6 +695,8 @@
   const $trackPreviewTitle = document.getElementById('trackPreviewTitle');
   const $trackPreviewCopy = document.getElementById('trackPreviewCopy');
   const $trackPreviewStatus = document.getElementById('trackPreviewStatus');
+  const $trackPreviewCurrentName = document.getElementById('trackPreviewCurrentName');
+  const $trackPreviewSavedName = document.getElementById('trackPreviewSavedName');
   const $trackPreviewMeta = document.getElementById('trackPreviewMeta');
   const $trackPreviewSvg = document.getElementById('trackPreviewSvg');
   const $trackPreviewMessage = document.getElementById('trackPreviewMessage');
@@ -877,12 +917,16 @@
   function renderTrackPreview() {
     const currentName = currentTrack?.name;
     if (!currentName) {
+      $trackPreviewCurrentName.textContent = '--';
+      $trackPreviewSavedName.textContent = '--';
       $trackRecordingNote.textContent = 'Waiting for current track session.';
       $trackPreviewCard.classList.add('hidden');
       return;
     }
 
     if (!currentTrackPreview?.available || !currentTrackPreview.preview) {
+      $trackPreviewCurrentName.textContent = formatTrackName(currentName);
+      $trackPreviewSavedName.textContent = '--';
       $trackRecordingNote.textContent = `Current track: ${formatTrackName(currentName)}. No recorded file will be overwritten.`;
       $trackPreviewCard.classList.add('hidden');
       return;
@@ -897,6 +941,8 @@
     $trackPreviewCard.classList.remove('hidden');
     $trackPreviewTitle.textContent = `${formatTrackName(preview.name)} recorded data`;
     $trackPreviewCopy.textContent = `${preview.filename} is already on disk. Review the layout before recording over it.`;
+    $trackPreviewCurrentName.textContent = formatTrackName(currentName);
+    $trackPreviewSavedName.textContent = formatTrackName(preview.name);
     $trackPreviewStatus.textContent = overwriteReviewRequired && !approved ? 'Review' : approved ? 'Approved' : 'Detected';
     $trackPreviewStatus.className = 'track-preview-status ' + ((overwriteReviewRequired && !approved) ? 'pending' : 'ready');
     $trackPreviewMeta.innerHTML = `
