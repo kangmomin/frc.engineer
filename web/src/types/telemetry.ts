@@ -40,6 +40,7 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'err
 export interface FeaturePermissions {
   viewERSActual: boolean;
   viewAdvancedStrategy: boolean;
+  viewPitStatus: boolean;
 }
 
 export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';

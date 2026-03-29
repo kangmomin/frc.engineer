@@ -59,6 +59,7 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
     permissions: {
       viewERSActual: false,
       viewAdvancedStrategy: false,
+      viewPitStatus: false,
     },
   };
 }
@@ -484,7 +485,7 @@ export function RemoteConnect({
               }}
             />
             <div className={styles.permissionHint}>
-              Optional. Use a permissions code to unlock ERS actuals or advanced track strategy details.
+              Optional. Use a permissions code to unlock ERS actuals, live pit status, or advanced track strategy details.
             </div>
           </div>
         )}
@@ -589,6 +590,7 @@ export function RemoteConnect({
                           </div>
                           <div className={styles.permissionCardMeta}>
                             <span>{entry.permissions.viewERSActual ? 'ERS ACTUAL' : 'ERS MASKED'}</span>
+                            <span>{entry.permissions.viewPitStatus ? 'PIT VISIBLE' : 'PIT HIDDEN'}</span>
                             <span>{entry.permissions.viewAdvancedStrategy ? 'ADV STRATEGY' : 'BASIC ONLY'}</span>
                           </div>
                         </button>
@@ -632,6 +634,16 @@ export function RemoteConnect({
                         type="checkbox"
                         checked={permissionDraft.permissions.viewERSActual}
                         onChange={(e) => updatePermissionFlag('viewERSActual', e.target.checked)}
+                        disabled={permissionSaving}
+                      />
+                    </label>
+                    <label className={styles.permissionToggle}>
+                      <span>Pit Status</span>
+                      <input
+                        className={styles.toggle}
+                        type="checkbox"
+                        checked={permissionDraft.permissions.viewPitStatus}
+                        onChange={(e) => updatePermissionFlag('viewPitStatus', e.target.checked)}
                         disabled={permissionSaving}
                       />
                     </label>

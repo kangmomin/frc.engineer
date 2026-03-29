@@ -60,6 +60,7 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
     permissions: {
       viewERSActual: false,
       viewAdvancedStrategy: false,
+      viewPitStatus: false,
     },
   };
 }
@@ -498,6 +499,9 @@ export function SettingsView() {
                       {entry.permissions.viewERSActual ? 'ERS Actual' : 'ERS Hidden'}
                     </span>
                     <span className={styles.trackBadgeLoaded}>
+                      {entry.permissions.viewPitStatus ? 'Pit Status' : 'Pit Hidden'}
+                    </span>
+                    <span className={styles.trackBadgeLoaded}>
                       {entry.permissions.viewAdvancedStrategy ? 'Advanced Strategy' : 'Basic Strategy'}
                     </span>
                   </div>
@@ -536,6 +540,15 @@ export function SettingsView() {
                   type="checkbox"
                   checked={permissionDraft.permissions.viewERSActual}
                   onChange={(event) => updatePermissionFlag('viewERSActual', event.target.checked)}
+                />
+              </label>
+              <label className={styles.permissionToggle}>
+                <span className={styles.fieldLabel}>Pit Status</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewPitStatus}
+                  onChange={(event) => updatePermissionFlag('viewPitStatus', event.target.checked)}
                 />
               </label>
               <label className={styles.permissionToggle}>

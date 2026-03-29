@@ -80,6 +80,7 @@ export function CockpitDashboard({
   const session = pitwallState?.session ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
   const ersComparisonEnabled = (pitwallState?.ersComparisonEnabled ?? false) && featurePermissions.viewERSActual;
+  const pitStatusVisible = featurePermissions.viewPitStatus;
 
   const drivers = useMemo(
     () => [...(pitwallState?.drivers ?? [])].sort((a, b) => a.position - b.position),
@@ -263,6 +264,7 @@ export function CockpitDashboard({
               <span>Pos</span>
               <span>Driver</span>
               <span>DRS</span>
+              <span>{pitStatusVisible ? 'Pit' : 'Pit Locked'}</span>
               <span>{ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.'}</span>
               <span>Gap</span>
               <span>Interval</span>
@@ -304,6 +306,11 @@ export function CockpitDashboard({
                     <span className={styles.drsCell}>
                       <span className={driverHasDrs(driver) ? styles.drsActive : styles.drsInactive}>
                         DRS
+                      </span>
+                    </span>
+                    <span className={styles.pitCell}>
+                      <span className={styles[getPitStatusTone(driver, pitStatusVisible)]}>
+                        {formatPitStatus(driver, pitStatusVisible)}
                       </span>
                     </span>
                     <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
@@ -929,6 +936,16 @@ function normalizeSectorTime(value: number | undefined): number {
 
 function driverHasDrs(driver: DriverInfo): boolean {
   return (driver.deltaToCarInFront ?? 0) > 0 && (driver.deltaToCarInFront ?? 0) <= 1000;
+}
+
+function formatPitStatus(driver: DriverInfo, visible: boolean): string {
+  if (!visible) return 'LOCK';
+  return driver.pitStatus > 0 ? 'PIT' : '--';
+}
+
+function getPitStatusTone(driver: DriverInfo, visible: boolean): 'pitLocked' | 'pitActive' | 'pitInactive' {
+  if (!visible) return 'pitLocked';
+  return driver.pitStatus > 0 ? 'pitActive' : 'pitInactive';
 }
 
 function getDriverRowTone(driver: DriverInfo, player: DriverInfo | null): 'playerRow' | 'leaderRow' | 'teamRow' | '' {

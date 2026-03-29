@@ -24,6 +24,7 @@ const (
 type Permissions struct {
 	ViewERSActual        bool `json:"viewERSActual"`
 	ViewAdvancedStrategy bool `json:"viewAdvancedStrategy"`
+	ViewPitStatus        bool `json:"viewPitStatus"`
 }
 
 type PermissionCode struct {

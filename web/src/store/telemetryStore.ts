@@ -54,11 +54,13 @@ const MAX_BATTLE_ALERTS = 10;
 export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewERSActual: false,
   viewAdvancedStrategy: false,
+  viewPitStatus: false,
 };
 
 export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewERSActual: true,
   viewAdvancedStrategy: true,
+  viewPitStatus: true,
 };
 
 export const useTelemetryStore = create<TelemetryState>((set) => ({
