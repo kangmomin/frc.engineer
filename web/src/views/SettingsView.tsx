@@ -61,6 +61,8 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewERSActual: false,
       viewAdvancedStrategy: false,
       viewPitStatus: false,
+      viewTopSpeed: false,
+      viewPlayerDelta: false,
     },
   };
 }
@@ -502,6 +504,12 @@ export function SettingsView() {
                       {entry.permissions.viewPitStatus ? 'Pit Status' : 'Pit Hidden'}
                     </span>
                     <span className={styles.trackBadgeLoaded}>
+                      {entry.permissions.viewTopSpeed ? 'Top Speed' : 'Top Speed Hidden'}
+                    </span>
+                    <span className={styles.trackBadgeLoaded}>
+                      {entry.permissions.viewPlayerDelta ? 'Player Delta' : 'Leader Gap'}
+                    </span>
+                    <span className={styles.trackBadgeLoaded}>
                       {entry.permissions.viewAdvancedStrategy ? 'Advanced Strategy' : 'Basic Strategy'}
                     </span>
                   </div>
@@ -549,6 +557,24 @@ export function SettingsView() {
                   type="checkbox"
                   checked={permissionDraft.permissions.viewPitStatus}
                   onChange={(event) => updatePermissionFlag('viewPitStatus', event.target.checked)}
+                />
+              </label>
+              <label className={styles.permissionToggle}>
+                <span className={styles.fieldLabel}>Top Speed</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewTopSpeed}
+                  onChange={(event) => updatePermissionFlag('viewTopSpeed', event.target.checked)}
+                />
+              </label>
+              <label className={styles.permissionToggle}>
+                <span className={styles.fieldLabel}>Player Delta</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewPlayerDelta}
+                  onChange={(event) => updatePermissionFlag('viewPlayerDelta', event.target.checked)}
                 />
               </label>
               <label className={styles.permissionToggle}>

@@ -88,6 +88,7 @@ type DriverInfo struct {
 	Position        int     `json:"position"`
 	CurrentLapNum   int     `json:"currentLapNum"`
 	Speed           uint16  `json:"speed"`
+	TopSpeed        int     `json:"topSpeed"`
 	Throttle        float32 `json:"throttle"`
 	Brake           float32 `json:"brake"`
 	Gear            int8    `json:"gear"`
@@ -148,6 +149,7 @@ type DriverInfo struct {
 	PitStopTimer      float32 `json:"pitStopTimer"`
 	DeltaToCarInFront int     `json:"deltaToCarInFront"`
 	DeltaToRaceLeader int     `json:"deltaToRaceLeader"`
+	DeltaToPlayer     int     `json:"deltaToPlayer"`
 	PitLaneTime       int     `json:"pitLaneTime"`
 }
 

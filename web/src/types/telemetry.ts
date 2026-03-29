@@ -41,6 +41,8 @@ export interface FeaturePermissions {
   viewERSActual: boolean;
   viewAdvancedStrategy: boolean;
   viewPitStatus: boolean;
+  viewTopSpeed: boolean;
+  viewPlayerDelta: boolean;
 }
 
 export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';
@@ -305,6 +307,7 @@ export interface DriverInfo {
   position: number;
   currentLapNum: number;
   speed: number;
+  topSpeed: number;
   throttle: number;
   brake: number;
   gear: number;
@@ -365,6 +368,7 @@ export interface DriverInfo {
   pitStopTimer: number;
   deltaToCarInFront?: number;
   deltaToRaceLeader?: number;
+  deltaToPlayer?: number;
   pitLaneTime?: number;
 }
 

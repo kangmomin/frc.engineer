@@ -25,6 +25,8 @@ type Permissions struct {
 	ViewERSActual        bool `json:"viewERSActual"`
 	ViewAdvancedStrategy bool `json:"viewAdvancedStrategy"`
 	ViewPitStatus        bool `json:"viewPitStatus"`
+	ViewTopSpeed         bool `json:"viewTopSpeed"`
+	ViewPlayerDelta      bool `json:"viewPlayerDelta"`
 }
 
 type PermissionCode struct {

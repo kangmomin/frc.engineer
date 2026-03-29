@@ -55,12 +55,16 @@ export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewERSActual: false,
   viewAdvancedStrategy: false,
   viewPitStatus: false,
+  viewTopSpeed: false,
+  viewPlayerDelta: false,
 };
 
 export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewERSActual: true,
   viewAdvancedStrategy: true,
   viewPitStatus: true,
+  viewTopSpeed: true,
+  viewPlayerDelta: true,
 };
 
 export const useTelemetryStore = create<TelemetryState>((set) => ({

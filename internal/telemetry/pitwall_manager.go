@@ -345,6 +345,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.CurrentSector = int(ld.Sector)
 				d.DeltaToCarInFront = int(ld.DeltaToCarInFrontMinutesPart)*60000 + int(ld.DeltaToCarInFrontMSPart)
 				d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderMinutesPart)*60000 + int(ld.DeltaToRaceLeaderMSPart)
+				d.TopSpeed = int(math.Round(float64(sanitize(ld.SpeedTrapFastestSpeed))))
 				d.PitLaneTime = int(ld.PitLaneTimeInLaneInMS)
 				d.Penalties = int(ld.Penalties)
 				d.TotalWarnings = int(ld.TotalWarnings)
@@ -435,6 +436,14 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 					}
 					d.TireWear[w] = int(wear)
 				}
+			}
+		}
+
+		playerIdx := int(pm.playerIndex)
+		if playerIdx >= 0 && playerIdx < len(state.Drivers) {
+			playerLeaderDelta := state.Drivers[playerIdx].DeltaToRaceLeader
+			for i := range state.Drivers {
+				state.Drivers[i].DeltaToPlayer = state.Drivers[i].DeltaToRaceLeader - playerLeaderDelta
 			}
 		}
 	}

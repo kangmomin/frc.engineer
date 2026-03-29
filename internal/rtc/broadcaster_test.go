@@ -21,6 +21,8 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 					PitStatus:      2,
 					PitStopTimer:   4.2,
 					PitLaneTime:    18234,
+					TopSpeed:       334,
+					DeltaToPlayer:  -842,
 				},
 			},
 		},
@@ -35,8 +37,10 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	}
 
 	privileged := decodePitwallState(t, variants.resolve(signaling.Permissions{
-		ViewERSActual: true,
-		ViewPitStatus: true,
+		ViewERSActual:   true,
+		ViewPitStatus:   true,
+		ViewTopSpeed:    true,
+		ViewPlayerDelta: true,
 	}))
 	if !privileged.ERSComparisonEnabled {
 		t.Fatal("expected ERS comparison to remain enabled")
@@ -46,6 +50,9 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	}
 	if privileged.Drivers[0].PitStatus != 2 || privileged.Drivers[0].PitLaneTime != 18234 {
 		t.Fatalf("expected pit fields to remain visible, got %#v", privileged.Drivers[0])
+	}
+	if privileged.Drivers[0].TopSpeed != 334 || privileged.Drivers[0].DeltaToPlayer != -842 {
+		t.Fatalf("expected top speed and player delta to remain visible, got %#v", privileged.Drivers[0])
 	}
 
 	restricted := decodePitwallState(t, variants.resolve(signaling.Permissions{}))
@@ -57,6 +64,9 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	}
 	if restricted.Drivers[0].PitStatus != 0 || restricted.Drivers[0].PitStopTimer != 0 || restricted.Drivers[0].PitLaneTime != 0 {
 		t.Fatalf("expected pit fields to be masked, got %#v", restricted.Drivers[0])
+	}
+	if restricted.Drivers[0].TopSpeed != 0 || restricted.Drivers[0].DeltaToPlayer != 0 {
+		t.Fatalf("expected top speed and player delta to be masked, got %#v", restricted.Drivers[0])
 	}
 }
 

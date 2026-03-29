@@ -47,6 +47,12 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	if permissions.ViewPitStatus {
 		key += "|pit"
 	}
+	if permissions.ViewTopSpeed {
+		key += "|top"
+	}
+	if permissions.ViewPlayerDelta {
+		key += "|player-delta"
+	}
 	if cached, ok := v.cache[key]; ok {
 		return cached
 	}
@@ -62,6 +68,12 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 			state.Drivers[i].PitStatus = 0
 			state.Drivers[i].PitStopTimer = 0
 			state.Drivers[i].PitLaneTime = 0
+		}
+		if !permissions.ViewTopSpeed {
+			state.Drivers[i].TopSpeed = 0
+		}
+		if !permissions.ViewPlayerDelta {
+			state.Drivers[i].DeltaToPlayer = 0
 		}
 	}
 

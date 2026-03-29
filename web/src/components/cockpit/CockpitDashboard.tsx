@@ -81,6 +81,8 @@ export function CockpitDashboard({
   const playerIndex = pitwallState?.playerIndex ?? -1;
   const ersComparisonEnabled = (pitwallState?.ersComparisonEnabled ?? false) && featurePermissions.viewERSActual;
   const pitStatusVisible = featurePermissions.viewPitStatus;
+  const topSpeedVisible = featurePermissions.viewTopSpeed;
+  const playerDeltaVisible = featurePermissions.viewPlayerDelta;
 
   const drivers = useMemo(
     () => [...(pitwallState?.drivers ?? [])].sort((a, b) => a.position - b.position),
@@ -266,7 +268,8 @@ export function CockpitDashboard({
               <span>DRS</span>
               <span>{pitStatusVisible ? 'Pit' : 'Pit Locked'}</span>
               <span>{ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.'}</span>
-              <span>Gap</span>
+              <span>{topSpeedVisible ? 'Vmax' : 'Vmax Locked'}</span>
+              <span>{playerDeltaVisible ? 'To You' : 'Gap'}</span>
               <span>Interval</span>
               <span>Sector Δ</span>
               <span>Last Lap</span>
@@ -321,7 +324,14 @@ export function CockpitDashboard({
                         </span>
                       )}
                     </span>
-                    <span>{formatGap(driver)}</span>
+                    <span className={styles.topSpeedCell}>
+                      <span className={styles[getTopSpeedTone(driver, topSpeedVisible)]}>
+                        {formatTopSpeed(driver, topSpeedVisible)}
+                      </span>
+                    </span>
+                    <span className={playerDeltaVisible ? styles.referenceGapPlayer : styles.referenceGapLeader}>
+                      {formatReferenceGap(driver, player, playerDeltaVisible)}
+                    </span>
                     <span>{formatInterval(driver)}</span>
                     <SectorDeltaCell driver={driver} sectorBestTimes={sectorBestTimes} />
                     <span>{formatLapTime(driver.lastLapTime)}</span>
@@ -849,10 +859,30 @@ function formatGap(driver: DriverInfo): string {
   return `+${(driver.deltaToRaceLeader / 1000).toFixed(3)}`;
 }
 
+function formatReferenceGap(driver: DriverInfo, player: DriverInfo | null, visible: boolean): string {
+  if (!visible) return formatGap(driver);
+  if (!player) return '--';
+  if (player && driver.index === player.index) return 'YOU';
+  if (driver.deltaToPlayer == null) return '--';
+  return formatDelta(driver.deltaToPlayer);
+}
+
 function formatInterval(driver: DriverInfo): string {
   if (driver.position === 1) return '---';
   if (driver.deltaToCarInFront == null || driver.deltaToCarInFront <= 0) return '--';
   return `+${(driver.deltaToCarInFront / 1000).toFixed(3)}`;
+}
+
+function formatTopSpeed(driver: DriverInfo, visible: boolean): string {
+  if (!visible) return 'LOCK';
+  if (!driver.topSpeed || driver.topSpeed <= 0) return '--';
+  return `${driver.topSpeed}`;
+}
+
+function getTopSpeedTone(driver: DriverInfo, visible: boolean): 'topSpeedLocked' | 'topSpeedHigh' | 'topSpeedBase' {
+  if (!visible) return 'topSpeedLocked';
+  if ((driver.topSpeed ?? 0) >= 320) return 'topSpeedHigh';
+  return 'topSpeedBase';
 }
 
 function formatAheadGap(player: DriverInfo | null): string {

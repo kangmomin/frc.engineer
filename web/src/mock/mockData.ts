@@ -309,7 +309,7 @@ function buildSession(tick: number): SessionInfo {
 function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[] {
   let cumulativeGapMs = 0;
 
-  return DRIVER_SEEDS.map((seed, orderIndex) => {
+  const frames = DRIVER_SEEDS.map((seed, orderIndex) => {
     if (orderIndex > 0) {
       const intervalPulse = Math.sin(tick / 6 + orderIndex * 0.75) * Math.min(220, seed.intervalMs * 0.14);
       cumulativeGapMs += Math.max(380, Math.round(seed.intervalMs + intervalPulse));
@@ -369,6 +369,7 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
       position: orderIndex + 1,
       currentLapNum,
       speed: driving.speed,
+      topSpeed: clampInt(driving.speed + 8 + (orderIndex % 4) * 3, driving.speed, 352),
       throttle: round2(driving.throttle),
       brake: round2(driving.brake),
       gear: driving.gear,
@@ -422,11 +423,23 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
       pitStopTimer: 0,
       deltaToCarInFront: orderIndex === 0 ? 0 : cumulativeGapMs,
       deltaToRaceLeader: cumulativeGapMs,
+      deltaToPlayer: 0,
       pitLaneTime: 0,
     };
 
     return { progress, totalLaps, driver };
   });
+
+  const playerFrame = frames.find((frame) => frame.driver.index === PLAYER_INDEX);
+  const playerLeaderDelta = playerFrame?.driver.deltaToRaceLeader ?? 0;
+
+  return frames.map((frame) => ({
+    ...frame,
+    driver: {
+      ...frame.driver,
+      deltaToPlayer: (frame.driver.deltaToRaceLeader ?? 0) - playerLeaderDelta,
+    },
+  }));
 }
 
 function buildDrivingState(progress: number, tick: number, orderIndex: number, gapToLeaderMs: number) {

@@ -60,6 +60,8 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewERSActual: false,
       viewAdvancedStrategy: false,
       viewPitStatus: false,
+      viewTopSpeed: false,
+      viewPlayerDelta: false,
     },
   };
 }
@@ -485,7 +487,7 @@ export function RemoteConnect({
               }}
             />
             <div className={styles.permissionHint}>
-              Optional. Use a permissions code to unlock ERS actuals, live pit status, or advanced track strategy details.
+              Optional. Use a permissions code to unlock ERS actuals, live pit status, top speed, player-relative deltas, or advanced track strategy details.
             </div>
           </div>
         )}
@@ -591,6 +593,8 @@ export function RemoteConnect({
                           <div className={styles.permissionCardMeta}>
                             <span>{entry.permissions.viewERSActual ? 'ERS ACTUAL' : 'ERS MASKED'}</span>
                             <span>{entry.permissions.viewPitStatus ? 'PIT VISIBLE' : 'PIT HIDDEN'}</span>
+                            <span>{entry.permissions.viewTopSpeed ? 'VMAX VISIBLE' : 'VMAX HIDDEN'}</span>
+                            <span>{entry.permissions.viewPlayerDelta ? 'YOU DELTA' : 'LEADER GAP'}</span>
                             <span>{entry.permissions.viewAdvancedStrategy ? 'ADV STRATEGY' : 'BASIC ONLY'}</span>
                           </div>
                         </button>
@@ -644,6 +648,26 @@ export function RemoteConnect({
                         type="checkbox"
                         checked={permissionDraft.permissions.viewPitStatus}
                         onChange={(e) => updatePermissionFlag('viewPitStatus', e.target.checked)}
+                        disabled={permissionSaving}
+                      />
+                    </label>
+                    <label className={styles.permissionToggle}>
+                      <span>Top Speed</span>
+                      <input
+                        className={styles.toggle}
+                        type="checkbox"
+                        checked={permissionDraft.permissions.viewTopSpeed}
+                        onChange={(e) => updatePermissionFlag('viewTopSpeed', e.target.checked)}
+                        disabled={permissionSaving}
+                      />
+                    </label>
+                    <label className={styles.permissionToggle}>
+                      <span>Player Delta</span>
+                      <input
+                        className={styles.toggle}
+                        type="checkbox"
+                        checked={permissionDraft.permissions.viewPlayerDelta}
+                        onChange={(e) => updatePermissionFlag('viewPlayerDelta', e.target.checked)}
                         disabled={permissionSaving}
                       />
                     </label>
