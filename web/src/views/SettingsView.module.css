@@ -103,6 +103,11 @@
   outline: none;
 }
 
+.wideInput {
+  composes: input;
+  width: min(420px, 100%);
+}
+
 .input:focus,
 .targetInput:focus,
 .portInput:focus,
@@ -201,6 +206,95 @@
   gap: 8px;
 }
 
+.permissionLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.permissionList,
+.permissionEditor {
+  display: grid;
+  gap: 10px;
+}
+
+.permissionEmpty {
+  padding: 14px;
+  border: 1px dashed rgba(132, 147, 150, 0.16);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.permissionCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(132, 147, 150, 0.14);
+  background: rgba(14, 14, 15, 0.44);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.permissionCard:hover {
+  border-color: rgba(0, 229, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+.permissionCardActive {
+  border-color: rgba(0, 229, 255, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.15);
+}
+
+.permissionCardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.permissionCardHeader strong {
+  font-family: var(--font-racing);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.permissionCardHeader span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.permissionBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.permissionToggles {
+  display: grid;
+  gap: 10px;
+}
+
+.permissionToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(132, 147, 150, 0.14);
+  background: rgba(14, 14, 15, 0.44);
+}
+
+.permissionActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .trackBadge {
   padding: 5px 9px;
   border: 1px solid rgba(132, 147, 150, 0.18);
@@ -278,12 +372,17 @@
     grid-template-columns: 1fr;
   }
 
+  .permissionLayout {
+    grid-template-columns: 1fr;
+  }
+
   .fieldLabel {
     min-width: unset;
     width: 100%;
   }
 
   .input,
+  .wideInput,
   .segmentedControl {
     width: 100%;
   }

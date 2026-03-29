@@ -115,6 +115,7 @@ func main() {
 	recorder := telemetry.NewTrackRecorder(trackDataDir, trackStore, logger)
 	recorder.SetEnabled(trackRecording)
 	processor.PitwallManager().SetRecorder(recorder)
+	processor.PitwallManager().SetERSActualEnabled(true)
 	processor.PitwallManager().SetERSComparisonEnabled(false)
 	trackState := senderProcessorTrackState{processor: processor}
 

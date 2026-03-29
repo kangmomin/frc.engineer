@@ -186,8 +186,10 @@
   font-size: 0.86rem;
 }
 
-.passwordField {
+.fieldStack {
   margin-bottom: 24px;
+  display: grid;
+  gap: 10px;
 }
 
 .roomOpenHint {
@@ -196,6 +198,12 @@
   background: rgba(14, 14, 15, 0.55);
   color: var(--text-secondary);
   font-size: 0.86rem;
+}
+
+.permissionHint {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 
 .connectButton {

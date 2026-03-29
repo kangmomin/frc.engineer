@@ -37,6 +37,7 @@ type PeerManager struct {
 
 	peers    map[string]*webrtc.PeerConnection
 	channels map[string]*webrtc.DataChannel
+	permits  map[string]signaling.Permissions
 	mu       sync.RWMutex
 
 	roomID        string
@@ -57,6 +58,7 @@ func NewPeerManager(signalingURL string, logger *slog.Logger) *PeerManager {
 		signalingURL: signalingURL,
 		peers:        make(map[string]*webrtc.PeerConnection),
 		channels:     make(map[string]*webrtc.DataChannel),
+		permits:      make(map[string]signaling.Permissions),
 		logger:       logger,
 		done:         make(chan struct{}),
 	}
@@ -192,6 +194,42 @@ func (pm *PeerManager) BroadcastAll(message []byte) {
 	}
 }
 
+// BroadcastPerPeer sends a potentially different payload to each connected peer.
+func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions signaling.Permissions) []byte) {
+	pm.mu.RLock()
+	type target struct {
+		peerID      string
+		channel     *webrtc.DataChannel
+		permissions signaling.Permissions
+	}
+	targets := make([]target, 0, len(pm.channels))
+	for peerID, ch := range pm.channels {
+		targets = append(targets, target{
+			peerID:      peerID,
+			channel:     ch,
+			permissions: pm.permits[peerID],
+		})
+	}
+	pm.mu.RUnlock()
+
+	for _, target := range targets {
+		if target.channel.ReadyState() != webrtc.DataChannelStateOpen {
+			continue
+		}
+		if target.channel.BufferedAmount() > maxBufferedAmount {
+			pm.logger.Debug("dropping message for slow peer", "peerId", target.peerID)
+			continue
+		}
+		message := resolve(target.peerID, target.permissions)
+		if len(message) == 0 {
+			continue
+		}
+		if err := target.channel.SendText(string(message)); err != nil {
+			pm.logger.Debug("send failed", "peerId", target.peerID, "error", err)
+		}
+	}
+}
+
 // SendTo sends a message to a specific peer's DataChannel (unicast).
 func (pm *PeerManager) SendTo(peerID string, message []byte) {
 	pm.mu.RLock()
@@ -225,6 +263,7 @@ func (pm *PeerManager) Close() {
 		pc.Close()
 		delete(pm.peers, id)
 		delete(pm.channels, id)
+		delete(pm.permits, id)
 	}
 	pm.mu.Unlock()
 
@@ -297,7 +336,7 @@ func (pm *PeerManager) readSignalingLoop() {
 		case signaling.TypeHeartbeat:
 			// Ignore heartbeat echo from server.
 		case signaling.TypePeerJoined:
-			pm.onPeerJoined(msg.PeerID)
+			pm.onPeerJoined(msg.PeerID, msg.Permissions)
 		case signaling.TypePeerLeft:
 			pm.onPeerLeft(msg.PeerID)
 		case signaling.TypeAnswer:
@@ -456,7 +495,7 @@ func (pm *PeerManager) reconnectLoop() {
 	}
 }
 
-func (pm *PeerManager) onPeerJoined(peerID string) {
+func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permissions) {
 	pm.logger.Info("engineer joined, creating peer connection", "peerId", peerID)
 
 	config := webrtc.Configuration{
@@ -484,6 +523,7 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 	pm.mu.Lock()
 	pm.peers[peerID] = pc
 	pm.channels[peerID] = dc
+	pm.permits[peerID] = permissions
 	pm.mu.Unlock()
 
 	dc.OnOpen(func() {
@@ -610,6 +650,7 @@ func (pm *PeerManager) removePeer(peerID string) {
 		pc.Close()
 		delete(pm.peers, peerID)
 		delete(pm.channels, peerID)
+		delete(pm.permits, peerID)
 	}
 	pm.mu.Unlock()
 

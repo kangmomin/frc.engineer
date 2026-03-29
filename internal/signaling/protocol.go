@@ -21,14 +21,27 @@ const (
 	TypeHeartbeat    = "heartbeat"     // bidirectional keepalive
 )
 
+type Permissions struct {
+	ViewERSActual        bool `json:"viewERSActual"`
+	ViewAdvancedStrategy bool `json:"viewAdvancedStrategy"`
+}
+
+type PermissionCode struct {
+	Code        string      `json:"code"`
+	Label       string      `json:"label,omitempty"`
+	Permissions Permissions `json:"permissions"`
+}
+
 // Message is the JSON envelope for all signaling communication.
 type Message struct {
-	Type     string          `json:"type"`
-	RoomID   string          `json:"roomId,omitempty"`
-	RoomCode string          `json:"roomCode,omitempty"`
-	RoomName string          `json:"roomName,omitempty"`
-	Password string          `json:"password,omitempty"`
-	PeerID   string          `json:"peerId,omitempty"`
-	Payload  json.RawMessage `json:"payload,omitempty"`
-	Error    string          `json:"error,omitempty"`
+	Type            string          `json:"type"`
+	RoomID          string          `json:"roomId,omitempty"`
+	RoomCode        string          `json:"roomCode,omitempty"`
+	RoomName        string          `json:"roomName,omitempty"`
+	Password        string          `json:"password,omitempty"`
+	PermissionsCode string          `json:"permissionsCode,omitempty"`
+	Permissions     Permissions     `json:"permissions,omitempty"`
+	PeerID          string          `json:"peerId,omitempty"`
+	Payload         json.RawMessage `json:"payload,omitempty"`
+	Error           string          `json:"error,omitempty"`
 }

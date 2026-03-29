@@ -3,6 +3,7 @@ package signaling
 import (
 	"io"
 	"log/slog"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +14,11 @@ func testLogger() *slog.Logger {
 }
 
 func TestRoomManagerListAndPasswordJoin(t *testing.T) {
-	rm := NewRoomManager(testLogger())
+	store, err := LoadPermissionCodeStore(filepath.Join(t.TempDir(), "permission-codes.json"), testLogger())
+	if err != nil {
+		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
+	}
+	rm := NewRoomManager(testLogger(), store)
 	defer rm.Stop()
 
 	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "secret")
@@ -35,21 +40,28 @@ func TestRoomManagerListAndPasswordJoin(t *testing.T) {
 		t.Fatal("expected room to require password")
 	}
 
-	if _, _, err := rm.JoinRoom(roomID, "", "wrong", nil, &sync.Mutex{}); err == nil {
+	if _, _, _, err := rm.JoinRoom(roomID, "", "wrong", "", nil, &sync.Mutex{}); err == nil {
 		t.Fatal("expected invalid password error")
 	}
 
-	peerID, joinedCode, err := rm.JoinRoom(roomID, "", "secret", nil, &sync.Mutex{})
+	peerID, joinedCode, permissions, err := rm.JoinRoom(roomID, "", "secret", "", nil, &sync.Mutex{})
 	if err != nil {
 		t.Fatalf("JoinRoom failed: %v", err)
 	}
 	if peerID == "" || joinedCode != roomCode {
 		t.Fatalf("unexpected join result: peer=%q code=%q", peerID, joinedCode)
 	}
+	if permissions.ViewERSActual || permissions.ViewAdvancedStrategy {
+		t.Fatalf("expected empty permissions, got %#v", permissions)
+	}
 }
 
 func TestRoomManagerRejoinAndUpdateMetadata(t *testing.T) {
-	rm := NewRoomManager(testLogger())
+	store, err := LoadPermissionCodeStore(filepath.Join(t.TempDir(), "permission-codes.json"), testLogger())
+	if err != nil {
+		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
+	}
+	rm := NewRoomManager(testLogger(), store)
 	defer rm.Stop()
 
 	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "First Room", "one")
@@ -74,16 +86,20 @@ func TestRoomManagerRejoinAndUpdateMetadata(t *testing.T) {
 		t.Fatalf("unexpected room list after metadata update: %#v", rooms)
 	}
 
-	if _, _, err := rm.JoinRoom(roomID, "", "two", nil, &sync.Mutex{}); err == nil {
+	if _, _, _, err := rm.JoinRoom(roomID, "", "two", "", nil, &sync.Mutex{}); err == nil {
 		t.Fatal("expected stale password to fail")
 	}
-	if _, _, err := rm.JoinRoom("", roomCode, "three", nil, &sync.Mutex{}); err != nil {
+	if _, _, _, err := rm.JoinRoom("", roomCode, "three", "", nil, &sync.Mutex{}); err != nil {
 		t.Fatalf("expected join by room code fallback to work: %v", err)
 	}
 }
 
 func TestListRoomsHidesOfflineRooms(t *testing.T) {
-	rm := NewRoomManager(testLogger())
+	store, err := LoadPermissionCodeStore(filepath.Join(t.TempDir(), "permission-codes.json"), testLogger())
+	if err != nil {
+		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
+	}
+	rm := NewRoomManager(testLogger(), store)
 	defer rm.Stop()
 
 	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Offline Room", "")
@@ -101,5 +117,38 @@ func TestListRoomsHidesOfflineRooms(t *testing.T) {
 
 	if rooms := rm.ListRooms(); len(rooms) != 0 {
 		t.Fatalf("expected offline room to be hidden, got %#v", rooms)
+	}
+}
+
+func TestRoomManagerJoinWithPermissionCode(t *testing.T) {
+	store, err := LoadPermissionCodeStore(filepath.Join(t.TempDir(), "permission-codes.json"), testLogger())
+	if err != nil {
+		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
+	}
+	if _, err := store.Upsert("TEAM42", "Full access", Permissions{
+		ViewERSActual:        true,
+		ViewAdvancedStrategy: true,
+	}); err != nil {
+		t.Fatalf("Upsert failed: %v", err)
+	}
+
+	rm := NewRoomManager(testLogger(), store)
+	defer rm.Stop()
+
+	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "")
+	if err != nil {
+		t.Fatalf("CreateRoom failed: %v", err)
+	}
+
+	_, _, permissions, err := rm.JoinRoom(roomID, "", "", "team42", nil, &sync.Mutex{})
+	if err != nil {
+		t.Fatalf("JoinRoom failed: %v", err)
+	}
+	if !permissions.ViewERSActual || !permissions.ViewAdvancedStrategy {
+		t.Fatalf("expected full permissions, got %#v", permissions)
+	}
+
+	if _, _, _, err := rm.JoinRoom(roomID, "", "", "invalid", nil, &sync.Mutex{}); err == nil {
+		t.Fatal("expected invalid permissions code to fail")
 	}
 }

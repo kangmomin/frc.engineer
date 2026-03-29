@@ -37,6 +37,11 @@ export interface TelemetryData {
  */
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
+export interface FeaturePermissions {
+  viewERSActual: boolean;
+  viewAdvancedStrategy: boolean;
+}
+
 export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';
 
 /**

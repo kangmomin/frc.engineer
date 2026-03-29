@@ -4,7 +4,11 @@ import { useMockTelemetry } from '../../hooks/useMockTelemetry';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useWebRTCDataChannel } from '../../hooks/useWebRTCDataChannel';
 import { isForcedRemoteMode, isMockMode } from '../../runtimeFlags';
-import { useTelemetryStore } from '../../store/telemetryStore';
+import {
+  FULL_FEATURE_PERMISSIONS,
+  NO_FEATURE_PERMISSIONS,
+  useTelemetryStore,
+} from '../../store/telemetryStore';
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import styles from './Layout.module.css';
@@ -13,7 +17,12 @@ const CONNECTION_MODE_KEY = 'frc_connection_mode';
 
 export function Layout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rtcOptions, setRtcOptions] = useState<{ signalingUrl: string; roomId: string; password: string } | null>(null);
+  const [rtcOptions, setRtcOptions] = useState<{
+    signalingUrl: string;
+    roomId: string;
+    password: string;
+    permissionsCode: string;
+  } | null>(null);
   const [preferredRemoteMode, setPreferredRemoteMode] = useState(() => {
     if (isForcedRemoteMode) return true;
     return window.localStorage.getItem(CONNECTION_MODE_KEY) === 'remote';
@@ -21,6 +30,7 @@ export function Layout() {
 
   const setConnectionMode = useTelemetryStore((state) => state.setConnectionMode);
   const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
+  const setFeaturePermissions = useTelemetryStore((state) => state.setFeaturePermissions);
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
@@ -30,6 +40,16 @@ export function Layout() {
   useEffect(() => {
     setConnectionMode(remoteMode ? 'remote' : 'local');
   }, [remoteMode, setConnectionMode]);
+
+  useEffect(() => {
+    if (!remoteMode) {
+      setFeaturePermissions(FULL_FEATURE_PERMISSIONS);
+      return;
+    }
+    if (!rtcOptions) {
+      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+    }
+  }, [remoteMode, rtcOptions, setFeaturePermissions]);
 
   useEffect(() => {
     if (isForcedRemoteMode) return;
@@ -57,28 +77,35 @@ export function Layout() {
 
   const { connectionState: rtcConnectionState } = useWebRTCDataChannel(webrtcOpts);
 
-  const handleRemoteConnect = useCallback((signalingUrl: string, roomId: string, password: string) => {
-    setRtcOptions({ signalingUrl, roomId, password });
+  const handleRemoteConnect = useCallback((
+    signalingUrl: string,
+    roomId: string,
+    password: string,
+    permissionsCode: string,
+  ) => {
+    setRtcOptions({ signalingUrl, roomId, password, permissionsCode });
     setPreferredRemoteMode(true);
   }, []);
 
   const switchToRemoteMode = useCallback(() => {
     setPreferredRemoteMode(true);
+    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setConnectionState('disconnected');
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+  }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
 
   const switchToLocalMode = useCallback(() => {
     if (isForcedRemoteMode) return;
     setPreferredRemoteMode(false);
     setRtcOptions(null);
+    setFeaturePermissions(FULL_FEATURE_PERMISSIONS);
     setConnectionState('disconnected');
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+  }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
 
   if (remoteMode && !rtcOptions) {
     return (

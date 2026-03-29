@@ -1,13 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSettings } from '../hooks/useSettings';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import type {
   AppConfig,
   DataStorageMode,
+  FeaturePermissions,
   ForwardTarget,
   TireWearDisplayMode,
 } from '../types/telemetry';
 import styles from './SettingsView.module.css';
+
+interface PermissionCodeEntry {
+  code: string;
+  label: string;
+  permissions: FeaturePermissions;
+}
+
+const SIGNALING_STORAGE_KEY = 'frc_signaling_url';
 
 const STORAGE_MODE_OPTIONS: Array<{
   value: DataStorageMode;
@@ -31,6 +40,30 @@ const STORAGE_MODE_OPTIONS: Array<{
   },
 ];
 
+function getDefaultSignalingUrl(): string {
+  return localStorage.getItem(SIGNALING_STORAGE_KEY) || import.meta.env.VITE_SIGNALING_URL || '';
+}
+
+function getPermissionCodesEndpoint(signalingUrl: string, code?: string): string {
+  const url = new URL(signalingUrl);
+  url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+  url.pathname = code ? `/api/permission-codes/${encodeURIComponent(code)}` : '/api/permission-codes';
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
+function createEmptyPermissionCode(): PermissionCodeEntry {
+  return {
+    code: '',
+    label: '',
+    permissions: {
+      viewERSActual: false,
+      viewAdvancedStrategy: false,
+    },
+  };
+}
+
 export function SettingsView() {
   const { config, tracks, loading, saving, updateConfig } = useSettings();
   const [draft, setDraft] = useState<AppConfig | null>(null);
@@ -39,6 +72,18 @@ export function SettingsView() {
     'absolute',
     (v) => (v === 'absolute' || v === 'relative' ? v : null),
   );
+  const [signalingUrl, setSignalingUrl] = useLocalStorage<string>(
+    SIGNALING_STORAGE_KEY,
+    getDefaultSignalingUrl(),
+    (value) => (typeof value === 'string' ? value : null),
+  );
+  const [permissionCodes, setPermissionCodes] = useState<PermissionCodeEntry[]>([]);
+  const [permissionDraft, setPermissionDraft] = useState<PermissionCodeEntry>(createEmptyPermissionCode);
+  const [selectedPermissionCode, setSelectedPermissionCode] = useState('');
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionSaving, setPermissionSaving] = useState(false);
+  const [permissionError, setPermissionError] = useState('');
+  const [permissionStatus, setPermissionStatus] = useState('');
 
   useEffect(() => {
     if (config && !draft) {
@@ -49,6 +94,43 @@ export function SettingsView() {
       });
     }
   }, [config, draft]);
+
+  const loadPermissionCodes = useCallback(async () => {
+    if (!signalingUrl.trim()) {
+      setPermissionCodes([]);
+      setPermissionError('');
+      return;
+    }
+
+    let endpoint = '';
+    try {
+      endpoint = getPermissionCodesEndpoint(signalingUrl);
+    } catch {
+      setPermissionCodes([]);
+      setPermissionError('Invalid signaling URL.');
+      return;
+    }
+
+    setPermissionLoading(true);
+    setPermissionError('');
+    try {
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json();
+      setPermissionCodes(Array.isArray(payload) ? payload as PermissionCodeEntry[] : []);
+    } catch {
+      setPermissionCodes([]);
+      setPermissionError('Failed to load permission codes from signaling server.');
+    } finally {
+      setPermissionLoading(false);
+    }
+  }, [signalingUrl]);
+
+  useEffect(() => {
+    void loadPermissionCodes();
+  }, [loadPermissionCodes]);
 
   if (loading || !draft) {
     return <div className={styles.loading}>Loading settings...</div>;
@@ -116,6 +198,123 @@ export function SettingsView() {
     const num = parseInt(value, 10);
     if (!isNaN(num)) {
       updateTarget(index, 'port', num);
+    }
+  }
+
+  function selectPermissionCode(entry: PermissionCodeEntry) {
+    setSelectedPermissionCode(entry.code);
+    setPermissionDraft({
+      code: entry.code,
+      label: entry.label,
+      permissions: { ...entry.permissions },
+    });
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function resetPermissionEditor() {
+    setSelectedPermissionCode('');
+    setPermissionDraft(createEmptyPermissionCode());
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function updatePermissionField<K extends keyof PermissionCodeEntry>(key: K, value: PermissionCodeEntry[K]) {
+    setPermissionDraft((prev) => ({ ...prev, [key]: value }));
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function updatePermissionFlag(key: keyof FeaturePermissions, enabled: boolean) {
+    setPermissionDraft((prev) => ({
+      ...prev,
+      permissions: {
+        ...prev.permissions,
+        [key]: enabled,
+      },
+    }));
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  async function savePermissionCode() {
+    const code = permissionDraft.code.trim();
+    if (!code || !signalingUrl.trim()) {
+      setPermissionError('Signaling URL and permission code are required.');
+      return;
+    }
+
+    let endpoint = '';
+    try {
+      endpoint = getPermissionCodesEndpoint(signalingUrl, code);
+    } catch {
+      setPermissionError('Invalid signaling URL.');
+      return;
+    }
+
+    setPermissionSaving(true);
+    setPermissionError('');
+    setPermissionStatus('');
+    try {
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: permissionDraft.label.trim(),
+          permissions: permissionDraft.permissions,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const saved = await response.json() as PermissionCodeEntry;
+      setPermissionCodes((prev) => {
+        const next = prev.filter((entry) => entry.code !== saved.code);
+        next.push(saved);
+        next.sort((a, b) => a.code.localeCompare(b.code));
+        return next;
+      });
+      setSelectedPermissionCode(saved.code);
+      setPermissionDraft(saved);
+      setPermissionStatus('Permission code saved.');
+    } catch (error) {
+      setPermissionError(error instanceof Error && error.message ? error.message : 'Failed to save permission code.');
+    } finally {
+      setPermissionSaving(false);
+    }
+  }
+
+  async function deletePermissionCode() {
+    const code = selectedPermissionCode || permissionDraft.code.trim();
+    if (!code || !signalingUrl.trim()) {
+      setPermissionError('Select a permission code to delete.');
+      return;
+    }
+
+    let endpoint = '';
+    try {
+      endpoint = getPermissionCodesEndpoint(signalingUrl, code);
+    } catch {
+      setPermissionError('Invalid signaling URL.');
+      return;
+    }
+
+    setPermissionSaving(true);
+    setPermissionError('');
+    setPermissionStatus('');
+    try {
+      const response = await fetch(endpoint, { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      setPermissionCodes((prev) => prev.filter((entry) => entry.code !== code));
+      resetPermissionEditor();
+      setPermissionStatus('Permission code deleted.');
+    } catch (error) {
+      setPermissionError(error instanceof Error && error.message ? error.message : 'Failed to delete permission code.');
+    } finally {
+      setPermissionSaving(false);
     }
   }
 
@@ -253,6 +452,122 @@ export function SettingsView() {
             ? 'Absolute: shows total predicted wear at N laps (ex: 75%).'
             : 'Relative: shows additional wear over N laps (ex: +15%).'}
         </span>
+      </div>
+
+      <div className={styles.section}>
+        <h3 className={styles.sectionTitle}>Remote Permission Codes</h3>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Signaling Server</span>
+          <input
+            className={styles.wideInput}
+            type="text"
+            value={signalingUrl}
+            placeholder="wss://your-signaling-server.example/ws"
+            onChange={(event) => {
+              setSignalingUrl(event.target.value);
+              setPermissionError('');
+              setPermissionStatus('');
+            }}
+          />
+          <button type="button" className={styles.btn} onClick={() => void loadPermissionCodes()}>
+            Refresh
+          </button>
+        </div>
+        <span className={styles.hint}>
+          Manage permission bundles on the signaling server. Engineers can enter one code at join time to unlock these features.
+        </span>
+
+        <div className={styles.permissionLayout}>
+          <div className={styles.permissionList}>
+            {(permissionCodes.length === 0 && !permissionLoading) ? (
+              <div className={styles.permissionEmpty}>No permission codes found.</div>
+            ) : (
+              permissionCodes.map((entry) => (
+                <button
+                  key={entry.code}
+                  type="button"
+                  className={`${styles.permissionCard} ${selectedPermissionCode === entry.code ? styles.permissionCardActive : ''}`}
+                  onClick={() => selectPermissionCode(entry)}
+                >
+                  <div className={styles.permissionCardHeader}>
+                    <strong>{entry.label || entry.code}</strong>
+                    <span>{entry.code}</span>
+                  </div>
+                  <div className={styles.permissionBadges}>
+                    <span className={styles.trackBadgeLoaded}>
+                      {entry.permissions.viewERSActual ? 'ERS Actual' : 'ERS Hidden'}
+                    </span>
+                    <span className={styles.trackBadgeLoaded}>
+                      {entry.permissions.viewAdvancedStrategy ? 'Advanced Strategy' : 'Basic Strategy'}
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+            {permissionLoading && <span className={styles.status}>Loading permission codes...</span>}
+          </div>
+
+          <div className={styles.permissionEditor}>
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>Code</span>
+              <input
+                className={styles.input}
+                type="text"
+                value={permissionDraft.code}
+                placeholder="ENG-PRO"
+                onChange={(event) => updatePermissionField('code', event.target.value.toUpperCase())}
+              />
+            </div>
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>Label</span>
+              <input
+                className={styles.wideInput}
+                type="text"
+                value={permissionDraft.label}
+                placeholder="Engineer Pro"
+                onChange={(event) => updatePermissionField('label', event.target.value)}
+              />
+            </div>
+            <div className={styles.permissionToggles}>
+              <label className={styles.permissionToggle}>
+                <span className={styles.fieldLabel}>ERS Actual</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewERSActual}
+                  onChange={(event) => updatePermissionFlag('viewERSActual', event.target.checked)}
+                />
+              </label>
+              <label className={styles.permissionToggle}>
+                <span className={styles.fieldLabel}>Advanced Strategy</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewAdvancedStrategy}
+                  onChange={(event) => updatePermissionFlag('viewAdvancedStrategy', event.target.checked)}
+                />
+              </label>
+            </div>
+            <div className={styles.permissionActions}>
+              <button type="button" className={styles.btnPrimary} onClick={savePermissionCode} disabled={permissionSaving}>
+                {permissionSaving ? 'Saving...' : 'Save Code'}
+              </button>
+              <button type="button" className={styles.btn} onClick={resetPermissionEditor} disabled={permissionSaving}>
+                New
+              </button>
+              <button
+                type="button"
+                className={styles.btnDanger}
+                onClick={deletePermissionCode}
+                disabled={permissionSaving || (!selectedPermissionCode && !permissionDraft.code.trim())}
+              >
+                Delete
+              </button>
+            </div>
+            {permissionStatus && <span className={`${styles.status} ${styles.statusActive}`}>{permissionStatus}</span>}
+            {permissionError && <span className={styles.restartWarning}>{permissionError}</span>}
+          </div>
+        </div>
       </div>
 
       {dirty && (

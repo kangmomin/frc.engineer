@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import styles from './RemoteConnect.module.css';
 
 interface RemoteConnectProps {
-  onConnect: (signalingUrl: string, roomId: string, password: string) => void;
+  onConnect: (signalingUrl: string, roomId: string, password: string, permissionsCode: string) => void;
   connectionState: string;
   onCancel?: () => void;
   title?: string;
@@ -43,6 +43,7 @@ export function RemoteConnect({
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [password, setPassword] = useState('');
+  const [permissionsCode, setPermissionsCode] = useState('');
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [roomsError, setRoomsError] = useState('');
   const passwordRef = useRef<HTMLInputElement | null>(null);
@@ -116,8 +117,13 @@ export function RemoteConnect({
   const handleSubmit = useCallback(() => {
     if (!selectedRoom || !signalingUrl) return;
     localStorage.setItem(STORAGE_KEY, signalingUrl);
-    onConnect(signalingUrl, selectedRoom.roomId, selectedRoom.requiresPassword ? password : '');
-  }, [onConnect, password, selectedRoom, signalingUrl]);
+    onConnect(
+      signalingUrl,
+      selectedRoom.roomId,
+      selectedRoom.requiresPassword ? password : '',
+      permissionsCode.trim(),
+    );
+  }, [onConnect, password, permissionsCode, selectedRoom, signalingUrl]);
 
   return (
     <div className={styles.container}>
@@ -184,7 +190,7 @@ export function RemoteConnect({
         </div>
 
         {selectedRoom && (
-          <div className={styles.passwordField}>
+          <div className={styles.fieldStack}>
             <label className={styles.urlLabel}>
               {selectedRoom.requiresPassword ? 'Room Password' : 'Access'}
             </label>
@@ -204,6 +210,22 @@ export function RemoteConnect({
             ) : (
               <div className={styles.roomOpenHint}>This room is open. No password required.</div>
             )}
+
+            <label className={styles.urlLabel}>Permission Code</label>
+            <input
+              type="password"
+              value={permissionsCode}
+              onChange={(e) => setPermissionsCode(e.target.value)}
+              placeholder="Optional feature permission code"
+              className={styles.urlInput}
+              disabled={isConnecting}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSubmit();
+              }}
+            />
+            <div className={styles.permissionHint}>
+              Optional. Use a permissions code to unlock ERS actuals or advanced track strategy details.
+            </div>
           </div>
         )}
 

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -35,7 +37,18 @@ func main() {
 		port = "9090"
 	}
 
-	roomManager := signaling.NewRoomManager(logger)
+	permissionCodesPath := os.Getenv("SIGNALING_PERMISSION_CODES_FILE")
+	if permissionCodesPath == "" {
+		permissionCodesPath = filepath.Join("data", "signaling", "permission-codes.json")
+	}
+	permissionStore, err := signaling.LoadPermissionCodeStore(permissionCodesPath, logger)
+	if err != nil {
+		logger.Error("failed to load permission codes", "error", err, "path", permissionCodesPath)
+		os.Exit(1)
+	}
+	logger.Info("permission codes loaded", "path", permissionCodesPath, "count", len(permissionStore.List()))
+
+	roomManager := signaling.NewRoomManager(logger, permissionStore)
 	defer roomManager.Stop()
 
 	upgrader := websocket.Upgrader{
@@ -46,10 +59,14 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
+	writeCORS := func(w http.ResponseWriter, methods string) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", methods)
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	}
+
+	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
+		writeCORS(w, "GET, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -60,6 +77,68 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(roomManager.ListRooms())
+	})
+
+	mux.HandleFunc("/api/permission-codes", func(w http.ResponseWriter, r *http.Request) {
+		writeCORS(w, "GET, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(permissionStore.List())
+	})
+
+	mux.HandleFunc("/api/permission-codes/", func(w http.ResponseWriter, r *http.Request) {
+		writeCORS(w, "PUT, DELETE, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		code := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/permission-codes/"))
+		if code == "" || strings.Contains(code, "/") {
+			http.Error(w, "permission code is required", http.StatusBadRequest)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodPut:
+			var body struct {
+				Label       string                `json:"label"`
+				Permissions signaling.Permissions `json:"permissions"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+			entry, err := permissionStore.Upsert(code, body.Label, body.Permissions)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(entry)
+
+		case http.MethodDelete:
+			deleted, err := permissionStore.Delete(code)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if !deleted {
+				http.Error(w, "permission code not found", http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

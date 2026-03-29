@@ -36,6 +36,7 @@ type PitwallManager struct {
 	recorder          *TrackRecorder
 	dynamicsAnalyzer  *DynamicsAnalyzer
 	ersEstimator      *ERSEstimator
+	ersActualEnabled  bool
 	ersCompareEnabled bool
 }
 
@@ -61,6 +62,13 @@ func (pm *PitwallManager) SetRecorder(r *TrackRecorder) {
 func (pm *PitwallManager) SetERSComparisonEnabled(enabled bool) {
 	pm.mu.Lock()
 	pm.ersCompareEnabled = enabled
+	pm.mu.Unlock()
+}
+
+// SetERSActualEnabled toggles population of actual ERS fields for downstream filtering.
+func (pm *PitwallManager) SetERSActualEnabled(enabled bool) {
+	pm.mu.Lock()
+	pm.ersActualEnabled = enabled
 	pm.mu.Unlock()
 }
 
@@ -357,7 +365,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.ERSDeployedThisLap = sanitize(cs.ERSDeployedThisLap)
 				d.ERSHarvestedThisLap = sanitize(cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH)
 				d.BrakeBias = int(cs.FrontBrakeBias)
-				if pm.ersCompareEnabled && ersActualAvailable(pm.participants, pm.playerIndex, i) {
+				if pm.ersActualEnabled && ersActualAvailable(pm.participants, pm.playerIndex, i) {
 					d.ERSActualPct = ersPercent(cs.ERSStoreEnergy)
 					d.ERSActualReady = true
 				}

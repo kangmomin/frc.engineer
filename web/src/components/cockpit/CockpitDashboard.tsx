@@ -20,8 +20,6 @@ const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEFAULT_PREDICTION_LAPS = 10;
 const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
-const STRATEGY_UNLOCK_PASSWORD = 'mer260329';
-const STRATEGY_UNLOCK_STORAGE_KEY = 'strategyGuideUnlocked';
 
 type SectorBestTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
@@ -67,6 +65,7 @@ export function CockpitDashboard({
     raceControlNotifications,
     connectionState,
     playbackActive,
+    featurePermissions,
   } = useTelemetryStore(
     useShallow((state) => ({
       pitwallState: state.pitwallState,
@@ -74,12 +73,13 @@ export function CockpitDashboard({
       raceControlNotifications: state.raceControlNotifications,
       connectionState: state.connectionState,
       playbackActive: state.playbackActive,
+      featurePermissions: state.featurePermissions,
     })),
   );
 
   const session = pitwallState?.session ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
-  const ersComparisonEnabled = pitwallState?.ersComparisonEnabled ?? false;
+  const ersComparisonEnabled = (pitwallState?.ersComparisonEnabled ?? false) && featurePermissions.viewERSActual;
 
   const drivers = useMemo(
     () => [...(pitwallState?.drivers ?? [])].sort((a, b) => a.position - b.position),
@@ -123,13 +123,6 @@ export function CockpitDashboard({
     (v) => (v === 'absolute' || v === 'relative' ? v : null),
   );
   const [predictionLaps, setPredictionLaps] = useState(DEFAULT_PREDICTION_LAPS);
-  const [strategyGuideUnlocked, setStrategyGuideUnlocked, resetStrategyGuideUnlocked] = useLocalStorage<boolean>(
-    STRATEGY_UNLOCK_STORAGE_KEY,
-    false,
-    (value) => (typeof value === 'boolean' ? value : null),
-  );
-  const [strategyPasswordInput, setStrategyPasswordInput] = useState('');
-  const [strategyUnlockError, setStrategyUnlockError] = useState('');
   const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
   const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
   const tireAge = Math.max(player?.tireAge ?? 0, 1);
@@ -156,7 +149,7 @@ export function CockpitDashboard({
   ];
 
   useEffect(() => {
-    if (!strategyGuideUnlocked || sessionTrackId == null) {
+    if (!featurePermissions.viewAdvancedStrategy || sessionTrackId == null) {
       setStrategyGuide(null);
       setStrategyGuideLoading(false);
       return;
@@ -197,24 +190,7 @@ export function CockpitDashboard({
     return () => {
       cancelled = true;
     };
-  }, [sessionTrackId, sessionTrackName, strategyGuideUnlocked]);
-
-  function handleStrategyUnlock() {
-    if (strategyPasswordInput === STRATEGY_UNLOCK_PASSWORD) {
-      setStrategyGuideUnlocked(true);
-      setStrategyPasswordInput('');
-      setStrategyUnlockError('');
-      return;
-    }
-    setStrategyUnlockError('Invalid strategy code');
-  }
-
-  function handleStrategyLock() {
-    resetStrategyGuideUnlocked();
-    setStrategyGuide(null);
-    setStrategyPasswordInput('');
-    setStrategyUnlockError('');
-  }
+  }, [featurePermissions.viewAdvancedStrategy, sessionTrackId, sessionTrackName]);
 
   return (
     <div className={styles.dashboard}>
@@ -434,35 +410,12 @@ export function CockpitDashboard({
           {strategyPanel.notes && (
             <div className={styles.strategyNotes}>{strategyPanel.notes}</div>
           )}
-          {!strategyGuideUnlocked ? (
+          {!featurePermissions.viewAdvancedStrategy ? (
             <div className={styles.strategyUnlockCard}>
-              <span className={styles.strategyUnlockLabel}>Strategy Data Unlock</span>
-              <div className={styles.strategyUnlockRow}>
-                <input
-                  className={styles.strategyUnlockInput}
-                  type="password"
-                  value={strategyPasswordInput}
-                  placeholder="Enter code"
-                  onChange={(event) => {
-                    setStrategyPasswordInput(event.target.value);
-                    if (strategyUnlockError) {
-                      setStrategyUnlockError('');
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      handleStrategyUnlock();
-                    }
-                  }}
-                />
-                <button type="button" className={styles.strategyUnlockButton} onClick={handleStrategyUnlock}>
-                  Unlock
-                </button>
-              </div>
+              <span className={styles.strategyUnlockLabel}>Advanced Strategy Locked</span>
               <span className={styles.strategySupportText}>
-                Unlock to use numeric track strategy data for this panel.
+                Join with a permissions code that grants advanced strategy access to use numeric track data here.
               </span>
-              {strategyUnlockError && <span className={styles.strategyUnlockError}>{strategyUnlockError}</span>}
             </div>
           ) : (
             <div className={styles.strategyUnlockMeta}>
@@ -473,9 +426,7 @@ export function CockpitDashboard({
                     ? 'Numeric strategy guide active'
                     : 'Guide unavailable, using heuristic fallback'}
               </span>
-              <button type="button" className={styles.strategyLockButton} onClick={handleStrategyLock}>
-                Lock
-              </button>
+              <span className={styles.strategySupportText}>Permission Granted</span>
             </div>
           )}
         </div>

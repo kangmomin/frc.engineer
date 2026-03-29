@@ -1,12 +1,13 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import type { PitwallState } from '../types/telemetry';
-import { useTelemetryStore } from '../store/telemetryStore';
+import type { FeaturePermissions, PitwallState } from '../types/telemetry';
+import { NO_FEATURE_PERMISSIONS, useTelemetryStore } from '../store/telemetryStore';
 import { routeMessage } from './useMessageRouter';
 
 interface UseWebRTCOptions {
   signalingUrl: string;
   roomId: string;
   password: string;
+  permissionsCode: string;
 }
 
 interface UseWebRTCReturn {
@@ -16,6 +17,7 @@ interface UseWebRTCReturn {
 
 export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRTCReturn {
   const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
+  const setFeaturePermissions = useTelemetryStore((s) => s.setFeaturePermissions);
   const setPitwallState = useTelemetryStore((s) => s.setPitwallState);
   const addRaceControlNotification = useTelemetryStore((s) => s.addRaceControlNotification);
   const addBattleAlert = useTelemetryStore((s) => s.addBattleAlert);
@@ -33,10 +35,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const pitwallRafRef = useRef(0);
   const rcSeqRef = useRef(0);
   const battleSeqRef = useRef(0);
-
-  // Store options in a ref to avoid stale closure issues
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
 
   // Store actions in a ref so callbacks never go stale
   const actionsRef = useRef({ setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult });
@@ -64,14 +62,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const disconnect = useCallback(() => {
     cleanup();
     setConnectionState('disconnected');
+    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setRtcState('new');
-  }, [cleanup, setConnectionState]);
+  }, [cleanup, setConnectionState, setFeaturePermissions]);
 
   // Main connection effect — runs when signalingUrl or roomCode changes.
   useEffect(() => {
     if (!options) return;
 
-    const { signalingUrl, roomId, password } = options;
+    const { signalingUrl, roomId, password, permissionsCode } = options;
     if (!signalingUrl || !roomId) return;
 
     isMountedRef.current = true;
@@ -79,6 +78,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     // Clean previous connections
     cleanup();
     setConnectionState('connecting');
+    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
 
     let ws: WebSocket;
     try {
@@ -160,6 +160,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         dc.onclose = () => {
           if (!isMountedRef.current) return;
           setConnectionState('disconnected');
+          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
         };
       };
 
@@ -179,23 +180,25 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     ws.onopen = () => {
       if (!isMountedRef.current) { ws.close(); return; }
-      ws.send(JSON.stringify({ type: 'room_join', roomId, password }));
+      ws.send(JSON.stringify({ type: 'room_join', roomId, password, permissionsCode }));
     };
 
     ws.onclose = () => {
       if (!isMountedRef.current) return;
       setConnectionState('disconnected');
+      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     };
 
     ws.onerror = () => {
       if (!isMountedRef.current) return;
       setConnectionState('error');
+      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     };
 
     ws.onmessage = (event) => {
       if (!isMountedRef.current) return;
 
-      let msg: { type: string; payload?: unknown; error?: string };
+      let msg: { type: string; payload?: unknown; error?: string; permissions?: FeaturePermissions };
       try {
         msg = JSON.parse(event.data);
       } catch {
@@ -204,6 +207,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
       switch (msg.type) {
         case 'room_joined':
+          setFeaturePermissions(msg.permissions ?? NO_FEATURE_PERMISSIONS);
           break;
         case 'offer':
           handleOffer(msg.payload);
@@ -213,11 +217,13 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           break;
         case 'room_closed':
           setConnectionState('disconnected');
+          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
           cleanup();
           break;
         case 'error':
           console.error('Signaling error:', msg.error);
           setConnectionState('error');
+          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
           cleanup();
           break;
       }
@@ -229,7 +235,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     };
     // Re-run when connection params change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options?.signalingUrl, options?.roomId, options?.password]);
+  }, [options?.signalingUrl, options?.roomId, options?.password, options?.permissionsCode]);
 
   return { disconnect, connectionState: rtcState };
 }
