@@ -234,6 +234,116 @@
   gap: 10px;
 }
 
+.settingsPanel {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(132, 147, 150, 0.14);
+}
+
+.settingsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settingsHeader strong {
+  font-family: var(--font-racing);
+  font-size: 0.88rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.permissionList {
+  display: grid;
+  gap: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.permissionCard {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(132, 147, 150, 0.18);
+  background: rgba(14, 14, 15, 0.55);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.permissionCard:hover:not(:disabled) {
+  border-color: rgba(0, 229, 255, 0.28);
+}
+
+.permissionCardActive {
+  border-color: rgba(0, 229, 255, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.12);
+}
+
+.permissionCardHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.permissionCardHeader strong {
+  font-family: var(--font-racing);
+  font-size: 0.88rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.permissionCardHeader span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.permissionCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.permissionCardMeta span {
+  padding: 4px 7px;
+  border: 1px solid rgba(132, 147, 150, 0.16);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.permissionEditor {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(132, 147, 150, 0.16);
+  background: rgba(14, 14, 15, 0.46);
+}
+
+.permissionToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(132, 147, 150, 0.16);
+  background: rgba(14, 14, 15, 0.5);
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+.permissionActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .secondaryButton {
   padding: 14px 16px;
   border: 1px solid rgba(132, 147, 150, 0.2);
@@ -256,9 +366,33 @@
   cursor: not-allowed;
 }
 
+.dangerButton {
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 82, 92, 0.28);
+  background: rgba(255, 82, 92, 0.08);
+  color: var(--accent-soft);
+  font-family: var(--font-racing);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.dangerButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .error {
   margin-top: 16px;
   color: var(--accent-soft);
+  font-size: 0.82rem;
+}
+
+.success {
+  margin: 0;
+  color: var(--accent-lime);
   font-size: 0.82rem;
 }
 
@@ -288,6 +422,7 @@
   }
 
   .connectButton,
+  .dangerButton,
   .secondaryButton,
   .refreshButton {
     width: 100%;

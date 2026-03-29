@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { FeaturePermissions } from '../../types/telemetry';
 import styles from './RemoteConnect.module.css';
 
 interface RemoteConnectProps {
@@ -7,6 +8,10 @@ interface RemoteConnectProps {
   onCancel?: () => void;
   title?: string;
   subtitle?: string;
+  initialSignalingUrl?: string;
+  initialRoomId?: string;
+  initialPassword?: string;
+  initialPermissionsCode?: string;
 }
 
 interface RoomListItem {
@@ -15,6 +20,12 @@ interface RoomListItem {
   roomName: string;
   requiresPassword: boolean;
   engineerCount: number;
+}
+
+interface PermissionCodeEntry {
+  code: string;
+  label: string;
+  permissions: FeaturePermissions;
 }
 
 const STORAGE_KEY = 'frc_signaling_url';
@@ -32,21 +43,73 @@ function getRoomsEndpoint(signalingUrl: string): string {
   return url.toString();
 }
 
+function getPermissionCodesEndpoint(signalingUrl: string, code?: string): string {
+  const url = new URL(signalingUrl);
+  url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+  url.pathname = code ? `/api/permission-codes/${encodeURIComponent(code)}` : '/api/permission-codes';
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
+function createEmptyPermissionCode(): PermissionCodeEntry {
+  return {
+    code: '',
+    label: '',
+    permissions: {
+      viewERSActual: false,
+      viewAdvancedStrategy: false,
+    },
+  };
+}
+
 export function RemoteConnect({
   onConnect,
   connectionState,
   onCancel,
   title = 'Remote Connect',
   subtitle = 'Choose a sender room and enter its password to join the live telemetry stream.',
+  initialSignalingUrl = '',
+  initialRoomId = '',
+  initialPassword = '',
+  initialPermissionsCode = '',
 }: RemoteConnectProps) {
-  const [signalingUrl, setSignalingUrl] = useState(getDefaultSignalingUrl);
+  const [signalingUrl, setSignalingUrl] = useState(initialSignalingUrl || getDefaultSignalingUrl);
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState('');
-  const [password, setPassword] = useState('');
-  const [permissionsCode, setPermissionsCode] = useState('');
+  const [selectedRoomId, setSelectedRoomId] = useState(initialRoomId);
+  const [password, setPassword] = useState(initialPassword);
+  const [permissionsCode, setPermissionsCode] = useState(initialPermissionsCode);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [roomsError, setRoomsError] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [permissionCodes, setPermissionCodes] = useState<PermissionCodeEntry[]>([]);
+  const [permissionDraft, setPermissionDraft] = useState<PermissionCodeEntry>(createEmptyPermissionCode);
+  const [selectedPermissionCode, setSelectedPermissionCode] = useState('');
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionSaving, setPermissionSaving] = useState(false);
+  const [permissionError, setPermissionError] = useState('');
+  const [permissionStatus, setPermissionStatus] = useState('');
   const passwordRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (initialSignalingUrl) {
+      setSignalingUrl(initialSignalingUrl);
+    }
+  }, [initialSignalingUrl]);
+
+  useEffect(() => {
+    if (initialRoomId) {
+      setSelectedRoomId(initialRoomId);
+    }
+  }, [initialRoomId]);
+
+  useEffect(() => {
+    setPassword(initialPassword);
+  }, [initialPassword]);
+
+  useEffect(() => {
+    setPermissionsCode(initialPermissionsCode);
+  }, [initialPermissionsCode]);
 
   const fetchRooms = useCallback(async () => {
     if (!signalingUrl) {
@@ -78,6 +141,9 @@ export function RemoteConnect({
         if (current && data.some((room) => room.roomId === current)) {
           return current;
         }
+        if (initialRoomId && data.some((room) => room.roomId === initialRoomId)) {
+          return initialRoomId;
+        }
         return data[0]?.roomId ?? '';
       });
     } catch {
@@ -85,6 +151,39 @@ export function RemoteConnect({
       setRoomsError('Failed to load room list from signaling server.');
     } finally {
       setLoadingRooms(false);
+    }
+  }, [initialRoomId, signalingUrl]);
+
+  const fetchPermissionCodes = useCallback(async () => {
+    if (!signalingUrl) {
+      setPermissionCodes([]);
+      setPermissionError('');
+      return;
+    }
+
+    let endpoint = '';
+    try {
+      endpoint = getPermissionCodesEndpoint(signalingUrl);
+    } catch {
+      setPermissionCodes([]);
+      setPermissionError('Invalid signaling URL.');
+      return;
+    }
+
+    setPermissionLoading(true);
+    setPermissionError('');
+    try {
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json();
+      setPermissionCodes(Array.isArray(payload) ? payload as PermissionCodeEntry[] : []);
+    } catch {
+      setPermissionCodes([]);
+      setPermissionError('Failed to load permission codes from signaling server.');
+    } finally {
+      setPermissionLoading(false);
     }
   }, [signalingUrl]);
 
@@ -110,6 +209,11 @@ export function RemoteConnect({
     return () => window.clearInterval(timer);
   }, [fetchRooms, signalingUrl]);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    void fetchPermissionCodes();
+  }, [fetchPermissionCodes, settingsOpen]);
+
   const selectedRoom = rooms.find((room) => room.roomId === selectedRoomId) ?? null;
   const isConnecting = connectionState === 'connecting';
   const isReady = !!selectedRoom && (!selectedRoom.requiresPassword || password.length > 0) && signalingUrl.length > 0;
@@ -124,6 +228,116 @@ export function RemoteConnect({
       permissionsCode.trim(),
     );
   }, [onConnect, password, permissionsCode, selectedRoom, signalingUrl]);
+
+  function resetPermissionEditor() {
+    setSelectedPermissionCode('');
+    setPermissionDraft(createEmptyPermissionCode());
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function selectPermission(entry: PermissionCodeEntry) {
+    setSelectedPermissionCode(entry.code);
+    setPermissionDraft({
+      code: entry.code,
+      label: entry.label,
+      permissions: { ...entry.permissions },
+    });
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function updatePermissionFlag(key: keyof FeaturePermissions, value: boolean) {
+    setPermissionDraft((prev) => ({
+      ...prev,
+      permissions: {
+        ...prev.permissions,
+        [key]: value,
+      },
+    }));
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  async function savePermissionCode() {
+    const code = permissionDraft.code.trim();
+    if (!code || !signalingUrl.trim()) {
+      setPermissionError('Signaling URL and permission code are required.');
+      return;
+    }
+
+    let endpoint = '';
+    try {
+      endpoint = getPermissionCodesEndpoint(signalingUrl, code);
+    } catch {
+      setPermissionError('Invalid signaling URL.');
+      return;
+    }
+
+    setPermissionSaving(true);
+    setPermissionError('');
+    setPermissionStatus('');
+    try {
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: permissionDraft.label.trim(),
+          permissions: permissionDraft.permissions,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const saved = await response.json() as PermissionCodeEntry;
+      setPermissionCodes((prev) => {
+        const next = prev.filter((entry) => entry.code !== saved.code);
+        next.push(saved);
+        next.sort((a, b) => a.code.localeCompare(b.code));
+        return next;
+      });
+      setSelectedPermissionCode(saved.code);
+      setPermissionDraft(saved);
+      setPermissionStatus('Permission code saved.');
+    } catch (error) {
+      setPermissionError(error instanceof Error && error.message ? error.message : 'Failed to save permission code.');
+    } finally {
+      setPermissionSaving(false);
+    }
+  }
+
+  async function deletePermissionCode() {
+    const code = selectedPermissionCode || permissionDraft.code.trim();
+    if (!code || !signalingUrl.trim()) {
+      setPermissionError('Select a permission code to delete.');
+      return;
+    }
+
+    let endpoint = '';
+    try {
+      endpoint = getPermissionCodesEndpoint(signalingUrl, code);
+    } catch {
+      setPermissionError('Invalid signaling URL.');
+      return;
+    }
+
+    setPermissionSaving(true);
+    setPermissionError('');
+    setPermissionStatus('');
+    try {
+      const response = await fetch(endpoint, { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      setPermissionCodes((prev) => prev.filter((entry) => entry.code !== code));
+      resetPermissionEditor();
+      setPermissionStatus('Permission code deleted.');
+    } catch (error) {
+      setPermissionError(error instanceof Error && error.message ? error.message : 'Failed to delete permission code.');
+    } finally {
+      setPermissionSaving(false);
+    }
+  }
 
   return (
     <div className={styles.container}>
@@ -160,7 +374,7 @@ export function RemoteConnect({
           </div>
           <div className={styles.roomList}>
             {loadingRooms && rooms.length === 0 ? (
-              <div className={styles.roomEmpty}>Loading active rooms…</div>
+              <div className={styles.roomEmpty}>Loading active rooms...</div>
             ) : rooms.length === 0 ? (
               <div className={styles.roomEmpty}>No active sender rooms found.</div>
             ) : (
@@ -237,9 +451,17 @@ export function RemoteConnect({
               onClick={onCancel}
               disabled={isConnecting}
             >
-              Back to Local
+              Back
             </button>
           )}
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setSettingsOpen((open) => !open)}
+            disabled={isConnecting}
+          >
+            {settingsOpen ? 'Hide Settings' : 'Permission Codes'}
+          </button>
           <button
             className={styles.connectButton}
             onClick={handleSubmit}
@@ -248,6 +470,119 @@ export function RemoteConnect({
             {isConnecting ? 'Connecting...' : 'Join Room'}
           </button>
         </div>
+
+        {settingsOpen && (
+          <div className={styles.settingsPanel}>
+            <div className={styles.settingsHeader}>
+              <strong>Remote Permission Codes</strong>
+              <button
+                type="button"
+                className={styles.refreshButton}
+                onClick={() => void fetchPermissionCodes()}
+                disabled={permissionLoading || permissionSaving}
+              >
+                {permissionLoading ? '...' : 'Reload'}
+              </button>
+            </div>
+            <p className={styles.permissionHint}>
+              Create bundles for ERS actual visibility and advanced strategy data directly from the room selection screen.
+            </p>
+
+            <div className={styles.permissionList}>
+              {permissionCodes.length === 0 && !permissionLoading ? (
+                <div className={styles.roomEmpty}>No permission codes found.</div>
+              ) : (
+                permissionCodes.map((entry) => (
+                  <button
+                    key={entry.code}
+                    type="button"
+                    className={`${styles.permissionCard} ${selectedPermissionCode === entry.code ? styles.permissionCardActive : ''}`}
+                    onClick={() => selectPermission(entry)}
+                  >
+                    <div className={styles.permissionCardHeader}>
+                      <strong>{entry.label || entry.code}</strong>
+                      <span>{entry.code}</span>
+                    </div>
+                    <div className={styles.permissionCardMeta}>
+                      <span>{entry.permissions.viewERSActual ? 'ERS ACTUAL' : 'ERS MASKED'}</span>
+                      <span>{entry.permissions.viewAdvancedStrategy ? 'ADV STRATEGY' : 'BASIC ONLY'}</span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className={styles.permissionEditor}>
+              <label className={styles.urlLabel}>Code</label>
+              <input
+                type="text"
+                value={permissionDraft.code}
+                onChange={(e) => {
+                  setPermissionDraft((prev) => ({ ...prev, code: e.target.value.toUpperCase() }));
+                  setPermissionError('');
+                  setPermissionStatus('');
+                }}
+                placeholder="ENG-PRO"
+                className={styles.urlInput}
+                disabled={permissionSaving}
+              />
+
+              <label className={styles.urlLabel}>Label</label>
+              <input
+                type="text"
+                value={permissionDraft.label}
+                onChange={(e) => {
+                  setPermissionDraft((prev) => ({ ...prev, label: e.target.value }));
+                  setPermissionError('');
+                  setPermissionStatus('');
+                }}
+                placeholder="Engineer Pro"
+                className={styles.urlInput}
+                disabled={permissionSaving}
+              />
+
+              <label className={styles.permissionToggle}>
+                <span>ERS Actual</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewERSActual}
+                  onChange={(e) => updatePermissionFlag('viewERSActual', e.target.checked)}
+                  disabled={permissionSaving}
+                />
+              </label>
+              <label className={styles.permissionToggle}>
+                <span>Advanced Strategy</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewAdvancedStrategy}
+                  onChange={(e) => updatePermissionFlag('viewAdvancedStrategy', e.target.checked)}
+                  disabled={permissionSaving}
+                />
+              </label>
+
+              <div className={styles.permissionActions}>
+                <button type="button" className={styles.connectButton} onClick={savePermissionCode} disabled={permissionSaving}>
+                  {permissionSaving ? 'Saving...' : 'Save Code'}
+                </button>
+                <button type="button" className={styles.secondaryButton} onClick={resetPermissionEditor} disabled={permissionSaving}>
+                  New
+                </button>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={deletePermissionCode}
+                  disabled={permissionSaving || (!selectedPermissionCode && !permissionDraft.code.trim())}
+                >
+                  Delete
+                </button>
+              </div>
+              {permissionStatus && <p className={styles.success}>{permissionStatus}</p>}
+              {permissionError && <p className={styles.error}>{permissionError}</p>}
+            </div>
+          </div>
+        )}
 
         {(roomsError || connectionState === 'error') && (
           <p className={styles.error}>{roomsError || 'Connection failed. Check the room password and signaling server.'}</p>

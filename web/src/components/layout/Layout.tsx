@@ -1,11 +1,8 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
-import { SettingsView } from '../../views/SettingsView';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMockTelemetry } from '../../hooks/useMockTelemetry';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useWebRTCDataChannel } from '../../hooks/useWebRTCDataChannel';
-import { isForcedRemoteMode, isMockMode } from '../../runtimeFlags';
 import {
-  FULL_FEATURE_PERMISSIONS,
   NO_FEATURE_PERMISSIONS,
   useTelemetryStore,
 } from '../../store/telemetryStore';
@@ -13,20 +10,74 @@ import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import styles from './Layout.module.css';
 
-const CONNECTION_MODE_KEY = 'frc_connection_mode';
+const REMOTE_SESSION_KEY = 'frc_remote_session';
+
+interface RemoteRTCOptions {
+  signalingUrl: string;
+  roomId: string;
+  password: string;
+  permissionsCode: string;
+}
+
+function readRemoteQuery(): Partial<RemoteRTCOptions> {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    signalingUrl: params.get('signalingUrl') ?? '',
+    roomId: params.get('roomId') ?? '',
+  };
+}
+
+function readStoredRemoteSession(): RemoteRTCOptions | null {
+  try {
+    const raw = window.sessionStorage.getItem(REMOTE_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RemoteRTCOptions;
+    if (!parsed.roomId || !parsed.signalingUrl) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function buildInitialRemoteOptions(): RemoteRTCOptions | null {
+  const query = readRemoteQuery();
+  const stored = readStoredRemoteSession();
+
+  if (stored && stored.roomId === query.roomId) {
+    return {
+      ...stored,
+      signalingUrl: query.signalingUrl || stored.signalingUrl,
+    };
+  }
+
+  if (query.roomId && query.signalingUrl) {
+    return {
+      signalingUrl: query.signalingUrl,
+      roomId: query.roomId,
+      password: '',
+      permissionsCode: '',
+    };
+  }
+
+  return stored;
+}
+
+function persistRemoteSession(options: RemoteRTCOptions) {
+  window.sessionStorage.setItem(REMOTE_SESSION_KEY, JSON.stringify(options));
+
+  const params = new URLSearchParams(window.location.search);
+  params.set('remote', '1');
+  params.set('roomId', options.roomId);
+  params.set('signalingUrl', options.signalingUrl);
+
+  const nextQuery = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+}
 
 export function Layout() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rtcOptions, setRtcOptions] = useState<{
-    signalingUrl: string;
-    roomId: string;
-    password: string;
-    permissionsCode: string;
-  } | null>(null);
-  const [preferredRemoteMode, setPreferredRemoteMode] = useState(() => {
-    if (isForcedRemoteMode) return true;
-    return window.localStorage.getItem(CONNECTION_MODE_KEY) === 'remote';
-  });
+  const initialRemoteOptions = useMemo(() => buildInitialRemoteOptions(), []);
+  const [rtcOptions, setRtcOptions] = useState<RemoteRTCOptions | null>(initialRemoteOptions);
+  const [connectAttempted, setConnectAttempted] = useState(initialRemoteOptions !== null);
 
   const setConnectionMode = useTelemetryStore((state) => state.setConnectionMode);
   const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
@@ -35,46 +86,21 @@ export function Layout() {
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
   const connectionState = useTelemetryStore((state) => state.connectionState);
-  const remoteMode = isForcedRemoteMode || preferredRemoteMode;
 
   useEffect(() => {
-    setConnectionMode(remoteMode ? 'remote' : 'local');
-  }, [remoteMode, setConnectionMode]);
+    setConnectionMode('remote');
+  }, [setConnectionMode]);
 
   useEffect(() => {
-    if (!remoteMode) {
-      setFeaturePermissions(FULL_FEATURE_PERMISSIONS);
-      return;
-    }
     if (!rtcOptions) {
       setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     }
-  }, [remoteMode, rtcOptions, setFeaturePermissions]);
+  }, [rtcOptions, setFeaturePermissions]);
 
-  useEffect(() => {
-    if (isForcedRemoteMode) return;
-    window.localStorage.setItem(CONNECTION_MODE_KEY, remoteMode ? 'remote' : 'local');
-  }, [remoteMode]);
+  usePitwallWebSocket({ url: '' });
+  useMockTelemetry(false);
 
-  useEffect(() => {
-    if (!settingsOpen) return undefined;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSettingsOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen]);
-
-  usePitwallWebSocket(remoteMode || isMockMode ? { url: '' } : undefined);
-  useMockTelemetry(isMockMode && !remoteMode);
-
-  const webrtcOpts = useMemo(() => {
-    if (!remoteMode || !rtcOptions) return null;
-    return rtcOptions;
-  }, [remoteMode, rtcOptions]);
-
+  const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
   const { connectionState: rtcConnectionState } = useWebRTCDataChannel(webrtcOpts);
 
   const handleRemoteConnect = useCallback((
@@ -83,12 +109,10 @@ export function Layout() {
     password: string,
     permissionsCode: string,
   ) => {
-    setRtcOptions({ signalingUrl, roomId, password, permissionsCode });
-    setPreferredRemoteMode(true);
-  }, []);
-
-  const switchToRemoteMode = useCallback(() => {
-    setPreferredRemoteMode(true);
+    const nextOptions = { signalingUrl, roomId, password, permissionsCode };
+    persistRemoteSession(nextOptions);
+    setRtcOptions(nextOptions);
+    setConnectAttempted(true);
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setConnectionState('disconnected');
     setPitwallState(null);
@@ -96,41 +120,45 @@ export function Layout() {
     clearRaceResult();
   }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
 
-  const switchToLocalMode = useCallback(() => {
-    if (isForcedRemoteMode) return;
-    setPreferredRemoteMode(false);
+  const openRoomPicker = useCallback(() => {
     setRtcOptions(null);
-    setFeaturePermissions(FULL_FEATURE_PERMISSIONS);
+    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setConnectionState('disconnected');
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
   }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
 
-  if (remoteMode && !rtcOptions) {
+  if (!rtcOptions) {
     return (
       <RemoteConnect
         onConnect={handleRemoteConnect}
         connectionState={connectionState}
-        onCancel={isForcedRemoteMode ? undefined : switchToLocalMode}
         title="P2P Telemetry Link"
         subtitle="Pick an active sender room from the signaling server, then enter its password to join."
+        initialSignalingUrl={readRemoteQuery().signalingUrl || readStoredRemoteSession()?.signalingUrl || ''}
+        initialRoomId={readRemoteQuery().roomId || readStoredRemoteSession()?.roomId || ''}
+        initialPassword={readStoredRemoteSession()?.password || ''}
+        initialPermissionsCode={readStoredRemoteSession()?.permissionsCode || ''}
       />
     );
   }
 
   if (
-    remoteMode &&
-    rtcOptions &&
-    (rtcConnectionState === 'failed' || connectionState === 'error' || connectionState === 'disconnected')
+    rtcConnectionState === 'failed' ||
+    connectionState === 'error' ||
+    (connectAttempted && connectionState === 'disconnected' && rtcConnectionState !== 'new')
   ) {
     return (
       <RemoteConnect
         onConnect={handleRemoteConnect}
         connectionState="error"
-        onCancel={isForcedRemoteMode ? undefined : switchToLocalMode}
         title="P2P Telemetry Link"
-        subtitle="Connection dropped. Pick the room again and retry, or fall back to the local telemetry feed."
+        subtitle="Connection dropped. Pick the room again and retry."
+        initialSignalingUrl={rtcOptions.signalingUrl}
+        initialRoomId={rtcOptions.roomId}
+        initialPassword={rtcOptions.password}
+        initialPermissionsCode={rtcOptions.permissionsCode}
       />
     );
   }
@@ -138,43 +166,14 @@ export function Layout() {
   return (
     <div className={styles.shell}>
       <CockpitDashboard
-        onOpenSettings={() => setSettingsOpen(true)}
-        showSettingsButton={!isForcedRemoteMode}
-        remoteAction={isForcedRemoteMode ? undefined : {
-          label: remoteMode ? 'Local' : 'P2P',
-          onClick: remoteMode ? switchToLocalMode : switchToRemoteMode,
-          active: remoteMode,
+        onOpenSettings={() => {}}
+        showSettingsButton={false}
+        remoteAction={{
+          label: 'Rooms',
+          onClick: openRoomPicker,
+          active: true,
         }}
       />
-
-      {settingsOpen && !isForcedRemoteMode && (
-        <>
-          <button
-            type="button"
-            className={styles.backdrop}
-            onClick={() => setSettingsOpen(false)}
-            aria-label="Close settings"
-          />
-          <aside className={styles.drawer}>
-            <div className={styles.drawerHeader}>
-              <div>
-                <span className={styles.drawerEyebrow}>Race Settings</span>
-                <h2 className={styles.drawerTitle}>Integrated Control Deck</h2>
-              </div>
-              <button
-                type="button"
-                className={styles.closeButton}
-                onClick={() => setSettingsOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className={styles.drawerBody}>
-              <SettingsView />
-            </div>
-          </aside>
-        </>
-      )}
     </div>
   );
 }
