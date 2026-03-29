@@ -6,11 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+
+	"frc.engineer/internal/tracks"
 )
 
 type Store struct {
 	root      string
 	tracks    map[string]*NormalizedTrackFile
+	aliases   map[string]string
 	tyreTemps *NormalizedTyreTempDataset
 }
 
@@ -41,6 +45,31 @@ var strategyTrackSlugByID = map[int8]string{
 	28: "las-vegas",
 }
 
+var strategyTrackAliases = map[string]string{
+	"albert park":                   "australia",
+	"bahrain international":         "bahrain",
+	"bahrain international circuit": "bahrain",
+	"barcelona":                     "spain",
+	"circuit gilles villeneuve":     "canada",
+	"silverstone circuit":           "britain",
+	"spa francorchamps":             "belgium",
+	"spa-francorchamps":             "belgium",
+	"yas marina":                    "abu-dhabi",
+	"yas marina circuit":            "abu-dhabi",
+	"cota":                          "texas",
+	"circuit of the americas":       "texas",
+	"red bull ring":                 "austria",
+	"baku city circuit":             "azerbaijan",
+	"jeddah corniche":               "saudi-arabia",
+	"jeddah corniche circuit":       "saudi-arabia",
+	"lusail":                        "qatar",
+	"lusail international circuit":  "qatar",
+	"autodromo nazionale monza":     "italy",
+	"autodromo hermanos rodriguez":  "mexico",
+	"autodromo enzo e dino ferrari": "imola",
+	"las vegas strip circuit":       "las-vegas",
+}
+
 func LoadStore(root string) (*Store, error) {
 	info, err := os.Stat(root)
 	if err != nil {
@@ -57,8 +86,9 @@ func LoadStore(root string) (*Store, error) {
 	sort.Strings(trackPaths)
 
 	store := &Store{
-		root:   root,
-		tracks: make(map[string]*NormalizedTrackFile, len(trackPaths)),
+		root:    root,
+		tracks:  make(map[string]*NormalizedTrackFile, len(trackPaths)),
+		aliases: make(map[string]string, len(trackPaths)*3),
 	}
 
 	for _, path := range trackPaths {
@@ -71,6 +101,18 @@ func LoadStore(root string) (*Store, error) {
 			return nil, fmt.Errorf("unmarshal %s: %w", path, err)
 		}
 		store.tracks[track.Track] = &track
+		store.aliases[normalizeTrackLookupKey(track.Track)] = track.Track
+	}
+
+	for trackID, slug := range strategyTrackSlugByID {
+		store.aliases[normalizeTrackLookupKey(slug)] = slug
+		telemetryName := tracks.TrackName(trackID)
+		if telemetryName != "unknown" {
+			store.aliases[normalizeTrackLookupKey(telemetryName)] = slug
+		}
+	}
+	for alias, slug := range strategyTrackAliases {
+		store.aliases[normalizeTrackLookupKey(alias)] = slug
 	}
 
 	tyreData, err := os.ReadFile(filepath.Join(root, "tyre_temps.json"))
@@ -97,6 +139,27 @@ func (s *Store) TrackByID(trackID int8) *NormalizedTrackFile {
 	return s.tracks[slug]
 }
 
+func (s *Store) TrackByName(trackName string) *NormalizedTrackFile {
+	if s == nil {
+		return nil
+	}
+	slug, ok := s.aliases[normalizeTrackLookupKey(trackName)]
+	if !ok {
+		return nil
+	}
+	return s.tracks[slug]
+}
+
+func (s *Store) TrackBySession(trackID int8, trackName string) *NormalizedTrackFile {
+	if s == nil {
+		return nil
+	}
+	if track := s.TrackByID(trackID); track != nil {
+		return track
+	}
+	return s.TrackByName(trackName)
+}
+
 func (s *Store) TyreTemps() *NormalizedTyreTempDataset {
 	if s == nil {
 		return nil
@@ -113,4 +176,20 @@ func (s *Store) TrackCount() int {
 
 func StrategyTrackSlug(trackID int8) string {
 	return strategyTrackSlugByID[trackID]
+}
+
+func normalizeTrackLookupKey(name string) string {
+	normalized := strings.TrimSpace(strings.ToLower(name))
+	if normalized == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"_", " ",
+		"-", " ",
+		"/", " ",
+		".", " ",
+		",", " ",
+	)
+	normalized = replacer.Replace(normalized)
+	return strings.Join(strings.Fields(normalized), " ")
 }

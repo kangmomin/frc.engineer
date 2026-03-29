@@ -108,6 +108,7 @@ export function CockpitDashboard({
   const recentNotifications = raceControlNotifications.slice(0, 3);
   const raceStatus = getRaceStatus(session, recentNotifications);
   const sessionTrackId = session?.trackId ?? null;
+  const sessionTrackName = session?.trackName ?? '';
   const ersPct = clamp(player ? (player.ersStoreEnergy / MAX_ERS_ENERGY) * 100 : 0, 0, 100);
   const deploySplit = getErsSplit(player);
   const fuelMargin = getFuelMargin(player, session);
@@ -164,7 +165,12 @@ export function CockpitDashboard({
     let cancelled = false;
     setStrategyGuideLoading(true);
 
-    fetch(`/api/strategy/guide?trackId=${sessionTrackId}`)
+    const params = new URLSearchParams({ trackId: String(sessionTrackId) });
+    if (sessionTrackName.trim()) {
+      params.set('trackName', sessionTrackName);
+    }
+
+    fetch(`/api/strategy/guide?${params.toString()}`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`strategy guide request failed: ${response.status}`);
@@ -191,7 +197,7 @@ export function CockpitDashboard({
     return () => {
       cancelled = true;
     };
-  }, [sessionTrackId, strategyGuideUnlocked]);
+  }, [sessionTrackId, sessionTrackName, strategyGuideUnlocked]);
 
   function handleStrategyUnlock() {
     if (strategyPasswordInput === STRATEGY_UNLOCK_PASSWORD) {

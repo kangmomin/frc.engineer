@@ -540,8 +540,9 @@ func main() {
 			http.Error(w, "invalid trackId", http.StatusBadRequest)
 			return
 		}
+		trackName := strings.TrimSpace(r.URL.Query().Get("trackName"))
 
-		trackGuide := strategyStore.TrackByID(int8(trackIDValue))
+		trackGuide := strategyStore.TrackBySession(int8(trackIDValue), trackName)
 		if trackGuide == nil {
 			http.Error(w, "strategy guide not found", http.StatusNotFound)
 			return
