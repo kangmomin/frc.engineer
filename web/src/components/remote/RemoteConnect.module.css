@@ -234,12 +234,58 @@
   gap: 10px;
 }
 
-.settingsPanel {
+.modalOverlay {
+  position: fixed;
+  inset: 0;
   display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(132, 147, 150, 0.14);
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 7, 9, 0.72);
+  backdrop-filter: blur(8px);
+  z-index: 40;
+}
+
+.modalCard {
+  width: min(720px, 100%);
+  max-height: min(84vh, 920px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background:
+    linear-gradient(180deg, rgba(32, 31, 32, 0.98), rgba(14, 14, 15, 0.98)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.015) 0,
+      rgba(255, 255, 255, 0.015) 2px,
+      transparent 2px,
+      transparent 7px
+    );
+  border: 1px solid rgba(132, 147, 150, 0.18);
+  box-shadow: 0 28px 100px rgba(0, 0, 0, 0.42);
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid rgba(132, 147, 150, 0.14);
+}
+
+.modalTitle {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--font-racing);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.modalBody {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  overflow-y: auto;
 }
 
 .settingsHeader {
@@ -401,6 +447,10 @@
     padding: 16px;
   }
 
+  .modalOverlay {
+    padding: 16px;
+  }
+
   .card {
     padding: 20px;
   }
@@ -415,6 +465,11 @@
 
   .actions {
     flex-direction: column;
+  }
+
+  .modalHeader {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .urlRow {

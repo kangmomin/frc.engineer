@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -36,6 +37,7 @@ func main() {
 	if port == "" {
 		port = "9090"
 	}
+	settingsPassword := strings.TrimSpace(os.Getenv("SIGNALING_SETTINGS_PASSWORD"))
 
 	permissionCodesPath := os.Getenv("SIGNALING_PERMISSION_CODES_FILE")
 	if permissionCodesPath == "" {
@@ -47,6 +49,9 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("permission codes loaded", "path", permissionCodesPath, "count", len(permissionStore.List()))
+	if settingsPassword == "" {
+		logger.Warn("SIGNALING_SETTINGS_PASSWORD not set; permission code admin endpoints accept any provided password")
+	}
 
 	roomManager := signaling.NewRoomManager(logger, permissionStore)
 	defer roomManager.Stop()
@@ -62,7 +67,20 @@ func main() {
 	writeCORS := func(w http.ResponseWriter, methods string) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", methods)
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Settings-Password")
+	}
+
+	authorizePermissionAdmin := func(w http.ResponseWriter, r *http.Request) bool {
+		provided := strings.TrimSpace(r.Header.Get("X-Settings-Password"))
+		if provided == "" {
+			http.Error(w, "settings password required", http.StatusUnauthorized)
+			return false
+		}
+		if settingsPassword != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(settingsPassword)) != 1 {
+			http.Error(w, "invalid settings password", http.StatusUnauthorized)
+			return false
+		}
+		return true
 	}
 
 	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +107,9 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		if !authorizePermissionAdmin(w, r) {
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(permissionStore.List())
 	})
@@ -103,6 +124,9 @@ func main() {
 		code := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/permission-codes/"))
 		if code == "" || strings.Contains(code, "/") {
 			http.Error(w, "permission code is required", http.StatusBadRequest)
+			return
+		}
+		if !authorizePermissionAdmin(w, r) {
 			return
 		}
 

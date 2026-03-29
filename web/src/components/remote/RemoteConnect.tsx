@@ -82,6 +82,8 @@ export function RemoteConnect({
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [roomsError, setRoomsError] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPassword, setSettingsPassword] = useState('');
+  const [settingsUnlocked, setSettingsUnlocked] = useState(false);
   const [permissionCodes, setPermissionCodes] = useState<PermissionCodeEntry[]>([]);
   const [permissionDraft, setPermissionDraft] = useState<PermissionCodeEntry>(createEmptyPermissionCode);
   const [selectedPermissionCode, setSelectedPermissionCode] = useState('');
@@ -154,10 +156,19 @@ export function RemoteConnect({
     }
   }, [initialRoomId, signalingUrl]);
 
+  const getSettingsHeaders = useCallback((contentType = false): HeadersInit => ({
+    ...(contentType ? { 'Content-Type': 'application/json' } : {}),
+    'X-Settings-Password': settingsPassword.trim(),
+  }), [settingsPassword]);
+
   const fetchPermissionCodes = useCallback(async () => {
     if (!signalingUrl) {
       setPermissionCodes([]);
       setPermissionError('');
+      return;
+    }
+    if (!settingsPassword.trim()) {
+      setPermissionError('Settings password required.');
       return;
     }
 
@@ -173,19 +184,24 @@ export function RemoteConnect({
     setPermissionLoading(true);
     setPermissionError('');
     try {
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, { headers: getSettingsHeaders() });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid settings password.');
+        }
         throw new Error(`HTTP ${response.status}`);
       }
       const payload = await response.json();
       setPermissionCodes(Array.isArray(payload) ? payload as PermissionCodeEntry[] : []);
-    } catch {
+      setSettingsUnlocked(true);
+    } catch (error) {
       setPermissionCodes([]);
-      setPermissionError('Failed to load permission codes from signaling server.');
+      setSettingsUnlocked(false);
+      setPermissionError(error instanceof Error && error.message ? error.message : 'Failed to load permission codes from signaling server.');
     } finally {
       setPermissionLoading(false);
     }
-  }, [signalingUrl]);
+  }, [getSettingsHeaders, settingsPassword, signalingUrl]);
 
   useEffect(() => {
     void fetchRooms();
@@ -209,11 +225,6 @@ export function RemoteConnect({
     return () => window.clearInterval(timer);
   }, [fetchRooms, signalingUrl]);
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-    void fetchPermissionCodes();
-  }, [fetchPermissionCodes, settingsOpen]);
-
   const selectedRoom = rooms.find((room) => room.roomId === selectedRoomId) ?? null;
   const isConnecting = connectionState === 'connecting';
   const isReady = !!selectedRoom && (!selectedRoom.requiresPassword || password.length > 0) && signalingUrl.length > 0;
@@ -228,6 +239,24 @@ export function RemoteConnect({
       permissionsCode.trim(),
     );
   }, [onConnect, password, permissionsCode, selectedRoom, signalingUrl]);
+
+  function openSettingsModal() {
+    setSettingsOpen(true);
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function closeSettingsModal() {
+    setSettingsOpen(false);
+    setSettingsUnlocked(false);
+    setSettingsPassword('');
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function unlockSettings() {
+    void fetchPermissionCodes();
+  }
 
   function resetPermissionEditor() {
     setSelectedPermissionCode('');
@@ -261,6 +290,10 @@ export function RemoteConnect({
 
   async function savePermissionCode() {
     const code = permissionDraft.code.trim();
+    if (!settingsUnlocked || !settingsPassword.trim()) {
+      setPermissionError('Unlock settings before editing permission codes.');
+      return;
+    }
     if (!code || !signalingUrl.trim()) {
       setPermissionError('Signaling URL and permission code are required.');
       return;
@@ -280,13 +313,16 @@ export function RemoteConnect({
     try {
       const response = await fetch(endpoint, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getSettingsHeaders(true),
         body: JSON.stringify({
           label: permissionDraft.label.trim(),
           permissions: permissionDraft.permissions,
         }),
       });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid settings password.');
+        }
         throw new Error(await response.text());
       }
       const saved = await response.json() as PermissionCodeEntry;
@@ -307,6 +343,10 @@ export function RemoteConnect({
   }
 
   async function deletePermissionCode() {
+    if (!settingsUnlocked || !settingsPassword.trim()) {
+      setPermissionError('Unlock settings before editing permission codes.');
+      return;
+    }
     const code = selectedPermissionCode || permissionDraft.code.trim();
     if (!code || !signalingUrl.trim()) {
       setPermissionError('Select a permission code to delete.');
@@ -325,8 +365,14 @@ export function RemoteConnect({
     setPermissionError('');
     setPermissionStatus('');
     try {
-      const response = await fetch(endpoint, { method: 'DELETE' });
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: getSettingsHeaders(),
+      });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid settings password.');
+        }
         throw new Error(await response.text());
       }
       setPermissionCodes((prev) => prev.filter((entry) => entry.code !== code));
@@ -457,10 +503,10 @@ export function RemoteConnect({
           <button
             type="button"
             className={styles.secondaryButton}
-            onClick={() => setSettingsOpen((open) => !open)}
+            onClick={openSettingsModal}
             disabled={isConnecting}
           >
-            {settingsOpen ? 'Hide Settings' : 'Permission Codes'}
+            Permission Codes
           </button>
           <button
             className={styles.connectButton}
@@ -471,123 +517,161 @@ export function RemoteConnect({
           </button>
         </div>
 
-        {settingsOpen && (
-          <div className={styles.settingsPanel}>
-            <div className={styles.settingsHeader}>
-              <strong>Remote Permission Codes</strong>
-              <button
-                type="button"
-                className={styles.refreshButton}
-                onClick={() => void fetchPermissionCodes()}
-                disabled={permissionLoading || permissionSaving}
-              >
-                {permissionLoading ? '...' : 'Reload'}
-              </button>
-            </div>
-            <p className={styles.permissionHint}>
-              Create bundles for ERS actual visibility and advanced strategy data directly from the room selection screen.
-            </p>
-
-            <div className={styles.permissionList}>
-              {permissionCodes.length === 0 && !permissionLoading ? (
-                <div className={styles.roomEmpty}>No permission codes found.</div>
-              ) : (
-                permissionCodes.map((entry) => (
-                  <button
-                    key={entry.code}
-                    type="button"
-                    className={`${styles.permissionCard} ${selectedPermissionCode === entry.code ? styles.permissionCardActive : ''}`}
-                    onClick={() => selectPermission(entry)}
-                  >
-                    <div className={styles.permissionCardHeader}>
-                      <strong>{entry.label || entry.code}</strong>
-                      <span>{entry.code}</span>
-                    </div>
-                    <div className={styles.permissionCardMeta}>
-                      <span>{entry.permissions.viewERSActual ? 'ERS ACTUAL' : 'ERS MASKED'}</span>
-                      <span>{entry.permissions.viewAdvancedStrategy ? 'ADV STRATEGY' : 'BASIC ONLY'}</span>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-
-            <div className={styles.permissionEditor}>
-              <label className={styles.urlLabel}>Code</label>
-              <input
-                type="text"
-                value={permissionDraft.code}
-                onChange={(e) => {
-                  setPermissionDraft((prev) => ({ ...prev, code: e.target.value.toUpperCase() }));
-                  setPermissionError('');
-                  setPermissionStatus('');
-                }}
-                placeholder="ENG-PRO"
-                className={styles.urlInput}
-                disabled={permissionSaving}
-              />
-
-              <label className={styles.urlLabel}>Label</label>
-              <input
-                type="text"
-                value={permissionDraft.label}
-                onChange={(e) => {
-                  setPermissionDraft((prev) => ({ ...prev, label: e.target.value }));
-                  setPermissionError('');
-                  setPermissionStatus('');
-                }}
-                placeholder="Engineer Pro"
-                className={styles.urlInput}
-                disabled={permissionSaving}
-              />
-
-              <label className={styles.permissionToggle}>
-                <span>ERS Actual</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewERSActual}
-                  onChange={(e) => updatePermissionFlag('viewERSActual', e.target.checked)}
-                  disabled={permissionSaving}
-                />
-              </label>
-              <label className={styles.permissionToggle}>
-                <span>Advanced Strategy</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewAdvancedStrategy}
-                  onChange={(e) => updatePermissionFlag('viewAdvancedStrategy', e.target.checked)}
-                  disabled={permissionSaving}
-                />
-              </label>
-
-              <div className={styles.permissionActions}>
-                <button type="button" className={styles.connectButton} onClick={savePermissionCode} disabled={permissionSaving}>
-                  {permissionSaving ? 'Saving...' : 'Save Code'}
-                </button>
-                <button type="button" className={styles.secondaryButton} onClick={resetPermissionEditor} disabled={permissionSaving}>
-                  New
-                </button>
-                <button
-                  type="button"
-                  className={styles.dangerButton}
-                  onClick={deletePermissionCode}
-                  disabled={permissionSaving || (!selectedPermissionCode && !permissionDraft.code.trim())}
-                >
-                  Delete
-                </button>
-              </div>
-              {permissionStatus && <p className={styles.success}>{permissionStatus}</p>}
-              {permissionError && <p className={styles.error}>{permissionError}</p>}
-            </div>
-          </div>
-        )}
-
         {(roomsError || connectionState === 'error') && (
           <p className={styles.error}>{roomsError || 'Connection failed. Check the room password and signaling server.'}</p>
         )}
       </div>
+
+      {settingsOpen && (
+        <div className={styles.modalOverlay} role="presentation" onClick={closeSettingsModal}>
+          <div className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <strong className={styles.modalTitle}>Remote Permission Codes</strong>
+                <p className={styles.permissionHint}>
+                  Enter the settings password to view and edit permission bundles.
+                </p>
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={closeSettingsModal}>
+                Close
+              </button>
+            </div>
+
+            <div className={styles.modalBody}>
+              <label className={styles.urlLabel}>Settings Password</label>
+              <div className={styles.urlRow}>
+                <input
+                  type="password"
+                  value={settingsPassword}
+                  onChange={(e) => {
+                    setSettingsPassword(e.target.value);
+                    setPermissionError('');
+                    setPermissionStatus('');
+                    if (settingsUnlocked) {
+                      setSettingsUnlocked(false);
+                    }
+                  }}
+                  placeholder="Enter settings password"
+                  className={styles.urlInput}
+                  disabled={permissionLoading || permissionSaving}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      unlockSettings();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className={styles.refreshButton}
+                  onClick={unlockSettings}
+                  disabled={permissionLoading || permissionSaving}
+                >
+                  {permissionLoading ? '...' : settingsUnlocked ? 'Reload' : 'Unlock'}
+                </button>
+              </div>
+
+              {settingsUnlocked && (
+                <>
+                  <div className={styles.permissionList}>
+                    {permissionCodes.length === 0 && !permissionLoading ? (
+                      <div className={styles.roomEmpty}>No permission codes found.</div>
+                    ) : (
+                      permissionCodes.map((entry) => (
+                        <button
+                          key={entry.code}
+                          type="button"
+                          className={`${styles.permissionCard} ${selectedPermissionCode === entry.code ? styles.permissionCardActive : ''}`}
+                          onClick={() => selectPermission(entry)}
+                        >
+                          <div className={styles.permissionCardHeader}>
+                            <strong>{entry.label || entry.code}</strong>
+                            <span>{entry.code}</span>
+                          </div>
+                          <div className={styles.permissionCardMeta}>
+                            <span>{entry.permissions.viewERSActual ? 'ERS ACTUAL' : 'ERS MASKED'}</span>
+                            <span>{entry.permissions.viewAdvancedStrategy ? 'ADV STRATEGY' : 'BASIC ONLY'}</span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+
+                  <div className={styles.permissionEditor}>
+                    <label className={styles.urlLabel}>Code</label>
+                    <input
+                      type="text"
+                      value={permissionDraft.code}
+                      onChange={(e) => {
+                        setPermissionDraft((prev) => ({ ...prev, code: e.target.value.toUpperCase() }));
+                        setPermissionError('');
+                        setPermissionStatus('');
+                      }}
+                      placeholder="ENG-PRO"
+                      className={styles.urlInput}
+                      disabled={permissionSaving}
+                    />
+
+                    <label className={styles.urlLabel}>Label</label>
+                    <input
+                      type="text"
+                      value={permissionDraft.label}
+                      onChange={(e) => {
+                        setPermissionDraft((prev) => ({ ...prev, label: e.target.value }));
+                        setPermissionError('');
+                        setPermissionStatus('');
+                      }}
+                      placeholder="Engineer Pro"
+                      className={styles.urlInput}
+                      disabled={permissionSaving}
+                    />
+
+                    <label className={styles.permissionToggle}>
+                      <span>ERS Actual</span>
+                      <input
+                        className={styles.toggle}
+                        type="checkbox"
+                        checked={permissionDraft.permissions.viewERSActual}
+                        onChange={(e) => updatePermissionFlag('viewERSActual', e.target.checked)}
+                        disabled={permissionSaving}
+                      />
+                    </label>
+                    <label className={styles.permissionToggle}>
+                      <span>Advanced Strategy</span>
+                      <input
+                        className={styles.toggle}
+                        type="checkbox"
+                        checked={permissionDraft.permissions.viewAdvancedStrategy}
+                        onChange={(e) => updatePermissionFlag('viewAdvancedStrategy', e.target.checked)}
+                        disabled={permissionSaving}
+                      />
+                    </label>
+
+                    <div className={styles.permissionActions}>
+                      <button type="button" className={styles.connectButton} onClick={savePermissionCode} disabled={permissionSaving}>
+                        {permissionSaving ? 'Saving...' : 'Save Code'}
+                      </button>
+                      <button type="button" className={styles.secondaryButton} onClick={resetPermissionEditor} disabled={permissionSaving}>
+                        New
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.dangerButton}
+                        onClick={deletePermissionCode}
+                        disabled={permissionSaving || (!selectedPermissionCode && !permissionDraft.code.trim())}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {permissionStatus && <p className={styles.success}>{permissionStatus}</p>}
+              {permissionError && <p className={styles.error}>{permissionError}</p>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
