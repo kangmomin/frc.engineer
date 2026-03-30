@@ -38,17 +38,31 @@ func main() {
 		port = "9090"
 	}
 	settingsPassword := strings.TrimSpace(os.Getenv("SIGNALING_SETTINGS_PASSWORD"))
+	permissionCodesDatabaseURL := strings.TrimSpace(os.Getenv("SIGNALING_PERMISSION_CODES_DATABASE_URL"))
+	if permissionCodesDatabaseURL == "" {
+		permissionCodesDatabaseURL = strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	}
 
 	permissionCodesPath := os.Getenv("SIGNALING_PERMISSION_CODES_FILE")
 	if permissionCodesPath == "" {
 		permissionCodesPath = filepath.Join("data", "signaling", "permission-codes.json")
 	}
-	permissionStore, err := signaling.LoadPermissionCodeStore(permissionCodesPath, logger)
+	permissionStore, err := signaling.OpenPermissionCodeStore(permissionCodesDatabaseURL, permissionCodesPath, logger)
 	if err != nil {
-		logger.Error("failed to load permission codes", "error", err, "path", permissionCodesPath)
+		logger.Error("failed to load permission codes", "error", err, "backend", permissionStoreBackend(permissionCodesDatabaseURL), "location", permissionStoreLocation(permissionCodesDatabaseURL, permissionCodesPath))
 		os.Exit(1)
 	}
-	logger.Info("permission codes loaded", "path", permissionCodesPath, "count", len(permissionStore.List()))
+	defer func() {
+		if err := permissionStore.Close(); err != nil {
+			logger.Warn("failed to close permission code store", "error", err)
+		}
+	}()
+	permissionCodes, err := permissionStore.List()
+	if err != nil {
+		logger.Error("failed to list permission codes", "error", err, "backend", permissionStore.Backend(), "location", permissionStore.Location())
+		os.Exit(1)
+	}
+	logger.Info("permission codes loaded", "backend", permissionStore.Backend(), "location", permissionStore.Location(), "count", len(permissionCodes))
 	if settingsPassword == "" {
 		logger.Warn("SIGNALING_SETTINGS_PASSWORD not set; permission code admin endpoints accept any provided password")
 	}
@@ -110,8 +124,13 @@ func main() {
 		if !authorizePermissionAdmin(w, r) {
 			return
 		}
+		codes, err := permissionStore.List()
+		if err != nil {
+			http.Error(w, "failed to load permission codes", http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(permissionStore.List())
+		_ = json.NewEncoder(w).Encode(codes)
 	})
 
 	mux.HandleFunc("/api/permission-codes/", func(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +161,7 @@ func main() {
 			}
 			entry, err := permissionStore.Upsert(code, body.Label, body.Permissions)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -242,4 +261,18 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 	logger.Info("shutting down signaling server")
+}
+
+func permissionStoreBackend(databaseURL string) string {
+	if strings.TrimSpace(databaseURL) != "" {
+		return "postgres"
+	}
+	return "file"
+}
+
+func permissionStoreLocation(databaseURL, path string) string {
+	if strings.TrimSpace(databaseURL) != "" {
+		return "signaling_permission_codes"
+	}
+	return path
 }

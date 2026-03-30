@@ -173,7 +173,11 @@ func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, 
 	grantedPermissions := Permissions{}
 	if strings.TrimSpace(permissionsCode) != "" {
 		var ok bool
-		grantedPermissions, ok = rm.permissionCodes.Resolve(permissionsCode)
+		var err error
+		grantedPermissions, ok, err = rm.permissionCodes.Resolve(permissionsCode)
+		if err != nil {
+			return "", "", Permissions{}, fmt.Errorf("resolve permissions code: %w", err)
+		}
 		if !ok {
 			return "", "", Permissions{}, fmt.Errorf("invalid permissions code")
 		}
