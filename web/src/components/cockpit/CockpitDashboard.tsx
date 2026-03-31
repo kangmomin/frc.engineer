@@ -382,7 +382,7 @@ export function CockpitDashboard({
               <span>Driver</span>
               <span>DRS</span>
               <span>{pitStatusVisible ? 'Pit' : 'Pit Locked'}</span>
-              {ersEstimateVisible && <span>{ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.'}</span>}
+              <span>{ersEstimateVisible ? (ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.') : ''}</span>
               <span>{topSpeedVisible ? 'Vmax' : 'Vmax Locked'}</span>
               <span>{playerDeltaVisible ? 'To You' : 'Gap'}</span>
               <span>Interval</span>
@@ -431,16 +431,18 @@ export function CockpitDashboard({
                         {formatPitStatus(driver, pitStatusVisible)}
                       </span>
                     </span>
-                    {ersEstimateVisible && (
-                      <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
-                        <span className={styles[getErsEstimateTone(driver)]}>{formatErsEstimate(driver)}</span>
-                        {ersComparisonEnabled && (
-                          <span className={styles.ersCompareMeta}>
-                            {formatErsCompare(driver)}
-                          </span>
-                        )}
-                      </span>
-                    )}
+                    <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
+                      {ersEstimateVisible && (
+                        <>
+                          <span className={styles[getErsEstimateTone(driver)]}>{formatErsEstimate(driver)}</span>
+                          {ersComparisonEnabled && (
+                            <span className={styles.ersCompareMeta}>
+                              {formatErsCompare(driver)}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </span>
                     <span className={styles.topSpeedCell}>
                       <span className={styles[getTopSpeedTone(driver, topSpeedVisible)]}>
                         {formatTopSpeed(driver, topSpeedVisible)}
