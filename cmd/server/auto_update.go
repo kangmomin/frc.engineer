@@ -39,14 +39,15 @@ func autoUpdate(logger *slog.Logger) error {
 		return nil
 	}
 
-	asset := findExeAsset(release.Assets)
-	if asset == nil {
-		return fmt.Errorf("no .exe asset found in release %s", release.TagName)
-	}
-
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("get executable path: %w", err)
+	}
+
+	exeName := strings.ToLower(filepath.Base(exePath))
+	asset := findExeAsset(release.Assets, exeName)
+	if asset == nil {
+		return fmt.Errorf("no matching asset for %q in release %s", exeName, release.TagName)
 	}
 
 	logger.Info("auto-update: new version found, downloading",
@@ -89,11 +90,24 @@ func autoUpdate(logger *slog.Logger) error {
 	return nil // unreachable after os.Exit
 }
 
-func findExeAsset(assets []githubReleaseAsset) *githubReleaseAsset {
+func findExeAsset(assets []githubReleaseAsset, selfName string) *githubReleaseAsset {
+	// 1) 자기 실행 파일명과 정확히 일치하는 에셋을 우선 매칭
 	for i := range assets {
-		if strings.HasSuffix(strings.ToLower(assets[i].Name), ".exe") {
+		if strings.EqualFold(assets[i].Name, selfName) {
 			return &assets[i]
 		}
+	}
+	// 2) 단일 .exe만 있으면 그것을 반환
+	var single *githubReleaseAsset
+	count := 0
+	for i := range assets {
+		if strings.HasSuffix(strings.ToLower(assets[i].Name), ".exe") {
+			single = &assets[i]
+			count++
+		}
+	}
+	if count == 1 {
+		return single
 	}
 	return nil
 }
