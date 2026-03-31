@@ -56,6 +56,9 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	if permissions.ViewCommentary {
 		key += "|commentary"
 	}
+	if permissions.ViewQualifying {
+		key += "|qualifying"
+	}
 	if cached, ok := v.cache[key]; ok {
 		return cached
 	}

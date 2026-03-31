@@ -42,6 +42,7 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 		ViewTopSpeed:    true,
 		ViewPlayerDelta: true,
 		ViewCommentary:  true,
+		ViewQualifying:  true,
 	}))
 	if !privileged.ERSComparisonEnabled {
 		t.Fatal("expected ERS comparison to remain enabled")

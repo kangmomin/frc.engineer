@@ -44,6 +44,7 @@ export interface FeaturePermissions {
   viewTopSpeed: boolean;
   viewPlayerDelta: boolean;
   viewCommentary: boolean;
+  viewQualifying: boolean;
 }
 
 export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';

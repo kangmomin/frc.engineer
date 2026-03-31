@@ -28,6 +28,7 @@ type Permissions struct {
 	ViewTopSpeed         bool `json:"viewTopSpeed"`
 	ViewPlayerDelta      bool `json:"viewPlayerDelta"`
 	ViewCommentary       bool `json:"viewCommentary"`
+	ViewQualifying       bool `json:"viewQualifying"`
 }
 
 type PermissionCode struct {

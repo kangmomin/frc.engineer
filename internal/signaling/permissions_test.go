@@ -20,6 +20,7 @@ func TestPermissionCodeStorePersistsNormalizedCodes(t *testing.T) {
 		ViewTopSpeed:         true,
 		ViewPlayerDelta:      false,
 		ViewCommentary:       true,
+		ViewQualifying:       false,
 	})
 	if err != nil {
 		t.Fatalf("Upsert failed: %v", err)
@@ -39,7 +40,7 @@ func TestPermissionCodeStorePersistsNormalizedCodes(t *testing.T) {
 	if !ok {
 		t.Fatal("expected reloaded store to resolve normalized code")
 	}
-	if !permissions.ViewERSActual || permissions.ViewAdvancedStrategy || !permissions.ViewPitStatus || !permissions.ViewTopSpeed || permissions.ViewPlayerDelta || !permissions.ViewCommentary {
+	if !permissions.ViewERSActual || permissions.ViewAdvancedStrategy || !permissions.ViewPitStatus || !permissions.ViewTopSpeed || permissions.ViewPlayerDelta || !permissions.ViewCommentary || permissions.ViewQualifying {
 		t.Fatalf("unexpected permissions: %#v", permissions)
 	}
 }
