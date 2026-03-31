@@ -291,7 +291,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onGoHome, remoteAction 
             <tbody>
               {drivers.map((driver) => {
                 const acc = accMap.get(driver.index);
-                const ersPct = Math.round((driver.ersStoreEnergy / MAX_ERS_ENERGY) * 100);
+                const ersPct = driver.ersActualReady ? driver.ersActualPct : Math.round((driver.ersStoreEnergy / MAX_ERS_ENERGY) * 100);
                 const intervalMs = driver.deltaToCarInFront ?? 0;
                 const isBattle = intervalMs !== 0 && Math.abs(intervalMs) <= 1000;
                 const penTotal = driver.penalties + (driver.numUnservedDriveThroughs * 5) + (driver.numUnservedStopGoPenalties * 10);
