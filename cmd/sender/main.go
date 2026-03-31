@@ -24,7 +24,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.6.2"
+var appVersion = "v3.6.3"
 
 func main() {
 	// Log to file so the cmd banner stays clean
@@ -394,6 +394,24 @@ func main() {
 			"roomName":       cfgRoomName,
 			"roomPassword":   cfgRoomPassword,
 			"forwardTargets": cfgForwardTargets,
+		})
+	})
+
+	mux.HandleFunc("GET /api/debug", func(w http.ResponseWriter, r *http.Request) {
+		state := processor.PitwallManager().BuildState()
+		peers := peerManager.DebugPeers()
+
+		driverCount := 0
+		if state != nil {
+			driverCount = len(state.Drivers)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"hasData":        processor.PitwallManager().HasData(),
+			"driverCount":    driverCount,
+			"connectedPeers": peers,
+			"pitwallState":   state,
 		})
 	})
 

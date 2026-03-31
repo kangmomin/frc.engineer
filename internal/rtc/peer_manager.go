@@ -254,6 +254,28 @@ func (pm *PeerManager) ConnectedCount() int {
 	return count
 }
 
+// PeerDebugInfo returns debug information about connected peers and their permissions.
+type PeerDebugInfo struct {
+	PeerID      string                `json:"peerId"`
+	State       string                `json:"state"`
+	Permissions signaling.Permissions `json:"permissions"`
+}
+
+// DebugPeers returns debug info for all tracked peers.
+func (pm *PeerManager) DebugPeers() []PeerDebugInfo {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	var out []PeerDebugInfo
+	for peerID, ch := range pm.channels {
+		out = append(out, PeerDebugInfo{
+			PeerID:      peerID,
+			State:       ch.ReadyState().String(),
+			Permissions: pm.permits[peerID],
+		})
+	}
+	return out
+}
+
 // Close shuts down all peer connections and the signaling connection.
 func (pm *PeerManager) Close() {
 	close(pm.done)
