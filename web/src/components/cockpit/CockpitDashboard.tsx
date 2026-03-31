@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor, getTeamName } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
@@ -20,6 +20,44 @@ const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEFAULT_PREDICTION_LAPS = 10;
 const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
+
+interface PitSettings {
+  pitRepeatSpeed: number;
+  pitStopTime: number;
+  optimalTempLow: number;
+  optimalTempHigh: number;
+}
+
+const DEFAULT_PIT_SETTINGS: PitSettings = {
+  pitRepeatSpeed: 80,
+  pitStopTime: 25,
+  optimalTempLow: 95,
+  optimalTempHigh: 110,
+};
+
+function readPitSettingsFromQuery(): PitSettings {
+  const params = new URLSearchParams(window.location.search);
+  const speed = Number(params.get('pitRepeatSpeed'));
+  const time = Number(params.get('pitStopTime'));
+  const tempLow = Number(params.get('optimalTempLow'));
+  const tempHigh = Number(params.get('optimalTempHigh'));
+  return {
+    pitRepeatSpeed: speed > 0 ? speed : DEFAULT_PIT_SETTINGS.pitRepeatSpeed,
+    pitStopTime: time > 0 ? time : DEFAULT_PIT_SETTINGS.pitStopTime,
+    optimalTempLow: tempLow > 0 ? tempLow : DEFAULT_PIT_SETTINGS.optimalTempLow,
+    optimalTempHigh: tempHigh > 0 ? tempHigh : DEFAULT_PIT_SETTINGS.optimalTempHigh,
+  };
+}
+
+function writePitSettingsToQuery(settings: PitSettings) {
+  const params = new URLSearchParams(window.location.search);
+  params.set('pitRepeatSpeed', String(settings.pitRepeatSpeed));
+  params.set('pitStopTime', String(settings.pitStopTime));
+  params.set('optimalTempLow', String(settings.optimalTempLow));
+  params.set('optimalTempHigh', String(settings.optimalTempHigh));
+  const nextQuery = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}?${nextQuery}`);
+}
 
 type SectorBestTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
@@ -52,12 +90,14 @@ interface CockpitDashboardProps {
     onClick: () => void;
     active?: boolean;
   };
+  onSwitchToCommentary?: () => void;
 }
 
 export function CockpitDashboard({
   onOpenSettings,
   showSettingsButton,
   remoteAction,
+  onSwitchToCommentary,
 }: CockpitDashboardProps) {
   const {
     pitwallState,
@@ -76,6 +116,17 @@ export function CockpitDashboard({
       featurePermissions: state.featurePermissions,
     })),
   );
+
+  const [pitSettings, setPitSettings] = useState<PitSettings>(readPitSettingsFromQuery);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const applyPitSettings = useCallback((next: PitSettings) => {
+    setPitSettings(next);
+    writePitSettingsToQuery(next);
+    setSettingsOpen(false);
+  }, []);
 
   const session = pitwallState?.session ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
@@ -195,45 +246,94 @@ export function CockpitDashboard({
     };
   }, [featurePermissions.viewAdvancedStrategy, sessionTrackId, sessionTrackName]);
 
+  // Seed optimal temp from strategy guide peak_temps_c when available and no manual override in query
+  useEffect(() => {
+    if (!strategyGuide?.tyreTemps) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('optimalTempLow') || params.has('optimalTempHigh')) return;
+
+    const compound = player?.tireCompound?.toLowerCase() ?? null;
+    const guideTrack = strategyGuide.track;
+    const tempKey = compound ? (guideTrack.tyre_strategy.compounds[compound] ?? compound) : null;
+    const peakTemps = tempKey ? strategyGuide.tyreTemps.compounds[tempKey]?.peak_temps_c : undefined;
+    if (!peakTemps || peakTemps.length === 0) return;
+
+    const low = peakTemps[0];
+    const high = peakTemps[peakTemps.length - 1];
+    if (low === pitSettings.optimalTempLow && high === pitSettings.optimalTempHigh) return;
+
+    const next: PitSettings = { ...pitSettings, optimalTempLow: low, optimalTempHigh: high };
+    setPitSettings(next);
+    writePitSettingsToQuery(next);
+  }, [strategyGuide, player?.tireCompound]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className={styles.dashboard}>
       <div className={styles.backdropGlow} />
 
-      {(showSettingsButton || remoteAction) && (
-        <div className={styles.utilityDock}>
-          {showSettingsButton && (
-            <button
-              type="button"
-              className={styles.settingsButton}
-              onClick={onOpenSettings}
-              aria-label="Open settings"
-            >
-              <svg
-                className={styles.settingsIcon}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </button>
-          )}
-          {remoteAction && (
-            <button
-              type="button"
-              className={`${styles.remoteButton} ${remoteAction.active ? styles.remoteActive : ''}`}
-              onClick={remoteAction.onClick}
-              aria-label={remoteAction.label}
-            >
-              {remoteAction.label}
-            </button>
-          )}
-        </div>
+      <div className={styles.utilityDock}>
+        <button
+          type="button"
+          className={styles.settingsButton}
+          onClick={openSettings}
+          aria-label="Open pit settings"
+        >
+          <svg
+            className={styles.settingsIcon}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+        {showSettingsButton && (
+          <button
+            type="button"
+            className={styles.settingsButton}
+            onClick={onOpenSettings}
+            aria-label="Open server settings"
+          >
+            <svg className={styles.settingsIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </button>
+        )}
+        {onSwitchToCommentary && (
+          <button
+            type="button"
+            className={styles.remoteButton}
+            onClick={onSwitchToCommentary}
+            aria-label="Switch to commentary"
+          >
+            Live
+          </button>
+        )}
+        {remoteAction && (
+          <button
+            type="button"
+            className={`${styles.remoteButton} ${remoteAction.active ? styles.remoteActive : ''}`}
+            onClick={remoteAction.onClick}
+            aria-label={remoteAction.label}
+          >
+            {remoteAction.label}
+          </button>
+        )}
+      </div>
+
+      {settingsOpen && (
+        <PitSettingsModal
+          current={pitSettings}
+          onApply={applyPitSettings}
+          onClose={closeSettings}
+        />
       )}
 
       <section className={styles.topRow}>
@@ -410,6 +510,16 @@ export function CockpitDashboard({
               value={strategyPanel.pitWindowLabel}
               tone={strategyPanel.pitWindowTone}
             />
+            <MetricTile
+              label="Pit Speed"
+              value={`${pitSettings.pitRepeatSpeed} km/h`}
+              tone="neutral"
+            />
+            <MetricTile
+              label="Pit Stop"
+              value={`${pitSettings.pitStopTime}s`}
+              tone="neutral"
+            />
           </div>
           <div className={styles.trafficCard}>
             <span className={styles.trafficLabel}>{strategyPanel.detailLabel}</span>
@@ -458,7 +568,7 @@ export function CockpitDashboard({
           />
           <div className={styles.tyreGrid}>
             {WHEEL_LABELS.map((label, index) => {
-              const tempTone = getTemperatureTone(wheelCoreTemp[index]);
+              const tempTone = getTemperatureTone(wheelCoreTemp[index], pitSettings.optimalTempLow, pitSettings.optimalTempHigh);
               const pred = wheelWearPrediction[index];
               const hasPrediction = player?.tireAge && player.tireAge > 0;
               const predLabel = hasPrediction
@@ -476,7 +586,7 @@ export function CockpitDashboard({
                     <div>
                       <strong>{Math.round(wheelSurfaceTemp[index])}°C</strong>
                       <span className={`${styles.tyreStatus} ${styles[tempTone]}`}>
-                        {getTemperatureStatus(wheelCoreTemp[index])}
+                        {getTemperatureStatus(wheelCoreTemp[index], pitSettings.optimalTempLow, pitSettings.optimalTempHigh)}
                       </span>
                     </div>
                     <div className={styles.tyreWearMeta}>
@@ -604,6 +714,138 @@ export function CockpitDashboard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PitSettingsModal({
+  current,
+  onApply,
+  onClose,
+}: {
+  current: PitSettings;
+  onApply: (s: PitSettings) => void;
+  onClose: () => void;
+}) {
+  const speedRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLInputElement>(null);
+  const tempLowRef = useRef<HTMLInputElement>(null);
+  const tempHighRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    speedRef.current?.focus();
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const speed = Number(speedRef.current?.value);
+    const time = Number(timeRef.current?.value);
+    const tempLow = Number(tempLowRef.current?.value);
+    const tempHigh = Number(tempHighRef.current?.value);
+    onApply({
+      pitRepeatSpeed: speed > 0 ? speed : current.pitRepeatSpeed,
+      pitStopTime: time > 0 ? time : current.pitStopTime,
+      optimalTempLow: tempLow > 0 ? tempLow : current.optimalTempLow,
+      optimalTempHigh: tempHigh > 0 ? Math.max(tempHigh, tempLow) : current.optimalTempHigh,
+    });
+  };
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <form
+        className={styles.modalPanel}
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSubmit}
+      >
+        <div className={styles.modalHeader}>
+          <span className={styles.modalTitle}>Pit &amp; Tyre Settings</span>
+          <button type="button" className={styles.modalClose} onClick={onClose}>
+            &times;
+          </button>
+        </div>
+
+        <div className={styles.modalField}>
+          <label className={styles.modalFieldLabel} htmlFor="pit-repeat-speed">
+            Pit Repeat Speed (km/h)
+          </label>
+          <input
+            id="pit-repeat-speed"
+            ref={speedRef}
+            className={styles.modalInput}
+            type="number"
+            min={1}
+            max={200}
+            step={1}
+            defaultValue={current.pitRepeatSpeed}
+            placeholder="80"
+          />
+          <span className={styles.modalFieldHint}>
+            Pit lane speed limit for the current track
+          </span>
+        </div>
+
+        <div className={styles.modalField}>
+          <label className={styles.modalFieldLabel} htmlFor="pit-stop-time">
+            Pit Stop Time (sec)
+          </label>
+          <input
+            id="pit-stop-time"
+            ref={timeRef}
+            className={styles.modalInput}
+            type="number"
+            min={0.1}
+            max={120}
+            step={0.1}
+            defaultValue={current.pitStopTime}
+            placeholder="25"
+          />
+          <span className={styles.modalFieldHint}>
+            Expected stationary pit stop duration
+          </span>
+        </div>
+
+        <div className={styles.modalFieldRow}>
+          <div className={styles.modalField}>
+            <label className={styles.modalFieldLabel} htmlFor="optimal-temp-low">
+              Optimal Temp Low (&deg;C)
+            </label>
+            <input
+              id="optimal-temp-low"
+              ref={tempLowRef}
+              className={styles.modalInput}
+              type="number"
+              min={30}
+              max={200}
+              step={1}
+              defaultValue={current.optimalTempLow}
+              placeholder="95"
+            />
+          </div>
+          <div className={styles.modalField}>
+            <label className={styles.modalFieldLabel} htmlFor="optimal-temp-high">
+              Optimal Temp High (&deg;C)
+            </label>
+            <input
+              id="optimal-temp-high"
+              ref={tempHighRef}
+              className={styles.modalInput}
+              type="number"
+              min={30}
+              max={200}
+              step={1}
+              defaultValue={current.optimalTempHigh}
+              placeholder="110"
+            />
+          </div>
+        </div>
+        <span className={styles.modalFieldHint}>
+          Core temperature range for &quot;CORE OK&quot; status. Auto-filled from strategy guide when available.
+        </span>
+
+        <button type="submit" className={styles.modalApply}>
+          Apply
+        </button>
+      </form>
     </div>
   );
 }
@@ -1067,15 +1309,15 @@ function normalizeWheelData(data?: number[]): number[] {
   return WHEEL_LABELS.map((_, index) => data?.[index] ?? 0);
 }
 
-function getTemperatureTone(temp: number): 'tertiary' | 'primary' | 'secondary' {
-  if (temp >= 110) return 'secondary';
-  if (temp >= 95) return 'tertiary';
+function getTemperatureTone(temp: number, low: number, high: number): 'tertiary' | 'primary' | 'secondary' {
+  if (temp >= high) return 'secondary';
+  if (temp >= low) return 'tertiary';
   return 'primary';
 }
 
-function getTemperatureStatus(temp: number): string {
-  if (temp >= 110) return 'HIGH TEMP';
-  if (temp >= 95) return 'CORE OK';
+function getTemperatureStatus(temp: number, low: number, high: number): string {
+  if (temp >= high) return 'HIGH TEMP';
+  if (temp >= low) return 'CORE OK';
   return 'COLD';
 }
 
