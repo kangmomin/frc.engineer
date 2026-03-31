@@ -20,7 +20,10 @@ import (
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
+	"frc.engineer/internal/updater"
 )
+
+var appVersion = "v3.5.0"
 
 func main() {
 	// Log to file so the cmd banner stays clean
@@ -37,6 +40,12 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
+
+	// Auto-update: clean previous artifacts, then check for updates
+	updater.CleanOldBinary(logger)
+	if err := updater.AutoUpdate(logger, appVersion); err != nil {
+		logger.Warn("auto-update failed, continuing with current version", "error", err)
+	}
 
 	signalingURL := os.Getenv("SIGNALING_URL")
 	if signalingURL == "" {
