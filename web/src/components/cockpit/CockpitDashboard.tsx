@@ -91,6 +91,7 @@ interface CockpitDashboardProps {
     active?: boolean;
   };
   onSwitchToCommentary?: () => void;
+  onGoHome?: () => void;
 }
 
 export function CockpitDashboard({
@@ -98,6 +99,7 @@ export function CockpitDashboard({
   showSettingsButton,
   remoteAction,
   onSwitchToCommentary,
+  onGoHome,
 }: CockpitDashboardProps) {
   const {
     pitwallState,
@@ -711,6 +713,11 @@ export function CockpitDashboard({
               <strong>{getConnectionLabel(connectionState)}</strong>
               <span>Telemetry feed will populate this cockpit automatically.</span>
             </div>
+            {onGoHome && (
+              <button type="button" className={styles.homeButton} onClick={onGoHome}>
+                Home
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -1131,6 +1131,28 @@
   font-size: 12px;
 }
 
+.homeButton {
+  margin-left: auto;
+  padding: 8px 18px;
+  border: 1px solid rgba(132, 147, 150, 0.22);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-racing);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.homeButton:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 @media (max-width: 1520px) {
   .bottomRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -11,6 +11,7 @@ const MAX_ERS_ENERGY = 4_000_000;
 
 interface CommentaryDashboardProps {
   onSwitchToCockpit: () => void;
+  onGoHome?: () => void;
   remoteAction?: {
     label: string;
     onClick: () => void;
@@ -140,7 +141,7 @@ function useCommentaryAccumulator(drivers: DriverInfo[], session: SessionInfo | 
 
 // ── Main component ──
 
-export function CommentaryDashboard({ onSwitchToCockpit, remoteAction }: CommentaryDashboardProps) {
+export function CommentaryDashboard({ onSwitchToCockpit, onGoHome, remoteAction }: CommentaryDashboardProps) {
   const { pitwallState, connectionState, playbackActive } = useTelemetryStore(
     useShallow((s) => ({
       pitwallState: s.pitwallState,
@@ -211,6 +212,11 @@ export function CommentaryDashboard({ onSwitchToCockpit, remoteAction }: Comment
 
       {/* Utility dock */}
       <div className={styles.utilityDock}>
+        {onGoHome && (
+          <button type="button" className={styles.dockButton} onClick={onGoHome}>
+            Home
+          </button>
+        )}
         <button type="button" className={styles.dockButton} onClick={onSwitchToCockpit}>
           Cockpit
         </button>

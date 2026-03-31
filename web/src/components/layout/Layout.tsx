@@ -67,12 +67,7 @@ function persistRemoteSession(options: RemoteRTCOptions) {
 }
 
 function clearRemoteQuery() {
-  const params = new URLSearchParams(window.location.search);
-  params.delete('remote');
-  params.delete('roomId');
-  params.delete('signalingUrl');
-  const nextQuery = params.toString();
-  window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+  window.history.replaceState(null, '', window.location.pathname);
 }
 
 export function Layout() {
@@ -198,6 +193,7 @@ export function Layout() {
       {dashboardView === 'commentary' && viewCommentary ? (
         <CommentaryDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
+          onGoHome={goToMainScreen}
           remoteAction={remoteAction}
         />
       ) : (
@@ -206,6 +202,7 @@ export function Layout() {
           showSettingsButton={false}
           remoteAction={remoteAction}
           onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
+          onGoHome={goToMainScreen}
         />
       )}
     </div>
