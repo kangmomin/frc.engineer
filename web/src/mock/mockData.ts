@@ -416,6 +416,7 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
       cornerCuttingWarnings: seed.cornerCuts ?? 0,
       numUnservedDriveThroughs: 0,
       numUnservedStopGoPenalties: 0,
+      lapInvalid: false,
       pitStatus: 0,
       driverStatus: 1,
       numPitStops: seed.pitStops,

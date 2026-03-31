@@ -352,6 +352,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.CornerCuttingWarnings = int(ld.CornerCuttingWarnings)
 				d.NumUnservedDriveThroughs = int(ld.NumUnservedDriveThroughs)
 				d.NumUnservedStopGoPenalties = int(ld.NumUnservedStopGoPenalties)
+				d.LapInvalid = ld.CurrentLapInvalid == 1
 			}
 
 			if pm.carStatus != nil {

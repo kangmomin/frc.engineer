@@ -362,6 +362,9 @@ export interface DriverInfo {
   numUnservedDriveThroughs: number;
   numUnservedStopGoPenalties: number;
 
+  // Lap validity
+  lapInvalid: boolean;
+
   // Pit
   pitStatus: number;
   driverStatus: number;

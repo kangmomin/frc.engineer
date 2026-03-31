@@ -141,6 +141,9 @@ type DriverInfo struct {
 	NumUnservedDriveThroughs   int `json:"numUnservedDriveThroughs"`
 	NumUnservedStopGoPenalties int `json:"numUnservedStopGoPenalties"`
 
+	// Lap validity
+	LapInvalid bool `json:"lapInvalid"`
+
 	// Pit
 	PitStatus         int     `json:"pitStatus"`
 	DriverStatus      int     `json:"driverStatus"`

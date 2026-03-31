@@ -55,11 +55,14 @@ function useSectorAccumulator(drivers: DriverInfo[], session: SessionInfo | null
   useEffect(() => {
     if (drivers.length === 0) return;
 
+    // Capture previous snapshots BEFORE the state update — not inside the updater
+    const capturedPrev = prevRef.current;
+
     let changed = false;
     setAccMap((prev) => {
       const next = new Map(prev);
       for (const d of drivers) {
-        const snap = prevRef.current.get(d.index);
+        const snap = capturedPrev.get(d.index);
         let acc = next.get(d.index) ?? { bestS1: 0, bestS2: 0, bestS3: 0 };
         let accChanged = false;
 
@@ -87,6 +90,7 @@ function useSectorAccumulator(drivers: DriverInfo[], session: SessionInfo | null
       return changed ? next : prev;
     });
 
+    // Advance ref AFTER state update, outside the updater
     const nextPrev = new Map<number, PrevSnap>();
     for (const d of drivers) {
       nextPrev.set(d.index, {
@@ -198,14 +202,7 @@ export function QualifyingDashboard({
   }, [accMap]);
 
   // Qualifying state machine
-  const lapInvalid = useTelemetryStore((s) => {
-    const tel = s.pitwallState;
-    if (!tel) return false;
-    // lapInvalid comes from the dashboard telemetry data, not DriverInfo
-    // It's available in the raw telemetry stream
-    return false; // Will be populated when telemetry data includes it
-  });
-  const qualiState = useQualifyingState(player, lapInvalid, isQualifying);
+  const qualiState = useQualifyingState(player, player?.lapInvalid ?? false, isQualifying);
 
   // Track gaps
   const trackGap = useTrackGaps(allDrivers, trackLength, playerIndex);
