@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef } from 'react';
 import type { DriverInfo } from '../types/telemetry';
 
 // ── Types ──
@@ -15,10 +15,10 @@ export interface QualifyingState {
 
 // ── Constants ──
 
-const COMPETITIVE_MARGIN_MS = 2_000;
-const MAX_BACK_TO_BACK_PUSH_LAPS = 2;
+export const COMPETITIVE_MARGIN_MS = 2_000;
+export const MAX_BACK_TO_BACK_PUSH_LAPS = 2;
 
-const INITIAL_STATE: QualifyingState = {
+export const INITIAL_STATE: QualifyingState = {
   phase: 'UNKNOWN',
   attemptNumber: 0,
   consecutivePushLaps: 0,
@@ -28,7 +28,7 @@ const INITIAL_STATE: QualifyingState = {
 
 // ── Snapshot for edge detection ──
 
-interface Frame {
+export interface Frame {
   pitStatus: number;
   currentLapNum: number;
   currentSector: number;
@@ -37,20 +37,20 @@ interface Frame {
   bestLapTime: number;
 }
 
-function extractFrame(driver: DriverInfo): Frame {
+function extractFrame(driver: DriverInfo, lapInvalid: boolean): Frame {
   return {
     pitStatus: driver.pitStatus,
     currentLapNum: driver.currentLapNum,
     currentSector: driver.currentSector,
-    lapInvalid: false, // will be patched from dashboard telemetry
+    lapInvalid,
     lastLapTime: driver.lastLapTime,
     bestLapTime: driver.bestLapTime,
   };
 }
 
-// ── Transition logic ──
+// ── Transition logic (pure functions, exported for testing) ──
 
-function nextStateAfterFlyingLap(state: QualifyingState, frame: Frame): QualifyingPhase {
+export function nextStateAfterFlyingLap(state: QualifyingState, frame: Frame): QualifyingPhase {
   const reference = state.bestValidFlyingLapMs ?? (frame.bestLapTime > 0 ? frame.bestLapTime : null);
 
   // S2 or S3 invalid → COOLDOWN
@@ -76,7 +76,7 @@ function nextStateAfterFlyingLap(state: QualifyingState, frame: Frame): Qualifyi
   return state.consecutivePushLaps < MAX_BACK_TO_BACK_PUSH_LAPS ? 'FLYING' : 'COOLDOWN';
 }
 
-function processFrame(
+export function processFrame(
   prev: Frame | null,
   curr: Frame,
   state: QualifyingState,
@@ -95,7 +95,6 @@ function processFrame(
   const isPitting = curr.pitStatus !== 0;
 
   if (!wasPitting && isPitting) {
-    // Entered pit
     next.phase = 'PIT';
     next.consecutivePushLaps = 0;
     next.invalidatedAtSector = null;
@@ -103,7 +102,6 @@ function processFrame(
   }
 
   if (wasPitting && !isPitting) {
-    // Exited pit → OUT lap
     next.phase = 'OUT';
     next.attemptNumber += 1;
     next.consecutivePushLaps = 0;
@@ -111,7 +109,6 @@ function processFrame(
     return next;
   }
 
-  // If in pit, stay in pit
   if (isPitting) {
     if (next.phase !== 'PIT' && next.phase !== 'GARAGE') {
       next.phase = 'PIT';
@@ -160,7 +157,6 @@ function processFrame(
         break;
 
       case 'UNKNOWN':
-        // Bootstrap: first lap boundary — assume OUT→FLYING
         next.phase = 'FLYING';
         next.consecutivePushLaps = 1;
         next.attemptNumber = 1;
@@ -174,6 +170,21 @@ function processFrame(
   return next;
 }
 
+// ── Reducer ──
+
+type Action =
+  | { type: 'TICK'; prev: Frame | null; curr: Frame }
+  | { type: 'RESET' };
+
+function reducer(state: QualifyingState, action: Action): QualifyingState {
+  switch (action.type) {
+    case 'TICK':
+      return processFrame(action.prev, action.curr, state);
+    case 'RESET':
+      return INITIAL_STATE;
+  }
+}
+
 // ── Hook ──
 
 export function useQualifyingState(
@@ -181,23 +192,24 @@ export function useQualifyingState(
   lapInvalid: boolean,
   isQualifying: boolean,
 ): QualifyingState {
-  const [state, setState] = useState<QualifyingState>(INITIAL_STATE);
+  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   const prevFrameRef = useRef<Frame | null>(null);
 
   useEffect(() => {
     if (!isQualifying || !driver) {
       prevFrameRef.current = null;
-      setState(INITIAL_STATE);
+      dispatch({ type: 'RESET' });
       return;
     }
 
-    const curr: Frame = { ...extractFrame(driver), lapInvalid };
+    const curr = extractFrame(driver, lapInvalid);
+    const prev = prevFrameRef.current;
 
-    setState((prev) => {
-      const next = processFrame(prevFrameRef.current, curr, prev);
-      prevFrameRef.current = curr;
-      return next;
-    });
+    // Dispatch with captured prev — ref is NOT mutated inside reducer
+    dispatch({ type: 'TICK', prev, curr });
+
+    // Advance ref AFTER dispatch, outside the reducer
+    prevFrameRef.current = curr;
   }, [driver, lapInvalid, isQualifying]);
 
   return state;
