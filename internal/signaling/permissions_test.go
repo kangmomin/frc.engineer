@@ -14,6 +14,7 @@ func TestPermissionCodeStorePersistsNormalizedCodes(t *testing.T) {
 	}
 
 	entry, err := store.Upsert("  vip-1  ", "VIP", Permissions{
+		ViewERSEstimate:      true,
 		ViewERSActual:        true,
 		ViewAdvancedStrategy: false,
 		ViewPitStatus:        true,
@@ -40,7 +41,7 @@ func TestPermissionCodeStorePersistsNormalizedCodes(t *testing.T) {
 	if !ok {
 		t.Fatal("expected reloaded store to resolve normalized code")
 	}
-	if !permissions.ViewERSActual || permissions.ViewAdvancedStrategy || !permissions.ViewPitStatus || !permissions.ViewTopSpeed || permissions.ViewPlayerDelta || !permissions.ViewCommentary || permissions.ViewQualifying {
+	if !permissions.ViewERSEstimate || !permissions.ViewERSActual || permissions.ViewAdvancedStrategy || !permissions.ViewPitStatus || !permissions.ViewTopSpeed || permissions.ViewPlayerDelta || !permissions.ViewCommentary || permissions.ViewQualifying {
 		t.Fatalf("unexpected permissions: %#v", permissions)
 	}
 }

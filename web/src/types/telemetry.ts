@@ -38,6 +38,7 @@ export interface TelemetryData {
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export interface FeaturePermissions {
+  viewERSEstimate: boolean;
   viewERSActual: boolean;
   viewAdvancedStrategy: boolean;
   viewPitStatus: boolean;
@@ -255,6 +256,7 @@ export interface PitwallState {
   positions: CarPosition[];
   playerIndex: number;
   trackMap?: TrackMapData;
+  ersEstimateEnabled: boolean;
   ersComparisonEnabled: boolean;
 }
 

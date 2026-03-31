@@ -56,6 +56,7 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
     code: '',
     label: '',
     permissions: {
+      viewERSEstimate: false,
       viewERSActual: false,
       viewAdvancedStrategy: false,
       viewPitStatus: false,
@@ -603,7 +604,8 @@ export function RemoteConnect({
                             <span>{entry.code}</span>
                           </div>
                           <div className={styles.permissionCardMeta}>
-                            <span>{entry.permissions.viewERSActual ? 'ERS ACTUAL' : 'ERS MASKED'}</span>
+                            <span>{entry.permissions.viewERSEstimate ? 'ERS EST' : 'ERS EST HIDDEN'}</span>
+                            <span>{entry.permissions.viewERSActual ? 'ERS ACT' : 'ERS ACT HIDDEN'}</span>
                             <span>{entry.permissions.viewPitStatus ? 'PIT VISIBLE' : 'PIT HIDDEN'}</span>
                             <span>{entry.permissions.viewTopSpeed ? 'VMAX VISIBLE' : 'VMAX HIDDEN'}</span>
                             <span>{entry.permissions.viewPlayerDelta ? 'YOU DELTA' : 'LEADER GAP'}</span>
@@ -651,6 +653,16 @@ export function RemoteConnect({
                         disabled={permissionSaving}
                       />
 
+                      <label className={styles.permissionToggle}>
+                        <span>ERS Estimate</span>
+                        <input
+                          className={styles.toggle}
+                          type="checkbox"
+                          checked={permissionDraft.permissions.viewERSEstimate}
+                          onChange={(e) => updatePermissionFlag('viewERSEstimate', e.target.checked)}
+                          disabled={permissionSaving}
+                        />
+                      </label>
                       <label className={styles.permissionToggle}>
                         <span>ERS Actual</span>
                         <input

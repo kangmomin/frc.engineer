@@ -12,12 +12,15 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	message, err := json.Marshal(dto.WSResponse{
 		Type: dto.MessageTypePitwallState,
 		Data: dto.PitwallState{
+			ERSEstimateEnabled:   true,
 			ERSComparisonEnabled: true,
 			Drivers: []dto.DriverInfo{
 				{
-					Index:          1,
-					ERSActualPct:   38,
-					ERSActualReady: true,
+					Index:            1,
+					ERSEstimatePct:   45,
+					ERSEstimateReady: true,
+					ERSActualPct:     38,
+					ERSActualReady:   true,
 					PitStatus:      2,
 					PitStopTimer:   4.2,
 					PitLaneTime:    18234,
@@ -37,6 +40,7 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	}
 
 	privileged := decodePitwallState(t, variants.resolve(signaling.Permissions{
+		ViewERSEstimate: true,
 		ViewERSActual:   true,
 		ViewPitStatus:   true,
 		ViewTopSpeed:    true,
@@ -60,6 +64,9 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	restricted := decodePitwallState(t, variants.resolve(signaling.Permissions{}))
 	if restricted.ERSComparisonEnabled {
 		t.Fatal("expected ERS comparison to be disabled")
+	}
+	if restricted.Drivers[0].ERSEstimatePct != 0 || restricted.Drivers[0].ERSEstimateReady {
+		t.Fatalf("expected ERS estimate data to be masked, got %#v", restricted.Drivers[0])
 	}
 	if restricted.Drivers[0].ERSActualPct != 0 || restricted.Drivers[0].ERSActualReady {
 		t.Fatalf("expected ERS actual data to be masked, got %#v", restricted.Drivers[0])

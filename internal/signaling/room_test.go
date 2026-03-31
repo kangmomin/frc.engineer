@@ -51,7 +51,7 @@ func TestRoomManagerListAndPasswordJoin(t *testing.T) {
 	if peerID == "" || joinedCode != roomCode {
 		t.Fatalf("unexpected join result: peer=%q code=%q", peerID, joinedCode)
 	}
-	if permissions.ViewERSActual || permissions.ViewAdvancedStrategy || permissions.ViewPitStatus || permissions.ViewTopSpeed || permissions.ViewPlayerDelta || permissions.ViewCommentary || permissions.ViewQualifying {
+	if permissions.ViewERSEstimate || permissions.ViewERSActual || permissions.ViewAdvancedStrategy || permissions.ViewPitStatus || permissions.ViewTopSpeed || permissions.ViewPlayerDelta || permissions.ViewCommentary || permissions.ViewQualifying {
 		t.Fatalf("expected empty permissions, got %#v", permissions)
 	}
 }
@@ -126,6 +126,7 @@ func TestRoomManagerJoinWithPermissionCode(t *testing.T) {
 		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
 	}
 	if _, err := store.Upsert("TEAM42", "Full access", Permissions{
+		ViewERSEstimate:      true,
 		ViewERSActual:        true,
 		ViewAdvancedStrategy: true,
 		ViewPitStatus:        true,
@@ -149,7 +150,7 @@ func TestRoomManagerJoinWithPermissionCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("JoinRoom failed: %v", err)
 	}
-	if !permissions.ViewERSActual || !permissions.ViewAdvancedStrategy || !permissions.ViewPitStatus || !permissions.ViewTopSpeed || !permissions.ViewPlayerDelta || !permissions.ViewCommentary || !permissions.ViewQualifying {
+	if !permissions.ViewERSEstimate || !permissions.ViewERSActual || !permissions.ViewAdvancedStrategy || !permissions.ViewPitStatus || !permissions.ViewTopSpeed || !permissions.ViewPlayerDelta || !permissions.ViewCommentary || !permissions.ViewQualifying {
 		t.Fatalf("expected full permissions, got %#v", permissions)
 	}
 

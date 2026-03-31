@@ -258,6 +258,7 @@ export function buildMockFrame(tick: number): {
     positions: buildPositions(driverFrames),
     playerIndex: PLAYER_INDEX,
     trackMap: TRACK_MAP,
+    ersEstimateEnabled: true,
     ersComparisonEnabled: true,
   };
 

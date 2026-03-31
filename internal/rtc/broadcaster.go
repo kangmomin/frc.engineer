@@ -41,6 +41,9 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	}
 
 	key := "base"
+	if permissions.ViewERSEstimate {
+		key += "|ers-est"
+	}
 	if permissions.ViewERSActual {
 		key += "|ers"
 	}
@@ -64,9 +67,15 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	}
 
 	state := v.state
-	state.ERSComparisonEnabled = permissions.ViewERSActual && hasERSActualData(state.Drivers)
+	state.ERSEstimateEnabled = permissions.ViewERSEstimate
+	state.ERSComparisonEnabled = permissions.ViewERSEstimate && permissions.ViewERSActual && hasERSActualData(state.Drivers)
 	for i := range state.Drivers {
-		if !permissions.ViewERSActual {
+		if !permissions.ViewERSEstimate {
+			state.Drivers[i].ERSEstimatePct = 0
+			state.Drivers[i].ERSEstimateReady = false
+			state.Drivers[i].ERSActualPct = 0
+			state.Drivers[i].ERSActualReady = false
+		} else if !permissions.ViewERSActual {
 			state.Drivers[i].ERSActualPct = 0
 			state.Drivers[i].ERSActualReady = false
 		}
