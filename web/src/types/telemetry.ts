@@ -255,6 +255,7 @@ export interface PitwallState {
   positions: CarPosition[];
   playerIndex: number;
   trackMap?: TrackMapData;
+  ersEstimateEnabled: boolean;
   ersComparisonEnabled: boolean;
 }
 

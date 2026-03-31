@@ -204,6 +204,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 
 	state := &dto.PitwallState{
 		PlayerIndex:          int(pm.playerIndex),
+		ERSEstimateEnabled:   true, // broadcaster filters per-peer via ViewERSEstimate
 		ERSComparisonEnabled: pm.ersCompareEnabled,
 	}
 

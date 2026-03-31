@@ -56,7 +56,6 @@ func main() {
 	if settingsPort == "" {
 		settingsPort = "8099"
 	}
-	comparePassword := os.Getenv("ERS_COMPARE_PASSWORD")
 	roomName := strings.TrimSpace(os.Getenv("SENDER_ROOM_NAME"))
 	if roomName == "" {
 		if host, err := os.Hostname(); err == nil && strings.TrimSpace(host) != "" {
@@ -100,11 +99,6 @@ func main() {
 
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
-	compareGate, err := newERSCompareGate(comparePassword)
-	if err != nil {
-		logger.Error("failed to initialize ERS compare gate", "error", err)
-		os.Exit(1)
-	}
 	compareMonitor := newERSCompareMonitor("logs/ers_compare", logger)
 	processor.SetPitwallStateObserver(compareMonitor.Observe)
 
@@ -239,7 +233,6 @@ func main() {
 			"connectedEngineers": peerManager.ConnectedCount(),
 			"udpPort":            port,
 			"saveFiles":          sf,
-			"ersCompareEnabled":  compareGate.Enabled(),
 			"ersCompareMetrics":  compareMonitor.Snapshot(),
 			"currentTrack":       getCurrentTrack(trackState, trackStore),
 		})
@@ -406,52 +399,56 @@ func main() {
 		})
 	})
 
-	mux.HandleFunc("POST /api/ers-compare/unlock", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Password string `json:"password"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
-			return
-		}
-		if !compareGate.Enable(body.Password) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "invalid compare password"})
-			return
-		}
-		processor.PitwallManager().SetERSComparisonEnabled(true)
+
+	mux.HandleFunc("GET /api/debug", func(w http.ResponseWriter, r *http.Request) {
+		state := processor.PitwallManager().BuildState()
+		stateJSON, _ := json.Marshal(state)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"enabled": true})
+		json.NewEncoder(w).Encode(map[string]any{
+			"version":            appVersion,
+			"connectedEngineers": peerManager.ConnectedCount(),
+			"roomCode":           peerManager.RoomCode(),
+			"pitwallStateBytes":  len(stateJSON),
+			"pitwallState":       json.RawMessage(stateJSON),
+		})
 	})
 
-	mux.HandleFunc("POST /api/ers-compare/lock", func(w http.ResponseWriter, r *http.Request) {
-		compareGate.Disable()
-		compareMonitor.Reset()
-		processor.PitwallManager().SetERSComparisonEnabled(false)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
-	})
-
-	settingsSrv := &http.Server{Addr: ":" + settingsPort, Handler: mux}
+	// Try settingsPort, then auto-increment up to 10 times on conflict
+	actualSettingsPort := settingsPort
+	settingsSrv := &http.Server{Handler: mux}
 	go func() {
-		logger.Info("settings server starting", "port", settingsPort)
-		if err := settingsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("settings server failed", "error", err)
+		basePort := 0
+		fmt.Sscanf(settingsPort, "%d", &basePort)
+		if basePort == 0 {
+			basePort = 8099
 		}
+		for attempt := range 10 {
+			port := basePort + attempt
+			actualSettingsPort = fmt.Sprintf("%d", port)
+			settingsSrv.Addr = ":" + actualSettingsPort
+			logger.Info("settings server starting", "port", actualSettingsPort)
+			err := settingsSrv.ListenAndServe()
+			if err != nil && err != http.ErrServerClosed {
+				logger.Warn("settings server port in use, trying next", "port", port, "error", err)
+				continue
+			}
+			return
+		}
+		logger.Error("settings server failed after 10 port attempts")
 	}()
 
 	logger.Info("sender started",
 		"udpPort", udpPort,
 		"roomName", cfgRoomName,
 		"roomCode", peerManager.RoomCode(),
-		"settingsURL", fmt.Sprintf("http://localhost:%s", settingsPort),
+		"settingsPort", settingsPort,
 	)
 
+	// Give settings server a moment to bind so actualSettingsPort is set
+	time.Sleep(200 * time.Millisecond)
+
 	// System tray: blocks until user clicks Quit
-	settingsURL := fmt.Sprintf("http://localhost:%s", settingsPort)
+	settingsURL := fmt.Sprintf("http://localhost:%s", actualSettingsPort)
 	runTray(settingsURL, func() {
 		cancel()
 		forwarder.Close()

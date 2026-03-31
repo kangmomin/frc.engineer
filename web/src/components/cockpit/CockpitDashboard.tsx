@@ -134,7 +134,8 @@ export function CockpitDashboard({
 
   const session = pitwallState?.session ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
-  const ersComparisonEnabled = (pitwallState?.ersComparisonEnabled ?? false) && featurePermissions.viewERSActual;
+  const ersEstimateVisible = pitwallState?.ersEstimateEnabled ?? false;
+  const ersComparisonEnabled = ersEstimateVisible && (pitwallState?.ersComparisonEnabled ?? false) && featurePermissions.viewERSActual;
   const pitStatusVisible = featurePermissions.viewPitStatus;
   const topSpeedVisible = featurePermissions.viewTopSpeed;
   const playerDeltaVisible = featurePermissions.viewPlayerDelta;
@@ -381,7 +382,7 @@ export function CockpitDashboard({
               <span>Driver</span>
               <span>DRS</span>
               <span>{pitStatusVisible ? 'Pit' : 'Pit Locked'}</span>
-              <span>{ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.'}</span>
+              <span>{ersEstimateVisible ? (ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.') : ''}</span>
               <span>{topSpeedVisible ? 'Vmax' : 'Vmax Locked'}</span>
               <span>{playerDeltaVisible ? 'To You' : 'Gap'}</span>
               <span>Interval</span>
@@ -431,11 +432,15 @@ export function CockpitDashboard({
                       </span>
                     </span>
                     <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
-                      <span className={styles[getErsEstimateTone(driver)]}>{formatErsEstimate(driver)}</span>
-                      {ersComparisonEnabled && (
-                        <span className={styles.ersCompareMeta}>
-                          {formatErsCompare(driver)}
-                        </span>
+                      {ersEstimateVisible && (
+                        <>
+                          <span className={styles[getErsEstimateTone(driver)]}>{formatErsEstimate(driver)}</span>
+                          {ersComparisonEnabled && (
+                            <span className={styles.ersCompareMeta}>
+                              {formatErsCompare(driver)}
+                            </span>
+                          )}
+                        </>
                       )}
                     </span>
                     <span className={styles.topSpeedCell}>

@@ -64,8 +64,19 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	}
 
 	state := v.state
+	// Deep copy Drivers slice to avoid mutating the shared original
+	if len(state.Drivers) > 0 {
+		copied := make([]dto.DriverInfo, len(state.Drivers))
+		copy(copied, state.Drivers)
+		state.Drivers = copied
+	}
 	state.ERSComparisonEnabled = permissions.ViewERSActual && hasERSActualData(state.Drivers)
+	state.ERSEstimateEnabled = permissions.ViewERSEstimate
 	for i := range state.Drivers {
+		if !permissions.ViewERSEstimate {
+			state.Drivers[i].ERSEstimatePct = 0
+			state.Drivers[i].ERSEstimateReady = false
+		}
 		if !permissions.ViewERSActual {
 			state.Drivers[i].ERSActualPct = 0
 			state.Drivers[i].ERSActualReady = false
