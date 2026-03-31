@@ -194,7 +194,6 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 
 	state := &dto.PitwallState{
 		PlayerIndex:          int(pm.playerIndex),
-		ERSEstimateEnabled:   true,
 		ERSComparisonEnabled: pm.ersCompareEnabled,
 	}
 

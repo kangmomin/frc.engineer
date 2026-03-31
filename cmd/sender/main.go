@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,7 +23,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.6.4"
+var appVersion = "v3.6.5"
 
 func main() {
 	// Log to file so the cmd banner stays clean
@@ -57,6 +56,7 @@ func main() {
 	if settingsPort == "" {
 		settingsPort = "8099"
 	}
+	comparePassword := os.Getenv("ERS_COMPARE_PASSWORD")
 	roomName := strings.TrimSpace(os.Getenv("SENDER_ROOM_NAME"))
 	if roomName == "" {
 		if host, err := os.Hostname(); err == nil && strings.TrimSpace(host) != "" {
@@ -75,10 +75,10 @@ func main() {
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
 	trackRecording := saveFiles // default: follow saveFiles for backward compat
 
-	// Create UDP listener (game sends to a fixed port, so no auto-increment)
+	// Create UDP listener & parser
 	udpListener, err := udp.NewListener(udpPort, 2048, logger)
 	if err != nil {
-		logger.Error("failed to create UDP listener", "error", err, "port", udpPort)
+		logger.Error("failed to create UDP listener", "error", err)
 		os.Exit(1)
 	}
 	parser := udp.NewParser(logger)
@@ -100,6 +100,11 @@ func main() {
 
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
+	compareGate, err := newERSCompareGate(comparePassword)
+	if err != nil {
+		logger.Error("failed to initialize ERS compare gate", "error", err)
+		os.Exit(1)
+	}
 	compareMonitor := newERSCompareMonitor("logs/ers_compare", logger)
 	processor.SetPitwallStateObserver(compareMonitor.Observe)
 
@@ -108,7 +113,7 @@ func main() {
 	recorder.SetEnabled(trackRecording)
 	processor.PitwallManager().SetRecorder(recorder)
 	processor.PitwallManager().SetERSActualEnabled(true)
-	processor.PitwallManager().SetERSComparisonEnabled(true)
+	processor.PitwallManager().SetERSComparisonEnabled(false)
 	trackState := senderProcessorTrackState{processor: processor}
 
 	// Runtime config state protected by mutex
@@ -231,6 +236,7 @@ func main() {
 			"connectedEngineers": peerManager.ConnectedCount(),
 			"udpPort":            port,
 			"saveFiles":          sf,
+			"ersCompareEnabled":  compareGate.Enabled(),
 			"ersCompareMetrics":  compareMonitor.Snapshot(),
 			"currentTrack":       getCurrentTrack(trackState, trackStore),
 		})
@@ -397,49 +403,39 @@ func main() {
 		})
 	})
 
-	mux.HandleFunc("GET /api/debug", func(w http.ResponseWriter, r *http.Request) {
-		state := processor.PitwallManager().BuildState()
-		peers := peerManager.DebugPeers()
-
-		driverCount := 0
-		if state != nil {
-			driverCount = len(state.Drivers)
+	mux.HandleFunc("POST /api/ers-compare/unlock", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Password string `json:"password"`
 		}
-
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+			return
+		}
+		if !compareGate.Enable(body.Password) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid compare password"})
+			return
+		}
+		processor.PitwallManager().SetERSComparisonEnabled(true)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"hasData":        processor.PitwallManager().HasData(),
-			"driverCount":    driverCount,
-			"connectedPeers": peers,
-			"pitwallState":   state,
-		})
+		json.NewEncoder(w).Encode(map[string]any{"enabled": true})
 	})
 
-	// Bind settings HTTP port (auto-increment on conflict)
-	var settingsLn net.Listener
-	settingsPortNum := 0
-	fmt.Sscanf(settingsPort, "%d", &settingsPortNum)
-	if settingsPortNum == 0 {
-		settingsPortNum = 8099
-	}
-	for attempt := 0; attempt < 100; attempt++ {
-		settingsLn, err = net.Listen("tcp", fmt.Sprintf(":%d", settingsPortNum))
-		if err == nil {
-			break
-		}
-		logger.Warn("settings port in use, trying next", "port", settingsPortNum, "error", err)
-		settingsPortNum++
-	}
-	if settingsLn == nil {
-		logger.Error("failed to bind settings port after 100 attempts", "startPort", settingsPortNum-100)
-		os.Exit(1)
-	}
-	settingsPort = fmt.Sprintf("%d", settingsPortNum)
+	mux.HandleFunc("POST /api/ers-compare/lock", func(w http.ResponseWriter, r *http.Request) {
+		compareGate.Disable()
+		compareMonitor.Reset()
+		processor.PitwallManager().SetERSComparisonEnabled(false)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"enabled": false})
+	})
 
-	settingsSrv := &http.Server{Handler: mux}
+	settingsSrv := &http.Server{Addr: ":" + settingsPort, Handler: mux}
 	go func() {
 		logger.Info("settings server starting", "port", settingsPort)
-		if err := settingsSrv.Serve(settingsLn); err != nil && err != http.ErrServerClosed {
+		if err := settingsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("settings server failed", "error", err)
 		}
 	}()
