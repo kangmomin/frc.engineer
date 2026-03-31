@@ -95,10 +95,10 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Create UDP listener
+	// Create UDP listener (game sends to a fixed port, so no auto-increment)
 	udpListener, err := udp.NewListener(cfg.UDPPort, cfg.UDPBufferSize, logger)
 	if err != nil {
-		logger.Error("failed to create UDP listener", "error", err)
+		logger.Error("failed to create UDP listener", "error", err, "port", cfg.UDPPort)
 		os.Exit(1)
 	}
 
@@ -588,6 +588,21 @@ func main() {
 		}
 	}
 
+	// Bind HTTP port (auto-increment on conflict)
+	var httpLn net.Listener
+	for attempt := 0; attempt < 100; attempt++ {
+		httpLn, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.WSPort))
+		if err == nil {
+			break
+		}
+		logger.Warn("HTTP port in use, trying next", "port", cfg.WSPort, "error", err)
+		cfg.WSPort++
+	}
+	if httpLn == nil {
+		logger.Error("failed to bind HTTP port after 100 attempts", "startPort", cfg.WSPort-100)
+		os.Exit(1)
+	}
+
 	server = newHTTPServer(cfg.WSPort)
 
 	restartHTTPServer = func(port int) {
@@ -610,7 +625,7 @@ func main() {
 	// Start HTTP server
 	go func() {
 		logger.Info("HTTP server started", "addr", server.Addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.Serve(httpLn); err != nil && err != http.ErrServerClosed {
 			logger.Error("HTTP server error", "error", err)
 		}
 	}()

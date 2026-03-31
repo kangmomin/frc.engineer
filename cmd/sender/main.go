@@ -75,18 +75,10 @@ func main() {
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
 	trackRecording := saveFiles // default: follow saveFiles for backward compat
 
-	// Create UDP listener & parser (auto-increment port on conflict)
-	var udpListener *udp.Listener
-	for attempt := 0; attempt < 100; attempt++ {
-		udpListener, err = udp.NewListener(udpPort, 2048, logger)
-		if err == nil {
-			break
-		}
-		logger.Warn("UDP port in use, trying next", "port", udpPort, "error", err)
-		udpPort++
-	}
-	if udpListener == nil {
-		logger.Error("failed to create UDP listener after 100 attempts", "startPort", udpPort-100)
+	// Create UDP listener (game sends to a fixed port, so no auto-increment)
+	udpListener, err := udp.NewListener(udpPort, 2048, logger)
+	if err != nil {
+		logger.Error("failed to create UDP listener", "error", err, "port", udpPort)
 		os.Exit(1)
 	}
 	parser := udp.NewParser(logger)
