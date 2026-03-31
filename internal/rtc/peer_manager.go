@@ -526,7 +526,10 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 		},
 	}
 
-	pc, err := webrtc.NewPeerConnection(config)
+	se := webrtc.SettingEngine{}
+	se.SetSCTPMaxReceiveBufferSize(4 * 1024 * 1024) // 4MB
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
+	pc, err := api.NewPeerConnection(config)
 	if err != nil {
 		pm.logger.Error("failed to create peer connection", "peerId", peerID, "error", err)
 		return
