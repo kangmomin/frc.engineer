@@ -335,6 +335,8 @@ export function SettingsView() {
     }
   }
 
+  const [guideOpen, setGuideOpen] = useState(false);
+
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
 
   return (
@@ -470,6 +472,85 @@ export function SettingsView() {
             : 'Relative: shows additional wear over N laps (ex: +15%).'}
         </span>
       </div>
+
+      <div className={styles.section}>
+        <h3 className={styles.sectionTitle}>Leaderboard Guide</h3>
+        <span className={styles.hint}>
+          Learn what each column on the race leaderboard means.
+        </span>
+        <button type="button" className={styles.btn} onClick={() => setGuideOpen(true)} style={{ marginTop: 10 }}>
+          Open Guide
+        </button>
+      </div>
+
+      {guideOpen && (
+        <div className={styles.guideOverlay} onClick={() => setGuideOpen(false)}>
+          <div className={styles.guideModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.guideHeader}>
+              <h3 className={styles.sectionTitle} style={{ marginBottom: 0, paddingBottom: 0, borderBottom: 'none' }}>
+                Leaderboard Column Guide
+              </h3>
+              <button type="button" className={styles.btn} onClick={() => setGuideOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className={styles.guideBody}>
+              <div className={styles.guideEntry}>
+                <strong>Pos</strong>
+                <span>Current race position (01, 02, ...).</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Driver</strong>
+                <span>Driver name abbreviation, team color stripe, and team name. "YOU" marks your car, "TEAM" marks your teammate.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>DRS</strong>
+                <span>DRS (Drag Reduction System) activation status. Lights up when DRS is currently open.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Pit</strong>
+                <span>Pit lane status. Shows "IN" when the car is in the pit lane, "PIT" when actively pitting, and the pit stop duration in seconds. Requires Pit Status permission.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>ERS Est.</strong>
+                <span>Estimated ERS (Energy Recovery System) battery level as a percentage. Uses a predictive model based on track position and driving style. Requires ERS Estimate permission.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>ERS Est/Act</strong>
+                <span>When ERS comparison is enabled, shows both the estimated and actual ERS percentage with delta. "A38%" = actual 38%, delta shows estimate vs actual difference.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Vmax</strong>
+                <span>Top speed recorded at the speed trap during the session (km/h). Requires Top Speed permission.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>To You / Gap</strong>
+                <span>With Player Delta permission: time gap to your car (negative = ahead of you). Without permission: gap to race leader.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Interval</strong>
+                <span>Time gap to the car directly ahead in the race. The leader shows no interval.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Sector {"\u0394"}</strong>
+                <span>Current lap sector time compared to the session best. Green = best, yellow = close, red = slow. Shows S1, S2, S3 as each sector is completed.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Last Lap</strong>
+                <span>Last completed lap time in minutes:seconds.milliseconds format.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Pen</strong>
+                <span>Active penalties and warnings. Shows penalty count, warning count, corner cutting warnings, and unserved drive-throughs or stop-go penalties.</span>
+              </div>
+              <div className={styles.guideEntry}>
+                <strong>Tyre Age</strong>
+                <span>Current tire compound (S=Soft, M=Medium, H=Hard, I=Inter, W=Wet) with a color dot, and the number of laps on the current set.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={styles.section}>
         <h3 className={styles.sectionTitle}>Remote Permission Codes</h3>

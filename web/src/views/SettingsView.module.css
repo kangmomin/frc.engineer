@@ -355,6 +355,77 @@
   text-align: center;
 }
 
+.guideOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.guideModal {
+  width: min(560px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    linear-gradient(180deg, rgba(42, 42, 43, 0.96), rgba(22, 22, 23, 0.98)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.015) 0,
+      rgba(255, 255, 255, 0.015) 2px,
+      transparent 2px,
+      transparent 7px
+    );
+  border: 1px solid rgba(132, 147, 150, 0.2);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+.guideHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(132, 147, 150, 0.12);
+}
+
+.guideBody {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+}
+
+.guideEntry {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(132, 147, 150, 0.08);
+}
+
+.guideEntry:last-child {
+  border-bottom: none;
+}
+
+.guideEntry strong {
+  color: var(--accent);
+  font-family: var(--font-racing);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.guideEntry span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 @media (max-width: 720px) {
   .settings {
     padding: 16px;
