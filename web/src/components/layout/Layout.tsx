@@ -88,6 +88,9 @@ export function Layout() {
   const connectionState = useTelemetryStore((state) => state.connectionState);
   const viewCommentary = useTelemetryStore((state) => state.featurePermissions.viewCommentary);
   const viewQualifying = useTelemetryStore((state) => state.featurePermissions.viewQualifying);
+  const sessionType = useTelemetryStore((state) => state.pitwallState?.session?.sessionType ?? '');
+  const isQualiSession = /^Q[1-3]$/i.test(sessionType);
+  const showQualifying = viewQualifying && isQualiSession;
 
   const [dashboardView, setDashboardView] = useState<DashboardView>(readInitialView);
 
@@ -195,7 +198,7 @@ export function Layout() {
 
   return (
     <div className={styles.shell}>
-      {dashboardView === 'qualifying' && viewQualifying ? (
+      {dashboardView === 'qualifying' && showQualifying ? (
         <QualifyingDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
           onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
@@ -205,7 +208,7 @@ export function Layout() {
       ) : dashboardView === 'commentary' && viewCommentary ? (
         <CommentaryDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
-          onSwitchToQualifying={viewQualifying ? () => switchView('qualifying') : undefined}
+          onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
           onGoHome={goToMainScreen}
           remoteAction={remoteAction}
         />
@@ -215,7 +218,7 @@ export function Layout() {
           showSettingsButton={false}
           remoteAction={remoteAction}
           onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
-          onSwitchToQualifying={viewQualifying ? () => switchView('qualifying') : undefined}
+          onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
           onGoHome={goToMainScreen}
         />
       )}
