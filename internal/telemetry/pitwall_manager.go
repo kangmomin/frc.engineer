@@ -36,8 +36,10 @@ type PitwallManager struct {
 	recorder          *TrackRecorder
 	dynamicsAnalyzer  *DynamicsAnalyzer
 	ersEstimator      *ERSEstimator
-	ersActualEnabled  bool
-	ersCompareEnabled bool
+	ersActualEnabled   bool
+	ersCompareEnabled  bool
+	trackMapSendCount  int  // remaining broadcasts to include trackMap
+	lastTrackID        int8 // last track ID for change detection
 }
 
 // NewPitwallManager creates a new PitwallManager
@@ -69,6 +71,14 @@ func (pm *PitwallManager) SetERSComparisonEnabled(enabled bool) {
 func (pm *PitwallManager) SetERSActualEnabled(enabled bool) {
 	pm.mu.Lock()
 	pm.ersActualEnabled = enabled
+	pm.mu.Unlock()
+}
+
+// ResendTrackMap forces trackMap to be included in the next few broadcasts.
+// Call this when a new peer connects so they receive the track outline.
+func (pm *PitwallManager) ResendTrackMap() {
+	pm.mu.Lock()
+	pm.trackMapSendCount = 8
 	pm.mu.Unlock()
 }
 
@@ -268,24 +278,32 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 		state.Session = si
 	}
 
-	// Track map from pre-loaded CSV data
+	// Track map from pre-loaded CSV data (included for first 8 broadcasts per track change)
 	if pm.session != nil && pm.trackStore != nil {
-		if td := pm.trackStore.Get(pm.session.TrackID); td != nil {
-			state.TrackMap = &dto.TrackMapDTO{
-				Points: make([]dto.TrackPointDTO, len(td.Points)),
-				MinX:   td.MinX,
-				MaxX:   td.MaxX,
-				MinZ:   td.MinZ,
-				MaxZ:   td.MaxZ,
-			}
-			for i, p := range td.Points {
-				state.TrackMap.Points[i] = dto.TrackPointDTO{
-					X:      p.X,
-					Z:      p.Z,
-					Sector: p.Sector,
-					DRS:    p.DRS,
+		currentTrackID := pm.session.TrackID
+		if int8(currentTrackID) != pm.lastTrackID {
+			pm.lastTrackID = int8(currentTrackID)
+			pm.trackMapSendCount = 8 // ~2 seconds at 4Hz
+		}
+		if pm.trackMapSendCount > 0 {
+			if td := pm.trackStore.Get(currentTrackID); td != nil {
+				state.TrackMap = &dto.TrackMapDTO{
+					Points: make([]dto.TrackPointDTO, len(td.Points)),
+					MinX:   td.MinX,
+					MaxX:   td.MaxX,
+					MinZ:   td.MinZ,
+					MaxZ:   td.MaxZ,
+				}
+				for i, p := range td.Points {
+					state.TrackMap.Points[i] = dto.TrackPointDTO{
+						X:      p.X,
+						Z:      p.Z,
+						Sector: p.Sector,
+						DRS:    p.DRS,
+					}
 				}
 			}
+			pm.trackMapSendCount--
 		}
 	}
 

@@ -23,7 +23,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.6.7-test2"
+var appVersion = "v3.6.7-test3"
 
 func main() {
 	// Log to file so the cmd banner stays clean
@@ -136,6 +136,9 @@ func main() {
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
 	peerManager.SetCountChangeHandler(func(count int) {
 		logger.Info("peer count changed", "connectedEngineers", count)
+		if count > 0 {
+			processor.PitwallManager().ResendTrackMap()
+		}
 	})
 
 	peerManager.SetRequestHandler(func(peerID string, msg []byte) []byte {
