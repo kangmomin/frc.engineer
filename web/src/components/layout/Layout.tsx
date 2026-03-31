@@ -111,7 +111,7 @@ export function Layout() {
   useMockTelemetry(false);
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
-  const { connectionState: rtcConnectionState } = useWebRTCDataChannel(webrtcOpts);
+  const { connectionState: rtcConnectionState, lastError: rtcLastError } = useWebRTCDataChannel(webrtcOpts);
 
   const handleRemoteConnect = useCallback((
     signalingUrl: string,
@@ -177,7 +177,7 @@ export function Layout() {
         onCancel={goToMainScreen}
         cancelLabel="Main Screen"
         title="P2P Telemetry Link"
-        subtitle="Connection dropped. Pick the room again and retry."
+        subtitle={rtcLastError || 'Connection dropped. Pick the room again and retry.'}
         initialSignalingUrl={rtcOptions.signalingUrl}
         initialRoomId={rtcOptions.roomId}
         initialPassword={rtcOptions.password}

@@ -13,6 +13,7 @@ interface UseWebRTCOptions {
 interface UseWebRTCReturn {
   disconnect: () => void;
   connectionState: RTCPeerConnectionState | 'new';
+  lastError: string;
 }
 
 export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRTCReturn {
@@ -24,6 +25,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const setRaceResult = useTelemetryStore((s) => s.setRaceResult);
 
   const [rtcState, setRtcState] = useState<RTCPeerConnectionState | 'new'>('new');
+  const [lastError, setLastError] = useState('');
 
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -77,6 +79,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     // Clean previous connections
     cleanup();
+    setLastError('');
     setConnectionState('connecting');
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
 
@@ -222,6 +225,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           break;
         case 'error':
           console.error('Signaling error:', msg.error);
+          setLastError(msg.error ?? 'Unknown error');
           setConnectionState('error');
           setFeaturePermissions(NO_FEATURE_PERMISSIONS);
           cleanup();
@@ -237,5 +241,5 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options?.signalingUrl, options?.roomId, options?.password, options?.permissionsCode]);
 
-  return { disconnect, connectionState: rtcState };
+  return { disconnect, connectionState: rtcState, lastError };
 }
