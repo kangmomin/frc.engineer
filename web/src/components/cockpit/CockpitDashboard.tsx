@@ -91,6 +91,7 @@ interface CockpitDashboardProps {
     active?: boolean;
   };
   onSwitchToCommentary?: () => void;
+  onSwitchToQualifying?: () => void;
   onGoHome?: () => void;
 }
 
@@ -99,6 +100,7 @@ export function CockpitDashboard({
   showSettingsButton,
   remoteAction,
   onSwitchToCommentary,
+  onSwitchToQualifying,
   onGoHome,
 }: CockpitDashboardProps) {
   const {
@@ -316,6 +318,16 @@ export function CockpitDashboard({
             aria-label="Switch to commentary"
           >
             Live
+          </button>
+        )}
+        {onSwitchToQualifying && (
+          <button
+            type="button"
+            className={styles.remoteButton}
+            onClick={onSwitchToQualifying}
+            aria-label="Switch to qualifying"
+          >
+            Quali
           </button>
         )}
         {remoteAction && (

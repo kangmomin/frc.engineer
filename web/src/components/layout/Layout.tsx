@@ -8,20 +8,24 @@ import {
 } from '../../store/telemetryStore';
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { CommentaryDashboard } from '../commentary/CommentaryDashboard';
+import { QualifyingDashboard } from '../qualifying/QualifyingDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import styles from './Layout.module.css';
 
-type DashboardView = 'cockpit' | 'commentary';
+type DashboardView = 'cockpit' | 'commentary' | 'qualifying';
 
 function readInitialView(): DashboardView {
   const params = new URLSearchParams(window.location.search);
-  return params.get('view') === 'commentary' ? 'commentary' : 'cockpit';
+  const view = params.get('view');
+  if (view === 'commentary') return 'commentary';
+  if (view === 'qualifying') return 'qualifying';
+  return 'cockpit';
 }
 
 function persistView(view: DashboardView) {
   const params = new URLSearchParams(window.location.search);
-  if (view === 'commentary') params.set('view', 'commentary');
-  else params.delete('view');
+  if (view === 'cockpit') params.delete('view');
+  else params.set('view', view);
   const nextQuery = params.toString();
   window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
 }
@@ -83,6 +87,7 @@ export function Layout() {
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
   const connectionState = useTelemetryStore((state) => state.connectionState);
   const viewCommentary = useTelemetryStore((state) => state.featurePermissions.viewCommentary);
+  const viewQualifying = useTelemetryStore((state) => state.featurePermissions.viewQualifying);
 
   const [dashboardView, setDashboardView] = useState<DashboardView>(readInitialView);
 
@@ -190,9 +195,17 @@ export function Layout() {
 
   return (
     <div className={styles.shell}>
-      {dashboardView === 'commentary' && viewCommentary ? (
+      {dashboardView === 'qualifying' && viewQualifying ? (
+        <QualifyingDashboard
+          onSwitchToCockpit={() => switchView('cockpit')}
+          onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
+          onGoHome={goToMainScreen}
+          remoteAction={remoteAction}
+        />
+      ) : dashboardView === 'commentary' && viewCommentary ? (
         <CommentaryDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
+          onSwitchToQualifying={viewQualifying ? () => switchView('qualifying') : undefined}
           onGoHome={goToMainScreen}
           remoteAction={remoteAction}
         />
@@ -202,6 +215,7 @@ export function Layout() {
           showSettingsButton={false}
           remoteAction={remoteAction}
           onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
+          onSwitchToQualifying={viewQualifying ? () => switchView('qualifying') : undefined}
           onGoHome={goToMainScreen}
         />
       )}
