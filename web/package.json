@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "build:remote": "tsc -b && vite build --mode remote",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -26,6 +27,7 @@
     "globals": "^15.14.0",
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.18.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^4.1.2"
   }
 }
