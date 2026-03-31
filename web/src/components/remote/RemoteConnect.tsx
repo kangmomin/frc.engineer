@@ -61,6 +61,7 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewPitStatus: false,
       viewTopSpeed: false,
       viewPlayerDelta: false,
+      viewCommentary: false,
     },
   };
 }

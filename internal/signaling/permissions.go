@@ -255,7 +255,7 @@ func (s *PermissionCodeStore) listFromDatabase() ([]PermissionCode, error) {
 	defer cancel()
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT code, label, view_ers_actual, view_advanced_strategy, view_pit_status, view_top_speed, view_player_delta
+		SELECT code, label, view_ers_actual, view_advanced_strategy, view_pit_status, view_top_speed, view_player_delta, view_commentary
 		FROM `+permissionCodeStoreTable+`
 		ORDER BY code
 	`)
@@ -290,15 +290,17 @@ func (s *PermissionCodeStore) upsertInDatabase(entry PermissionCode) error {
 			view_advanced_strategy,
 			view_pit_status,
 			view_top_speed,
-			view_player_delta
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			view_player_delta,
+			view_commentary
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (code) DO UPDATE SET
 			label = EXCLUDED.label,
 			view_ers_actual = EXCLUDED.view_ers_actual,
 			view_advanced_strategy = EXCLUDED.view_advanced_strategy,
 			view_pit_status = EXCLUDED.view_pit_status,
 			view_top_speed = EXCLUDED.view_top_speed,
-			view_player_delta = EXCLUDED.view_player_delta
+			view_player_delta = EXCLUDED.view_player_delta,
+			view_commentary = EXCLUDED.view_commentary
 	`,
 		entry.Code,
 		entry.Label,
@@ -307,6 +309,7 @@ func (s *PermissionCodeStore) upsertInDatabase(entry PermissionCode) error {
 		entry.Permissions.ViewPitStatus,
 		entry.Permissions.ViewTopSpeed,
 		entry.Permissions.ViewPlayerDelta,
+		entry.Permissions.ViewCommentary,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert permission code: %w", err)
@@ -335,7 +338,7 @@ func (s *PermissionCodeStore) resolveFromDatabase(code string) (Permissions, boo
 
 	var permissions Permissions
 	err := s.db.QueryRowContext(ctx, `
-		SELECT view_ers_actual, view_advanced_strategy, view_pit_status, view_top_speed, view_player_delta
+		SELECT view_ers_actual, view_advanced_strategy, view_pit_status, view_top_speed, view_player_delta, view_commentary
 		FROM `+permissionCodeStoreTable+`
 		WHERE code = $1
 	`, code).Scan(
@@ -344,6 +347,7 @@ func (s *PermissionCodeStore) resolveFromDatabase(code string) (Permissions, boo
 		&permissions.ViewPitStatus,
 		&permissions.ViewTopSpeed,
 		&permissions.ViewPlayerDelta,
+		&permissions.ViewCommentary,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -363,12 +367,14 @@ func (s *PermissionCodeStore) ensureDatabaseSchema(ctx context.Context) error {
 			view_advanced_strategy BOOLEAN NOT NULL DEFAULT FALSE,
 			view_pit_status BOOLEAN NOT NULL DEFAULT FALSE,
 			view_top_speed BOOLEAN NOT NULL DEFAULT FALSE,
-			view_player_delta BOOLEAN NOT NULL DEFAULT FALSE
+			view_player_delta BOOLEAN NOT NULL DEFAULT FALSE,
+			view_commentary BOOLEAN NOT NULL DEFAULT FALSE
 		)
 	`)
 	if err != nil {
 		return fmt.Errorf("ensure permission code table: %w", err)
 	}
+	_, _ = s.db.ExecContext(ctx, `ALTER TABLE `+permissionCodeStoreTable+` ADD COLUMN IF NOT EXISTS view_commentary BOOLEAN NOT NULL DEFAULT FALSE`)
 	return nil
 }
 
@@ -420,6 +426,7 @@ func scanPermissionCode(scanner interface {
 		&entry.Permissions.ViewPitStatus,
 		&entry.Permissions.ViewTopSpeed,
 		&entry.Permissions.ViewPlayerDelta,
+		&entry.Permissions.ViewCommentary,
 	); err != nil {
 		return PermissionCode{}, fmt.Errorf("scan permission code: %w", err)
 	}

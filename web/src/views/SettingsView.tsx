@@ -68,6 +68,7 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewPitStatus: false,
       viewTopSpeed: false,
       viewPlayerDelta: false,
+      viewCommentary: false,
     },
   };
 }
@@ -513,6 +514,9 @@ export function SettingsView() {
                     <span className={styles.trackBadgeLoaded}>
                       {entry.permissions.viewAdvancedStrategy ? 'Advanced Strategy' : 'Basic Strategy'}
                     </span>
+                    <span className={styles.trackBadgeLoaded}>
+                      {entry.permissions.viewCommentary ? 'Commentary' : 'Commentary Hidden'}
+                    </span>
                   </div>
                 </button>
               ))
@@ -585,6 +589,15 @@ export function SettingsView() {
                   type="checkbox"
                   checked={permissionDraft.permissions.viewAdvancedStrategy}
                   onChange={(event) => updatePermissionFlag('viewAdvancedStrategy', event.target.checked)}
+                />
+              </label>
+              <label className={styles.permissionToggle}>
+                <span className={styles.fieldLabel}>Commentary</span>
+                <input
+                  className={styles.toggle}
+                  type="checkbox"
+                  checked={permissionDraft.permissions.viewCommentary}
+                  onChange={(event) => updatePermissionFlag('viewCommentary', event.target.checked)}
                 />
               </label>
             </div>

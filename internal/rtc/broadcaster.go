@@ -53,6 +53,9 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	if permissions.ViewPlayerDelta {
 		key += "|player-delta"
 	}
+	if permissions.ViewCommentary {
+		key += "|commentary"
+	}
 	if cached, ok := v.cache[key]; ok {
 		return cached
 	}
