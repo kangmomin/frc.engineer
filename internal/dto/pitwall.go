@@ -7,6 +7,7 @@ type PitwallState struct {
 	Positions            []CarPosition `json:"positions"`
 	PlayerIndex          int           `json:"playerIndex"`
 	TrackMap             *TrackMapDTO  `json:"trackMap,omitempty"`
+	ERSEstimateEnabled   bool          `json:"ersEstimateEnabled"`
 	ERSComparisonEnabled bool          `json:"ersComparisonEnabled"`
 }
 
