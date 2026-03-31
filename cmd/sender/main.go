@@ -8,11 +8,9 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	rtconfig "frc.engineer/internal/config"
@@ -67,16 +65,6 @@ func main() {
 
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
 	trackRecording := saveFiles // default: follow saveFiles for backward compat
-
-	fmt.Println()
-	fmt.Println("  _____ ____   ____")
-	fmt.Println(" |  ___|  _ \\ / ___|")
-	fmt.Println(" | |_  | |_) | |")
-	fmt.Println(" |  _| |  _ <| |___")
-	fmt.Println(" |_|   |_| \\_\\\\____|.engineer")
-	fmt.Println()
-	fmt.Println(" F1 25 Telemetry Sender")
-	fmt.Println(" ━━━━━━━━━━━━━━━━━━━━━━")
 
 	// Create UDP listener & parser
 	udpListener, err := udp.NewListener(udpPort, 2048, logger)
@@ -138,7 +126,7 @@ func main() {
 
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
 	peerManager.SetCountChangeHandler(func(count int) {
-		fmt.Printf("\r  Connected Engineers: %d   \n", count)
+		logger.Info("peer count changed", "connectedEngineers", count)
 	})
 
 	peerManager.SetRequestHandler(func(peerID string, msg []byte) []byte {
@@ -443,33 +431,24 @@ func main() {
 		}
 	}()
 
-	fmt.Printf("   UDP:       :%d\n", udpPort)
-	fmt.Printf("   Room Name: %s\n", cfgRoomName)
-	fmt.Printf("   Room Code: %s\n", peerManager.RoomCode())
-	fmt.Printf("   Save Files: %v\n", saveFiles)
-	fmt.Printf("   Settings:  http://localhost:%s\n", settingsPort)
-	if compareGate.SecretGenerated() {
-		fmt.Printf("   ERS Compare PIN: %s\n", compareGate.SecretForDisplay())
-	} else {
-		fmt.Println("   ERS Compare PIN: configured via ERS_COMPARE_PASSWORD")
-	}
-	fmt.Println()
-	fmt.Println(" Share the room code with your engineer.")
-	fmt.Println(" Press Ctrl+C to stop.")
+	logger.Info("sender started",
+		"udpPort", udpPort,
+		"roomName", cfgRoomName,
+		"roomCode", peerManager.RoomCode(),
+		"settingsURL", fmt.Sprintf("http://localhost:%s", settingsPort),
+	)
 
-	// Wait for shutdown signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-
-	fmt.Println("\nShutting down...")
-	cancel()
-	forwarder.Close()
-	peerManager.Close()
-	compareMonitor.Close()
-	settingsSrv.Shutdown(context.Background())
-	logger.Info("sender shutdown complete")
-	logFile.Close()
+	// System tray: blocks until user clicks Quit
+	settingsURL := fmt.Sprintf("http://localhost:%s", settingsPort)
+	runTray(settingsURL, func() {
+		cancel()
+		forwarder.Close()
+		peerManager.Close()
+		compareMonitor.Close()
+		settingsSrv.Shutdown(context.Background())
+		logger.Info("sender shutdown complete")
+		logFile.Close()
+	})
 }
 
 func cleanF32(v float32) float32 {

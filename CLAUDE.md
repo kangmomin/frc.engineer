@@ -22,10 +22,10 @@
 1. **버전 업데이트**: `cmd/server/update_notice.go` 의 `appVersion` 을 새 버전으로 변경
 2. **커밋 & 푸시**: 메인 레포 (`kangmomin/frc.engineer`) 에 커밋 후 push
 3. **source-deploy-1 동기화**: `build/source-deploy-1` 에서 `git pull origin main`
-4. **빌드** (pitwall-sender, Windows 크로스 컴파일):
+4. **빌드** (pitwall-sender, Windows GUI 크로스 컴파일):
    ```bash
    cd build/source-deploy-1
-   GOOS=windows GOARCH=amd64 go build -o frc-pitwall-sender.exe ./cmd/sender
+   GOOS=windows GOARCH=amd64 go build -ldflags "-H windowsgui" -o frc-pitwall-sender.exe ./cmd/sender
    ```
 5. **deploy 레포 동기화**: `build/deploy-inspect-1` 에서 `git pull origin main`
 6. **바이너리 복사**:
