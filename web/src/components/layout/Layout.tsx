@@ -7,8 +7,24 @@ import {
   useTelemetryStore,
 } from '../../store/telemetryStore';
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
+import { CommentaryDashboard } from '../commentary/CommentaryDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import styles from './Layout.module.css';
+
+type DashboardView = 'cockpit' | 'commentary';
+
+function readInitialView(): DashboardView {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('view') === 'commentary' ? 'commentary' : 'cockpit';
+}
+
+function persistView(view: DashboardView) {
+  const params = new URLSearchParams(window.location.search);
+  if (view === 'commentary') params.set('view', 'commentary');
+  else params.delete('view');
+  const nextQuery = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+}
 
 interface RemoteRTCOptions {
   signalingUrl: string;
@@ -71,6 +87,14 @@ export function Layout() {
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
   const connectionState = useTelemetryStore((state) => state.connectionState);
+  const viewCommentary = useTelemetryStore((state) => state.featurePermissions.viewCommentary);
+
+  const [dashboardView, setDashboardView] = useState<DashboardView>(readInitialView);
+
+  const switchView = useCallback((view: DashboardView) => {
+    setDashboardView(view);
+    persistView(view);
+  }, []);
 
   useEffect(() => {
     window.sessionStorage.removeItem('frc_remote_session');
@@ -167,17 +191,23 @@ export function Layout() {
     );
   }
 
+  const remoteAction = { label: 'Rooms', onClick: openRoomPicker, active: true };
+
   return (
     <div className={styles.shell}>
-      <CockpitDashboard
-        onOpenSettings={() => {}}
-        showSettingsButton={false}
-        remoteAction={{
-          label: 'Rooms',
-          onClick: openRoomPicker,
-          active: true,
-        }}
-      />
+      {dashboardView === 'commentary' && viewCommentary ? (
+        <CommentaryDashboard
+          onSwitchToCockpit={() => switchView('cockpit')}
+          remoteAction={remoteAction}
+        />
+      ) : (
+        <CockpitDashboard
+          onOpenSettings={() => {}}
+          showSettingsButton={false}
+          remoteAction={remoteAction}
+          onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
+        />
+      )}
     </div>
   );
 }
