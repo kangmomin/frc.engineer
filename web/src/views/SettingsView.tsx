@@ -89,6 +89,7 @@ export function SettingsView() {
   const [permissionSaving, setPermissionSaving] = useState(false);
   const [permissionError, setPermissionError] = useState('');
   const [permissionStatus, setPermissionStatus] = useState('');
+  const [editorOpen, setEditorOpen] = useState(false);
 
   useEffect(() => {
     if (config && !draft) {
@@ -213,6 +214,7 @@ export function SettingsView() {
       label: entry.label,
       permissions: { ...entry.permissions },
     });
+    setEditorOpen(true);
     setPermissionError('');
     setPermissionStatus('');
   }
@@ -220,6 +222,15 @@ export function SettingsView() {
   function resetPermissionEditor() {
     setSelectedPermissionCode('');
     setPermissionDraft(createEmptyPermissionCode());
+    setEditorOpen(true);
+    setPermissionError('');
+    setPermissionStatus('');
+  }
+
+  function closePermissionEditor() {
+    setSelectedPermissionCode('');
+    setPermissionDraft(createEmptyPermissionCode());
+    setEditorOpen(false);
     setPermissionError('');
     setPermissionStatus('');
   }
@@ -522,104 +533,114 @@ export function SettingsView() {
               ))
             )}
             {permissionLoading && <span className={styles.status}>Loading permission codes...</span>}
+            {!editorOpen && (
+              <button type="button" className={styles.btnPrimary} onClick={resetPermissionEditor}>
+                New Permission Code
+              </button>
+            )}
           </div>
 
-          <div className={styles.permissionEditor}>
-            <div className={styles.field}>
-              <span className={styles.fieldLabel}>Code</span>
-              <input
-                className={styles.input}
-                type="text"
-                value={permissionDraft.code}
-                placeholder="ENG-PRO"
-                onChange={(event) => updatePermissionField('code', event.target.value.toUpperCase())}
-              />
+          {editorOpen && (
+            <div className={styles.permissionEditor}>
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>Code</span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={permissionDraft.code}
+                  placeholder="ENG-PRO"
+                  disabled={!!selectedPermissionCode}
+                  onChange={(event) => updatePermissionField('code', event.target.value.toUpperCase())}
+                />
+              </div>
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>Label</span>
+                <input
+                  className={styles.wideInput}
+                  type="text"
+                  value={permissionDraft.label}
+                  placeholder="Engineer Pro"
+                  onChange={(event) => updatePermissionField('label', event.target.value)}
+                />
+              </div>
+              <div className={styles.permissionToggles}>
+                <label className={styles.permissionToggle}>
+                  <span className={styles.fieldLabel}>ERS Actual</span>
+                  <input
+                    className={styles.toggle}
+                    type="checkbox"
+                    checked={permissionDraft.permissions.viewERSActual}
+                    onChange={(event) => updatePermissionFlag('viewERSActual', event.target.checked)}
+                  />
+                </label>
+                <label className={styles.permissionToggle}>
+                  <span className={styles.fieldLabel}>Pit Status</span>
+                  <input
+                    className={styles.toggle}
+                    type="checkbox"
+                    checked={permissionDraft.permissions.viewPitStatus}
+                    onChange={(event) => updatePermissionFlag('viewPitStatus', event.target.checked)}
+                  />
+                </label>
+                <label className={styles.permissionToggle}>
+                  <span className={styles.fieldLabel}>Top Speed</span>
+                  <input
+                    className={styles.toggle}
+                    type="checkbox"
+                    checked={permissionDraft.permissions.viewTopSpeed}
+                    onChange={(event) => updatePermissionFlag('viewTopSpeed', event.target.checked)}
+                  />
+                </label>
+                <label className={styles.permissionToggle}>
+                  <span className={styles.fieldLabel}>Player Delta</span>
+                  <input
+                    className={styles.toggle}
+                    type="checkbox"
+                    checked={permissionDraft.permissions.viewPlayerDelta}
+                    onChange={(event) => updatePermissionFlag('viewPlayerDelta', event.target.checked)}
+                  />
+                </label>
+                <label className={styles.permissionToggle}>
+                  <span className={styles.fieldLabel}>Advanced Strategy</span>
+                  <input
+                    className={styles.toggle}
+                    type="checkbox"
+                    checked={permissionDraft.permissions.viewAdvancedStrategy}
+                    onChange={(event) => updatePermissionFlag('viewAdvancedStrategy', event.target.checked)}
+                  />
+                </label>
+                <label className={styles.permissionToggle}>
+                  <span className={styles.fieldLabel}>Commentary</span>
+                  <input
+                    className={styles.toggle}
+                    type="checkbox"
+                    checked={permissionDraft.permissions.viewCommentary}
+                    onChange={(event) => updatePermissionFlag('viewCommentary', event.target.checked)}
+                  />
+                </label>
+              </div>
+              <div className={styles.permissionActions}>
+                <button type="button" className={styles.btnPrimary} onClick={savePermissionCode} disabled={permissionSaving}>
+                  {permissionSaving ? 'Saving...' : 'Save'}
+                </button>
+                {selectedPermissionCode && (
+                  <button
+                    type="button"
+                    className={styles.btnDanger}
+                    onClick={deletePermissionCode}
+                    disabled={permissionSaving}
+                  >
+                    Delete
+                  </button>
+                )}
+                <button type="button" className={styles.btn} onClick={closePermissionEditor} disabled={permissionSaving}>
+                  Cancel
+                </button>
+              </div>
+              {permissionStatus && <span className={`${styles.status} ${styles.statusActive}`}>{permissionStatus}</span>}
+              {permissionError && <span className={styles.restartWarning}>{permissionError}</span>}
             </div>
-            <div className={styles.field}>
-              <span className={styles.fieldLabel}>Label</span>
-              <input
-                className={styles.wideInput}
-                type="text"
-                value={permissionDraft.label}
-                placeholder="Engineer Pro"
-                onChange={(event) => updatePermissionField('label', event.target.value)}
-              />
-            </div>
-            <div className={styles.permissionToggles}>
-              <label className={styles.permissionToggle}>
-                <span className={styles.fieldLabel}>ERS Actual</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewERSActual}
-                  onChange={(event) => updatePermissionFlag('viewERSActual', event.target.checked)}
-                />
-              </label>
-              <label className={styles.permissionToggle}>
-                <span className={styles.fieldLabel}>Pit Status</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewPitStatus}
-                  onChange={(event) => updatePermissionFlag('viewPitStatus', event.target.checked)}
-                />
-              </label>
-              <label className={styles.permissionToggle}>
-                <span className={styles.fieldLabel}>Top Speed</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewTopSpeed}
-                  onChange={(event) => updatePermissionFlag('viewTopSpeed', event.target.checked)}
-                />
-              </label>
-              <label className={styles.permissionToggle}>
-                <span className={styles.fieldLabel}>Player Delta</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewPlayerDelta}
-                  onChange={(event) => updatePermissionFlag('viewPlayerDelta', event.target.checked)}
-                />
-              </label>
-              <label className={styles.permissionToggle}>
-                <span className={styles.fieldLabel}>Advanced Strategy</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewAdvancedStrategy}
-                  onChange={(event) => updatePermissionFlag('viewAdvancedStrategy', event.target.checked)}
-                />
-              </label>
-              <label className={styles.permissionToggle}>
-                <span className={styles.fieldLabel}>Commentary</span>
-                <input
-                  className={styles.toggle}
-                  type="checkbox"
-                  checked={permissionDraft.permissions.viewCommentary}
-                  onChange={(event) => updatePermissionFlag('viewCommentary', event.target.checked)}
-                />
-              </label>
-            </div>
-            <div className={styles.permissionActions}>
-              <button type="button" className={styles.btnPrimary} onClick={savePermissionCode} disabled={permissionSaving}>
-                {permissionSaving ? 'Saving...' : 'Save Code'}
-              </button>
-              <button type="button" className={styles.btn} onClick={resetPermissionEditor} disabled={permissionSaving}>
-                New
-              </button>
-              <button
-                type="button"
-                className={styles.btnDanger}
-                onClick={deletePermissionCode}
-                disabled={permissionSaving || (!selectedPermissionCode && !permissionDraft.code.trim())}
-              >
-                Delete
-              </button>
-            </div>
-            {permissionStatus && <span className={`${styles.status} ${styles.statusActive}`}>{permissionStatus}</span>}
-            {permissionError && <span className={styles.restartWarning}>{permissionError}</span>}
-          </div>
+          )}
         </div>
       </div>
 
