@@ -354,7 +354,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.LastLapTime = float32(ld.LastLapTimeInMS)
 				d.BestLapTime = 0
 				d.PitStatus = int(ld.PitStatus)
-				d.DriverStatus = int(ld.DriverStatus)
+				// d.DriverStatus – omitted from broadcast DTO (queryable via /api/debug)
 				d.NumPitStops = int(ld.NumPitStops)
 				d.LapDistance = sanitize(ld.LapDistance)
 				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0
@@ -377,9 +377,9 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				cs := &pm.carStatus.CarStatusData[i]
 				d.TireCompound = tireCompoundString(cs.VisualTyreCompound)
 				d.TireAge = int(cs.TyresAgeLaps)
-				d.FuelInTank = sanitize(cs.FuelInTank)
+				// d.FuelInTank – omitted from broadcast DTO
 				d.FuelRemainingLaps = sanitize(cs.FuelRemainingLaps)
-				d.FuelMix = int(cs.FuelMix)
+				// d.FuelMix – omitted from broadcast DTO
 				d.ERSStoreEnergy = sanitize(cs.ERSStoreEnergy)
 				d.ERSDeployMode = int(cs.ERSDeployMode)
 				d.ERSDeployedThisLap = sanitize(cs.ERSDeployedThisLap)
@@ -396,7 +396,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 			if pm.carSetups != nil {
 				setup := &pm.carSetups.CarSetupData[i]
 				d.DiffOnThrottle = int(setup.OnThrottle)
-				d.DiffOffThrottle = int(setup.OffThrottle)
+				// d.DiffOffThrottle – omitted from broadcast DTO
 			}
 
 			// Stint history from strategy manager
@@ -418,16 +418,12 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 
 			if pm.telemetry != nil {
 				ct := &pm.telemetry.CarTelemetryData[i]
-				d.Speed = ct.Speed
-				d.Throttle = sanitize(ct.Throttle)
-				d.Brake = sanitize(ct.Brake)
-				d.Gear = ct.Gear
-				d.Steering = sanitize(ct.Steer)
+				// Speed, Throttle, Brake, Gear, Steering – omitted from broadcast DTO
 				for w := range 4 {
 					g := g2d[w]
 					d.TireSurfaceTemp[w] = int(ct.TyresSurfaceTemperature[g])
 					d.TireInnerTemp[w] = int(ct.TyresInnerTemperature[g])
-					d.BrakeTemp[w] = int(ct.BrakesTemperature[g])
+					// BrakeTemp – omitted from broadcast DTO
 				}
 			}
 

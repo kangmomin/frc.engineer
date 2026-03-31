@@ -88,12 +88,12 @@ type DriverInfo struct {
 	TeamID          int     `json:"teamId"`
 	Position        int     `json:"position"`
 	CurrentLapNum   int     `json:"currentLapNum"`
-	Speed           uint16  `json:"speed"`
+	Speed           uint16  `json:"speed,omitempty"`
 	TopSpeed        int     `json:"topSpeed"`
-	Throttle        float32 `json:"throttle"`
-	Brake           float32 `json:"brake"`
-	Gear            int8    `json:"gear"`
-	Steering        float32 `json:"steering"`
+	Throttle        float32 `json:"throttle,omitempty"`
+	Brake           float32 `json:"brake,omitempty"`
+	Gear            int8    `json:"gear,omitempty"`
+	Steering        float32 `json:"steering,omitempty"`
 	LastLapTime     float32 `json:"lastLapTime"`
 	BestLapTime     float32 `json:"bestLapTime"`
 	TireCompound    string  `json:"tireCompound"`
@@ -101,17 +101,17 @@ type DriverInfo struct {
 	TireWear        [4]int  `json:"tireWear"`
 	TireSurfaceTemp [4]int  `json:"tireSurfaceTemp"`
 	TireInnerTemp   [4]int  `json:"tireInnerTemp"`
-	BrakeTemp       [4]int  `json:"brakeTemp"`
+	BrakeTemp       [4]int  `json:"brakeTemp,omitempty"`
 
 	// Car Controls
 	BrakeBias       int `json:"brakeBias"`
 	DiffOnThrottle  int `json:"diffOnThrottle"`
-	DiffOffThrottle int `json:"diffOffThrottle"`
+	DiffOffThrottle int `json:"diffOffThrottle,omitempty"`
 
 	// Fuel & Energy
-	FuelInTank          float32 `json:"fuelInTank"`
+	FuelInTank          float32 `json:"fuelInTank,omitempty"`
 	FuelRemainingLaps   float32 `json:"fuelRemainingLaps"`
-	FuelMix             int     `json:"fuelMix"`
+	FuelMix             int     `json:"fuelMix,omitempty"`
 	ERSStoreEnergy      float32 `json:"ersStoreEnergy"`
 	ERSDeployMode       int     `json:"ersDeployMode"`
 	ERSDeployedThisLap  float32 `json:"ersDeployedThisLap"`
@@ -147,7 +147,7 @@ type DriverInfo struct {
 
 	// Pit
 	PitStatus         int     `json:"pitStatus"`
-	DriverStatus      int     `json:"driverStatus"`
+	DriverStatus      int     `json:"driverStatus,omitempty"`
 	NumPitStops       int     `json:"numPitStops"`
 	LapDistance       float32 `json:"lapDistance"`
 	PitStopTimer      float32 `json:"pitStopTimer"`
