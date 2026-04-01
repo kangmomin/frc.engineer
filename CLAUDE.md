@@ -46,6 +46,14 @@
    > `frc-co-driver.exe`는 타 레포에서 별도로 deploy 레포에 push한다. 이 레포에서는 sender만 담당.
 9. **메인 레포 태그**: 메인 레포에도 동일 버전 태그 생성 & push
 
+### WebRTC 페이로드 사이즈 제약
+WebRTC DataChannel 관련 기능을 추가하거나 DTO 필드를 확장할 때, **최대 페이로드가 Chrome SCTP 수신 버퍼(256KB)를 초과하지 않는지 반드시 검토**해야 한다.
+
+- 모든 드라이버(22대) 데이터가 채워진 worst-case 기준으로 추정
+- TrackMap 포함 시 피크 사이즈 고려
+- `maxBufferedAmount`(128KB)와의 관계도 확인
+- 초과 가능성이 있으면 `omitempty` 적용, 필드 분리, 또는 전송 빈도 조절로 대응
+
 ### Repository Structure
 | 경로 | 설명 |
 |---|---|

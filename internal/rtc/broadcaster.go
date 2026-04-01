@@ -41,19 +41,17 @@ func (b *DataChannelBroadcaster) BroadcastFast(message []byte) {
 	b.peerManager.BroadcastAllFast(message)
 }
 
-// Broadcast sends the message to all connected peers via DataChannel.
-// Non-pitwallState messages are broadcast to all peers without filtering.
-// PitwallState messages are filtered per-peer; if filtering fails, the message is dropped (fail-closed).
-func (b *DataChannelBroadcaster) Broadcast(message []byte) {
-	variants, ok := buildPitwallBroadcastVariants(message)
+// BroadcastPitwallState accepts a typed PitwallState struct directly,
+// avoiding the double marshal/unmarshal that loses bool fields via interface{}.
+func (b *DataChannelBroadcaster) BroadcastPitwallState(state interface{}) {
+	pitwallState, ok := state.(dto.PitwallState)
 	if !ok {
-		// Not a pitwallState message (raceControl, battleAlert, etc.) — safe to broadcast to all
-		if isPitwallMessage(message) {
-			// pitwallState but failed to parse for filtering — drop to prevent data leak
-			return
-		}
-		b.peerManager.BroadcastAll(message)
 		return
+	}
+
+	variants := &pitwallBroadcastVariants{
+		cache: make(map[string][]byte),
+		state: pitwallState,
 	}
 
 	dropped, total := b.peerManager.BroadcastPerPeer(func(_ string, permissions signaling.Permissions) []byte {
@@ -63,28 +61,12 @@ func (b *DataChannelBroadcaster) Broadcast(message []byte) {
 	b.lastTotal.Store(int32(total))
 }
 
-// isPitwallMessage does a lightweight check for pitwallState type marker in msgpack bytes.
-func isPitwallMessage(data []byte) bool {
-	// Check if the msgpack payload contains "pitwallState" as a string value.
-	// The type field value "pitwallState" (12 bytes) appears as 0xac (fixstr len 12) + ASCII.
-	marker := []byte{0xac, 'p', 'i', 't', 'w', 'a', 'l', 'l', 'S', 't', 'a', 't', 'e'}
-	for i := range data {
-		if i+len(marker) > len(data) {
-			break
-		}
-		match := true
-		for j := range marker {
-			if data[i+j] != marker[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
+// Broadcast sends the message to all connected peers via DataChannel.
+// For non-pitwallState messages only (raceControl, battleAlert, etc.).
+func (b *DataChannelBroadcaster) Broadcast(message []byte) {
+	b.peerManager.BroadcastAll(message)
 }
+
 
 type pitwallBroadcastVariants struct {
 	cache map[string][]byte
@@ -168,31 +150,6 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	}
 	v.cache[key] = payload
 	return payload
-}
-
-func buildPitwallBroadcastVariants(message []byte) (*pitwallBroadcastVariants, bool) {
-	var envelope dto.WSResponse
-	if err := dto.MsgpackUnmarshal(message, &envelope); err != nil {
-		return nil, false
-	}
-	if envelope.Type != dto.MessageTypePitwallState {
-		return nil, false
-	}
-
-	// Re-encode then decode the Data field to get a typed PitwallState
-	dataBytes, err := dto.MsgpackMarshal(envelope.Data)
-	if err != nil {
-		return nil, false
-	}
-	var state dto.PitwallState
-	if err := dto.MsgpackUnmarshal(dataBytes, &state); err != nil {
-		return nil, false
-	}
-
-	return &pitwallBroadcastVariants{
-		cache: make(map[string][]byte),
-		state: state,
-	}, true
 }
 
 func hasERSActualData(drivers []dto.DriverInfo) bool {

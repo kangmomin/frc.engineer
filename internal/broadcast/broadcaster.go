@@ -12,6 +12,11 @@ type CongestionReporter interface {
 	DropRatio() float64
 }
 
+// PitwallBroadcaster optionally accepts typed PitwallState to avoid double marshal/unmarshal.
+type PitwallBroadcaster interface {
+	BroadcastPitwallState(state interface{})
+}
+
 // FastBroadcaster delivers high-frequency, loss-tolerant messages (e.g. car positions).
 type FastBroadcaster interface {
 	BroadcastFast(message []byte)

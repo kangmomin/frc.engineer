@@ -345,16 +345,23 @@ func (p *Processor) processPacket(data []byte) {
 	}
 
 	if pitwallState != nil {
-		msg := dto.WSResponse{
-			Type: dto.MessageTypePitwallState,
-			Data: pitwallState,
-		}
-		pitwallData, err := marshalForHub(p.hub, msg)
-		if err != nil {
-			p.logger.Error("failed to marshal pitwall state", "error", err)
+		// Use typed path if available (avoids double marshal/unmarshal losing bool fields)
+		if pb, ok := p.hub.(broadcast.PitwallBroadcaster); ok {
+			pb.BroadcastPitwallState(*pitwallState)
 		} else {
-			p.hub.Broadcast(pitwallData)
+			msg := dto.WSResponse{
+				Type: dto.MessageTypePitwallState,
+				Data: pitwallState,
+			}
+			pitwallData, err := marshalForHub(p.hub, msg)
+			if err != nil {
+				p.logger.Error("failed to marshal pitwall state", "error", err)
+			} else {
+				p.hub.Broadcast(pitwallData)
+			}
+		}
 
+		{
 			// Adaptive rate: slow down if ≥25% peers dropping, speed up when clear
 			if cr, ok := p.hub.(broadcast.CongestionReporter); ok {
 				if cr.DropRatio() >= 0.25 {

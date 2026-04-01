@@ -337,6 +337,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.15);
 }
 
 .teamStripe {
@@ -577,12 +578,6 @@
 
 .playerRow .positionCell {
   color: var(--accent);
-}
-
-.playerRow .driverCell {
-  border: 1px solid #fff;
-  border-radius: 3px;
-  padding: 1px 4px;
 }
 
 .teamRow {

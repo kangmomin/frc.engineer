@@ -8,34 +8,28 @@ import (
 )
 
 func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
-	message, err := dto.MsgpackMarshal(dto.WSResponse{
-		Type: dto.MessageTypePitwallState,
-		Data: dto.PitwallState{
-			ERSEstimateEnabled:   true,
-			ERSComparisonEnabled: true,
-			Drivers: []dto.DriverInfo{
-				{
-					Index:            1,
-					ERSEstimatePct:   45,
-					ERSEstimateReady: true,
-					ERSActualPct:     38,
-					ERSActualReady:   true,
-					PitStatus:      2,
-					PitStopTimer:   4.2,
-					PitLaneTime:    18234,
-					TopSpeed:       334,
-					DeltaToPlayer:  -842,
-				},
+	state := dto.PitwallState{
+		ERSEstimateEnabled:   true,
+		ERSComparisonEnabled: true,
+		Drivers: []dto.DriverInfo{
+			{
+				Index:            1,
+				ERSEstimatePct:   45,
+				ERSEstimateReady: true,
+				ERSActualPct:     38,
+				ERSActualReady:   true,
+				PitStatus:        2,
+				PitStopTimer:     4.2,
+				PitLaneTime:      18234,
+				TopSpeed:         334,
+				DeltaToPlayer:    -842,
 			},
 		},
-	})
-	if err != nil {
-		t.Fatalf("marshal input failed: %v", err)
 	}
 
-	variants, ok := buildPitwallBroadcastVariants(message)
-	if !ok {
-		t.Fatal("expected pitwall broadcast variants")
+	variants := &pitwallBroadcastVariants{
+		cache: make(map[string][]byte),
+		state: state,
 	}
 
 	privileged := decodePitwallState(t, variants.resolve(signaling.Permissions{
