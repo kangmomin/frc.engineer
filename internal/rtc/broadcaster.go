@@ -118,6 +118,11 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 		copy(copied, state.Drivers)
 		state.Drivers = copied
 	}
+	// Deep copy Session to avoid pointer aliasing across variants
+	if state.Session != nil {
+		sessionCopy := *state.Session
+		state.Session = &sessionCopy
+	}
 	state.ERSComparisonEnabled = permissions.ViewERSActual && hasERSActualData(state.Drivers)
 	state.ERSEstimateEnabled = permissions.ViewERSEstimate
 	for i := range state.Drivers {
@@ -162,8 +167,8 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 		}
 	}
 
-	// Qualifying data only when on qualifying tab
-	if view != "qualifying" && state.Session != nil {
+	// MarshalZones only needed for commentary (flags) and qualifying
+	if view == "cockpit" && state.Session != nil {
 		state.Session.MarshalZones = nil
 	}
 
