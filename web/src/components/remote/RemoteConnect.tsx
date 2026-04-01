@@ -223,13 +223,8 @@ export function RemoteConnect({
     }
   }, [rooms, selectedRoomId]);
 
-  useEffect(() => {
-    if (!signalingUrl) return;
-    const timer = window.setInterval(() => {
-      void fetchRooms();
-    }, 5000);
-    return () => window.clearInterval(timer);
-  }, [fetchRooms, signalingUrl]);
+  // Auto-refresh removed — manual refresh button available.
+  // The periodic fetchRooms was causing forced focus shift to the room password input.
 
   const selectedRoom = rooms.find((room) => room.roomId === selectedRoomId) ?? null;
   const isConnecting = connectionState === 'connecting';
