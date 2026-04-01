@@ -51,20 +51,21 @@ func main() {
 	// Start system tray early so update progress is visible via tooltip
 	ctx, cancel := context.WithCancel(context.Background())
 	settingsURL := fmt.Sprintf("http://localhost:%s", settingsPort)
-	trayReady := startTray(settingsURL, func() {
+	trayReady := startTray(settingsURL, appVersion, func() {
 		cancel()
 	})
 	<-trayReady
 
 	// Auto-update: clean previous artifacts, then check for updates (with tooltip progress)
 	updater.CleanOldBinary(logger)
+	trayPrefix := "FRC Pitwall Sender " + appVersion
 	setTrayStatus := func(status string) {
-		systray.SetTooltip("FRC Pitwall Sender — " + status)
+		systray.SetTooltip(trayPrefix + " — " + status)
 	}
 	if err := updater.AutoUpdate(logger, appVersion, setTrayStatus); err != nil {
 		logger.Warn("auto-update failed, continuing with current version", "error", err)
 	}
-	systray.SetTooltip("FRC Pitwall Sender — Running")
+	systray.SetTooltip(trayPrefix + " — Running")
 
 	signalingURL := os.Getenv("SIGNALING_URL")
 	if signalingURL == "" {
