@@ -25,7 +25,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.12.0"
+var appVersion = "v3.13.0"
 
 func main() {
 	// Log to file so the cmd banner stays clean
