@@ -184,11 +184,21 @@
 }
 
 .driverCell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--font-racing);
   font-weight: 700;
   font-size: 11px;
   letter-spacing: 0.04em;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.teamBar {
+  width: 3px;
+  height: 16px;
+  border-radius: 1px;
+  flex-shrink: 0;
 }
 
 .fastestCell {

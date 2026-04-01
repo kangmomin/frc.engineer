@@ -3,16 +3,16 @@
  * Team ID to color mapping based on official team colors
  */
 export const TEAM_COLORS: Record<number, string> = {
-  0: '#27f4d2',   // Mercedes - Tiffany/Mint
-  1: '#e8002d',   // Ferrari - Rosso Corsa
-  2: '#3671c6',   // Red Bull Racing - Blue
-  3: '#64c4ff',   // Williams - Light Blue
-  4: '#229971',   // Aston Martin - British Racing Green
-  5: '#ff87bc',   // Alpine - Pink
-  6: '#6692ff',   // RB (VCARB) - Blue
+  0: '#00a19b',   // Mercedes - Petronas Green
+  1: '#ef1b23',   // Ferrari - Rosso Corsa
+  2: '#001a2d',   // Red Bull Racing - Navy Blue
+  3: '#0052d4',   // Williams - Dark Blue
+  4: '#006747',   // Aston Martin - British Racing Green
+  5: '#0078bf',   // Alpine - Alpine Blue
+  6: '#0a34ed',   // RB (VCARB) - Racing Blue
   7: '#b6babd',   // Haas - Silver/Gray
   8: '#ff8000',   // McLaren - Papaya Orange
-  9: '#52e252',   // Sauber (Stake F1) - Green
+  9: '#52ff00',   // Sauber - Neon Green
   11: '#ffffff',  // [Reserved]
   255: '#888888', // Unknown/Safety Car
 };

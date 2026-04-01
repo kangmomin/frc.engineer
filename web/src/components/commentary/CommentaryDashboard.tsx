@@ -375,7 +375,8 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 return (
                   <tr key={driver.index} className={rowClass}>
                     <td className={styles.posCell}>{String(driver.position).padStart(2, '0')}</td>
-                    <td className={styles.driverCell} style={{ color: getTeamColor(driver.teamId) }}>
+                    <td className={styles.driverCell}>
+                      <span className={styles.teamBar} style={{ background: getTeamColor(driver.teamId) }} />
                       {driver.name}
                     </td>
                     <td className={styles.fastestCell}>{formatLapTime(driver.bestLapTime)}</td>
