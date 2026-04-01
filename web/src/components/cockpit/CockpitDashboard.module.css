@@ -290,7 +290,7 @@
 .tableHeader,
 .tableRow {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1.3fr) 56px 68px 72px 78px minmax(76px, 0.95fr) 72px minmax(190px, 1.28fr) 88px auto 90px;
+  grid-template-columns: 52px minmax(0, 1.3fr) 56px 72px minmax(76px, 0.95fr) 72px 88px auto 90px 56px 60px minmax(190px, 1.28fr);
   gap: 8px;
   align-items: center;
   padding: 10px 14px;
@@ -575,9 +575,14 @@
   box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.1);
 }
 
-.playerRow .positionCell,
-.playerRow .driverCode {
+.playerRow .positionCell {
   color: var(--accent);
+}
+
+.playerRow .driverCell {
+  border: 1px solid #fff;
+  border-radius: 3px;
+  padding: 1px 4px;
 }
 
 .teamRow {

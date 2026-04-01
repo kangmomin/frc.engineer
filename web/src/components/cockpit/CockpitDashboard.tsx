@@ -385,15 +385,15 @@ export function CockpitDashboard({
               <span>Pos</span>
               <span>Driver</span>
               <span>DRS</span>
-              <span>{pitStatusVisible ? 'Pit' : 'Pit Locked'}</span>
               <span>{ersEstimateVisible ? (ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.') : ''}</span>
-              <span>{topSpeedVisible ? 'Vmax' : 'Vmax Locked'}</span>
               <span>{playerDeltaVisible ? 'To You' : 'Gap'}</span>
               <span>Interval</span>
-              <span>Sector Δ</span>
               <span>Last Lap</span>
               <span>Pen</span>
               <span>{featurePermissions.viewAdvancedStrategy ? 'Tyre / Life' : 'Tyre Age'}</span>
+              <span>{pitStatusVisible ? 'Pit' : ''}</span>
+              <span>{topSpeedVisible ? 'Vmax' : ''}</span>
+              <span>Sector Δ</span>
             </div>
 
             <div className={styles.tableBody}>
@@ -421,11 +421,6 @@ export function CockpitDashboard({
                         DRS
                       </span>
                     </span>
-                    <span className={styles.pitCell}>
-                      <span className={styles[getPitStatusTone(driver, pitStatusVisible)]}>
-                        {formatPitStatus(driver, pitStatusVisible)}
-                      </span>
-                    </span>
                     <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
                       {ersEstimateVisible && (
                         <>
@@ -438,16 +433,10 @@ export function CockpitDashboard({
                         </>
                       )}
                     </span>
-                    <span className={styles.topSpeedCell}>
-                      <span className={styles[getTopSpeedTone(driver, topSpeedVisible)]}>
-                        {formatTopSpeed(driver, topSpeedVisible)}
-                      </span>
-                    </span>
                     <span className={playerDeltaVisible ? styles.referenceGapPlayer : styles.referenceGapLeader}>
                       {formatReferenceGap(driver, player, playerDeltaVisible)}
                     </span>
                     <span>{formatInterval(driver)}</span>
-                    <SectorDeltaCell driver={driver} sectorBestTimes={sectorBestTimes} />
                     <span>{formatLapTime(driver.lastLapTime)}</span>
                     <PenaltyCell driver={driver} />
                     <span className={styles.tyreCell}>
@@ -469,6 +458,17 @@ export function CockpitDashboard({
                         </span>
                       )}
                     </span>
+                    <span className={styles.pitCell}>
+                      <span className={styles[getPitStatusTone(driver, pitStatusVisible)]}>
+                        {formatPitStatus(driver, pitStatusVisible)}
+                      </span>
+                    </span>
+                    <span className={styles.topSpeedCell}>
+                      <span className={styles[getTopSpeedTone(driver, topSpeedVisible)]}>
+                        {formatTopSpeed(driver, topSpeedVisible)}
+                      </span>
+                    </span>
+                    <SectorDeltaCell driver={driver} sectorBestTimes={sectorBestTimes} />
                   </div>
                 );
               })}

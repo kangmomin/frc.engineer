@@ -170,6 +170,12 @@
   border-left: 3px solid #00e5ff;
 }
 
+.playerRow .driverCell {
+  border: 1px solid #fff;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
 .teammateRow {
   background: rgba(0, 229, 255, 0.04) !important;
   border-left: 3px solid rgba(0, 229, 255, 0.3);
