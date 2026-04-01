@@ -61,8 +61,11 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	if restricted.ERSComparisonEnabled {
 		t.Fatal("expected ERS comparison to be disabled")
 	}
-	if !restricted.ERSEstimateEnabled {
-		t.Fatal("expected ERS estimate to always be enabled")
+	if restricted.ERSEstimateEnabled {
+		t.Fatal("expected ERS estimate to be disabled for restricted peer")
+	}
+	if restricted.Drivers[0].ERSEstimatePct != 0 || restricted.Drivers[0].ERSEstimateReady {
+		t.Fatalf("expected ERS estimate data to be masked, got %#v", restricted.Drivers[0])
 	}
 	if restricted.Drivers[0].ERSActualPct != 0 || restricted.Drivers[0].ERSActualReady {
 		t.Fatalf("expected ERS actual data to be masked, got %#v", restricted.Drivers[0])

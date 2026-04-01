@@ -13,7 +13,6 @@ const (
 	ersEstimateDefaultEnergyJ    = ersEstimateMaxEnergyJ * 0.70
 	ersEstimateBucketSizeM       = 100.0
 	ersEstimateWarmupSteps       = 6
-	ersEstimateMinCalibration    = 4
 	ersEstimateProgressTolerance = 40.0
 )
 
@@ -259,9 +258,9 @@ func (e *ERSEstimator) initializeCar(
 }
 
 func (e *ERSEstimator) snapshotCar(car *ersCarState) ERSEstimate {
-	ready := car.initialized &&
-		car.validSteps >= ersEstimateWarmupSteps &&
-		(car.seenCounterMovement || car.completedLaps > 0 || e.calibrationSamples >= ersEstimateMinCalibration)
+	// Ready after warmup steps — no need for deploy/harvest data or lap completion.
+	// Restricted telemetry cars rely purely on throttle/brake/speed heuristics.
+	ready := car.initialized && car.validSteps >= ersEstimateWarmupSteps
 	return ERSEstimate{
 		Percent: int(math.Round((car.energyJ / ersEstimateMaxEnergyJ) * 100)),
 		Ready:   ready,

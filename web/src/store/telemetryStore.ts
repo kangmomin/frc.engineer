@@ -54,6 +54,7 @@ const MAX_NOTIFICATIONS = 50;
 const MAX_BATTLE_ALERTS = 10;
 
 export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
+  viewERSEstimate: false,
   viewERSActual: false,
   viewAdvancedStrategy: false,
   viewPitStatus: false,
@@ -64,6 +65,7 @@ export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
 };
 
 export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
+  viewERSEstimate: true,
   viewERSActual: true,
   viewAdvancedStrategy: true,
   viewPitStatus: true,

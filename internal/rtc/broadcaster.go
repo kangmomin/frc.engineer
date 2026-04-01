@@ -79,6 +79,9 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	}
 
 	key := "base"
+	if permissions.ViewERSEstimate {
+		key += "|ers-est"
+	}
 	if permissions.ViewERSActual {
 		key += "|ers"
 	}
@@ -112,8 +115,12 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 		state.Drivers = copied
 	}
 	state.ERSComparisonEnabled = permissions.ViewERSActual && hasERSActualData(state.Drivers)
-	// ERSEstimateEnabled is always true — estimates are derived from public telemetry
+	state.ERSEstimateEnabled = permissions.ViewERSEstimate
 	for i := range state.Drivers {
+		if !permissions.ViewERSEstimate {
+			state.Drivers[i].ERSEstimatePct = 0
+			state.Drivers[i].ERSEstimateReady = false
+		}
 		if !permissions.ViewERSActual {
 			state.Drivers[i].ERSActualPct = 0
 			state.Drivers[i].ERSActualReady = false

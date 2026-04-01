@@ -38,6 +38,7 @@ export interface TelemetryData {
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 
 export interface FeaturePermissions {
+  viewERSEstimate: boolean;
   viewERSActual: boolean;
   viewAdvancedStrategy: boolean;
   viewPitStatus: boolean;
