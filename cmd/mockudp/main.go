@@ -1117,14 +1117,34 @@ func (s *Simulator) writeMotionData(buf []byte, carIdx int) {
 	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0))
 }
 
+// F1 2025 grid: teamID (0-9), 2 drivers per team
+var f1Grid = [MaxCars]struct {
+	name   string
+	teamID uint8
+	number uint8
+}{
+	{"Hamilton", 1, 44}, {"Leclerc", 1, 16},       // Ferrari
+	{"Verstappen", 2, 1}, {"Tsunoda", 2, 22},      // Red Bull
+	{"Norris", 8, 4}, {"Piastri", 8, 81},           // McLaren
+	{"Russell", 0, 63}, {"Antonelli", 0, 12},       // Mercedes
+	{"Alonso", 4, 14}, {"Stroll", 4, 18},           // Aston Martin
+	{"Gasly", 5, 10}, {"Doohan", 5, 7},             // Alpine
+	{"Lawson", 6, 30}, {"Hadjar", 6, 20},           // RB
+	{"Ocon", 7, 31}, {"Bearman", 7, 87},            // Haas
+	{"Sainz", 3, 55}, {"Albon", 3, 23},             // Williams
+	{"Hulkenberg", 9, 27}, {"Bortoleto", 9, 5},    // Sauber
+	{"AI 21", 255, 98}, {"AI 22", 255, 99},         // Reserve
+}
+
 func (s *Simulator) writeParticipantData(buf []byte, carIdx int) {
 	offset := 0
 	isPlayer := carIdx == int(s.PlayerCarIdx)
+	entry := f1Grid[carIdx]
 
 	if isPlayer {
-		buf[offset] = 0
+		buf[offset] = 0 // Human
 	} else {
-		buf[offset] = 1
+		buf[offset] = 1 // AI
 	}
 	offset++
 
@@ -1135,24 +1155,20 @@ func (s *Simulator) writeParticipantData(buf []byte, carIdx int) {
 	}
 	offset++
 
-	buf[offset] = uint8(carIdx)
+	buf[offset] = uint8(carIdx) // NetworkID
 	offset++
-	buf[offset] = uint8(carIdx % 10)
+	buf[offset] = entry.teamID // TeamID
 	offset++
 	if isPlayer {
 		buf[offset] = 1
 	}
 	offset++
-	buf[offset] = uint8(carIdx + 1)
+	buf[offset] = entry.number // RaceNumber
 	offset++
-	buf[offset] = 9 // UK
+	buf[offset] = 9 // Nationality
 	offset++
 
-	name := fmt.Sprintf("AI %02d", carIdx+1)
-	if isPlayer {
-		name = "Mock Driver"
-	}
-	copy(buf[offset:offset+32], []byte(name))
+	copy(buf[offset:offset+32], []byte(entry.name))
 	offset += 32
 
 	buf[offset] = 1 // YourTelemetry public
