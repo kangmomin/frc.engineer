@@ -30,6 +30,7 @@ type PitwallManager struct {
 	carDamage         *packets.PacketCarDamageData
 	carSetups         *packets.PacketCarSetupData
 	tyreSets          [packets.MaxCars]*packets.PacketTyreSetsData
+	sessionHistory    [packets.MaxCars]*packets.PacketSessionHistoryData
 	motionEx          *packets.PacketMotionExData
 	playerIndex       uint8
 	strategyMgr       *StrategyManager
@@ -208,6 +209,16 @@ func (pm *PitwallManager) UpdateTyreSets(ts *packets.PacketTyreSetsData) {
 	pm.mu.Unlock()
 }
 
+// UpdateSessionHistory stores the latest session history packet for a specific car
+func (pm *PitwallManager) UpdateSessionHistory(sh *packets.PacketSessionHistoryData) {
+	if int(sh.CarIdx) >= packets.MaxCars {
+		return
+	}
+	pm.mu.Lock()
+	pm.sessionHistory[sh.CarIdx] = sh
+	pm.mu.Unlock()
+}
+
 // BuildState constructs the PitwallState DTO from all cached packet data
 func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	pm.mu.RLock()
@@ -296,8 +307,9 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 		if int8(currentTrackID) != pm.lastTrackID {
 			pm.lastTrackID = int8(currentTrackID)
 			pm.trackMapSendCount = 8 // ~2 seconds at 4Hz
-			// Clear per-car tyre sets cache on session change
+			// Clear per-car caches on session change
 			pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
+			pm.sessionHistory = [packets.MaxCars]*packets.PacketSessionHistoryData{}
 		}
 		if pm.trackMapSendCount > 0 {
 			if td := pm.trackStore.Get(currentTrackID); td != nil {
@@ -368,7 +380,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.LastLapTime = float32(ld.LastLapTimeInMS)
 				d.BestLapTime = 0
 				d.PitStatus = int(ld.PitStatus)
-				// d.DriverStatus – omitted from broadcast DTO (queryable via /api/debug)
+				d.DriverStatus = int(ld.DriverStatus)
 				d.NumPitStops = int(ld.NumPitStops)
 				d.LapDistance = sanitize(ld.LapDistance)
 				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0
@@ -493,6 +505,34 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 						}
 					}
 					d.AvailableSets = avail
+				}
+			}
+
+			if sh := pm.sessionHistory[i]; sh != nil {
+				numLaps := int(sh.NumLaps)
+				// Best sector 1
+				s1Lap := int(sh.BestSector1LapNum)
+				if s1Lap > 0 && s1Lap <= numLaps && s1Lap <= packets.MaxNumLapsInHistory {
+					s1 := sh.LapHistoryData[s1Lap-1].Sector1Ms()
+					if s1 > 0 {
+						d.BestSector1Ms = &s1
+					}
+				}
+				// Best sector 2
+				s2Lap := int(sh.BestSector2LapNum)
+				if s2Lap > 0 && s2Lap <= numLaps && s2Lap <= packets.MaxNumLapsInHistory {
+					s2 := sh.LapHistoryData[s2Lap-1].Sector2Ms()
+					if s2 > 0 {
+						d.BestSector2Ms = &s2
+					}
+				}
+				// Best sector 3
+				s3Lap := int(sh.BestSector3LapNum)
+				if s3Lap > 0 && s3Lap <= numLaps && s3Lap <= packets.MaxNumLapsInHistory {
+					s3 := sh.LapHistoryData[s3Lap-1].Sector3Ms()
+					if s3 > 0 {
+						d.BestSector3Ms = &s3
+					}
 				}
 			}
 		}

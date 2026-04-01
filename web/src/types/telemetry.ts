@@ -359,6 +359,11 @@ export interface DriverInfo {
   sector2TimeMs: number;
   currentSector: number;
 
+  // Best sector times (from SessionHistory)
+  bestSector1Ms?: number | null;
+  bestSector2Ms?: number | null;
+  bestSector3Ms?: number | null;
+
   // Vehicle Dynamics
   dynamics?: DynamicsLap[];
 

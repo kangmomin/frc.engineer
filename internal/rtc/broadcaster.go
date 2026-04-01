@@ -105,6 +105,10 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 			state.Drivers[i].TyreLifeSpan = nil
 			state.Drivers[i].TyreUsableLife = nil
 			state.Drivers[i].AvailableSets = nil
+			state.Drivers[i].BestSector1Ms = nil
+			state.Drivers[i].BestSector2Ms = nil
+			state.Drivers[i].BestSector3Ms = nil
+			state.Drivers[i].DriverStatus = 0
 		}
 	}
 

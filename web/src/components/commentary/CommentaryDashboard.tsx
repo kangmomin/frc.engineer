@@ -283,6 +283,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 <th>Driver</th>
                 <th>Team</th>
                 <th>Fastest</th>
+                <th>Status</th>
                 <th>Tire</th>
                 <th>Wear</th>
                 <th>Life</th>
@@ -315,6 +316,9 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                     </td>
                     <td className={styles.teamCell}>{getTeamName(driver.teamId)}</td>
                     <td className={styles.fastestCell}>{formatLapTime(driver.bestLapTime)}</td>
+                    <td className={styles.statusCell}>
+                      <DriverStatusBadge driver={driver} />
+                    </td>
                     <td>
                       <span className={styles.tyreBadge}>
                         <span className={styles.tyreDot} style={{ background: getTyreColor(driver.tireCompound) }} />
@@ -456,6 +460,54 @@ function ForecastRow({ forecast }: { forecast: WeatherForecast }) {
       <span className={styles.forecastTemp}>{forecast.trackTemp.toFixed(0)}°</span>
       <span className={styles.forecastRain}>{forecast.rainPercentage}%</span>
     </div>
+  );
+}
+
+// ── Driver Status Badge ──
+
+function getDriverStatusLabel(status: number): string {
+  switch (status) {
+    case 0: return 'GAR';
+    case 1: return 'FLY';
+    case 2: return 'IN';
+    case 3: return 'OUT';
+    case 4: return 'TRK';
+    default: return '--';
+  }
+}
+
+function getSectorDelta(driver: DriverInfo): { tone: string; label: string } | null {
+  if (driver.driverStatus !== 1) return null; // only on flying laps
+
+  const s1 = driver.sector1TimeMs;
+  const s2 = driver.sector2TimeMs;
+  const bestS1 = driver.bestSector1Ms;
+  const bestS2 = driver.bestSector2Ms;
+
+  // Check latest completed sector
+  if (driver.currentSector === 1 && s1 > 0 && bestS1 != null) {
+    const delta = s1 - bestS1;
+    return { tone: delta <= 0 ? 'improving' : 'slower', label: delta <= 0 ? `S1 ${(delta / 1000).toFixed(3)}` : `S1 +${(delta / 1000).toFixed(3)}` };
+  }
+  if (driver.currentSector === 2 && s2 > 0 && bestS2 != null) {
+    const delta = s2 - bestS2;
+    return { tone: delta <= 0 ? 'improving' : 'slower', label: delta <= 0 ? `S2 ${(delta / 1000).toFixed(3)}` : `S2 +${(delta / 1000).toFixed(3)}` };
+  }
+  return null;
+}
+
+function DriverStatusBadge({ driver }: { driver: DriverInfo }) {
+  const statusLabel = getDriverStatusLabel(driver.driverStatus);
+  const isFlying = driver.driverStatus === 1;
+  const sectorDelta = getSectorDelta(driver);
+
+  return (
+    <span className={`${styles.driverStatusBadge} ${isFlying ? styles.statusFlying : ''}`}>
+      <span>{statusLabel}</span>
+      {sectorDelta && (
+        <span className={styles[sectorDelta.tone]}>{sectorDelta.label}</span>
+      )}
+    </span>
   );
 }
 

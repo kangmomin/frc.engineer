@@ -281,6 +281,9 @@ func (p *Processor) processPacket(data []byte) {
 	if parsed.TyreSets != nil {
 		p.pitwallManager.UpdateTyreSets(parsed.TyreSets)
 	}
+	if parsed.SessionHistory != nil {
+		p.pitwallManager.UpdateSessionHistory(parsed.SessionHistory)
+	}
 	if parsed.MotionEx != nil {
 		p.pitwallManager.UpdateMotionEx(parsed.MotionEx)
 	}

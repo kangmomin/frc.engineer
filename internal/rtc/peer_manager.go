@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	maxBufferedAmount = 64 * 1024 // 64 KB — drop messages if receiver is slow
+	maxBufferedAmount = 256 * 1024 // 256 KB — drop messages if receiver is slow
 
 	sigWriteWait       = 10 * time.Second
 	sigPongWait        = 60 * time.Second

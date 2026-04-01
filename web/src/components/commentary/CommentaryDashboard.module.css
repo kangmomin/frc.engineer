@@ -202,6 +202,34 @@
   flex-shrink: 0;
 }
 
+.statusCell {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.driverStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+.statusFlying {
+  color: var(--accent-lime);
+}
+
+.improving {
+  color: #a855f7;
+  font-size: 9px;
+}
+
+.slower {
+  color: #f59e0b;
+  font-size: 9px;
+}
+
 .wearCell {
   font-family: var(--font-racing);
   font-weight: 700;

@@ -89,7 +89,7 @@ type DriverInfo struct {
 	Position        int     `json:"position"`
 	CurrentLapNum   int     `json:"currentLapNum"`
 	Speed           uint16  `json:"speed,omitempty"`
-	TopSpeed        int     `json:"topSpeed"`
+	TopSpeed        int     `json:"topSpeed,omitempty"`
 	Throttle        float32 `json:"throttle,omitempty"`
 	Brake           float32 `json:"brake,omitempty"`
 	Gear            int8    `json:"gear,omitempty"`
@@ -114,12 +114,12 @@ type DriverInfo struct {
 	FuelMix             int     `json:"fuelMix,omitempty"`
 	ERSStoreEnergy      float32 `json:"ersStoreEnergy"`
 	ERSDeployMode       int     `json:"ersDeployMode"`
-	ERSDeployedThisLap  float32 `json:"ersDeployedThisLap"`
-	ERSHarvestedThisLap float32 `json:"ersHarvestedThisLap"`
-	ERSEstimatePct      int     `json:"ersEstimatePct"`
-	ERSEstimateReady    bool    `json:"ersEstimateReady"`
-	ERSActualPct        int     `json:"ersActualPct"`
-	ERSActualReady      bool    `json:"ersActualReady"`
+	ERSDeployedThisLap  float32 `json:"ersDeployedThisLap,omitempty"`
+	ERSHarvestedThisLap float32 `json:"ersHarvestedThisLap,omitempty"`
+	ERSEstimatePct      int     `json:"ersEstimatePct,omitempty"`
+	ERSEstimateReady    bool    `json:"ersEstimateReady,omitempty"`
+	ERSActualPct        int     `json:"ersActualPct,omitempty"`
+	ERSActualReady      bool    `json:"ersActualReady,omitempty"`
 
 	// Damage
 	Damage *CarDamage `json:"damage,omitempty"`
@@ -128,19 +128,24 @@ type DriverInfo struct {
 	StintHistory []StintInfoDTO `json:"stintHistory,omitempty"`
 
 	// Sector times (current lap)
-	Sector1TimeMs int `json:"sector1TimeMs"`
-	Sector2TimeMs int `json:"sector2TimeMs"`
+	Sector1TimeMs int `json:"sector1TimeMs,omitempty"`
+	Sector2TimeMs int `json:"sector2TimeMs,omitempty"`
 	CurrentSector int `json:"currentSector"`
+
+	// Best sector times (from SessionHistory)
+	BestSector1Ms *int `json:"bestSector1Ms,omitempty"`
+	BestSector2Ms *int `json:"bestSector2Ms,omitempty"`
+	BestSector3Ms *int `json:"bestSector3Ms,omitempty"`
 
 	// Vehicle Dynamics
 	Dynamics []DynamicsLapDTO `json:"dynamics,omitempty"`
 
 	// Penalties
-	Penalties                  int `json:"penalties"`
-	TotalWarnings              int `json:"totalWarnings"`
-	CornerCuttingWarnings      int `json:"cornerCuttingWarnings"`
-	NumUnservedDriveThroughs   int `json:"numUnservedDriveThroughs"`
-	NumUnservedStopGoPenalties int `json:"numUnservedStopGoPenalties"`
+	Penalties                  int `json:"penalties,omitempty"`
+	TotalWarnings              int `json:"totalWarnings,omitempty"`
+	CornerCuttingWarnings      int `json:"cornerCuttingWarnings,omitempty"`
+	NumUnservedDriveThroughs   int `json:"numUnservedDriveThroughs,omitempty"`
+	NumUnservedStopGoPenalties int `json:"numUnservedStopGoPenalties,omitempty"`
 
 	// Lap validity
 	LapInvalid bool `json:"lapInvalid"`
@@ -156,11 +161,11 @@ type DriverInfo struct {
 	DriverStatus      int     `json:"driverStatus,omitempty"`
 	NumPitStops       int     `json:"numPitStops"`
 	LapDistance       float32 `json:"lapDistance"`
-	PitStopTimer      float32 `json:"pitStopTimer"`
-	DeltaToCarInFront int     `json:"deltaToCarInFront"`
-	DeltaToRaceLeader int     `json:"deltaToRaceLeader"`
-	DeltaToPlayer     int     `json:"deltaToPlayer"`
-	PitLaneTime       int     `json:"pitLaneTime"`
+	PitStopTimer      float32 `json:"pitStopTimer,omitempty"`
+	DeltaToCarInFront int     `json:"deltaToCarInFront,omitempty"`
+	DeltaToRaceLeader int     `json:"deltaToRaceLeader,omitempty"`
+	DeltaToPlayer     int     `json:"deltaToPlayer,omitempty"`
+	PitLaneTime       int     `json:"pitLaneTime,omitempty"`
 }
 
 // StintInfoDTO represents a completed tire stint

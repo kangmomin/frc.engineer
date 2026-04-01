@@ -19,8 +19,9 @@ type ParsedData struct {
 	CarStatus    *packets.PacketCarStatusData
 	CarDamage    *packets.PacketCarDamageData
 	CarSetups    *packets.PacketCarSetupData
-	TyreSets     *packets.PacketTyreSetsData
-	Event        *packets.PacketEventData
+	TyreSets       *packets.PacketTyreSetsData
+	SessionHistory *packets.PacketSessionHistoryData
+	Event          *packets.PacketEventData
 }
 
 // Parser handles parsing of F1 25 UDP packets
@@ -129,6 +130,14 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 			return nil, err
 		}
 		parsed.CarDamage = carDamage
+
+	case packets.PacketIDSessionHistory:
+		sessionHistory, err := packets.ParseSessionHistoryPacket(data, header)
+		if err != nil {
+			p.logger.Debug("failed to parse session history packet", "error", err)
+			return nil, err
+		}
+		parsed.SessionHistory = sessionHistory
 
 	case packets.PacketIDTyreSets:
 		tyreSets, err := packets.ParseTyreSetsPacket(data, header)
