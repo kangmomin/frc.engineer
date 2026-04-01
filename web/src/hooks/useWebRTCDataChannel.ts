@@ -241,6 +241,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           setLastError(msg.error ?? 'Unknown error');
           setConnectionState('error');
           setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+          // Clear invalid permission code from localStorage to prevent retry loops
+          if (msg.error && (msg.error as string).includes('permissions code')) {
+            localStorage.removeItem('frc_permission_code');
+          }
           cleanup();
           break;
       }
