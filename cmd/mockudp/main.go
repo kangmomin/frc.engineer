@@ -1,15 +1,27 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"embed"
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"io"
+	"io/fs"
 	"log"
 	"math"
 	"math/rand"
 	"net"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
+
+//go:embed all:recordings
+var embeddedRecordings embed.FS
 
 // Simulates F1 25 UDP telemetry for testing
 
@@ -32,14 +44,11 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:20777", "UDP target address")
 	hz := flag.Int("hz", 60, "Packets per second")
 	laps := flag.Int("laps", 3, "Number of laps to simulate")
+	replay := flag.String("replay", "", "Path to raw.bin file to replay (skip menu)")
+	speed := flag.Float64("speed", 1.0, "Replay speed multiplier")
+	loopFlag := flag.Bool("loop", false, "Loop replay continuously")
+	record := flag.String("record", "", "Record simulation to raw.bin file")
 	flag.Parse()
-
-	if *hz <= 0 {
-		log.Fatal("hz must be greater than 0")
-	}
-	if *laps <= 0 {
-		log.Fatal("laps must be greater than 0")
-	}
 
 	conn, err := net.Dial("udp", *addr)
 	if err != nil {
@@ -47,73 +56,310 @@ func main() {
 	}
 	defer conn.Close()
 
-	fmt.Printf("Sending mock F1 25 telemetry to %s at %d Hz\n", *addr, *hz)
-	fmt.Printf("Simulating %d laps...\n", *laps)
+	// Direct replay mode (no menu)
+	if *replay != "" {
+		data, err := os.ReadFile(*replay)
+		if err != nil {
+			log.Fatalf("Failed to read %s: %v", *replay, err)
+		}
+		runReplayFromBytes(conn, filepath.Base(*replay), data, *speed, *loopFlag)
+		return
+	}
 
-	sim := NewSimulator(*laps, *hz)
-	ticker := time.NewTicker(time.Second / time.Duration(*hz))
+	// Direct record mode
+	if *record != "" {
+		runSimulationWithRecord(conn, *record, *laps, *hz)
+		return
+	}
+
+	// Interactive menu
+	runInteractiveMenu(conn, *addr, *hz, *laps, *speed, *loopFlag)
+}
+
+func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64, loop bool) {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for {
+		// Collect available recordings
+		recordings := listRecordings()
+
+		fmt.Println()
+		fmt.Println("╔══════════════════════════════════════════╗")
+		fmt.Println("║       FRC Mock UDP Telemetry Sender      ║")
+		fmt.Printf("║       Target: %-26s ║\n", addr)
+		fmt.Println("╠══════════════════════════════════════════╣")
+		fmt.Println("║  1. Simulate (synthetic data)            ║")
+
+		for i, rec := range recordings {
+			label := rec.name
+			if len(label) > 30 {
+				label = label[:27] + "..."
+			}
+			size := fmt.Sprintf("%.1fMB", float64(rec.size)/(1024*1024))
+			fmt.Printf("║  %d. Replay: %-22s %5s ║\n", i+2, label, size)
+		}
+
+		fmt.Println("║  0. Exit                                ║")
+		fmt.Println("╚══════════════════════════════════════════╝")
+		fmt.Print("Select: ")
+
+		if !scanner.Scan() {
+			return
+		}
+		choice := strings.TrimSpace(scanner.Text())
+
+		if choice == "0" {
+			fmt.Println("Bye!")
+			return
+		}
+
+		if choice == "1" {
+			fmt.Printf("Simulating %d laps at %d Hz...\n", laps, hz)
+			runSimulation(conn, laps, hz)
+			continue
+		}
+
+		idx := 0
+		if _, err := fmt.Sscanf(choice, "%d", &idx); err != nil || idx < 2 || idx > len(recordings)+1 {
+			fmt.Println("Invalid selection.")
+			continue
+		}
+
+		rec := recordings[idx-2]
+		fmt.Printf("Replaying: %s (%.1f MB)\n", rec.name, float64(rec.size)/(1024*1024))
+		runReplayFromBytes(conn, rec.name, rec.data, speed, loop)
+	}
+}
+
+type recordingEntry struct {
+	name string
+	size int
+	data []byte
+}
+
+func listRecordings() []recordingEntry {
+	var entries []recordingEntry
+
+	// Embedded recordings
+	fs.WalkDir(embeddedRecordings, "recordings", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".bin") {
+			return nil
+		}
+		data, err := embeddedRecordings.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		name := strings.TrimPrefix(path, "recordings/")
+		name = strings.TrimSuffix(name, ".bin")
+		entries = append(entries, recordingEntry{name: name, size: len(data), data: data})
+		return nil
+	})
+
+	// External recordings from data/packets/*/raw.bin (if running near the project)
+	packetDirs := []string{"data/packets", "../data/packets"}
+	for _, base := range packetDirs {
+		dirs, err := os.ReadDir(base)
+		if err != nil {
+			continue
+		}
+		for _, d := range dirs {
+			if !d.IsDir() {
+				continue
+			}
+			rawPath := filepath.Join(base, d.Name(), "raw.bin")
+			data, err := os.ReadFile(rawPath)
+			if err != nil {
+				continue
+			}
+			entries = append(entries, recordingEntry{name: d.Name(), size: len(data), data: data})
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+	return entries
+}
+
+func runSimulation(conn net.Conn, laps, hz int) {
+	if hz <= 0 {
+		hz = 60
+	}
+	if laps <= 0 {
+		laps = 3
+	}
+	fmt.Printf("Sending mock F1 25 telemetry at %d Hz\n", hz)
+
+	sim := NewSimulator(laps, hz)
+	ticker := time.NewTicker(time.Second / time.Duration(hz))
 	defer ticker.Stop()
 
 	frameID := uint32(0)
 	for range ticker.C {
 		if sim.Done() {
-			fmt.Println("Simulation complete!")
+			fmt.Println("\nSimulation complete!")
 			return
 		}
 
-		// Slow-changing packets required by the pitwall UI.
-		if frameID == 0 || frameID%uint32(*hz) == 0 {
-			sessionPacket := sim.BuildSessionPacket(frameID)
-			if _, err := conn.Write(sessionPacket); err != nil {
-				log.Printf("Failed to send session: %v", err)
-			}
-
-			participantsPacket := sim.BuildParticipantsPacket(frameID)
-			if _, err := conn.Write(participantsPacket); err != nil {
-				log.Printf("Failed to send participants: %v", err)
-			}
-
-			carStatusPacket := sim.BuildCarStatusPacket(frameID)
-			if _, err := conn.Write(carStatusPacket); err != nil {
-				log.Printf("Failed to send car status: %v", err)
-			}
+		if frameID == 0 || frameID%uint32(hz) == 0 {
+			send(conn, sim.BuildSessionPacket(frameID))
+			send(conn, sim.BuildParticipantsPacket(frameID))
+			send(conn, sim.BuildCarStatusPacket(frameID))
 		}
 
-		// High-rate packets for dashboard and track map updates.
-		motionPacket := sim.BuildMotionPacket(frameID)
-		if _, err := conn.Write(motionPacket); err != nil {
-			log.Printf("Failed to send motion: %v", err)
-		}
-
-		telemetryPacket := sim.BuildTelemetryPacket(frameID)
-		if _, err := conn.Write(telemetryPacket); err != nil {
-			log.Printf("Failed to send telemetry: %v", err)
-		}
-
-		// Send lap data packet
-		lapDataPacket := sim.BuildLapDataPacket(frameID)
-		if _, err := conn.Write(lapDataPacket); err != nil {
-			log.Printf("Failed to send lap data: %v", err)
-		}
-
+		send(conn, sim.BuildMotionPacket(frameID))
+		send(conn, sim.BuildTelemetryPacket(frameID))
+		send(conn, sim.BuildLapDataPacket(frameID))
 		sim.Tick()
 
-		// Send any pending warning/penalty event packets
 		for _, evt := range sim.DrainPendingEvents() {
-			eventPacket := sim.BuildPenaltyEventPacket(frameID, evt)
-			if _, err := conn.Write(eventPacket); err != nil {
-				log.Printf("Failed to send penalty event: %v", err)
-			}
+			send(conn, sim.BuildPenaltyEventPacket(frameID, evt))
 		}
 
 		frameID++
-
-		// Progress indicator every second
-		if frameID%uint32(*hz) == 0 {
+		if frameID%uint32(hz) == 0 {
 			fmt.Printf("\rLap %d | Distance: %.0fm | Speed: %d km/h | Gear: %d | RPM: %d    ",
 				sim.CurrentLap, sim.LapDistance, sim.Speed, sim.Gear, sim.RPM)
 		}
 	}
+}
+
+// runSimulationWithRecord runs simulation and writes packets to a raw.bin file.
+func runSimulationWithRecord(conn net.Conn, outPath string, laps, hz int) {
+	if hz <= 0 {
+		hz = 60
+	}
+	if laps <= 0 {
+		laps = 3
+	}
+
+	f, err := os.Create(outPath)
+	if err != nil {
+		log.Fatalf("Failed to create %s: %v", outPath, err)
+	}
+	defer f.Close()
+
+	fmt.Printf("Recording simulation to %s (%d laps, %d Hz)\n", outPath, laps, hz)
+
+	sim := NewSimulator(laps, hz)
+	ticker := time.NewTicker(time.Second / time.Duration(hz))
+	defer ticker.Stop()
+
+	writePacket := func(pkt []byte) {
+		// Write to raw.bin (length-prefixed)
+		var lenBuf [4]byte
+		binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(pkt)))
+		f.Write(lenBuf[:])
+		f.Write(pkt)
+		// Also send via UDP
+		send(conn, pkt)
+	}
+
+	frameID := uint32(0)
+	for range ticker.C {
+		if sim.Done() {
+			fmt.Printf("\nRecording complete: %s\n", outPath)
+			return
+		}
+
+		if frameID == 0 || frameID%uint32(hz) == 0 {
+			writePacket(sim.BuildSessionPacket(frameID))
+			writePacket(sim.BuildParticipantsPacket(frameID))
+			writePacket(sim.BuildCarStatusPacket(frameID))
+		}
+
+		writePacket(sim.BuildMotionPacket(frameID))
+		writePacket(sim.BuildTelemetryPacket(frameID))
+		writePacket(sim.BuildLapDataPacket(frameID))
+		sim.Tick()
+
+		for _, evt := range sim.DrainPendingEvents() {
+			writePacket(sim.BuildPenaltyEventPacket(frameID, evt))
+		}
+
+		frameID++
+		if frameID%uint32(hz) == 0 {
+			fmt.Printf("\rRecording Lap %d | %.0fm | %d km/h    ",
+				sim.CurrentLap, sim.LapDistance, sim.Speed)
+		}
+	}
+}
+
+func send(conn net.Conn, pkt []byte) {
+	if _, err := conn.Write(pkt); err != nil {
+		log.Printf("send failed: %v", err)
+	}
+}
+
+// runReplayFromBytes replays length-prefixed packets from an in-memory byte slice.
+func runReplayFromBytes(conn net.Conn, name string, data []byte, speedMul float64, loop bool) {
+	if speedMul <= 0 {
+		speedMul = 1.0
+	}
+	for {
+		fmt.Printf("Replaying %s (%.1f MB) at %.1fx speed\n", name, float64(len(data))/(1024*1024), speedMul)
+		if err := replayFromReader(conn, bytes.NewReader(data), speedMul); err != nil {
+			log.Printf("Replay error: %v", err)
+			return
+		}
+		if !loop {
+			return
+		}
+		fmt.Println("Looping...")
+	}
+}
+
+func replayFromReader(conn net.Conn, r io.Reader, speedMul float64) error {
+	var (
+		lenBuf      [4]byte
+		prevSession float32
+		packetCount uint64
+		bytesSent   uint64
+		startTime   = time.Now()
+	)
+
+	for {
+		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("read length: %w", err)
+		}
+		pktLen := binary.LittleEndian.Uint32(lenBuf[:])
+		if pktLen == 0 || pktLen > 65535 {
+			return fmt.Errorf("invalid packet length: %d", pktLen)
+		}
+
+		pkt := make([]byte, pktLen)
+		if _, err := io.ReadFull(r, pkt); err != nil {
+			return fmt.Errorf("read packet: %w", err)
+		}
+
+		// Timing from sessionTime in packet header (float32 LE at offset 15)
+		if len(pkt) >= 19 {
+			sessionTime := math.Float32frombits(binary.LittleEndian.Uint32(pkt[15:19]))
+			if prevSession > 0 && sessionTime > prevSession {
+				delay := time.Duration(float64(sessionTime-prevSession) / speedMul * float64(time.Second))
+				if delay > 0 && delay < 2*time.Second {
+					time.Sleep(delay)
+				}
+			}
+			prevSession = sessionTime
+		}
+
+		send(conn, pkt)
+		packetCount++
+		bytesSent += uint64(pktLen)
+
+		if packetCount%1000 == 0 {
+			elapsed := time.Since(startTime).Seconds()
+			fmt.Printf("\r%d packets | %.1f MB | %.0f pkt/s    ",
+				packetCount, float64(bytesSent)/(1024*1024), float64(packetCount)/elapsed)
+		}
+	}
+
+	elapsed := time.Since(startTime).Seconds()
+	fmt.Printf("\rDone: %d packets | %.1f MB | %.1fs    \n",
+		packetCount, float64(bytesSent)/(1024*1024), elapsed)
+	return nil
 }
 
 // Simulator simulates a car driving around a track
