@@ -385,6 +385,9 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                     </td>
                     <td>
                       <span className={styles.tyreBadge}>
+                        {(driver.stintHistory ?? []).map((stint, si) => (
+                          <span key={si} className={styles.stintDot} style={{ background: getTyreColor(stint.compound) }} title={`${stint.compound} ${stint.laps}L`} />
+                        ))}
                         <span className={styles.tyreDot} style={{ background: getTyreColor(driver.tireCompound) }} />
                         {driver.tireAge}
                       </span>

@@ -5,7 +5,7 @@
 export const TEAM_COLORS: Record<number, string> = {
   0: '#00a19b',   // Mercedes - Petronas Green
   1: '#ef1b23',   // Ferrari - Rosso Corsa
-  2: '#001a2d',   // Red Bull Racing - Navy Blue
+  2: '#3671c6',   // Red Bull Racing - Blue
   3: '#0052d4',   // Williams - Dark Blue
   4: '#006747',   // Aston Martin - British Racing Green
   5: '#0078bf',   // Alpine - Alpine Blue

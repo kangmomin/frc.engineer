@@ -201,6 +201,14 @@
   flex-shrink: 0;
 }
 
+.stintDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
 .fastestCell {
   font-family: var(--font-racing);
   font-weight: 700;
