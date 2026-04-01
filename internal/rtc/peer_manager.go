@@ -35,10 +35,11 @@ type PeerManager struct {
 	sigConn      *websocket.Conn
 	sigMu        sync.Mutex
 
-	peers    map[string]*webrtc.PeerConnection
-	channels map[string]*webrtc.DataChannel
-	permits  map[string]signaling.Permissions
-	mu       sync.RWMutex
+	peers        map[string]*webrtc.PeerConnection
+	channels     map[string]*webrtc.DataChannel
+	fastChannels map[string]*webrtc.DataChannel
+	permits      map[string]signaling.Permissions
+	mu           sync.RWMutex
 
 	roomID        string
 	roomCode      string
@@ -58,6 +59,7 @@ func NewPeerManager(signalingURL string, logger *slog.Logger) *PeerManager {
 		signalingURL: signalingURL,
 		peers:        make(map[string]*webrtc.PeerConnection),
 		channels:     make(map[string]*webrtc.DataChannel),
+		fastChannels: make(map[string]*webrtc.DataChannel),
 		permits:      make(map[string]signaling.Permissions),
 		logger:       logger,
 		done:         make(chan struct{}),
@@ -191,6 +193,23 @@ func (pm *PeerManager) BroadcastAll(message []byte) {
 		if err := ch.SendText(string(message)); err != nil {
 			pm.logger.Debug("send failed", "peerId", peerID, "error", err)
 		}
+	}
+}
+
+// BroadcastAllFast sends a message to all connected fast DataChannels.
+// Messages are silently dropped for slow peers (no log spam at 60Hz).
+func (pm *PeerManager) BroadcastAllFast(message []byte) {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	for _, ch := range pm.fastChannels {
+		if ch.ReadyState() != webrtc.DataChannelStateOpen {
+			continue
+		}
+		if ch.BufferedAmount() > maxBufferedAmount {
+			continue
+		}
+		_ = ch.SendText(string(message))
 	}
 }
 
@@ -535,7 +554,7 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 		return
 	}
 
-	// Create DataChannel
+	// Create DataChannel (reliable, ordered) for pitwall state & events
 	dc, err := pc.CreateDataChannel("data", &webrtc.DataChannelInit{
 		Ordered: boolPtr(true),
 	})
@@ -545,9 +564,24 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 		return
 	}
 
+	// Create fast DataChannel (unreliable, unordered) for 60Hz position data
+	maxRetransmits := uint16(0)
+	fastDC, err := pc.CreateDataChannel("fast", &webrtc.DataChannelInit{
+		Ordered:        boolPtr(false),
+		MaxRetransmits: &maxRetransmits,
+	})
+	if err != nil {
+		pm.logger.Error("failed to create fast data channel", "peerId", peerID, "error", err)
+		// Non-fatal: proceed without fast channel
+		fastDC = nil
+	}
+
 	pm.mu.Lock()
 	pm.peers[peerID] = pc
 	pm.channels[peerID] = dc
+	if fastDC != nil {
+		pm.fastChannels[peerID] = fastDC
+	}
 	pm.permits[peerID] = permissions
 	pm.mu.Unlock()
 
@@ -675,6 +709,7 @@ func (pm *PeerManager) removePeer(peerID string) {
 		pc.Close()
 		delete(pm.peers, peerID)
 		delete(pm.channels, peerID)
+		delete(pm.fastChannels, peerID)
 		delete(pm.permits, peerID)
 	}
 	pm.mu.Unlock()

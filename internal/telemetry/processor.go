@@ -60,6 +60,9 @@ type Processor struct {
 	battleDetector  *BattleDetector
 	logger          *slog.Logger
 
+	// Fast broadcaster for high-frequency position data (optional)
+	fastHub broadcast.FastBroadcaster
+
 	// Rate limiting
 	minInterval     time.Duration
 	lastSend        time.Time
@@ -111,6 +114,11 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 		logger:          logger,
 		minInterval:     interval,
 	}
+}
+
+// SetFastBroadcaster sets the optional high-frequency broadcaster for position data.
+func (p *Processor) SetFastBroadcaster(fb broadcast.FastBroadcaster) {
+	p.fastHub = fb
 }
 
 // DeltaCalculator returns the processor's delta calculator for configuration
@@ -235,6 +243,19 @@ func (p *Processor) processPacket(data []byte) {
 	// Feed pitwall manager with new packet types
 	if parsed.Motion != nil {
 		p.pitwallManager.UpdateMotion(parsed.Motion, parsed.Header.PlayerCarIndex)
+
+		// Broadcast positions at full rate (60Hz) over fast channel
+		if p.fastHub != nil {
+			if positions := p.pitwallManager.BuildPositions(); positions != nil {
+				msg := dto.WSResponse{
+					Type: dto.MessageTypePositionUpdate,
+					Data: positions,
+				}
+				if fastJSON, err := json.Marshal(msg); err == nil {
+					p.fastHub.BroadcastFast(fastJSON)
+				}
+			}
+		}
 	}
 	if parsed.Session != nil {
 		p.pitwallManager.UpdateSession(parsed.Session)

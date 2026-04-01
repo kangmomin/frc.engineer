@@ -99,6 +99,7 @@ func main() {
 
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
+	processor.SetFastBroadcaster(broadcaster)
 	compareMonitor := newERSCompareMonitor("logs/ers_compare", logger)
 	processor.SetPitwallStateObserver(compareMonitor.Observe)
 

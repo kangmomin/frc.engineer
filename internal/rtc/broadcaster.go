@@ -17,6 +17,11 @@ func NewDataChannelBroadcaster(pm *PeerManager) *DataChannelBroadcaster {
 	return &DataChannelBroadcaster{peerManager: pm}
 }
 
+// BroadcastFast sends a message over the fast (unreliable) DataChannel to all peers.
+func (b *DataChannelBroadcaster) BroadcastFast(message []byte) {
+	b.peerManager.BroadcastAllFast(message)
+}
+
 // Broadcast sends the message to all connected peers via DataChannel.
 func (b *DataChannelBroadcaster) Broadcast(message []byte) {
 	variants, ok := buildPitwallBroadcastVariants(message)

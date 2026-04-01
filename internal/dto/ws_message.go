@@ -2,13 +2,14 @@ package dto
 
 // WebSocket message types
 const (
-	MessageTypeTelemetry    = "telemetry"    // Server → Client: Real-time telemetry (existing Dashboard)
-	MessageTypeLapData      = "lapData"      // Server → Client: Response to getLapData request
-	MessageTypeGetBestLap   = "getBestLap"   // Client → Server: Request best lap data
-	MessageTypePitwallState = "pitwallState" // Server → Client: Comprehensive pitwall state
-	MessageTypeRaceControl  = "raceControl"  // Server → Client: Race control notifications
-	MessageTypeBattleAlert  = "battleAlert"  // Server → Client: Battle prediction alert
-	MessageTypeRaceResult   = "raceResult"   // Server → Client: Race result summary
+	MessageTypeTelemetry      = "telemetry"      // Server → Client: Real-time telemetry (existing Dashboard)
+	MessageTypeLapData        = "lapData"        // Server → Client: Response to getLapData request
+	MessageTypeGetBestLap     = "getBestLap"     // Client → Server: Request best lap data
+	MessageTypePitwallState   = "pitwallState"   // Server → Client: Comprehensive pitwall state
+	MessageTypeRaceControl    = "raceControl"    // Server → Client: Race control notifications
+	MessageTypeBattleAlert    = "battleAlert"    // Server → Client: Battle prediction alert
+	MessageTypeRaceResult     = "raceResult"     // Server → Client: Race result summary
+	MessageTypePositionUpdate = "positionUpdate" // Server → Client: High-frequency car positions (fast channel)
 )
 
 // BattleAlertDTO is sent when an overtake is predicted within a few laps

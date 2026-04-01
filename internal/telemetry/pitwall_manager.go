@@ -477,6 +477,34 @@ func (pm *PitwallManager) GetDriverName(vehicleIdx uint8) string {
 	return pm.participants.Participants[vehicleIdx].GetName()
 }
 
+// BuildPositions returns car positions from the latest motion packet.
+// This is a lightweight alternative to BuildState for high-frequency broadcasting.
+func (pm *PitwallManager) BuildPositions() []dto.CarPosition {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.motion == nil {
+		return nil
+	}
+
+	numCars := packets.MaxCars
+	if pm.participants != nil && int(pm.participants.NumActiveCars) < numCars {
+		numCars = int(pm.participants.NumActiveCars)
+	}
+
+	positions := make([]dto.CarPosition, numCars)
+	for i := range numCars {
+		m := &pm.motion.CarMotionData[i]
+		positions[i] = dto.CarPosition{
+			Index: i,
+			X:     m.WorldPositionX,
+			Y:     m.WorldPositionY,
+			Z:     m.WorldPositionZ,
+		}
+	}
+	return positions
+}
+
 // HasData returns true if at least session or motion data has been received
 func (pm *PitwallManager) HasData() bool {
 	pm.mu.RLock()
