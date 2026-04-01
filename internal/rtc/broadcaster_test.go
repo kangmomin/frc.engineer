@@ -40,7 +40,7 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 		ViewPlayerDelta: true,
 		ViewCommentary:  true,
 		ViewQualifying:  true,
-	}))
+	}, "commentary"))
 	if !privileged.ERSEstimateEnabled {
 		t.Fatal("expected ERS estimate to be enabled for privileged peer")
 	}
@@ -57,7 +57,7 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 		t.Fatalf("expected top speed and player delta to remain visible, got %#v", privileged.Drivers[0])
 	}
 
-	restricted := decodePitwallState(t, variants.resolve(signaling.Permissions{}))
+	restricted := decodePitwallState(t, variants.resolve(signaling.Permissions{}, "commentary"))
 	if restricted.ERSComparisonEnabled {
 		t.Fatal("expected ERS comparison to be disabled")
 	}

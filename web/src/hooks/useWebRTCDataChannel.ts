@@ -12,6 +12,7 @@ interface UseWebRTCOptions {
 
 interface UseWebRTCReturn {
   disconnect: () => void;
+  sendView: (view: string) => void;
   connectionState: RTCPeerConnectionState | 'new';
   lastError: string;
 }
@@ -74,6 +75,12 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setRtcState('new');
   }, [cleanup, setConnectionState, setFeaturePermissions]);
+
+  const sendView = useCallback((view: string) => {
+    if (dcRef.current?.readyState === 'open') {
+      dcRef.current.send(JSON.stringify({ type: 'setView', view }));
+    }
+  }, []);
 
   // Main connection effect — runs when signalingUrl or roomCode changes.
   useEffect(() => {
@@ -258,5 +265,5 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options?.signalingUrl, options?.roomId, options?.password, options?.permissionsCode]);
 
-  return { disconnect, connectionState: rtcState, lastError };
+  return { disconnect, sendView, connectionState: rtcState, lastError };
 }

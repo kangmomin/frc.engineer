@@ -39,6 +39,7 @@ type PeerManager struct {
 	channels     map[string]*webrtc.DataChannel
 	fastChannels map[string]*webrtc.DataChannel
 	permits      map[string]signaling.Permissions
+	peerViews    map[string]string // per-peer active view: "cockpit", "commentary", "qualifying"
 	mu           sync.RWMutex
 
 	roomID        string
@@ -61,6 +62,7 @@ func NewPeerManager(signalingURL string, logger *slog.Logger) *PeerManager {
 		channels:     make(map[string]*webrtc.DataChannel),
 		fastChannels: make(map[string]*webrtc.DataChannel),
 		permits:      make(map[string]signaling.Permissions),
+		peerViews:    make(map[string]string),
 		logger:       logger,
 		done:         make(chan struct{}),
 	}
@@ -219,12 +221,13 @@ func (pm *PeerManager) BroadcastAllFast(message []byte) {
 
 // BroadcastPerPeer sends a potentially different payload to each connected peer.
 // Returns (dropped, total) counts of peers.
-func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions signaling.Permissions) []byte) (int, int) {
+func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions signaling.Permissions, view string) []byte) (int, int) {
 	pm.mu.RLock()
 	type target struct {
 		peerID      string
 		channel     *webrtc.DataChannel
 		permissions signaling.Permissions
+		view        string
 	}
 	targets := make([]target, 0, len(pm.channels))
 	for peerID, ch := range pm.channels {
@@ -232,6 +235,7 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions 
 			peerID:      peerID,
 			channel:     ch,
 			permissions: pm.permits[peerID],
+			view:        pm.peerViews[peerID],
 		})
 	}
 	pm.mu.RUnlock()
@@ -248,7 +252,7 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions 
 			dropped++
 			continue
 		}
-		message := resolve(target.peerID, target.permissions)
+		message := resolve(target.peerID, target.permissions, target.view)
 		if len(message) == 0 {
 			continue
 		}
@@ -611,6 +615,21 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		// Check for view change message
+		if len(msg.Data) < 100 {
+			var viewMsg struct {
+				Type string `json:"type"`
+				View string `json:"view"`
+			}
+			if json.Unmarshal(msg.Data, &viewMsg) == nil && viewMsg.Type == "setView" {
+				pm.mu.Lock()
+				pm.peerViews[peerID] = viewMsg.View
+				pm.mu.Unlock()
+				pm.logger.Info("peer view changed", "peerId", peerID, "view", viewMsg.View)
+				return
+			}
+		}
+
 		if pm.onRequest == nil {
 			return
 		}

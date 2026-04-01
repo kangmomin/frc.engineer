@@ -94,11 +94,6 @@ export function Layout() {
 
   const [dashboardView, setDashboardView] = useState<DashboardView>(readInitialView);
 
-  const switchView = useCallback((view: DashboardView) => {
-    setDashboardView(view);
-    persistView(view);
-  }, []);
-
   useEffect(() => {
     window.sessionStorage.removeItem('frc_remote_session');
     window.sessionStorage.removeItem('frc_signaling_url');
@@ -119,7 +114,13 @@ export function Layout() {
   useMockTelemetry(false);
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
-  const { connectionState: rtcConnectionState, lastError: rtcLastError } = useWebRTCDataChannel(webrtcOpts);
+  const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView } = useWebRTCDataChannel(webrtcOpts);
+
+  const switchView = useCallback((view: DashboardView) => {
+    setDashboardView(view);
+    persistView(view);
+    sendView(view);
+  }, [sendView]);
 
   const handleRemoteConnect = useCallback((
     signalingUrl: string,

@@ -54,8 +54,8 @@ func (b *DataChannelBroadcaster) BroadcastPitwallState(state interface{}) {
 		state: pitwallState,
 	}
 
-	dropped, total := b.peerManager.BroadcastPerPeer(func(_ string, permissions signaling.Permissions) []byte {
-		return variants.resolve(permissions)
+	dropped, total := b.peerManager.BroadcastPerPeer(func(_ string, permissions signaling.Permissions, view string) []byte {
+		return variants.resolve(permissions, view)
 	})
 	b.lastDrops.Store(int32(dropped))
 	b.lastTotal.Store(int32(total))
@@ -73,12 +73,16 @@ type pitwallBroadcastVariants struct {
 	state dto.PitwallState
 }
 
-func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []byte {
+func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, view string) []byte {
 	if v == nil {
 		return nil
 	}
 
-	key := "base"
+	if view == "" {
+		view = "cockpit"
+	}
+
+	key := view
 	if permissions.ViewERSEstimate {
 		key += "|ers-est"
 	}
@@ -146,6 +150,21 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 			state.Drivers[i].BestSector3Ms = nil
 			state.Drivers[i].DriverStatus = 0
 		}
+
+		// View-based filtering: strip data not needed for current tab
+		if view == "cockpit" {
+			// Cockpit doesn't need commentary-heavy fields for non-player cars
+			state.Drivers[i].StintHistory = nil
+		}
+		if view != "commentary" {
+			// Only commentary needs these detailed per-driver fields
+			state.Drivers[i].ResultStatus = 0
+		}
+	}
+
+	// Qualifying data only when on qualifying tab
+	if view != "qualifying" && state.Session != nil {
+		state.Session.MarshalZones = nil
 	}
 
 	payload, err := dto.MsgpackMarshal(dto.WSResponse{
