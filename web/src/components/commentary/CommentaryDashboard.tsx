@@ -320,11 +320,11 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
               <col style={{ width: 44 }} />   {/* ERS */}
               <col style={{ width: 76 }} />   {/* Gap */}
               <col style={{ width: 72 }} />   {/* Int */}
-              <col style={{ width: 36 }} />   {/* Pits */}
               <col style={{ width: 44 }} />   {/* Pen */}
+              <col />                         {/* Lap Times — fills remaining */}
+              <col style={{ width: 36 }} />   {/* Pits */}
               <col style={{ width: 44 }} />   {/* Trap */}
               <col style={{ width: 44 }} />   {/* Vmax */}
-              <col />                         {/* Lap Times — fills remaining */}
             </colgroup>
             <thead>
               <tr>
@@ -338,11 +338,11 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 <th>ERS</th>
                 <th>Gap</th>
                 <th>Int</th>
-                <th>Pits</th>
                 <th>Pen</th>
+                <th>Lap Times</th>
+                <th>Pits</th>
                 <th>Trap</th>
                 <th>Vmax</th>
-                <th>Lap Times</th>
               </tr>
             </thead>
             <tbody>
@@ -385,10 +385,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                     <td className={isBattle ? styles.battleInterval : styles.gapCell}>
                       {driver.position === 1 ? '--' : formatGap(intervalMs)}
                     </td>
-                    <td className={styles.pitsCell}>{driver.numPitStops}</td>
                     <td className={styles.penCell}>{penTotal > 0 ? `+${penTotal}s` : '--'}</td>
-                    <td className={styles.speedCell}>{driver.topSpeed > 0 ? `${driver.topSpeed}` : '--'}</td>
-                    <td className={styles.speedCell}>{(acc?.raceTopSpeed ?? 0) > 0 ? `${acc!.raceTopSpeed}` : '--'}</td>
                     <td className={styles.lapTimesCell}>
                       <div className={styles.lapTimesRow}>
                         {(acc?.lapHistory ?? []).map((lap) => (
@@ -401,6 +398,9 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                         ))}
                       </div>
                     </td>
+                    <td className={styles.pitsCell}>{driver.numPitStops}</td>
+                    <td className={styles.speedCell}>{driver.topSpeed > 0 ? `${driver.topSpeed}` : '--'}</td>
+                    <td className={styles.speedCell}>{(acc?.raceTopSpeed ?? 0) > 0 ? `${acc!.raceTopSpeed}` : '--'}</td>
                   </tr>
                 );
               })}
