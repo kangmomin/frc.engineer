@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { getTeamColor, getTeamName } from '../../constants/teamColors';
+import { getTeamColor } from '../../constants/teamColors';
 import { getTyreColor, getWearStatusColor } from '../../constants/tyreCompounds';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo, WeatherForecast } from '../../types/telemetry';
@@ -311,8 +311,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
           <table className={styles.leaderboard}>
             <colgroup>
               <col style={{ width: 40 }} />   {/* Pos */}
-              <col style={{ width: 130 }} />  {/* Driver */}
-              <col style={{ width: 50 }} />   {/* Team */}
+              <col style={{ width: 80 }} />   {/* Driver */}
               <col style={{ width: 88 }} />   {/* Fastest */}
               <col style={{ width: 100 }} />  {/* Status */}
               <col style={{ width: 48 }} />   {/* Tire */}
@@ -331,7 +330,6 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
               <tr>
                 <th>Pos</th>
                 <th>Driver</th>
-                <th>Team</th>
                 <th>Fastest</th>
                 <th>Status</th>
                 <th>Tire</th>
@@ -358,13 +356,9 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 return (
                   <tr key={driver.index} className={isBattle ? styles.battleHighlight : undefined}>
                     <td className={styles.posCell}>{String(driver.position).padStart(2, '0')}</td>
-                    <td>
-                      <span className={styles.driverCell}>
-                        <span className={styles.teamStripe} style={{ background: getTeamColor(driver.teamId) }} />
-                        {driver.name}
-                      </span>
+                    <td className={styles.driverCell} style={{ color: getTeamColor(driver.teamId) }}>
+                      {driver.name.slice(0, 6)}
                     </td>
-                    <td className={styles.teamCell}>{getTeamName(driver.teamId)}</td>
                     <td className={styles.fastestCell}>{formatLapTime(driver.bestLapTime)}</td>
                     <td className={styles.statusCell}>
                       <DriverStatusBadge driver={driver} acc={acc} />

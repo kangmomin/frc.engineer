@@ -166,22 +166,10 @@
 }
 
 .driverCell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-}
-
-.teamStripe {
-  width: 3px;
-  height: 18px;
-  border-radius: 1px;
-  flex-shrink: 0;
-}
-
-.teamCell {
-  color: var(--text-muted);
-  font-size: 10px;
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 
 .fastestCell {
