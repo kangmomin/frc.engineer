@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { getTeamColor, getTeamName } from '../../constants/teamColors';
+import { getTeamColor } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useTelemetryStore } from '../../store/telemetryStore';
@@ -413,17 +413,8 @@ export function CockpitDashboard({
                     <span className={styles.positionCell}>
                       {String(driver.position).padStart(2, '0')}
                     </span>
-                    <span className={styles.driverCell}>
-                      <span
-                        className={styles.teamStripe}
-                        style={{ backgroundColor: getTeamColor(driver.teamId) }}
-                      />
-                      <span className={styles.driverCode}>{abbreviateDriver(driver.name, driver.index)}</span>
-                      <span className={styles.driverMeta}>
-                        {getTeamName(driver.teamId)}
-                        {player && driver.index === player.index && ' / YOU'}
-                        {player && driver.index !== player.index && driver.teamId === player.teamId && ' / TEAM'}
-                      </span>
+                    <span className={styles.driverCell} style={{ color: getTeamColor(driver.teamId) }}>
+                      {driver.name.slice(0, 6)}
                     </span>
                     <span className={styles.drsCell}>
                       <span className={driverHasDrs(driver) ? styles.drsActive : styles.drsInactive}>

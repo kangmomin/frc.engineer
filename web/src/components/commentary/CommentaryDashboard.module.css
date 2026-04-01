@@ -165,6 +165,16 @@
   color: #555 !important;
 }
 
+.playerRow {
+  background: rgba(0, 229, 255, 0.10) !important;
+  border-left: 3px solid #00e5ff;
+}
+
+.teammateRow {
+  background: rgba(0, 229, 255, 0.04) !important;
+  border-left: 3px solid rgba(0, 229, 255, 0.3);
+}
+
 .posCell {
   font-family: var(--font-racing);
   font-size: 14px;

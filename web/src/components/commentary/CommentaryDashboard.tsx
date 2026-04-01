@@ -192,10 +192,12 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
   );
 
   const session = pitwallState?.session ?? null;
+  const playerIndex = pitwallState?.playerIndex ?? -1;
   const drivers = useMemo(
     () => [...(pitwallState?.drivers ?? [])].sort((a, b) => a.position - b.position),
     [pitwallState?.drivers],
   );
+  const player = useMemo(() => drivers.find((d) => d.index === playerIndex) ?? null, [drivers, playerIndex]);
   const accMap = useCommentaryAccumulator(drivers, session);
 
   const isQualifying = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(session?.sessionType ?? '');
@@ -319,7 +321,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
           <table className={styles.leaderboard}>
             <colgroup>
               <col style={{ width: 40 }} />   {/* Pos */}
-              <col style={{ width: 80 }} />   {/* Driver */}
+              <col style={{ width: 130 }} />  {/* Driver */}
               <col style={{ width: 88 }} />   {/* Fastest */}
               <col style={{ width: 160 }} />  {/* Status */}
               <col style={{ width: 48 }} />   {/* Tire */}
@@ -361,12 +363,20 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 const isBattle = intervalMs !== 0 && Math.abs(intervalMs) <= 1000;
                 const penTotal = driver.penalties + (driver.numUnservedDriveThroughs * 5) + (driver.numUnservedStopGoPenalties * 10);
                 const isOut = driver.resultStatus >= 4; // 4=DNF, 5=DSQ, 6=not classified, 7=retired
+                const isPlayer = driver.index === playerIndex;
+                const isTeammate = !isPlayer && player != null && driver.teamId === player.teamId;
+                const rowClass = [
+                  isBattle ? styles.battleHighlight : '',
+                  isOut ? styles.driverOut : '',
+                  isPlayer ? styles.playerRow : '',
+                  isTeammate ? styles.teammateRow : '',
+                ].filter(Boolean).join(' ');
 
                 return (
-                  <tr key={driver.index} className={`${isBattle ? styles.battleHighlight : ''} ${isOut ? styles.driverOut : ''}`}>
+                  <tr key={driver.index} className={rowClass}>
                     <td className={styles.posCell}>{String(driver.position).padStart(2, '0')}</td>
                     <td className={styles.driverCell} style={{ color: getTeamColor(driver.teamId) }}>
-                      {driver.name.slice(0, 6)}
+                      {driver.name}
                     </td>
                     <td className={styles.fastestCell}>{formatLapTime(driver.bestLapTime)}</td>
                     <td className={styles.statusCell}>
