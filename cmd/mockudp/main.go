@@ -99,6 +99,8 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 			fmt.Printf("║  %d. Replay: %-22s %5s ║\n", i+2, label, size)
 		}
 
+		fmt.Printf("║  S. Speed (current: %.1fx)               ║\n", speed)
+		fmt.Printf("║  L. Loop  (current: %-5v)               ║\n", loop)
 		fmt.Println("║  0. Exit                                ║")
 		fmt.Println("╚══════════════════════════════════════════╝")
 		fmt.Print("Select: ")
@@ -106,11 +108,31 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		if !scanner.Scan() {
 			return
 		}
-		choice := strings.TrimSpace(scanner.Text())
+		choice := strings.TrimSpace(strings.ToLower(scanner.Text()))
 
 		if choice == "0" {
 			fmt.Println("Bye!")
 			return
+		}
+
+		if choice == "s" {
+			fmt.Printf("Speed (current: %.1fx): ", speed)
+			if scanner.Scan() {
+				var v float64
+				if _, err := fmt.Sscanf(strings.TrimSpace(scanner.Text()), "%f", &v); err == nil && v > 0 {
+					speed = v
+					fmt.Printf("Speed set to %.1fx\n", speed)
+				} else {
+					fmt.Println("Invalid speed.")
+				}
+			}
+			continue
+		}
+
+		if choice == "l" {
+			loop = !loop
+			fmt.Printf("Loop: %v\n", loop)
+			continue
 		}
 
 		if choice == "1" {
@@ -126,7 +148,7 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		}
 
 		rec := recordings[idx-2]
-		fmt.Printf("Replaying: %s (%.1f MB)\n", rec.name, float64(rec.size)/(1024*1024))
+		fmt.Printf("Replaying: %s (%.1f MB) at %.1fx\n", rec.name, float64(rec.size)/(1024*1024), speed)
 		runReplayFromBytes(conn, rec.name, rec.data, speed, loop)
 	}
 }
