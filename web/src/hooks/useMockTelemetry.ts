@@ -13,6 +13,8 @@ export function useMockTelemetry(enabled: boolean) {
 
   const pendingPitwallRef = useRef<PitwallState | null>(null);
   const pitwallRafRef = useRef(0);
+  const pendingPositionsRef = useRef<import('../types/telemetry').CarPosition[] | null>(null);
+  const positionsRafRef = useRef(0);
   const raceControlSeqRef = useRef(0);
   const battleSeqRef = useRef(0);
 
@@ -28,10 +30,12 @@ export function useMockTelemetry(enabled: boolean) {
       for (const message of messages) {
         routeMessage(
           message,
-          { setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult },
+          { setPitwallState, updatePositions: () => {}, addRaceControlNotification, addBattleAlert, setRaceResult },
           {
             pendingPitwall: pendingPitwallRef,
             pitwallRaf: pitwallRafRef,
+            pendingPositions: pendingPositionsRef,
+            positionsRaf: positionsRafRef,
             rcSeq: raceControlSeqRef,
             battleSeq: battleSeqRef,
           },

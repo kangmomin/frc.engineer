@@ -20,6 +20,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
   const setFeaturePermissions = useTelemetryStore((s) => s.setFeaturePermissions);
   const setPitwallState = useTelemetryStore((s) => s.setPitwallState);
+  const updatePositions = useTelemetryStore((s) => s.updatePositions);
   const addRaceControlNotification = useTelemetryStore((s) => s.addRaceControlNotification);
   const addBattleAlert = useTelemetryStore((s) => s.addBattleAlert);
   const setRaceResult = useTelemetryStore((s) => s.setRaceResult);
@@ -35,12 +36,14 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   // Refs for routeMessage batching
   const pendingPitwallRef = useRef<PitwallState | null>(null);
   const pitwallRafRef = useRef(0);
+  const pendingPositionsRef = useRef<import('../types/telemetry').CarPosition[] | null>(null);
+  const positionsRafRef = useRef(0);
   const rcSeqRef = useRef(0);
   const battleSeqRef = useRef(0);
 
   // Store actions in a ref so callbacks never go stale
-  const actionsRef = useRef({ setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult });
-  actionsRef.current = { setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult };
+  const actionsRef = useRef({ setPitwallState, updatePositions, addRaceControlNotification, addBattleAlert, setRaceResult });
+  actionsRef.current = { setPitwallState, updatePositions, addRaceControlNotification, addBattleAlert, setRaceResult };
 
   const cleanup = useCallback(() => {
     if (dcRef.current) {
@@ -58,6 +61,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     if (pitwallRafRef.current) {
       cancelAnimationFrame(pitwallRafRef.current);
       pitwallRafRef.current = 0;
+    }
+    if (positionsRafRef.current) {
+      cancelAnimationFrame(positionsRafRef.current);
+      positionsRafRef.current = 0;
     }
   }, []);
 
@@ -143,7 +150,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
       pc.ondatachannel = (event) => {
         const dc = event.channel;
-        dcRef.current = dc;
 
         dc.onmessage = (e) => {
           if (!isMountedRef.current) return;
@@ -154,17 +160,23 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
             {
               pendingPitwall: pendingPitwallRef,
               pitwallRaf: pitwallRafRef,
+              pendingPositions: pendingPositionsRef,
+              positionsRaf: positionsRafRef,
               rcSeq: rcSeqRef,
               battleSeq: battleSeqRef,
             },
           );
         };
 
-        dc.onclose = () => {
-          if (!isMountedRef.current) return;
-          setConnectionState('disconnected');
-          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-        };
+        // Only the reliable "data" channel governs connection state
+        if (dc.label === 'data') {
+          dcRef.current = dc;
+          dc.onclose = () => {
+            if (!isMountedRef.current) return;
+            setConnectionState('disconnected');
+            setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+          };
+        }
       };
 
       pc.setRemoteDescription(new RTCSessionDescription(offer))

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   PitwallState,
+  CarPosition,
   ConnectionState,
   RaceControlNotification,
   BattleAlert,
@@ -24,6 +25,7 @@ interface TelemetryState {
   // Telemetry core
   pitwallState: PitwallState | null;
   setPitwallState: (state: PitwallState | null) => void;
+  updatePositions: (positions: CarPosition[]) => void;
   applyReplayFrame: (frame: {
     pitwall: PitwallState;
     raceControl?: RaceControlNotification[];
@@ -83,6 +85,11 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
 
   pitwallState: null,
   setPitwallState: (state) => set({ pitwallState: state }),
+  updatePositions: (positions) =>
+    set((state) => {
+      if (!state.pitwallState) return state;
+      return { pitwallState: { ...state.pitwallState, positions } };
+    }),
   applyReplayFrame: (frame) =>
     set({
       pitwallState: frame.pitwall,

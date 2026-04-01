@@ -199,17 +199,23 @@ func (pm *PeerManager) BroadcastAll(message []byte) {
 // BroadcastAllFast sends a message to all connected fast DataChannels.
 // Messages are silently dropped for slow peers (no log spam at 60Hz).
 func (pm *PeerManager) BroadcastAllFast(message []byte) {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
+	text := string(message)
 
+	pm.mu.RLock()
+	snapshot := make([]*webrtc.DataChannel, 0, len(pm.fastChannels))
 	for _, ch := range pm.fastChannels {
+		snapshot = append(snapshot, ch)
+	}
+	pm.mu.RUnlock()
+
+	for _, ch := range snapshot {
 		if ch.ReadyState() != webrtc.DataChannelStateOpen {
 			continue
 		}
 		if ch.BufferedAmount() > maxBufferedAmount {
 			continue
 		}
-		_ = ch.SendText(string(message))
+		_ = ch.SendText(text)
 	}
 }
 
@@ -304,6 +310,7 @@ func (pm *PeerManager) Close() {
 		pc.Close()
 		delete(pm.peers, id)
 		delete(pm.channels, id)
+		delete(pm.fastChannels, id)
 		delete(pm.permits, id)
 	}
 	pm.mu.Unlock()

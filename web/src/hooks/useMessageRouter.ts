@@ -1,5 +1,6 @@
 import type {
   PitwallState,
+  CarPosition,
   RaceControlNotification,
   BattleAlert,
   RaceSummary,
@@ -17,6 +18,7 @@ interface WebSocketMessage {
  */
 export interface MessageRouterActions {
   setPitwallState: (state: PitwallState | null) => void;
+  updatePositions: (positions: CarPosition[]) => void;
   addRaceControlNotification: (n: RaceControlNotification) => void;
   addBattleAlert: (a: BattleAlert) => void;
   setRaceResult: (r: RaceSummary) => void;
@@ -25,6 +27,8 @@ export interface MessageRouterActions {
 export interface MessageRouterRefs {
   pendingPitwall: { current: PitwallState | null };
   pitwallRaf: { current: number };
+  pendingPositions: { current: CarPosition[] | null };
+  positionsRaf: { current: number };
   rcSeq: { current: number };
   battleSeq: { current: number };
 }
@@ -48,6 +52,20 @@ export function routeMessage(
     const message = JSON.parse(raw) as WebSocketMessage;
 
     switch (message.type) {
+      case 'positionUpdate':
+        // Batch 60Hz position updates with rAF — only latest frame rendered
+        refs.pendingPositions.current = message.data as CarPosition[];
+        if (!refs.positionsRaf.current) {
+          refs.positionsRaf.current = requestAnimationFrame(() => {
+            refs.positionsRaf.current = 0;
+            if (refs.pendingPositions.current) {
+              actions.updatePositions(refs.pendingPositions.current);
+              refs.pendingPositions.current = null;
+            }
+          });
+        }
+        return true;
+
       case 'pitwallState':
         // Batch with rAF so React renders at most once per frame
         refs.pendingPitwall.current = message.data as PitwallState;
