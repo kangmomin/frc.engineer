@@ -427,7 +427,8 @@ export function CockpitDashboard({
                     <span className={styles.positionCell}>
                       {String(driver.position).padStart(2, '0')}
                     </span>
-                    <span className={styles.driverCell} style={{ color: getTeamColor(driver.teamId) }}>
+                    <span className={styles.driverCell}>
+                      <span className={styles.teamBar} style={{ background: getTeamColor(driver.teamId) }} />
                       {driver.name.slice(0, 6)}
                     </span>
                     <span className={styles.drsCell}>
