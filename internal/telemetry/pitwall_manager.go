@@ -42,6 +42,7 @@ type PitwallManager struct {
 	ersCompareEnabled  bool
 	trackMapSendCount  int  // remaining broadcasts to include trackMap
 	lastTrackID        int8 // last track ID for change detection
+	peakActiveCars     int  // high-water mark for NumActiveCars
 }
 
 // NewPitwallManager creates a new PitwallManager
@@ -310,6 +311,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 			// Clear per-car caches on session change
 			pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
 			pm.sessionHistory = [packets.MaxCars]*packets.PacketSessionHistoryData{}
+			pm.peakActiveCars = 0
 		}
 		if pm.trackMapSendCount > 0 {
 			if td := pm.trackStore.Get(currentTrackID); td != nil {
@@ -348,10 +350,16 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	}
 
 	// Driver info (merge participants, lap data, car status)
-	// Always include at least up to playerIndex+1 so the player is in the array
+	// Use high-water mark to prevent drivers from disappearing when NumActiveCars fluctuates
 	numCars := packets.MaxCars
-	if pm.participants != nil && int(pm.participants.NumActiveCars) < numCars {
-		numCars = int(pm.participants.NumActiveCars)
+	if pm.participants != nil {
+		active := int(pm.participants.NumActiveCars)
+		if active > pm.peakActiveCars {
+			pm.peakActiveCars = active
+		}
+		if pm.peakActiveCars > 0 && pm.peakActiveCars < numCars {
+			numCars = pm.peakActiveCars
+		}
 	}
 	if int(pm.playerIndex) >= numCars {
 		numCars = int(pm.playerIndex) + 1
