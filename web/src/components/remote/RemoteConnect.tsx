@@ -84,7 +84,9 @@ export function RemoteConnect({
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState(initialRoomId);
   const [password, setPassword] = useState(initialPassword);
-  const [permissionsCode, setPermissionsCode] = useState(initialPermissionsCode);
+  const [permissionsCode, setPermissionsCode] = useState(
+    () => localStorage.getItem('frc_permission_code') || initialPermissionsCode || '',
+  );
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [roomsError, setRoomsError] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -483,13 +485,16 @@ export function RemoteConnect({
             <input
               type="password"
               value={permissionsCode}
-              onChange={(e) => setPermissionsCode(e.target.value)}
+              onChange={(e) => {
+                setPermissionsCode(e.target.value);
+                localStorage.setItem('frc_permission_code', e.target.value);
+              }}
               placeholder="Optional feature permission code"
               className={styles.urlInput}
               disabled={isConnecting}
             />
             <div className={styles.permissionHint}>
-              Optional. Use a permissions code to unlock ERS actuals, live pit status, top speed, player-relative deltas, or advanced track strategy details.
+              Saved automatically. Use a permissions code to unlock features.
             </div>
           </form>
         )}

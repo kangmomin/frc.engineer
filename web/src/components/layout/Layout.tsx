@@ -168,7 +168,7 @@ export function Layout() {
         initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
         initialRoomId={readRemoteQuery().roomId || ''}
         initialPassword=""
-        initialPermissionsCode=""
+        initialPermissionsCode={localStorage.getItem('frc_permission_code') || ''}
       />
     );
   }
@@ -193,6 +193,20 @@ export function Layout() {
       />
     );
   }
+
+  const changePermissionCode = useCallback(() => {
+    const code = prompt('Permission Code 변경 (빈 값이면 제거):', rtcOptions?.permissionsCode || '');
+    if (code === null) return; // cancelled
+    localStorage.setItem('frc_permission_code', code);
+    if (rtcOptions) {
+      const nextOptions = { ...rtcOptions, permissionsCode: code };
+      persistRemoteSession(nextOptions);
+      setRtcOptions(nextOptions);
+      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+      setConnectionState('disconnected');
+      setPitwallState(null);
+    }
+  }, [rtcOptions, setConnectionState, setFeaturePermissions, setPitwallState]);
 
   const remoteAction = { label: 'Rooms', onClick: openRoomPicker, active: true };
 
@@ -219,6 +233,7 @@ export function Layout() {
           remoteAction={remoteAction}
           onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
           onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
+          onChangePermissionCode={changePermissionCode}
           onGoHome={goToMainScreen}
         />
       )}
