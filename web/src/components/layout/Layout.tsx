@@ -158,6 +158,20 @@ export function Layout() {
     clearRaceResult();
   }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
 
+  const changePermissionCode = useCallback(() => {
+    const code = prompt('Permission Code 변경 (빈 값이면 제거):', rtcOptions?.permissionsCode || '');
+    if (code === null) return;
+    localStorage.setItem('frc_permission_code', code);
+    if (rtcOptions) {
+      const nextOptions = { ...rtcOptions, permissionsCode: code };
+      persistRemoteSession(nextOptions);
+      setRtcOptions(nextOptions);
+      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+      setConnectionState('disconnected');
+      setPitwallState(null);
+    }
+  }, [rtcOptions, setConnectionState, setFeaturePermissions, setPitwallState]);
+
   if (!rtcOptions) {
     return (
       <RemoteConnect
@@ -193,20 +207,6 @@ export function Layout() {
       />
     );
   }
-
-  const changePermissionCode = useCallback(() => {
-    const code = prompt('Permission Code 변경 (빈 값이면 제거):', rtcOptions?.permissionsCode || '');
-    if (code === null) return; // cancelled
-    localStorage.setItem('frc_permission_code', code);
-    if (rtcOptions) {
-      const nextOptions = { ...rtcOptions, permissionsCode: code };
-      persistRemoteSession(nextOptions);
-      setRtcOptions(nextOptions);
-      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-      setConnectionState('disconnected');
-      setPitwallState(null);
-    }
-  }, [rtcOptions, setConnectionState, setFeaturePermissions, setPitwallState]);
 
   const remoteAction = { label: 'Rooms', onClick: openRoomPicker, active: true };
 
