@@ -380,6 +380,7 @@ export interface DriverInfo {
   // Pit
   pitStatus: number;
   driverStatus: number;
+  resultStatus: number;
   numPitStops: number;
   lapDistance: number;
   pitStopTimer: number;

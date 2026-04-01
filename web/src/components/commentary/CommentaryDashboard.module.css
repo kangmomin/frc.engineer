@@ -157,6 +157,14 @@
   background: rgba(0, 229, 255, 0.04);
 }
 
+.driverOut {
+  opacity: 0.35;
+}
+
+.driverOut td {
+  color: #555 !important;
+}
+
 .posCell {
   font-family: var(--font-racing);
   font-size: 14px;

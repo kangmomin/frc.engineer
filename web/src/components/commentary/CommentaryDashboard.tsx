@@ -352,9 +352,10 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 const intervalMs = driver.deltaToCarInFront ?? 0;
                 const isBattle = intervalMs !== 0 && Math.abs(intervalMs) <= 1000;
                 const penTotal = driver.penalties + (driver.numUnservedDriveThroughs * 5) + (driver.numUnservedStopGoPenalties * 10);
+                const isOut = driver.resultStatus >= 4; // 4=DNF, 5=DSQ, 6=not classified, 7=retired
 
                 return (
-                  <tr key={driver.index} className={isBattle ? styles.battleHighlight : undefined}>
+                  <tr key={driver.index} className={`${isBattle ? styles.battleHighlight : ''} ${isOut ? styles.driverOut : ''}`}>
                     <td className={styles.posCell}>{String(driver.position).padStart(2, '0')}</td>
                     <td className={styles.driverCell} style={{ color: getTeamColor(driver.teamId) }}>
                       {driver.name.slice(0, 6)}

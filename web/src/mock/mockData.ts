@@ -420,6 +420,7 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
       lapInvalid: false,
       pitStatus: 0,
       driverStatus: 1,
+      resultStatus: 2,
       numPitStops: seed.pitStops,
       lapDistance: round1(progress * TRACK_LENGTH),
       pitStopTimer: 0,

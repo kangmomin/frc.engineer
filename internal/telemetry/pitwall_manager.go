@@ -381,6 +381,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.BestLapTime = 0
 				d.PitStatus = int(ld.PitStatus)
 				d.DriverStatus = int(ld.DriverStatus)
+				d.ResultStatus = int(ld.ResultStatus)
 				d.NumPitStops = int(ld.NumPitStops)
 				d.LapDistance = sanitize(ld.LapDistance)
 				d.PitStopTimer = float32(ld.PitStopTimerInMS) / 1000.0

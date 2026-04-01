@@ -159,6 +159,7 @@ type DriverInfo struct {
 	// Pit
 	PitStatus         int     `json:"pitStatus"`
 	DriverStatus      int     `json:"driverStatus,omitempty"`
+	ResultStatus      int     `json:"resultStatus,omitempty"`
 	NumPitStops       int     `json:"numPitStops"`
 	LapDistance       float32 `json:"lapDistance"`
 	PitStopTimer      float32 `json:"pitStopTimer,omitempty"`
