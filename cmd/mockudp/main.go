@@ -428,10 +428,28 @@ type Simulator struct {
 	aiPenaltyTriggers []aiPenaltyTrigger
 	aiTriggerIdx      int
 
+	// AI car state (consistent simulation)
+	aiCars [MaxCars]aiCarState
+
 	// Internal
 	tickCount    int
 	sectorTimes  [3]uint32
 	lapStartTime time.Time
+}
+
+// aiCarState tracks per-AI-car simulation state for consistent data
+type aiCarState struct {
+	lapDistance    float32
+	totalDistance  float32
+	speed         uint16
+	lapNum        uint8
+	position      uint8
+	sector        uint8
+	lastLapTimeMS uint32
+	bestLapTimeMS uint32
+	sector1Ms     uint16
+	sector2Ms     uint16
+	basePace      float32 // base lap time factor (0.95-1.05)
 }
 
 // penaltyEntry defines a scheduled penalty trigger
@@ -476,17 +494,16 @@ func NewSimulator(laps int, hz int) *Simulator {
 	totalTicks := laps * 25 * hz
 	aiTriggers := buildAIPenaltySchedule(totalTicks, hz)
 
-	return &Simulator{
+	sim := &Simulator{
 		SessionUID:   rand.Uint64(),
 		PlayerCarIdx: 0,
 		TotalLaps:    laps,
 		CurrentLap:   1,
-		TrackLength:  5800, // Approximate Monaco length in meters
-		TrackID:      10,   // Monza
+		TrackLength:  5800,
+		TrackID:      10, // Monza
 		TickRate:     hz,
 		Position:     1,
 		lapStartTime: time.Now(),
-		// Corner cutting warnings at 3000m, 7500m, 10000m; 5s time penalty at 10000m
 		warningSchedule: []float32{3000, 7500, 10000},
 		penaltySchedule: []penaltyEntry{
 			{distance: 10050, penaltyType: 4, infringementType: 7, timePenalty: 5},
@@ -494,6 +511,17 @@ func NewSimulator(laps int, hz int) *Simulator {
 		aiPenaltyStates:   make(map[int]*aiCarPenaltyState),
 		aiPenaltyTriggers: aiTriggers,
 	}
+
+	// Initialize AI cars with staggered positions and varied pace
+	for i := 1; i < MaxCars; i++ {
+		sim.aiCars[i] = aiCarState{
+			lapNum:    1,
+			position:  uint8(i + 1),
+			basePace:  0.96 + rand.Float32()*0.08, // 0.96-1.04x pace variation
+		}
+	}
+
+	return sim
 }
 
 // buildAIPenaltySchedule creates penalty/warning events for AI drivers.
@@ -671,6 +699,62 @@ func (s *Simulator) Tick() {
 		s.aiTriggerIdx++
 	}
 
+	// Update AI cars
+	for i := 1; i < MaxCars; i++ {
+		ai := &s.aiCars[i]
+		aiSpeed := float32(180+rand.Intn(80)) * ai.basePace
+		ai.speed = uint16(aiSpeed)
+		distPerTick := aiSpeed / 3.6 / float32(s.TickRate)
+		ai.lapDistance += distPerTick
+		ai.totalDistance += distPerTick
+
+		aiProgress := ai.lapDistance / s.TrackLength
+		if aiProgress < 0.33 {
+			ai.sector = 0
+		} else if aiProgress < 0.66 {
+			ai.sector = 1
+			if ai.sector1Ms == 0 {
+				ai.sector1Ms = uint16(25000+rand.Intn(3000)) * uint16(ai.basePace*100) / 100
+			}
+		} else {
+			ai.sector = 2
+			if ai.sector2Ms == 0 {
+				ai.sector2Ms = uint16(28000+rand.Intn(3000)) * uint16(ai.basePace*100) / 100
+			}
+		}
+
+		if ai.lapDistance >= s.TrackLength {
+			lapTime := uint32(82000+rand.Intn(5000)) * uint32(ai.basePace*100) / 100
+			ai.lastLapTimeMS = lapTime
+			if ai.bestLapTimeMS == 0 || lapTime < ai.bestLapTimeMS {
+				ai.bestLapTimeMS = lapTime
+			}
+			ai.lapNum++
+			ai.lapDistance = 0
+			ai.sector1Ms = 0
+			ai.sector2Ms = 0
+		}
+	}
+
+	// Sort AI positions by total distance (descending)
+	type carDist struct {
+		idx  int
+		dist float32
+	}
+	dists := make([]carDist, 0, MaxCars)
+	dists = append(dists, carDist{0, s.TotalDistance})
+	for i := 1; i < MaxCars; i++ {
+		dists = append(dists, carDist{i, s.aiCars[i].totalDistance})
+	}
+	sort.Slice(dists, func(a, b int) bool { return dists[a].dist > dists[b].dist })
+	for pos, cd := range dists {
+		if cd.idx == 0 {
+			s.Position = uint8(pos + 1)
+		} else {
+			s.aiCars[cd.idx].position = uint8(pos + 1)
+		}
+	}
+
 	// Check for lap completion
 	if s.LapDistance >= s.TrackLength {
 		s.LastLapTimeMS = s.CurrentLapTimeMS
@@ -740,11 +824,7 @@ func (s *Simulator) BuildTelemetryPacket(frameID uint32) []byte {
 	// Write car telemetry data for all cars
 	offset := PacketHeaderSize
 	for i := 0; i < MaxCars; i++ {
-		if i == int(s.PlayerCarIdx) {
-			s.writeCarTelemetry(buf[offset:], true)
-		} else {
-			s.writeCarTelemetry(buf[offset:], false)
-		}
+		s.writeCarTelemetry(buf[offset:], i == int(s.PlayerCarIdx), i)
 		offset += 60
 	}
 
@@ -867,7 +947,7 @@ func (s *Simulator) writeHeader(buf []byte, packetID uint8, frameID uint32) {
 	buf[28] = 255 // No secondary player
 }
 
-func (s *Simulator) writeCarTelemetry(buf []byte, isPlayer bool) {
+func (s *Simulator) writeCarTelemetry(buf []byte, isPlayer bool, carIdx int) {
 	offset := 0
 
 	var speed uint16
@@ -885,12 +965,33 @@ func (s *Simulator) writeCarTelemetry(buf []byte, isPlayer bool) {
 		rpm = s.RPM
 		drs = s.DRS
 	} else {
-		// Other cars - random values
-		speed = uint16(150 + rand.Intn(150))
-		throttle = rand.Float32()
-		brake = rand.Float32() * 0.3
-		steer = (rand.Float32() - 0.5) * 2
-		gear = int8(1 + rand.Intn(8))
+		// Other cars - use tracked AI state
+		speed = s.aiCars[0].speed // placeholder; actual speed set below
+		if carIdx > 0 && carIdx < MaxCars {
+			speed = s.aiCars[carIdx].speed
+		}
+		if speed == 0 {
+			speed = 200
+		}
+		throttle = 0.7 + rand.Float32()*0.3
+		brake = 0
+		if speed < 160 {
+			brake = 0.3 + rand.Float32()*0.4
+			throttle = 0.2
+		}
+		steer = (rand.Float32() - 0.5) * 0.5
+		switch {
+		case speed > 260:
+			gear = 8
+		case speed > 220:
+			gear = 7
+		case speed > 180:
+			gear = 6
+		case speed > 140:
+			gear = 5
+		default:
+			gear = 4
+		}
 		rpm = uint16(8000 + rand.Intn(4000))
 		drs = 0
 	}
@@ -971,27 +1072,44 @@ func (s *Simulator) writeLapData(buf []byte, isPlayer bool, carIdx int) {
 		deltaFront = 0
 		deltaLeader = 0
 	} else {
-		lastLap = uint32(80000 + rand.Intn(10000))
-		currentLap = uint32(rand.Intn(80000))
-		lapDist = rand.Float32() * 5800
-		totalDist = rand.Float32() * 50000
-		position = uint8(1 + rand.Intn(MaxCars))
-		lapNum = uint8(1 + rand.Intn(3))
-		sector = uint8(rand.Intn(3))
+		ai := &s.aiCars[carIdx]
+		lastLap = ai.lastLapTimeMS
+		currentLap = 0
+		lapDist = ai.lapDistance
+		totalDist = ai.totalDistance
+		position = ai.position
+		lapNum = ai.lapNum
+		sector = ai.sector
 		lapInvalid = 0
-		deltaFront = int16(rand.Intn(5000))
-		deltaLeader = int16(rand.Intn(10000))
+		leaderDist := s.TotalDistance
+		deltaLeader = int16((leaderDist - ai.totalDistance) / (float32(ai.speed) / 3.6) * 1000)
+		deltaFront = int16(500 + rand.Intn(2000))
 	}
 
 	binary.LittleEndian.PutUint32(buf[offset:], lastLap)
 	offset += 4
 	binary.LittleEndian.PutUint32(buf[offset:], currentLap)
 	offset += 4
-	binary.LittleEndian.PutUint16(buf[offset:], 0) // Sector1TimeInMS
+	var s1ms, s2ms uint16
+	if isPlayer {
+		// Player sector times from simulation progress
+		progress := s.LapDistance / s.TrackLength
+		if progress >= 0.33 {
+			s1ms = uint16(26000 + rand.Intn(2000))
+		}
+		if progress >= 0.66 {
+			s2ms = uint16(29000 + rand.Intn(2000))
+		}
+	} else {
+		ai := &s.aiCars[carIdx]
+		s1ms = ai.sector1Ms
+		s2ms = ai.sector2Ms
+	}
+	binary.LittleEndian.PutUint16(buf[offset:], s1ms)
 	offset += 2
 	buf[offset] = 0 // Sector1TimeMinutes
 	offset++
-	binary.LittleEndian.PutUint16(buf[offset:], 0) // Sector2TimeInMS
+	binary.LittleEndian.PutUint16(buf[offset:], s2ms)
 	offset += 2
 	buf[offset] = 0 // Sector2TimeMinutes
 	offset++
