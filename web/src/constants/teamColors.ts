@@ -3,18 +3,18 @@
  * Team ID to color mapping based on official team colors
  */
 export const TEAM_COLORS: Record<number, string> = {
-  0: '#00a19b',   // Mercedes - Petronas Green
-  1: '#ef1b23',   // Ferrari - Rosso Corsa
-  2: '#3671c6',   // Red Bull Racing - Blue
-  3: '#0052d4',   // Williams - Dark Blue
-  4: '#006747',   // Aston Martin - British Racing Green
-  5: '#0078bf',   // Alpine - Alpine Blue
-  6: '#0a34ed',   // RB (VCARB) - Racing Blue
-  7: '#b6babd',   // Haas - Silver/Gray
-  8: '#ff8000',   // McLaren - Papaya Orange
-  9: '#52ff00',   // Sauber - Neon Green
-  11: '#ffffff',  // [Reserved]
-  255: '#888888', // Unknown/Safety Car
+  0: '#27f4d2',   // Mercedes
+  1: '#e8002d',   // Ferrari
+  2: '#3671c6',   // Red Bull Racing
+  3: '#64c4ff',   // Williams
+  4: '#229971',   // Aston Martin
+  5: '#ff87bc',   // Alpine
+  6: '#6692ff',   // RB
+  7: '#b6babd',   // Haas
+  8: '#ff8000',   // McLaren
+  9: '#52e252',   // Kick Sauber
+  10: '#f50537',  // Audi
+  255: '#6f7070', // Unknown/Safety Car
 };
 
 /**
@@ -22,7 +22,7 @@ export const TEAM_COLORS: Record<number, string> = {
  * Returns default gray if team ID is not found
  */
 export function getTeamColor(teamId: number): string {
-  return TEAM_COLORS[teamId] ?? '#888888';
+  return TEAM_COLORS[teamId] ?? '#6f7070';
 }
 
 /**
@@ -31,14 +31,15 @@ export function getTeamColor(teamId: number): string {
 export const TEAM_NAMES: Record<number, string> = {
   0: 'Mercedes',
   1: 'Ferrari',
-  2: 'Red Bull Racing',
+  2: 'Red Bull',
   3: 'Williams',
   4: 'Aston Martin',
   5: 'Alpine',
   6: 'RB',
   7: 'Haas',
   8: 'McLaren',
-  9: 'Sauber',
+  9: 'Kick Sauber',
+  10: 'Audi',
   255: 'Unknown',
 };
 
