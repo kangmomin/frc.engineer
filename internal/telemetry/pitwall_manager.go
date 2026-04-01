@@ -29,6 +29,7 @@ type PitwallManager struct {
 	telemetry         *packets.PacketCarTelemetryData
 	carDamage         *packets.PacketCarDamageData
 	carSetups         *packets.PacketCarSetupData
+	tyreSets          [packets.MaxCars]*packets.PacketTyreSetsData
 	motionEx          *packets.PacketMotionExData
 	playerIndex       uint8
 	strategyMgr       *StrategyManager
@@ -197,6 +198,16 @@ func (pm *PitwallManager) UpdateCarDamage(cd *packets.PacketCarDamageData) {
 	pm.mu.Unlock()
 }
 
+// UpdateTyreSets stores the latest tyre sets packet for a specific car
+func (pm *PitwallManager) UpdateTyreSets(ts *packets.PacketTyreSetsData) {
+	if int(ts.CarIdx) >= packets.MaxCars {
+		return
+	}
+	pm.mu.Lock()
+	pm.tyreSets[ts.CarIdx] = ts
+	pm.mu.Unlock()
+}
+
 // BuildState constructs the PitwallState DTO from all cached packet data
 func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	pm.mu.RLock()
@@ -285,6 +296,8 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 		if int8(currentTrackID) != pm.lastTrackID {
 			pm.lastTrackID = int8(currentTrackID)
 			pm.trackMapSendCount = 8 // ~2 seconds at 4Hz
+			// Clear per-car tyre sets cache on session change
+			pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
 		}
 		if pm.trackMapSendCount > 0 {
 			if td := pm.trackStore.Get(currentTrackID); td != nil {
@@ -451,6 +464,35 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 						wear = 100
 					}
 					d.TireWear[w] = int(wear)
+				}
+			}
+
+			if ts := pm.tyreSets[i]; ts != nil {
+				fittedIdx := int(ts.FittedIdx)
+				if fittedIdx >= 0 && fittedIdx < packets.MaxNumTyreSets {
+					fitted := &ts.TyreSetData[fittedIdx]
+					w, l, u := int(fitted.Wear), int(fitted.LifeSpan), int(fitted.UsableLife)
+					d.TyreSetWear = &w
+					d.TyreLifeSpan = &l
+					d.TyreUsableLife = &u
+				}
+				// Aggregate available sets by compound
+				counts := map[string]int{}
+				for s := range packets.MaxNumTyreSets {
+					set := &ts.TyreSetData[s]
+					if set.Available == 1 && set.Fitted == 0 {
+						compound := tireCompoundString(set.VisualTyreCompound)
+						counts[compound]++
+					}
+				}
+				if len(counts) > 0 {
+					avail := make([]dto.TyreSetBrief, 0, len(counts))
+					for _, c := range []string{"soft", "medium", "hard", "inter", "wet"} {
+						if n, ok := counts[c]; ok {
+							avail = append(avail, dto.TyreSetBrief{Compound: c, Count: n})
+						}
+					}
+					d.AvailableSets = avail
 				}
 			}
 		}

@@ -58,6 +58,9 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 	if permissions.ViewPlayerDelta {
 		key += "|player-delta"
 	}
+	if permissions.ViewAdvancedStrategy {
+		key += "|adv-strategy"
+	}
 	if permissions.ViewCommentary {
 		key += "|commentary"
 	}
@@ -96,6 +99,12 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions) []
 		}
 		if !permissions.ViewPlayerDelta {
 			state.Drivers[i].DeltaToPlayer = 0
+		}
+		if !permissions.ViewCommentary && !permissions.ViewAdvancedStrategy {
+			state.Drivers[i].TyreSetWear = nil
+			state.Drivers[i].TyreLifeSpan = nil
+			state.Drivers[i].TyreUsableLife = nil
+			state.Drivers[i].AvailableSets = nil
 		}
 	}
 

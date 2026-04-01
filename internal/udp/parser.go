@@ -19,6 +19,7 @@ type ParsedData struct {
 	CarStatus    *packets.PacketCarStatusData
 	CarDamage    *packets.PacketCarDamageData
 	CarSetups    *packets.PacketCarSetupData
+	TyreSets     *packets.PacketTyreSetsData
 	Event        *packets.PacketEventData
 }
 
@@ -128,6 +129,14 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 			return nil, err
 		}
 		parsed.CarDamage = carDamage
+
+	case packets.PacketIDTyreSets:
+		tyreSets, err := packets.ParseTyreSetsPacket(data, header)
+		if err != nil {
+			p.logger.Debug("failed to parse tyre sets packet", "error", err)
+			return nil, err
+		}
+		parsed.TyreSets = tyreSets
 
 	case packets.PacketIDMotionEx:
 		motionEx, err := packets.ParseMotionExPacket(data, header)

@@ -202,6 +202,21 @@
   flex-shrink: 0;
 }
 
+.wearCell {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 11px;
+  text-align: center;
+}
+
+.lifeCell {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
 .ersCell {
   font-family: var(--font-racing);
   font-weight: 700;

@@ -389,7 +389,7 @@ export function CockpitDashboard({
               <span>Sector Δ</span>
               <span>Last Lap</span>
               <span>Pen</span>
-              <span>Tyre Age</span>
+              <span>{featurePermissions.viewAdvancedStrategy ? 'Tyre / Life' : 'Tyre Age'}</span>
             </div>
 
             <div className={styles.tableBody}>
@@ -461,6 +461,18 @@ export function CockpitDashboard({
                         style={{ backgroundColor: getTyreColor(driver.tireCompound) }}
                       />
                       {`${getTyreShortLabel(driver.tireCompound)} [${String(driver.tireAge).padStart(2, '0')}]`}
+                      {featurePermissions.viewAdvancedStrategy && (
+                        <span
+                          className={styles.tyreLifeCell}
+                          style={driver.tyreLifeSpan != null && driver.tyreUsableLife != null && driver.tyreUsableLife > 0
+                            ? { color: getWearStatusColor(Math.round(((driver.tyreUsableLife - driver.tyreLifeSpan) / driver.tyreUsableLife) * 100)) }
+                            : undefined}
+                        >
+                          {driver.tyreLifeSpan != null && driver.tyreUsableLife != null
+                            ? `${driver.tyreLifeSpan}/${driver.tyreUsableLife}`
+                            : '--'}
+                        </span>
+                      )}
                     </span>
                   </div>
                 );

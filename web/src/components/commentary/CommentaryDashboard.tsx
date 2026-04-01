@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor, getTeamName } from '../../constants/teamColors';
-import { getTyreColor, getTyreShortLabel } from '../../constants/tyreCompounds';
+import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo, WeatherForecast } from '../../types/telemetry';
 import { formatLapTime } from '../../utils/formatters';
@@ -284,6 +284,8 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 <th>Team</th>
                 <th>Fastest</th>
                 <th>Tire</th>
+                <th>Wear</th>
+                <th>Life</th>
                 <th>ERS</th>
                 <th>Gap</th>
                 <th>Int</th>
@@ -318,6 +320,14 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                         <span className={styles.tyreDot} style={{ background: getTyreColor(driver.tireCompound) }} />
                         {getTyreShortLabel(driver.tireCompound)} {driver.tireAge}L
                       </span>
+                    </td>
+                    <td className={styles.wearCell} style={driver.tyreSetWear != null ? { color: getWearStatusColor(driver.tyreSetWear) } : undefined}>
+                      {driver.tyreSetWear != null ? `${driver.tyreSetWear}%` : '--'}
+                    </td>
+                    <td className={styles.lifeCell}>
+                      {driver.tyreLifeSpan != null && driver.tyreUsableLife != null
+                        ? `${driver.tyreLifeSpan}/${driver.tyreUsableLife}`
+                        : '--'}
                     </td>
                     <td className={styles.ersCell}>{ersPct}%</td>
                     <td className={styles.gapCell}>

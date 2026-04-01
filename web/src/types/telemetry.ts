@@ -342,6 +342,12 @@ export interface DriverInfo {
   ersActualPct: number;
   ersActualReady: boolean;
 
+  // TyreSets (Commentary)
+  tyreSetWear?: number | null;
+  tyreLifeSpan?: number | null;
+  tyreUsableLife?: number | null;
+  availableSets?: TyreSetBrief[];
+
   // Strategy
   stintHistory?: StintInfo[];
 
@@ -381,6 +387,11 @@ export interface DriverInfo {
 export interface StintInfo {
   compound: string;
   laps: number;
+}
+
+export interface TyreSetBrief {
+  compound: string;
+  count: number;
 }
 
 export interface CarDamage {

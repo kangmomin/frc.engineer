@@ -525,6 +525,14 @@
   border-radius: 999px;
 }
 
+.tyreLifeCell {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 10px;
+  margin-left: 6px;
+  opacity: 0.85;
+}
+
 .penaltyCell {
   display: inline-flex;
   align-items: center;

@@ -145,6 +145,12 @@ type DriverInfo struct {
 	// Lap validity
 	LapInvalid bool `json:"lapInvalid"`
 
+	// TyreSets (Commentary)
+	TyreSetWear    *int           `json:"tyreSetWear"`
+	TyreLifeSpan   *int           `json:"tyreLifeSpan"`
+	TyreUsableLife *int           `json:"tyreUsableLife"`
+	AvailableSets  []TyreSetBrief `json:"availableSets,omitempty"`
+
 	// Pit
 	PitStatus         int     `json:"pitStatus"`
 	DriverStatus      int     `json:"driverStatus,omitempty"`
@@ -161,6 +167,12 @@ type DriverInfo struct {
 type StintInfoDTO struct {
 	Compound string `json:"compound"`
 	Laps     int    `json:"laps"`
+}
+
+// TyreSetBrief summarizes available tyre sets for a compound
+type TyreSetBrief struct {
+	Compound string `json:"compound"`
+	Count    int    `json:"count"`
 }
 
 // CarDamage contains damage percentages for car components
