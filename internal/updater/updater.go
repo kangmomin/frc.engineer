@@ -21,8 +21,9 @@ const (
 	DeployReleasesURL      = "https://github.com/kangmomin/frc.engineer-deploy/releases"
 )
 
-// ProgressFunc is called with a human-readable status string during auto-update.
-type ProgressFunc func(status string)
+// ProgressFunc is called during auto-update with a status message and
+// a percentage (0-100). pct is -1 for non-download steps.
+type ProgressFunc func(status string, pct int)
 
 // ReleaseAsset represents a single file attached to a GitHub release.
 type ReleaseAsset struct {
@@ -119,9 +120,9 @@ func CheckForUpdateAsync(logger *slog.Logger, appVersion string) {
 // It matches the running executable's filename against the release assets.
 // If onProgress is non-nil, it is called with human-readable status strings.
 func AutoUpdate(logger *slog.Logger, appVersion string, onProgress ProgressFunc) error {
-	notify := func(s string) {
+	notify := func(s string, pct int) {
 		if onProgress != nil {
-			onProgress(s)
+			onProgress(s, pct)
 		}
 	}
 
@@ -130,7 +131,7 @@ func AutoUpdate(logger *slog.Logger, appVersion string, onProgress ProgressFunc)
 		return nil
 	}
 
-	notify("Checking for updates...")
+	notify("Checking for updates...", -1)
 
 	release, hasUpdate, err := CheckForNewRelease(appVersion)
 	if err != nil {
@@ -158,7 +159,7 @@ func AutoUpdate(logger *slog.Logger, appVersion string, onProgress ProgressFunc)
 		"size", asset.Size,
 	)
 
-	notify(fmt.Sprintf("Update %s found, downloading... 0%%", release.TagName))
+	notify(fmt.Sprintf("Update %s found, downloading...", release.TagName), 0)
 
 	dir := filepath.Dir(exePath)
 	progressCb := func(downloaded, total int64) {
@@ -166,8 +167,8 @@ func AutoUpdate(logger *slog.Logger, appVersion string, onProgress ProgressFunc)
 			return
 		}
 		pct := int(downloaded * 100 / total)
-		notify(fmt.Sprintf("Downloading... %d%% (%.1fMB / %.1fMB)",
-			pct, float64(downloaded)/(1024*1024), float64(total)/(1024*1024)))
+		notify(fmt.Sprintf("%.1fMB / %.1fMB",
+			float64(downloaded)/(1024*1024), float64(total)/(1024*1024)), pct)
 	}
 	tempPath, err := downloadAsset(asset, dir, progressCb)
 	if err != nil {
@@ -184,7 +185,7 @@ func AutoUpdate(logger *slog.Logger, appVersion string, onProgress ProgressFunc)
 		return fmt.Errorf("size mismatch: expected %d, got %d", asset.Size, info.Size())
 	}
 
-	notify("Replacing binary...")
+	notify("Replacing binary...", -1)
 
 	if err := replaceBinary(exePath, tempPath); err != nil {
 		os.Remove(tempPath)
@@ -192,7 +193,7 @@ func AutoUpdate(logger *slog.Logger, appVersion string, onProgress ProgressFunc)
 	}
 
 	logger.Info("auto-update: binary replaced, restarting", "version", release.TagName)
-	notify(fmt.Sprintf("Restarting with %s...", release.TagName))
+	notify(fmt.Sprintf("Restarting with %s...", release.TagName), -1)
 
 	if err := restartProcess(exePath); err != nil {
 		return fmt.Errorf("restart: %w", err)

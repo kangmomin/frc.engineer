@@ -25,7 +25,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.10.1"
+var appVersion = "v3.11.0"
 
 func main() {
 	// Log to file so the cmd banner stays clean
@@ -56,14 +56,31 @@ func main() {
 	})
 	<-trayReady
 
-	// Auto-update: clean previous artifacts, then check for updates (with tooltip progress)
+	// Auto-update with CMD progress window
 	updater.CleanOldBinary(logger)
 	trayPrefix := "FRC Pitwall Sender " + appVersion
-	setTrayStatus := func(status string) {
+	consoleOpened := false
+	onProgress := func(status string, pct int) {
+		if !consoleOpened {
+			openConsole("FRC Pitwall Sender — Auto Update")
+			fmt.Println()
+			fmt.Println("  ========================================")
+			fmt.Println("    FRC Pitwall Sender — Auto Update")
+			fmt.Println("  ========================================")
+			fmt.Println()
+			consoleOpened = true
+		}
+		printProgress(status, pct)
 		systray.SetTooltip(trayPrefix + " — " + status)
 	}
-	if err := updater.AutoUpdate(logger, appVersion, setTrayStatus); err != nil {
+	if err := updater.AutoUpdate(logger, appVersion, onProgress); err != nil {
 		logger.Warn("auto-update failed, continuing with current version", "error", err)
+	}
+	if consoleOpened {
+		fmt.Println()
+		fmt.Println()
+		fmt.Println("  Update complete. Restarting...")
+		closeConsole()
 	}
 	systray.SetTooltip(trayPrefix + " — Running")
 
