@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/energye/systray"
+
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
@@ -41,20 +43,32 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	// Auto-update: clean previous artifacts, then check for updates
+	settingsPort := os.Getenv("SETTINGS_PORT")
+	if settingsPort == "" {
+		settingsPort = "8099"
+	}
+
+	// Start system tray early so update progress is visible via tooltip
+	ctx, cancel := context.WithCancel(context.Background())
+	settingsURL := fmt.Sprintf("http://localhost:%s", settingsPort)
+	trayReady := startTray(settingsURL, func() {
+		cancel()
+	})
+	<-trayReady
+
+	// Auto-update: clean previous artifacts, then check for updates (with tooltip progress)
 	updater.CleanOldBinary(logger)
-	if err := updater.AutoUpdate(logger, appVersion); err != nil {
+	setTrayStatus := func(status string) {
+		systray.SetTooltip("FRC Pitwall Sender — " + status)
+	}
+	if err := updater.AutoUpdate(logger, appVersion, setTrayStatus); err != nil {
 		logger.Warn("auto-update failed, continuing with current version", "error", err)
 	}
+	systray.SetTooltip("FRC Pitwall Sender — Running")
 
 	signalingURL := os.Getenv("SIGNALING_URL")
 	if signalingURL == "" {
 		signalingURL = "wss://signaling-server-production-23c9.up.railway.app/ws"
-	}
-
-	settingsPort := os.Getenv("SETTINGS_PORT")
-	if settingsPort == "" {
-		settingsPort = "8099"
 	}
 	roomName := strings.TrimSpace(os.Getenv("SENDER_ROOM_NAME"))
 	if roomName == "" {
@@ -202,9 +216,6 @@ func main() {
 		return nil
 	})
 	processor.SetRaceSummaryRecording(true)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Start components
 	go udpListener.Start(ctx)
@@ -445,20 +456,18 @@ func main() {
 		"settingsPort", settingsPort,
 	)
 
-	// Give settings server a moment to bind so actualSettingsPort is set
+	// Auto-open browser to settings page
 	time.Sleep(200 * time.Millisecond)
+	openBrowser(settingsURL)
 
-	// System tray: blocks until user clicks Quit
-	settingsURL := fmt.Sprintf("http://localhost:%s", actualSettingsPort)
-	runTray(settingsURL, func() {
-		cancel()
-		forwarder.Close()
-		peerManager.Close()
-		compareMonitor.Close()
-		settingsSrv.Shutdown(context.Background())
-		logger.Info("sender shutdown complete")
-		logFile.Close()
-	})
+	// Block until user clicks Quit in the system tray
+	<-ctx.Done()
+	forwarder.Close()
+	peerManager.Close()
+	compareMonitor.Close()
+	settingsSrv.Shutdown(context.Background())
+	logger.Info("sender shutdown complete")
+	logFile.Close()
 }
 
 func cleanF32(v float32) float32 {

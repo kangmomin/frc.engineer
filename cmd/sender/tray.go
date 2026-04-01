@@ -18,10 +18,14 @@ func openBrowser(url string) {
 	}
 }
 
-func runTray(settingsURL string, onQuit func()) {
-	systray.Run(func() {
+// startTray starts the system tray in a background goroutine and returns
+// a channel that is closed when the tray is ready. The tray stays alive
+// until systray.Quit() is called externally.
+func startTray(settingsURL string, onQuit func()) <-chan struct{} {
+	ready := make(chan struct{})
+	go systray.Run(func() {
 		systray.SetTitle("FRC Pitwall Sender")
-		systray.SetTooltip("FRC Pitwall Sender — Running")
+		systray.SetTooltip("FRC Pitwall Sender — Starting...")
 		systray.SetIcon(trayIconBytes)
 
 		mSettings := systray.AddMenuItem("Settings", "Open settings in browser")
@@ -44,7 +48,7 @@ func runTray(settingsURL string, onQuit func()) {
 			systray.Quit()
 		})
 
-		// Auto-open browser on startup
-		openBrowser(settingsURL)
+		close(ready)
 	}, nil)
+	return ready
 }

@@ -11,5 +11,5 @@ func cleanOldBinary(logger *slog.Logger) {
 }
 
 func autoUpdate(logger *slog.Logger) error {
-	return updater.AutoUpdate(logger, appVersion)
+	return updater.AutoUpdate(logger, appVersion, nil)
 }

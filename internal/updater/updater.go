@@ -21,6 +21,9 @@ const (
 	DeployReleasesURL      = "https://github.com/kangmomin/frc.engineer-deploy/releases"
 )
 
+// ProgressFunc is called with a human-readable status string during auto-update.
+type ProgressFunc func(status string)
+
 // ReleaseAsset represents a single file attached to a GitHub release.
 type ReleaseAsset struct {
 	Name               string `json:"name"`
@@ -114,11 +117,20 @@ func CheckForUpdateAsync(logger *slog.Logger, appVersion string) {
 
 // AutoUpdate checks for a new release and performs download, replace, and restart.
 // It matches the running executable's filename against the release assets.
-func AutoUpdate(logger *slog.Logger, appVersion string) error {
+// If onProgress is non-nil, it is called with human-readable status strings.
+func AutoUpdate(logger *slog.Logger, appVersion string, onProgress ProgressFunc) error {
+	notify := func(s string) {
+		if onProgress != nil {
+			onProgress(s)
+		}
+	}
+
 	if env := os.Getenv("AUTO_UPDATE"); strings.EqualFold(env, "false") || env == "0" {
 		logger.Info("auto-update disabled via AUTO_UPDATE env var")
 		return nil
 	}
+
+	notify("Checking for updates...")
 
 	release, hasUpdate, err := CheckForNewRelease(appVersion)
 	if err != nil {
@@ -146,8 +158,18 @@ func AutoUpdate(logger *slog.Logger, appVersion string) error {
 		"size", asset.Size,
 	)
 
+	notify(fmt.Sprintf("Update %s found, downloading... 0%%", release.TagName))
+
 	dir := filepath.Dir(exePath)
-	tempPath, err := downloadAsset(asset, dir)
+	progressCb := func(downloaded, total int64) {
+		if total <= 0 {
+			return
+		}
+		pct := int(downloaded * 100 / total)
+		notify(fmt.Sprintf("Downloading... %d%% (%.1fMB / %.1fMB)",
+			pct, float64(downloaded)/(1024*1024), float64(total)/(1024*1024)))
+	}
+	tempPath, err := downloadAsset(asset, dir, progressCb)
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
@@ -162,12 +184,15 @@ func AutoUpdate(logger *slog.Logger, appVersion string) error {
 		return fmt.Errorf("size mismatch: expected %d, got %d", asset.Size, info.Size())
 	}
 
+	notify("Replacing binary...")
+
 	if err := replaceBinary(exePath, tempPath); err != nil {
 		os.Remove(tempPath)
 		return fmt.Errorf("replace binary: %w", err)
 	}
 
 	logger.Info("auto-update: binary replaced, restarting", "version", release.TagName)
+	notify(fmt.Sprintf("Restarting with %s...", release.TagName))
 
 	if err := restartProcess(exePath); err != nil {
 		return fmt.Errorf("restart: %w", err)
@@ -197,7 +222,7 @@ func FindExeAsset(assets []ReleaseAsset, selfName string) *ReleaseAsset {
 	return nil
 }
 
-func downloadAsset(asset *ReleaseAsset, dir string) (string, error) {
+func downloadAsset(asset *ReleaseAsset, dir string, onProgress func(downloaded, total int64)) (string, error) {
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Get(asset.BrowserDownloadURL)
 	if err != nil {
@@ -215,7 +240,13 @@ func downloadAsset(asset *ReleaseAsset, dir string) (string, error) {
 	}
 	tmpPath := tmpFile.Name()
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+	total := asset.Size
+	var reader io.Reader = resp.Body
+	if onProgress != nil && total > 0 {
+		reader = &progressReader{r: resp.Body, total: total, onProgress: onProgress}
+	}
+
+	if _, err := io.Copy(tmpFile, reader); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpPath)
 		return "", err
@@ -227,6 +258,28 @@ func downloadAsset(asset *ReleaseAsset, dir string) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// progressReader wraps an io.Reader and reports download progress.
+type progressReader struct {
+	r          io.Reader
+	total      int64
+	downloaded int64
+	lastPct    int
+	onProgress func(downloaded, total int64)
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.r.Read(p)
+	if n > 0 {
+		pr.downloaded += int64(n)
+		pct := int(pr.downloaded * 100 / pr.total)
+		if pct != pr.lastPct {
+			pr.lastPct = pct
+			pr.onProgress(pr.downloaded, pr.total)
+		}
+	}
+	return n, err
 }
 
 func replaceBinary(exePath, tempPath string) error {
