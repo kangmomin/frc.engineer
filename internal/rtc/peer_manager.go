@@ -622,10 +622,13 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 				View string `json:"view"`
 			}
 			if json.Unmarshal(msg.Data, &viewMsg) == nil && viewMsg.Type == "setView" {
-				pm.mu.Lock()
-				pm.peerViews[peerID] = viewMsg.View
-				pm.mu.Unlock()
-				pm.logger.Info("peer view changed", "peerId", peerID, "view", viewMsg.View)
+				switch viewMsg.View {
+				case "cockpit", "commentary", "qualifying":
+					pm.mu.Lock()
+					pm.peerViews[peerID] = viewMsg.View
+					pm.mu.Unlock()
+					pm.logger.Info("peer view changed", "peerId", peerID, "view", viewMsg.View)
+				}
 				return
 			}
 		}
@@ -741,6 +744,7 @@ func (pm *PeerManager) removePeer(peerID string) {
 		delete(pm.channels, peerID)
 		delete(pm.fastChannels, peerID)
 		delete(pm.permits, peerID)
+		delete(pm.peerViews, peerID)
 	}
 	pm.mu.Unlock()
 
