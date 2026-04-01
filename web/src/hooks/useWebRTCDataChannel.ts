@@ -151,11 +151,12 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       pc.ondatachannel = (event) => {
         const dc = event.channel;
 
+        dc.binaryType = 'arraybuffer';
         dc.onmessage = (e) => {
           if (!isMountedRef.current) return;
           const actions = actionsRef.current;
           routeMessage(
-            e.data as string,
+            e.data as ArrayBuffer | string,
             actions,
             {
               pendingPitwall: pendingPitwallRef,

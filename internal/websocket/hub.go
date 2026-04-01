@@ -92,6 +92,9 @@ func (h *Hub) Broadcast(message []byte) {
 	}
 }
 
+// Binary returns false — WebSocket hub uses JSON text frames.
+func (h *Hub) Binary() bool { return false }
+
 // Register adds a client to the hub
 func (h *Hub) Register(client *Client) {
 	select {

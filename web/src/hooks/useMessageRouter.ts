@@ -1,3 +1,4 @@
+import { decode } from '@msgpack/msgpack';
 import type {
   PitwallState,
   CarPosition,
@@ -38,18 +39,22 @@ export interface MessageRouterRefs {
  * Returns true if the message was handled.
  */
 export function routeMessage(
-  raw: string,
+  raw: string | ArrayBuffer,
   actions: MessageRouterActions,
   refs: MessageRouterRefs,
 ): boolean {
-  // Skip telemetry messages (high frequency) to avoid costly JSON.parse
-  if (raw.startsWith('{"type":"telemetry"')) return false;
-
   // Skip if playback is active
   if (useTelemetryStore.getState().playbackActive) return false;
 
   try {
-    const message = JSON.parse(raw) as WebSocketMessage;
+    let message: WebSocketMessage;
+    if (raw instanceof ArrayBuffer) {
+      message = decode(new Uint8Array(raw)) as WebSocketMessage;
+    } else {
+      // Fallback for text messages (e.g. signaling)
+      if (raw.startsWith('{"type":"telemetry"')) return false;
+      message = JSON.parse(raw) as WebSocketMessage;
+    }
 
     switch (message.type) {
       case 'positionUpdate':

@@ -3,13 +3,14 @@ module frc.engineer
 go 1.24.0
 
 require (
+	github.com/energye/systray v1.0.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.12.0
 	github.com/pion/webrtc/v4 v4.2.9
+	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
 require (
-	github.com/energye/systray v1.0.3 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pion/datachannel v1.6.0 // indirect
@@ -27,6 +28,7 @@ require (
 	github.com/pion/stun/v3 v3.1.1 // indirect
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.1.4 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.50.0 // indirect

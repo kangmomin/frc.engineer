@@ -16,6 +16,14 @@ import (
 	"frc.engineer/internal/udp"
 )
 
+// marshalForHub encodes v as msgpack (binary hub) or JSON (text hub).
+func marshalForHub(hub broadcast.Broadcaster, v interface{}) ([]byte, error) {
+	if hub.Binary() {
+		return dto.MsgpackMarshal(v)
+	}
+	return json.Marshal(v)
+}
+
 // RaceSummaryCounts tracks race-control notification totals for persisted summaries.
 type RaceSummaryCounts struct {
 	Penalty int
@@ -64,9 +72,11 @@ type Processor struct {
 	fastHub broadcast.FastBroadcaster
 
 	// Rate limiting
-	minInterval     time.Duration
-	lastSend        time.Time
-	lastPitwallSend time.Time
+	minInterval      time.Duration
+	lastSend         time.Time
+	lastPitwallSend  time.Time
+	pitwallInterval  time.Duration // adaptive: 250ms (4Hz) ↔ 500ms (2Hz)
+	noDropStreak     int           // consecutive broadcasts without drops
 
 	// Latest data cache
 	mu              sync.RWMutex
@@ -113,6 +123,7 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 		battleDetector:  NewBattleDetector(),
 		logger:          logger,
 		minInterval:     interval,
+		pitwallInterval: 250 * time.Millisecond,
 	}
 }
 
@@ -251,8 +262,8 @@ func (p *Processor) processPacket(data []byte) {
 					Type: dto.MessageTypePositionUpdate,
 					Data: positions,
 				}
-				if fastJSON, err := json.Marshal(msg); err == nil {
-					p.fastHub.BroadcastFast(fastJSON)
+				if fastData, err := dto.MsgpackMarshal(msg); err == nil {
+					p.fastHub.BroadcastFast(fastData)
 				}
 			}
 		}
@@ -314,8 +325,8 @@ func (p *Processor) processPacket(data []byte) {
 		dashData        *dto.Dashboard
 	)
 
-	// Broadcast pitwallState at ~4 Hz (250ms interval)
-	if now.Sub(p.lastPitwallSend) >= 250*time.Millisecond && p.pitwallManager.HasData() {
+	// Broadcast pitwallState at adaptive rate (4Hz ↔ 2Hz based on congestion)
+	if now.Sub(p.lastPitwallSend) >= p.pitwallInterval && p.pitwallManager.HasData() {
 		p.lastPitwallSend = now
 		pitwallState = p.pitwallManager.BuildState()
 		pitwallObserver = p.pitwallObserver
@@ -338,11 +349,24 @@ func (p *Processor) processPacket(data []byte) {
 			Type: dto.MessageTypePitwallState,
 			Data: pitwallState,
 		}
-		pitwallJSON, err := json.Marshal(msg)
+		pitwallData, err := marshalForHub(p.hub, msg)
 		if err != nil {
 			p.logger.Error("failed to marshal pitwall state", "error", err)
 		} else {
-			p.hub.Broadcast(pitwallJSON)
+			p.hub.Broadcast(pitwallData)
+
+			// Adaptive rate: slow down if ≥25% peers dropping, speed up when clear
+			if cr, ok := p.hub.(broadcast.CongestionReporter); ok {
+				if cr.DropRatio() >= 0.25 {
+					p.pitwallInterval = 500 * time.Millisecond
+					p.noDropStreak = 0
+				} else {
+					p.noDropStreak++
+					if p.noDropStreak >= 8 && p.pitwallInterval > 250*time.Millisecond {
+						p.pitwallInterval = 250 * time.Millisecond
+					}
+				}
+			}
 		}
 
 		// Battle detection: check gap trends on lap change
@@ -354,12 +378,12 @@ func (p *Processor) processPacket(data []byte) {
 	}
 
 	if dashData != nil {
-		jsonData, err := json.Marshal(dashData)
+		dashBytes, err := marshalForHub(p.hub, dashData)
 		if err != nil {
 			p.logger.Error("failed to marshal dashboard data", "error", err)
 			return
 		}
-		p.hub.Broadcast(jsonData)
+		p.hub.Broadcast(dashBytes)
 	}
 }
 
@@ -436,12 +460,12 @@ func (p *Processor) checkBattleAlerts(state *dto.PitwallState) {
 			Type: dto.MessageTypeBattleAlert,
 			Data: alert,
 		}
-		jsonData, err := json.Marshal(msg)
+		alertData, err := marshalForHub(p.hub, msg)
 		if err != nil {
 			p.logger.Error("failed to marshal battle alert", "error", err)
 			continue
 		}
-		p.hub.Broadcast(jsonData)
+		p.hub.Broadcast(alertData)
 		p.recordReplayBattleAlert(alert)
 		p.logger.Info("battle alert",
 			"side", alert.Side,
@@ -567,12 +591,12 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		Type: dto.MessageTypeRaceControl,
 		Data: notification,
 	}
-	jsonData, err := json.Marshal(msg)
+	rcData, err := marshalForHub(p.hub, msg)
 	if err != nil {
 		p.logger.Error("failed to marshal race control notification", "error", err)
 		return
 	}
-	p.hub.Broadcast(jsonData)
+	p.hub.Broadcast(rcData)
 	p.recordReplayRaceControl(notification)
 	p.countRaceControlNotification(notification)
 }

@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	maxBufferedAmount = 256 * 1024 // 256 KB — drop messages if receiver is slow
+	maxBufferedAmount = 128 * 1024 // 128 KB — conservative for Chrome SCTP 256KB receive buffer
 
 	sigWriteWait       = 10 * time.Second
 	sigPongWait        = 60 * time.Second
@@ -177,7 +177,7 @@ func (pm *PeerManager) startLoops() {
 	go pm.writeSignalingLoop()
 }
 
-// BroadcastAll sends a text message to all connected DataChannels.
+// BroadcastAll sends a binary message to all connected DataChannels.
 func (pm *PeerManager) BroadcastAll(message []byte) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -190,17 +190,15 @@ func (pm *PeerManager) BroadcastAll(message []byte) {
 			pm.logger.Debug("dropping message for slow peer", "peerId", peerID)
 			continue
 		}
-		if err := ch.SendText(string(message)); err != nil {
+		if err := ch.Send(message); err != nil {
 			pm.logger.Debug("send failed", "peerId", peerID, "error", err)
 		}
 	}
 }
 
-// BroadcastAllFast sends a message to all connected fast DataChannels.
+// BroadcastAllFast sends a binary message to all connected fast DataChannels.
 // Messages are silently dropped for slow peers (no log spam at 60Hz).
 func (pm *PeerManager) BroadcastAllFast(message []byte) {
-	text := string(message)
-
 	pm.mu.RLock()
 	snapshot := make([]*webrtc.DataChannel, 0, len(pm.fastChannels))
 	for _, ch := range pm.fastChannels {
@@ -215,12 +213,13 @@ func (pm *PeerManager) BroadcastAllFast(message []byte) {
 		if ch.BufferedAmount() > maxBufferedAmount {
 			continue
 		}
-		_ = ch.SendText(text)
+		_ = ch.Send(message)
 	}
 }
 
 // BroadcastPerPeer sends a potentially different payload to each connected peer.
-func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions signaling.Permissions) []byte) {
+// Returns (dropped, total) counts of peers.
+func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions signaling.Permissions) []byte) (int, int) {
 	pm.mu.RLock()
 	type target struct {
 		peerID      string
@@ -237,22 +236,27 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions 
 	}
 	pm.mu.RUnlock()
 
+	dropped := 0
+	total := len(targets)
 	for _, target := range targets {
 		if target.channel.ReadyState() != webrtc.DataChannelStateOpen {
+			total--
 			continue
 		}
 		if target.channel.BufferedAmount() > maxBufferedAmount {
 			pm.logger.Debug("dropping message for slow peer", "peerId", target.peerID)
+			dropped++
 			continue
 		}
 		message := resolve(target.peerID, target.permissions)
 		if len(message) == 0 {
 			continue
 		}
-		if err := target.channel.SendText(string(message)); err != nil {
+		if err := target.channel.Send(message); err != nil {
 			pm.logger.Debug("send failed", "peerId", target.peerID, "error", err)
 		}
 	}
+	return dropped, total
 }
 
 // SendTo sends a message to a specific peer's DataChannel (unicast).
@@ -263,7 +267,7 @@ func (pm *PeerManager) SendTo(peerID string, message []byte) {
 	if !ok || ch.ReadyState() != webrtc.DataChannelStateOpen {
 		return
 	}
-	_ = ch.SendText(string(message))
+	_ = ch.Send(message)
 }
 
 // ConnectedCount returns the number of peers with open DataChannels.
