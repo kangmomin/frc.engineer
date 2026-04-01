@@ -169,7 +169,7 @@ export function QualifyingDashboard({
   const allDrivers = pitwallState?.drivers ?? [];
   const playerIndex = pitwallState?.playerIndex ?? 0;
 
-  const isQualifying = /^Q[1-3]$/i.test(session?.sessionType ?? '');
+  const isQualifying = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(session?.sessionType ?? '');
   const trackLength = session?.trackLength ?? 0;
 
   // Sort by best lap time for qualifying leaderboard

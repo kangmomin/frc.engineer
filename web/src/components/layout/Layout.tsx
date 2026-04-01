@@ -89,7 +89,7 @@ export function Layout() {
   const viewCommentary = useTelemetryStore((state) => state.featurePermissions.viewCommentary);
   const viewQualifying = useTelemetryStore((state) => state.featurePermissions.viewQualifying);
   const sessionType = useTelemetryStore((state) => state.pitwallState?.session?.sessionType ?? '');
-  const isQualiSession = /^Q[1-3]$/i.test(sessionType);
+  const isQualiSession = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(sessionType);
   const showQualifying = viewQualifying && isQualiSession;
 
   const [dashboardView, setDashboardView] = useState<DashboardView>(readInitialView);

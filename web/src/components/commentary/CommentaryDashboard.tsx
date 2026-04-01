@@ -158,7 +158,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
   );
   const accMap = useCommentaryAccumulator(drivers, session);
 
-  const isQualifying = /^Q[1-3]$/i.test(session?.sessionType ?? '');
+  const isQualifying = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(session?.sessionType ?? '');
   const safetyCarLabel = getSafetyCarLabel(session?.safetyCar);
   const forecasts = session?.weatherForecast ?? [];
 
