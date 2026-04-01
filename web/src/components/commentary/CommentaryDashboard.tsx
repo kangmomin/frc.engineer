@@ -35,6 +35,8 @@ interface DriverAccState {
   raceTopSpeed: number;
   prevLapSector1Ms: number;
   prevLapSector2Ms: number;
+  prevLapSector3Ms: number;
+  lastS3Ms: number; // most recent completed S3 (current or previous lap)
 }
 
 interface PrevDriverSnapshot {
@@ -73,6 +75,8 @@ function useCommentaryAccumulator(drivers: DriverInfo[], session: SessionInfo | 
               raceTopSpeed: acc.raceTopSpeed,
               prevLapSector1Ms: 0,
               prevLapSector2Ms: 0,
+              prevLapSector3Ms: 0,
+              lastS3Ms: 0,
             });
           }
           return next;
@@ -104,26 +108,30 @@ function useCommentaryAccumulator(drivers: DriverInfo[], session: SessionInfo | 
           raceTopSpeed: 0,
           prevLapSector1Ms: 0,
           prevLapSector2Ms: 0,
+          prevLapSector3Ms: 0,
+          lastS3Ms: 0,
         };
 
         let accChanged = false;
 
         // Lap completion: currentLapNum increased
         if (prevSnap && driver.currentLapNum > prevSnap.currentLapNum && prevSnap.lastLapTime > 0) {
+          const prevS3 = (prevSnap.sector1TimeMs > 0 && prevSnap.sector2TimeMs > 0)
+            ? prevSnap.lastLapTime - prevSnap.sector1TimeMs - prevSnap.sector2TimeMs
+            : 0;
           acc = {
             ...acc,
             lapHistory: [...acc.lapHistory, { lapNum: prevSnap.currentLapNum, timeMs: prevSnap.lastLapTime }],
             prevLapSector1Ms: prevSnap.sector1TimeMs,
             prevLapSector2Ms: prevSnap.sector2TimeMs,
+            prevLapSector3Ms: prevS3 > 0 ? prevS3 : acc.prevLapSector3Ms,
+            lastS3Ms: prevS3 > 0 ? prevS3 : acc.lastS3Ms,
           };
           accChanged = true;
 
-          // Sector 3 from previous tick data
-          if (prevSnap.sector1TimeMs > 0 && prevSnap.sector2TimeMs > 0) {
-            const s3 = prevSnap.lastLapTime - prevSnap.sector1TimeMs - prevSnap.sector2TimeMs;
-            if (s3 > 0 && (acc.bestSector3Ms === 0 || s3 < acc.bestSector3Ms)) {
-              acc = { ...acc, bestSector3Ms: s3 };
-            }
+          // Best sector 3
+          if (prevS3 > 0 && (acc.bestSector3Ms === 0 || prevS3 < acc.bestSector3Ms)) {
+            acc = { ...acc, bestSector3Ms: prevS3 };
           }
         }
 
@@ -313,7 +321,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
               <col style={{ width: 40 }} />   {/* Pos */}
               <col style={{ width: 80 }} />   {/* Driver */}
               <col style={{ width: 88 }} />   {/* Fastest */}
-              <col style={{ width: 100 }} />  {/* Status */}
+              <col style={{ width: 160 }} />  {/* Status */}
               <col style={{ width: 48 }} />   {/* Tire */}
               <col style={{ width: 48 }} />   {/* Wear */}
               <col style={{ width: 52 }} />   {/* Life */}
@@ -521,36 +529,36 @@ function getDriverStatusLabel(status: number): string {
   }
 }
 
-function getSectorDisplay(driver: DriverInfo, acc: DriverAccState | undefined): { tone: string; label: string } | null {
-  if (driver.driverStatus !== 1) return null; // only on flying laps
+function sectorTone(current: number, prev: number): string {
+  if (current <= 0) return 'neutral';
+  if (prev <= 0) return 'neutral';
+  if (current < prev) return 'improving';
+  if (current > prev) return 'slower';
+  return 'neutral';
+}
 
-  const s1 = driver.sector1TimeMs;
-  const s2 = driver.sector2TimeMs;
-  const prevS1 = acc?.prevLapSector1Ms ?? 0;
-  const prevS2 = acc?.prevLapSector2Ms ?? 0;
-
-  if (driver.currentSector === 1 && s1 > 0) {
-    const tone = prevS1 > 0 ? (s1 <= prevS1 ? 'improving' : 'slower') : 'neutral';
-    return { tone, label: `S1 ${(s1 / 1000).toFixed(3)}` };
-  }
-  if (driver.currentSector === 2 && s2 > 0) {
-    const tone = prevS2 > 0 ? (s2 <= prevS2 ? 'improving' : 'slower') : 'neutral';
-    return { tone, label: `S2 ${(s2 / 1000).toFixed(3)}` };
-  }
-  return null;
+function formatSector(ms: number): string {
+  if (ms <= 0) return '--';
+  return (ms / 1000).toFixed(3);
 }
 
 function DriverStatusBadge({ driver, acc }: { driver: DriverInfo; acc: DriverAccState | undefined }) {
   const statusLabel = getDriverStatusLabel(driver.driverStatus);
   const isFlying = driver.driverStatus === 1;
-  const sector = getSectorDisplay(driver, acc);
+  const prevS1 = acc?.prevLapSector1Ms ?? 0;
+  const prevS2 = acc?.prevLapSector2Ms ?? 0;
+  const prevS3 = acc?.prevLapSector3Ms ?? 0;
+
+  const s1 = driver.sector1TimeMs;
+  const s2 = driver.sector2TimeMs;
+  const s3 = acc?.lastS3Ms ?? 0; // S3 from most recent completed lap
 
   return (
     <span className={`${styles.driverStatusBadge} ${isFlying ? styles.statusFlying : ''}`}>
       <span>{statusLabel}</span>
-      {sector && (
-        <span className={styles[sector.tone]}>{sector.label}</span>
-      )}
+      <span className={styles[sectorTone(s1, prevS1)]}>{formatSector(s1)}</span>
+      <span className={styles[sectorTone(s2, prevS2)]}>{formatSector(s2)}</span>
+      <span className={styles[sectorTone(s3, prevS3)]}>{formatSector(s3)}</span>
     </span>
   );
 }
