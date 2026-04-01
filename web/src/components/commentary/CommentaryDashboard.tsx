@@ -204,6 +204,18 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
   const safetyCarLabel = getSafetyCarLabel(session?.safetyCar);
   const forecasts = session?.weatherForecast ?? [];
 
+  const activeFlags = useMemo(() => {
+    const zones = session?.marshalZones ?? [];
+    const flagNames: Record<number, string> = { 1: 'GREEN', 2: 'BLUE', 3: 'YELLOW', 4: 'RED' };
+    return zones
+      .filter((z) => z.flag >= 1)
+      .map((z) => ({
+        sector: Math.min(Math.floor(z.start * 3) + 1, 3),
+        flag: z.flag,
+        label: flagNames[z.flag] ?? `F${z.flag}`,
+      }));
+  }, [session?.marshalZones]);
+
   // Qualifying sector top 10
   const sectorTop10 = useMemo(() => {
     if (!isQualifying) return null;
@@ -305,10 +317,18 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
             {session ? `${session.trackTemp.toFixed(0)}° / ${session.airTemp.toFixed(0)}°` : '--'}
           </strong>
         </div>
-        {safetyCarLabel && (
-          <div className={`${styles.stripCard} ${styles.secondary}`}>
-            <span className={styles.stripLabel}>Safety Car</span>
-            <strong>{safetyCarLabel}</strong>
+        <div className={`${styles.stripCard} ${safetyCarLabel ? styles.secondary : styles.neutral}`}>
+          <span className={styles.stripLabel}>Safety Car</span>
+          <strong>{safetyCarLabel ?? 'CLEAR'}</strong>
+        </div>
+        {activeFlags.length > 0 && (
+          <div className={`${styles.stripCard} ${styles.flagCard}`}>
+            <span className={styles.stripLabel}>Flags</span>
+            <strong className={styles.flagRow}>
+              {activeFlags.map((f, i) => (
+                <span key={i} className={styles[`flag${f.flag}`]}>S{f.sector} {f.label}</span>
+              ))}
+            </strong>
           </div>
         )}
       </div>

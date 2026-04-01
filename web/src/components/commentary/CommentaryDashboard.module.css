@@ -101,6 +101,21 @@
 .tertiary { color: var(--accent-lime); }
 .neutral { color: var(--text-primary); }
 
+.flagCard {
+  color: var(--text-primary);
+}
+
+.flagRow {
+  display: flex;
+  gap: 8px;
+  font-size: 11px !important;
+}
+
+.flag1 { color: #22c55e; } /* GREEN */
+.flag2 { color: #3b82f6; } /* BLUE */
+.flag3 { color: #eab308; } /* YELLOW */
+.flag4 { color: #ef4444; } /* RED */
+
 /* ── Leaderboard ── */
 .leaderboardWrap {
   position: relative;
