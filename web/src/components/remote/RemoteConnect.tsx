@@ -460,7 +460,7 @@ export function RemoteConnect({
         </div>
 
         {selectedRoom && (
-          <div className={styles.fieldStack}>
+          <form className={styles.fieldStack} onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} autoComplete="off">
             <label className={styles.urlLabel}>
               {selectedRoom.requiresPassword ? 'Room Password' : 'Access'}
             </label>
@@ -473,9 +473,6 @@ export function RemoteConnect({
                 placeholder={`Password for ${selectedRoom.roomName}`}
                 className={styles.urlInput}
                 disabled={isConnecting}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSubmit();
-                }}
               />
             ) : (
               <div className={styles.roomOpenHint}>This room is open. No password required.</div>
@@ -489,14 +486,11 @@ export function RemoteConnect({
               placeholder="Optional feature permission code"
               className={styles.urlInput}
               disabled={isConnecting}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSubmit();
-              }}
             />
             <div className={styles.permissionHint}>
               Optional. Use a permissions code to unlock ERS actuals, live pit status, top speed, player-relative deltas, or advanced track strategy details.
             </div>
-          </div>
+          </form>
         )}
 
         <div className={styles.actions}>
@@ -547,7 +541,7 @@ export function RemoteConnect({
               </button>
             </div>
 
-            <div className={styles.modalBody}>
+            <form className={styles.modalBody} onSubmit={(e) => { e.preventDefault(); unlockSettings(); }} autoComplete="off">
               <label className={styles.urlLabel}>Settings Password</label>
               <div className={styles.urlRow}>
                 <input
@@ -564,11 +558,6 @@ export function RemoteConnect({
                   placeholder="Enter settings password"
                   className={styles.urlInput}
                   disabled={permissionLoading || permissionSaving}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      unlockSettings();
-                    }
-                  }}
                 />
                 <button
                   type="button"
@@ -742,7 +731,7 @@ export function RemoteConnect({
 
               {permissionStatus && <p className={styles.success}>{permissionStatus}</p>}
               {permissionError && <p className={styles.error}>{permissionError}</p>}
-            </div>
+            </form>
           </div>
         </div>
       )}

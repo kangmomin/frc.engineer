@@ -72,6 +72,7 @@ type ERSEstimator struct {
 	trackProfile       ersTrackProfile
 	bucketCalibration  []ersBucketCalibration
 	calibrationSamples int
+	peakActiveCars     int
 	cars               [packets.MaxCars]ersCarState
 }
 
@@ -117,11 +118,18 @@ func (e *ERSEstimator) Update(
 	}
 
 	activeCars := packets.MaxCars
-	if participants != nil && int(participants.NumActiveCars) > 0 && int(participants.NumActiveCars) < activeCars {
-		activeCars = int(participants.NumActiveCars)
-	}
-	for i := activeCars; i < packets.MaxCars; i++ {
-		e.cars[i] = ersCarState{}
+	if participants != nil && int(participants.NumActiveCars) > 0 {
+		n := int(participants.NumActiveCars)
+		if n > activeCars {
+			n = activeCars
+		}
+		// Use high-water mark to prevent resetting cars when NumActiveCars fluctuates
+		if n > e.peakActiveCars {
+			e.peakActiveCars = n
+		}
+		if e.peakActiveCars > 0 {
+			activeCars = e.peakActiveCars
+		}
 	}
 
 	for i := 0; i < activeCars; i++ {
@@ -266,6 +274,7 @@ func (e *ERSEstimator) resetSession(sessionUID uint64, session *packets.PacketSe
 	e.trackProfile = ersTrackProfile{bucketCount: 1, drsBuckets: []bool{false}}
 	e.bucketCalibration = []ersBucketCalibration{{}}
 	e.calibrationSamples = 0
+	e.peakActiveCars = 0
 	e.cars = [packets.MaxCars]ersCarState{}
 
 	if session == nil {

@@ -227,6 +227,11 @@ export function CockpitDashboard({
         if (!response.ok) {
           throw new Error(`strategy guide request failed: ${response.status}`);
         }
+        const ct = response.headers.get('content-type') ?? '';
+        if (!ct.includes('application/json')) {
+          // Not a JSON endpoint (e.g. SPA fallback on remote deployment)
+          throw new Error('not json');
+        }
         return response.json() as Promise<StrategyGuideResponse>;
       })
       .then((data) => {
@@ -234,9 +239,8 @@ export function CockpitDashboard({
           setStrategyGuide(data);
         }
       })
-      .catch((error) => {
+      .catch(() => {
         if (!cancelled) {
-          console.error('Failed to fetch strategy guide:', error);
           setStrategyGuide(null);
         }
       })
