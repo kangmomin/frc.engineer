@@ -460,7 +460,7 @@ export function CockpitDashboard({
                         className={styles.tyreDot}
                         style={{ backgroundColor: getTyreColor(driver.tireCompound) }}
                       />
-                      {`${getTyreShortLabel(driver.tireCompound)} [${String(driver.tireAge).padStart(2, '0')}]`}
+                      {driver.tireAge}
                       {featurePermissions.viewAdvancedStrategy && (
                         <span
                           className={styles.tyreLifeCell}

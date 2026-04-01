@@ -118,6 +118,7 @@
 
 .leaderboard {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -144,6 +145,8 @@
   border-bottom: 1px solid rgba(59, 73, 76, 0.10);
   white-space: nowrap;
   vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .leaderboard tbody tr {
@@ -221,12 +224,17 @@
 }
 
 .improving {
-  color: #a855f7;
+  color: #22c55e;
   font-size: 9px;
 }
 
 .slower {
-  color: #f59e0b;
+  color: #ef4444;
+  font-size: 9px;
+}
+
+.neutral {
+  color: var(--text-secondary);
   font-size: 9px;
 }
 

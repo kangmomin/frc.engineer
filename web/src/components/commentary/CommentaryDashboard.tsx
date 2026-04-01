@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor, getTeamName } from '../../constants/teamColors';
-import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
+import { getTyreColor, getWearStatusColor } from '../../constants/tyreCompounds';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo, WeatherForecast } from '../../types/telemetry';
 import { formatLapTime } from '../../utils/formatters';
@@ -33,6 +33,8 @@ interface DriverAccState {
   bestSector2Ms: number;
   bestSector3Ms: number;
   raceTopSpeed: number;
+  prevLapSector1Ms: number;
+  prevLapSector2Ms: number;
 }
 
 interface PrevDriverSnapshot {
@@ -48,16 +50,39 @@ function useCommentaryAccumulator(drivers: DriverInfo[], session: SessionInfo | 
   const [accMap, setAccMap] = useState<Map<number, DriverAccState>>(() => new Map());
   const prevRef = useRef<Map<number, PrevDriverSnapshot>>(new Map());
   const sessionKeyRef = useRef('');
+  const trackKeyRef = useRef('');
 
-  // Reset on session change
-  const sessionKey = `${session?.trackId ?? ''}|${session?.sessionType ?? ''}`;
+  // Reset on session change — preserve topSpeed across sessions on same track
+  const trackKey = `${session?.trackId ?? ''}`;
+  const sessionKey = `${trackKey}|${session?.sessionType ?? ''}`;
   useEffect(() => {
     if (sessionKeyRef.current && sessionKeyRef.current !== sessionKey) {
-      setAccMap(new Map());
+      const trackChanged = trackKeyRef.current !== trackKey;
+      if (trackChanged) {
+        setAccMap(new Map());
+      } else {
+        // Same track, different session (Q→Race): keep topSpeed, reset the rest
+        setAccMap((prev) => {
+          const next = new Map<number, DriverAccState>();
+          for (const [idx, acc] of prev) {
+            next.set(idx, {
+              lapHistory: [],
+              bestSector1Ms: 0,
+              bestSector2Ms: 0,
+              bestSector3Ms: 0,
+              raceTopSpeed: acc.raceTopSpeed,
+              prevLapSector1Ms: 0,
+              prevLapSector2Ms: 0,
+            });
+          }
+          return next;
+        });
+      }
       prevRef.current = new Map();
     }
     sessionKeyRef.current = sessionKey;
-  }, [sessionKey]);
+    trackKeyRef.current = trackKey;
+  }, [sessionKey, trackKey]);
 
   // Process each tick
   useEffect(() => {
@@ -77,13 +102,20 @@ function useCommentaryAccumulator(drivers: DriverInfo[], session: SessionInfo | 
           bestSector2Ms: 0,
           bestSector3Ms: 0,
           raceTopSpeed: 0,
+          prevLapSector1Ms: 0,
+          prevLapSector2Ms: 0,
         };
 
         let accChanged = false;
 
         // Lap completion: currentLapNum increased
         if (prevSnap && driver.currentLapNum > prevSnap.currentLapNum && prevSnap.lastLapTime > 0) {
-          acc = { ...acc, lapHistory: [...acc.lapHistory, { lapNum: prevSnap.currentLapNum, timeMs: prevSnap.lastLapTime }] };
+          acc = {
+            ...acc,
+            lapHistory: [...acc.lapHistory, { lapNum: prevSnap.currentLapNum, timeMs: prevSnap.lastLapTime }],
+            prevLapSector1Ms: prevSnap.sector1TimeMs,
+            prevLapSector2Ms: prevSnap.sector2TimeMs,
+          };
           accChanged = true;
 
           // Sector 3 from previous tick data
@@ -277,6 +309,24 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
           <div className={styles.emptyState}>Waiting for telemetry stream...</div>
         ) : (
           <table className={styles.leaderboard}>
+            <colgroup>
+              <col style={{ width: 40 }} />   {/* Pos */}
+              <col style={{ width: 130 }} />  {/* Driver */}
+              <col style={{ width: 50 }} />   {/* Team */}
+              <col style={{ width: 88 }} />   {/* Fastest */}
+              <col style={{ width: 100 }} />  {/* Status */}
+              <col style={{ width: 48 }} />   {/* Tire */}
+              <col style={{ width: 48 }} />   {/* Wear */}
+              <col style={{ width: 52 }} />   {/* Life */}
+              <col style={{ width: 44 }} />   {/* ERS */}
+              <col style={{ width: 76 }} />   {/* Gap */}
+              <col style={{ width: 72 }} />   {/* Int */}
+              <col style={{ width: 36 }} />   {/* Pits */}
+              <col style={{ width: 44 }} />   {/* Pen */}
+              <col style={{ width: 44 }} />   {/* Trap */}
+              <col style={{ width: 44 }} />   {/* Vmax */}
+              <col />                         {/* Lap Times — fills remaining */}
+            </colgroup>
             <thead>
               <tr>
                 <th>Pos</th>
@@ -317,12 +367,12 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                     <td className={styles.teamCell}>{getTeamName(driver.teamId)}</td>
                     <td className={styles.fastestCell}>{formatLapTime(driver.bestLapTime)}</td>
                     <td className={styles.statusCell}>
-                      <DriverStatusBadge driver={driver} />
+                      <DriverStatusBadge driver={driver} acc={acc} />
                     </td>
                     <td>
                       <span className={styles.tyreBadge}>
                         <span className={styles.tyreDot} style={{ background: getTyreColor(driver.tireCompound) }} />
-                        {getTyreShortLabel(driver.tireCompound)} {driver.tireAge}L
+                        {driver.tireAge}
                       </span>
                     </td>
                     <td className={styles.wearCell} style={driver.tyreSetWear != null ? { color: getWearStatusColor(driver.tyreSetWear) } : undefined}>
@@ -476,36 +526,35 @@ function getDriverStatusLabel(status: number): string {
   }
 }
 
-function getSectorDelta(driver: DriverInfo): { tone: string; label: string } | null {
+function getSectorDisplay(driver: DriverInfo, acc: DriverAccState | undefined): { tone: string; label: string } | null {
   if (driver.driverStatus !== 1) return null; // only on flying laps
 
   const s1 = driver.sector1TimeMs;
   const s2 = driver.sector2TimeMs;
-  const bestS1 = driver.bestSector1Ms;
-  const bestS2 = driver.bestSector2Ms;
+  const prevS1 = acc?.prevLapSector1Ms ?? 0;
+  const prevS2 = acc?.prevLapSector2Ms ?? 0;
 
-  // Check latest completed sector
-  if (driver.currentSector === 1 && s1 > 0 && bestS1 != null) {
-    const delta = s1 - bestS1;
-    return { tone: delta <= 0 ? 'improving' : 'slower', label: delta <= 0 ? `S1 ${(delta / 1000).toFixed(3)}` : `S1 +${(delta / 1000).toFixed(3)}` };
+  if (driver.currentSector === 1 && s1 > 0) {
+    const tone = prevS1 > 0 ? (s1 <= prevS1 ? 'improving' : 'slower') : 'neutral';
+    return { tone, label: `S1 ${(s1 / 1000).toFixed(3)}` };
   }
-  if (driver.currentSector === 2 && s2 > 0 && bestS2 != null) {
-    const delta = s2 - bestS2;
-    return { tone: delta <= 0 ? 'improving' : 'slower', label: delta <= 0 ? `S2 ${(delta / 1000).toFixed(3)}` : `S2 +${(delta / 1000).toFixed(3)}` };
+  if (driver.currentSector === 2 && s2 > 0) {
+    const tone = prevS2 > 0 ? (s2 <= prevS2 ? 'improving' : 'slower') : 'neutral';
+    return { tone, label: `S2 ${(s2 / 1000).toFixed(3)}` };
   }
   return null;
 }
 
-function DriverStatusBadge({ driver }: { driver: DriverInfo }) {
+function DriverStatusBadge({ driver, acc }: { driver: DriverInfo; acc: DriverAccState | undefined }) {
   const statusLabel = getDriverStatusLabel(driver.driverStatus);
   const isFlying = driver.driverStatus === 1;
-  const sectorDelta = getSectorDelta(driver);
+  const sector = getSectorDisplay(driver, acc);
 
   return (
     <span className={`${styles.driverStatusBadge} ${isFlying ? styles.statusFlying : ''}`}>
       <span>{statusLabel}</span>
-      {sectorDelta && (
-        <span className={styles[sectorDelta.tone]}>{sectorDelta.label}</span>
+      {sector && (
+        <span className={styles[sector.tone]}>{sector.label}</span>
       )}
     </span>
   );
