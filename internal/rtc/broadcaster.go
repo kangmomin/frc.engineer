@@ -168,7 +168,10 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 			state.Drivers[i].BestSector1Ms = nil
 			state.Drivers[i].BestSector2Ms = nil
 			state.Drivers[i].BestSector3Ms = nil
-			state.Drivers[i].DriverStatus = 0
+			// Qualifying view needs DriverStatus for try/phase detection
+			if view != "qualifying" {
+				state.Drivers[i].DriverStatus = 0
+			}
 		}
 
 		// View-based filtering: strip data not needed for current tab

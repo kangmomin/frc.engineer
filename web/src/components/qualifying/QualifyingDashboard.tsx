@@ -276,6 +276,7 @@ export function QualifyingDashboard({
               <th>Gap</th>
               <th>Tyre</th>
               <th>Laps</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -313,6 +314,7 @@ export function QualifyingDashboard({
                     </span>
                   </td>
                   <td>{d.currentLapNum}</td>
+                  <td><DriverStatusBadge pitStatus={d.pitStatus} driverStatus={d.driverStatus} /></td>
                 </tr>
               );
             })}
@@ -417,4 +419,23 @@ export function QualifyingDashboard({
       </div>
     </div>
   );
+}
+
+// ── Driver Status Badge ──
+
+function getDriverStatusInfo(pitStatus: number, driverStatus: number): { label: string; className: string } {
+  if (pitStatus === 1) return { label: 'PIT', className: styles.statusPit };
+  if (pitStatus === 2) return { label: 'PIT', className: styles.statusPit };
+  switch (driverStatus) {
+    case 1: return { label: 'FLY', className: styles.statusFlying };
+    case 2: return { label: 'IN', className: styles.statusInLap };
+    case 3: return { label: 'OUT', className: styles.statusOutLap };
+    case 0: return { label: 'GAR', className: styles.statusGarage };
+    default: return { label: '--', className: styles.statusGarage };
+  }
+}
+
+function DriverStatusBadge({ pitStatus, driverStatus }: { pitStatus: number; driverStatus: number }) {
+  const { label, className } = getDriverStatusInfo(pitStatus, driverStatus);
+  return <span className={`${styles.statusBadge} ${className}`}>{label}</span>;
 }
