@@ -130,17 +130,19 @@ func (sm *StrategyManager) Update(carStatus *packets.PacketCarStatusData, lapDat
 			continue
 		}
 
-		// Compound changed: push previous stint to history.
+		// Compound changed: push previous stint to history only if it had track time.
 		if compound != ds.CurrentCompound {
-			startLap := currentLap - ds.CurrentStintLaps
-			if startLap < 1 {
-				startLap = 1
+			if ds.CurrentStintLaps > 0 {
+				startLap := currentLap - ds.CurrentStintLaps
+				if startLap < 1 {
+					startLap = 1
+				}
+				ds.StintHistory = append(ds.StintHistory, StintInfo{
+					Compound: ds.CurrentCompound,
+					StartLap: startLap,
+					Laps:     ds.CurrentStintLaps,
+				})
 			}
-			ds.StintHistory = append(ds.StintHistory, StintInfo{
-				Compound: ds.CurrentCompound,
-				StartLap: startLap,
-				Laps:     ds.CurrentStintLaps,
-			})
 			ds.CurrentCompound = compound
 		}
 
