@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"log/slog"
 	"math"
 	"math/rand"
 	"net"
@@ -20,6 +21,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"frc.engineer/internal/updater"
 )
 
 //go:embed all:recordings
@@ -42,6 +45,8 @@ const (
 	SessionPacketSize    = 685
 )
 
+var mockudpVersion = "v3.29.0"
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:20777", "UDP target address")
 	hz := flag.Int("hz", 60, "Packets per second")
@@ -51,6 +56,19 @@ func main() {
 	loopFlag := flag.Bool("loop", false, "Loop replay continuously")
 	record := flag.String("record", "", "Record simulation to raw.bin file")
 	flag.Parse()
+
+	// Auto-update
+	logger := slog.Default()
+	updater.CleanOldBinary(logger)
+	if err := updater.AutoUpdate(logger, mockudpVersion, func(status string, pct int) {
+		if pct >= 0 {
+			fmt.Printf("\r[Update] %s (%d%%)   ", status, pct)
+		} else {
+			fmt.Printf("\r[Update] %s   \n", status)
+		}
+	}); err != nil {
+		logger.Warn("auto-update failed", "error", err)
+	}
 
 	conn, err := net.Dial("udp", *addr)
 	if err != nil {
@@ -89,22 +107,15 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 
 		fmt.Println()
 		fmt.Println("╔══════════════════════════════════════════╗")
-		fmt.Println("║       FRC Mock UDP Telemetry Sender      ║")
+		fmt.Printf("║    FRC Mock UDP Sender %-18s║\n", mockudpVersion)
 		fmt.Printf("║       Target: %-26s ║\n", addr)
 		fmt.Println("╠══════════════════════════════════════════╣")
 		fmt.Println("║  1. Simulate (synthetic data)            ║")
 
 		for i, rec := range recordings {
-			label := rec.name
-			if len(label) > 22 {
-				label = label[:19] + "..."
-			}
-			size := fmt.Sprintf("%.1fMB", float64(rec.size)/(1024*1024))
 			st := rec.sessionType
-			if len(st) > 7 {
-				st = st[:7]
-			}
-			fmt.Printf("║  %d. %-22s %7s %5s ║\n", i+2, label, st, size)
+			size := fmt.Sprintf("%.1fMB", float64(rec.size)/(1024*1024))
+			fmt.Printf("║  %d. %-30s %5s ║\n", i+2, st, size)
 		}
 
 		fmt.Printf("║  S. Speed (current: %.1fx)               ║\n", speed)
