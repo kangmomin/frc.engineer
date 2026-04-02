@@ -45,7 +45,7 @@ const (
 	SessionPacketSize    = 685
 )
 
-var mockudpVersion = "v3.29.0"
+var mockudpVersion = "v3.30.0"
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:20777", "UDP target address")
