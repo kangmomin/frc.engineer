@@ -71,6 +71,7 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewPlayerDelta: false,
       viewCommentary: false,
       viewQualifying: false,
+      viewCombat: false,
     },
   };
 }
@@ -617,6 +618,9 @@ export function SettingsView() {
                     <span className={styles.trackBadgeLoaded}>
                       {entry.permissions.viewQualifying ? 'Qualifying' : 'Qualifying Hidden'}
                     </span>
+                    <span className={styles.trackBadgeLoaded}>
+                      {entry.permissions.viewCombat ? 'Combat' : 'Combat Hidden'}
+                    </span>
                   </div>
                 </button>
               ))
@@ -723,6 +727,15 @@ export function SettingsView() {
                     type="checkbox"
                     checked={permissionDraft.permissions.viewQualifying}
                     onChange={(event) => updatePermissionFlag('viewQualifying', event.target.checked)}
+                  />
+                </label>
+                <label className={styles.permissionToggle}>
+                  <span className={styles.fieldLabel}>Combat</span>
+                  <input
+                    className={styles.toggle}
+                    type="checkbox"
+                    checked={permissionDraft.permissions.viewCombat}
+                    onChange={(event) => updatePermissionFlag('viewCombat', event.target.checked)}
                   />
                 </label>
               </div>

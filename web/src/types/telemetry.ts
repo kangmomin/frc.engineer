@@ -46,6 +46,7 @@ export interface FeaturePermissions {
   viewPlayerDelta: boolean;
   viewCommentary: boolean;
   viewQualifying: boolean;
+  viewCombat: boolean;
 }
 
 export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';

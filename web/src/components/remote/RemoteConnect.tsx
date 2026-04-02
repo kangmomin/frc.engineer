@@ -64,6 +64,7 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewPlayerDelta: false,
       viewCommentary: false,
       viewQualifying: false,
+      viewCombat: false,
     },
   };
 }
@@ -601,6 +602,7 @@ export function RemoteConnect({
                             <span>{entry.permissions.viewAdvancedStrategy ? 'ADV STRATEGY' : 'BASIC ONLY'}</span>
                             <span>{entry.permissions.viewCommentary ? 'COMMENTARY' : 'COMMENTARY HIDDEN'}</span>
                             <span>{entry.permissions.viewQualifying ? 'QUALIFYING' : 'QUALIFYING HIDDEN'}</span>
+                            <span>{entry.permissions.viewCombat ? 'COMBAT' : 'COMBAT HIDDEN'}</span>
                           </div>
                         </button>
                       ))
@@ -719,6 +721,16 @@ export function RemoteConnect({
                           type="checkbox"
                           checked={permissionDraft.permissions.viewQualifying}
                           onChange={(e) => updatePermissionFlag('viewQualifying', e.target.checked)}
+                          disabled={permissionSaving}
+                        />
+                      </label>
+                      <label className={styles.permissionToggle}>
+                        <span>Combat</span>
+                        <input
+                          className={styles.toggle}
+                          type="checkbox"
+                          checked={permissionDraft.permissions.viewCombat}
+                          onChange={(e) => updatePermissionFlag('viewCombat', e.target.checked)}
                           disabled={permissionSaving}
                         />
                       </label>

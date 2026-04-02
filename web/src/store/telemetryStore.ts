@@ -62,6 +62,7 @@ export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewPlayerDelta: false,
   viewCommentary: false,
   viewQualifying: false,
+  viewCombat: false,
 };
 
 export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
@@ -73,6 +74,7 @@ export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewPlayerDelta: true,
   viewCommentary: true,
   viewQualifying: true,
+  viewCombat: true,
 };
 
 export const useTelemetryStore = create<TelemetryState>((set) => ({

@@ -92,6 +92,7 @@ interface CockpitDashboardProps {
   };
   onSwitchToCommentary?: () => void;
   onSwitchToQualifying?: () => void;
+  onSwitchToCombat?: () => void;
   onGoHome?: () => void;
   onChangePermissionCode?: () => void;
 }
@@ -102,6 +103,7 @@ export function CockpitDashboard({
   remoteAction,
   onSwitchToCommentary,
   onSwitchToQualifying,
+  onSwitchToCombat,
   onGoHome,
   onChangePermissionCode,
 }: CockpitDashboardProps) {
@@ -347,6 +349,16 @@ export function CockpitDashboard({
             aria-label="Switch to qualifying"
           >
             Quali
+          </button>
+        )}
+        {onSwitchToCombat && (
+          <button
+            type="button"
+            className={styles.remoteButton}
+            onClick={onSwitchToCombat}
+            aria-label="Switch to combat"
+          >
+            Combat
           </button>
         )}
         {remoteAction && (
