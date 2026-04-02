@@ -70,8 +70,8 @@ type SessionInfo struct {
 	SafetyCar              string                  `json:"safetyCar"`
 	SessionType            string                  `json:"sessionType"`
 	TotalLaps              int                     `json:"totalLaps"`
-	SessionTimeLeft        int                     `json:"sessionTimeLeft,omitempty"`
-	SessionDuration        int                     `json:"sessionDuration,omitempty"`
+	SessionTimeLeft        int                     `json:"sessionTimeLeft"`
+	SessionDuration        int                     `json:"sessionDuration"`
 	TrackID                int8                    `json:"trackId"`
 	TrackName              string                  `json:"trackName"`
 	TrackLength            int                     `json:"trackLength"`
