@@ -240,6 +240,8 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 			SafetyCar:              safetyCarString(pm.session.SafetyCarStatus),
 			SessionType:            sessionTypeString(pm.session.SessionType),
 			TotalLaps:              int(pm.session.TotalLaps),
+			SessionTimeLeft:        int(pm.session.SessionTimeLeft),
+			SessionDuration:        int(pm.session.SessionDuration),
 			TrackID:                pm.session.TrackID,
 			TrackName:              tracks.TrackName(pm.session.TrackID),
 			TrackLength:            int(pm.session.TrackLength),

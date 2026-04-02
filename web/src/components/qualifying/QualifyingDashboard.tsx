@@ -252,6 +252,10 @@ export function QualifyingDashboard({
           <span className={styles.stripLabel}>Track</span>
           <strong>{session?.trackName ?? '--'}</strong>
         </div>
+        <div className={`${styles.stripCard} ${styles.neutral}`}>
+          <span className={styles.stripLabel}>Time Left</span>
+          <strong>{formatTimeLeft(session?.sessionTimeLeft)}</strong>
+        </div>
         <div className={`${styles.stripCard} ${styles.tertiary}`}>
           <span className={styles.stripLabel}>Best</span>
           <strong>{player ? formatLapTime(player.bestLapTime) : '--:--.---'}</strong>
@@ -433,6 +437,13 @@ function getDriverStatusInfo(pitStatus: number, driverStatus: number): { label: 
     case 0: return { label: 'GAR', className: styles.statusGarage };
     default: return { label: '--', className: styles.statusGarage };
   }
+}
+
+function formatTimeLeft(seconds?: number): string {
+  if (seconds == null || seconds <= 0) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 function DriverStatusBadge({ pitStatus, driverStatus }: { pitStatus: number; driverStatus: number }) {

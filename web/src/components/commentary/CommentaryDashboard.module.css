@@ -101,20 +101,23 @@
 .tertiary { color: var(--accent-lime); }
 .neutral { color: var(--text-primary); }
 
-.flagCard {
-  color: var(--text-primary);
-}
-
-.flagRow {
+.trackStatusRow {
   display: flex;
-  gap: 8px;
-  font-size: 11px !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px !important;
+  color: var(--text-muted);
 }
 
-.flag1 { color: #22c55e; } /* GREEN */
-.flag2 { color: #3b82f6; } /* BLUE */
-.flag3 { color: #eab308; } /* YELLOW */
-.flag4 { color: #ef4444; } /* RED */
+.scBadge {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent-red);
+  margin-left: 2px;
+  padding: 1px 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
 
 /* ── Leaderboard ── */
 .leaderboardWrap {

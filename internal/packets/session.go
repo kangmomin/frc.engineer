@@ -40,6 +40,8 @@ type PacketSessionData struct {
 	SafetyCarStatus           uint8 // 0=no safety car, 1=full, 2=virtual, 3=formation lap
 	NumWeatherForecastSamples uint8
 	WeatherForecastSamples    [64]WeatherForecastSample
+	SessionTimeLeft           uint16 // Time left in session (seconds)
+	SessionDuration           uint16 // Session duration (seconds)
 	PitStopWindowIdealLap     uint8
 	PitStopWindowLatestLap    uint8
 	PitStopRejoinPosition     uint8
@@ -54,6 +56,8 @@ const (
 	sessionTrackLengthOffset            = PacketHeaderSize + 4             // 33-34
 	sessionTypeOffset                   = PacketHeaderSize + 6             // 35
 	sessionTrackIDOffset                = PacketHeaderSize + 7             // 36
+	sessionTimeLeftOffset               = PacketHeaderSize + 9             // 38-39
+	sessionDurationOffset               = PacketHeaderSize + 11            // 40-41
 	sessionNumMarshalZonesOffset        = PacketHeaderSize + 18            // 47
 	sessionMarshalZonesOffset           = PacketHeaderSize + 19            // 48 (21 zones × 5 bytes each)
 	marshalZoneSize                     = 5                                // float32 + int8
@@ -94,6 +98,8 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 		TrackLength:      binary.LittleEndian.Uint16(data[sessionTrackLengthOffset:]),
 		SessionType:      data[sessionTypeOffset],
 		TrackID:          int8(data[sessionTrackIDOffset]),
+		SessionTimeLeft:  binary.LittleEndian.Uint16(data[sessionTimeLeftOffset:]),
+		SessionDuration:  binary.LittleEndian.Uint16(data[sessionDurationOffset:]),
 		NumMarshalZones:  data[sessionNumMarshalZonesOffset],
 		SafetyCarStatus:  data[sessionSafetyCarStatusOffset],
 	}

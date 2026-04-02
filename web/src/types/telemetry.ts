@@ -294,6 +294,8 @@ export interface SessionInfo {
   safetyCar: string;
   sessionType: string;
   totalLaps: number;
+  sessionTimeLeft?: number;
+  sessionDuration?: number;
   trackId: number;
   trackName: string;
   trackLength: number;

@@ -204,17 +204,6 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
   const safetyCarLabel = getSafetyCarLabel(session?.safetyCar);
   const forecasts = session?.weatherForecast ?? [];
 
-  const activeFlags = useMemo(() => {
-    const zones = session?.marshalZones ?? [];
-    const flagNames: Record<number, string> = { 1: 'GREEN', 2: 'BLUE', 3: 'YELLOW', 4: 'RED' };
-    return zones
-      .filter((z) => z.flag >= 1)
-      .map((z) => ({
-        sector: Math.min(Math.floor(z.start * 3) + 1, 3),
-        flag: z.flag,
-        label: flagNames[z.flag] ?? `F${z.flag}`,
-      }));
-  }, [session?.marshalZones]);
 
   // Qualifying sector top 10
   const sectorTop10 = useMemo(() => {
@@ -302,9 +291,11 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
           <strong>{session?.sessionType ?? '--'}</strong>
         </div>
         <div className={`${styles.stripCard} ${styles.neutral}`}>
-          <span className={styles.stripLabel}>Lap</span>
+          <span className={styles.stripLabel}>{isQualifying ? 'Time' : 'Lap'}</span>
           <strong>
-            {drivers[0]?.currentLapNum ?? 0}/{session?.totalLaps ?? '--'}
+            {isQualifying
+              ? formatSessionTimeLeft(session?.sessionTimeLeft)
+              : `${drivers[0]?.currentLapNum ?? 0}/${session?.totalLaps ?? '--'}`}
           </strong>
         </div>
         <div className={`${styles.stripCard} ${styles.tertiary}`}>
@@ -317,20 +308,17 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
             {session ? `${session.trackTemp.toFixed(0)}° / ${session.airTemp.toFixed(0)}°` : '--'}
           </strong>
         </div>
-        <div className={`${styles.stripCard} ${safetyCarLabel ? styles.secondary : styles.neutral}`}>
-          <span className={styles.stripLabel}>Safety Car</span>
-          <strong>{safetyCarLabel ?? 'CLEAR'}</strong>
+        <div className={styles.stripCard}>
+          <span className={styles.stripLabel}>Status</span>
+          <strong className={styles.trackStatusRow}>
+            <span style={getSectorFlagColor(session?.marshalZones, 1)}>S1</span>
+            <span style={getSectorFlagColor(session?.marshalZones, 2)}>S2</span>
+            <span style={getSectorFlagColor(session?.marshalZones, 3)}>S3</span>
+            <span className={styles.scBadge}>
+              {safetyCarLabel ?? 'CLR'}
+            </span>
+          </strong>
         </div>
-        {activeFlags.length > 0 && (
-          <div className={`${styles.stripCard} ${styles.flagCard}`}>
-            <span className={styles.stripLabel}>Flags</span>
-            <strong className={styles.flagRow}>
-              {activeFlags.map((f, i) => (
-                <span key={i} className={styles[`flag${f.flag}`]}>S{f.sector} {f.label}</span>
-              ))}
-            </strong>
-          </div>
-        )}
       </div>
 
       {/* Leaderboard */}
@@ -340,21 +328,21 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
         ) : (
           <table className={styles.leaderboard}>
             <colgroup>
-              <col style={{ width: 40 }} />   {/* Pos */}
-              <col style={{ width: 130 }} />  {/* Driver */}
-              <col style={{ width: 88 }} />   {/* Fastest */}
-              <col style={{ width: 160 }} />  {/* Status */}
-              <col style={{ width: 48 }} />   {/* Tire */}
-              <col style={{ width: 48 }} />   {/* Wear */}
-              <col style={{ width: 52 }} />   {/* Life */}
-              <col style={{ width: 44 }} />   {/* ERS */}
-              <col style={{ width: 76 }} />   {/* Gap */}
-              <col style={{ width: 72 }} />   {/* Int */}
-              <col style={{ width: 44 }} />   {/* Pen */}
+              <col style={{ width: 36 }} />   {/* Pos */}
+              <col style={{ width: 110 }} />  {/* Driver */}
+              <col style={{ width: 80 }} />   {/* Fastest */}
+              <col style={{ width: 150 }} />  {/* Status */}
+              <col style={{ width: 60 }} />   {/* Tire */}
+              <col style={{ width: 40 }} />   {/* Wear */}
+              <col style={{ width: 48 }} />   {/* Life */}
+              <col style={{ width: 40 }} />   {/* ERS */}
+              <col style={{ width: 68 }} />   {/* Gap */}
+              <col style={{ width: 64 }} />   {/* Int */}
+              <col style={{ width: 40 }} />   {/* Pen */}
               <col />                         {/* Lap Times — fills remaining */}
-              <col style={{ width: 36 }} />   {/* Pits */}
-              <col style={{ width: 44 }} />   {/* Trap */}
-              <col style={{ width: 44 }} />   {/* Vmax */}
+              <col style={{ width: 32 }} />   {/* Pits */}
+              <col style={{ width: 40 }} />   {/* Trap */}
+              <col style={{ width: 40 }} />   {/* Vmax */}
             </colgroup>
             <thead>
               <tr>
@@ -595,6 +583,31 @@ function DriverStatusBadge({ driver, acc }: { driver: DriverInfo; acc: DriverAcc
       <span className={styles[sectorTone(s3, prevS3)]}>{formatSector(s3)}</span>
     </span>
   );
+}
+
+function formatSessionTimeLeft(seconds?: number): string {
+  if (seconds == null || seconds <= 0) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// ── Track Status ──
+
+const SECTOR_FLAG_COLORS: Record<number, string> = {
+  1: '#22c55e', 2: '#3b82f6', 3: '#eab308', 4: '#ef4444',
+};
+
+function getSectorFlagColor(zones: { start: number; flag: number }[] | undefined, sector: number): React.CSSProperties | undefined {
+  if (!zones) return undefined;
+  const lo = (sector - 1) / 3;
+  const hi = sector / 3;
+  for (const z of zones) {
+    if (z.start >= lo && z.start < hi && z.flag >= 1) {
+      return { color: SECTOR_FLAG_COLORS[z.flag] };
+    }
+  }
+  return undefined;
 }
 
 // ── Helpers ──
