@@ -3,6 +3,7 @@ package packets
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 )
 
 // MarshalZone represents a marshal zone on track
@@ -102,6 +103,16 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 		SessionDuration:  binary.LittleEndian.Uint16(data[sessionDurationOffset:]),
 		NumMarshalZones:  data[sessionNumMarshalZonesOffset],
 		SafetyCarStatus:  data[sessionSafetyCarStatusOffset],
+	}
+
+	// DEBUG: dump raw bytes around sessionTimeLeft area (offsets 36-45)
+	if packet.SessionTimeLeft == 0 && packet.SessionDuration == 0 && packet.SessionType >= 5 && packet.SessionType <= 14 {
+		end := sessionDurationOffset + 6
+		if end > len(data) {
+			end = len(data)
+		}
+		fmt.Printf("[DEBUG] Session raw bytes [%d..%d]: % x  (type=%d)\n",
+			sessionTrackIDOffset, end-1, data[sessionTrackIDOffset:end], packet.SessionType)
 	}
 
 	// Parse marshal zones

@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"fmt"
 	"math"
 	"sync"
 
@@ -88,6 +89,10 @@ func (pm *PitwallManager) ResendTrackMap() {
 // UpdateSession stores the latest session packet
 func (pm *PitwallManager) UpdateSession(s *packets.PacketSessionData) {
 	pm.mu.Lock()
+	if pm.session == nil || pm.session.SessionType != s.SessionType {
+		fmt.Printf("[DEBUG] Session: type=%d timeLeft=%d duration=%d\n",
+			s.SessionType, s.SessionTimeLeft, s.SessionDuration)
+	}
 	pm.session = s
 	pm.mu.Unlock()
 }
