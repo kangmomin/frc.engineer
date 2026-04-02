@@ -145,7 +145,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 8px 8px;
+  padding: 8px 12px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-color);
   font-family: var(--font-racing);
@@ -159,7 +159,7 @@
 }
 
 .leaderboard td {
-  padding: 6px 8px;
+  padding: 6px 12px;
   border-bottom: 1px solid rgba(59, 73, 76, 0.10);
   white-space: nowrap;
   vertical-align: middle;
