@@ -89,7 +89,7 @@
 
 .stripCard strong {
   font-family: var(--font-racing);
-  font-size: clamp(1rem, 0.6vw + 0.8rem, 1.25rem);
+  font-size: clamp(1.1rem, 0.7vw + 0.9rem, 1.4rem);
   font-weight: 800;
   font-style: italic;
   line-height: 1;
@@ -99,7 +99,7 @@
 .primary { color: var(--accent); }
 .secondary { color: var(--accent-red); }
 .tertiary { color: var(--accent-lime); }
-.neutral { color: var(--text-primary); }
+.stripNeutral { color: var(--text-primary); }
 
 .trackStatusRow {
   display: flex;
@@ -255,30 +255,63 @@
   white-space: nowrap;
 }
 
-.driverStatusBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-muted);
-}
-
 .statusFlying {
   color: var(--accent-lime);
 }
 
-.improving {
-  color: #22c55e;
-  font-size: 9px;
+/* ── Sector Delta Chips ── */
+.sectorCell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
-.slower {
-  color: #ef4444;
-  font-size: 9px;
+.sectorChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid rgba(59, 73, 76, 0.3);
+  background: rgba(14, 14, 15, 0.52);
 }
 
-.neutral {
-  color: var(--text-secondary);
+.sectorChipLabel {
+  flex: 0 0 auto;
   font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sectorChipValue {
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.03em;
+}
+
+.sectorPending {
+  color: var(--text-muted);
+}
+
+.sectorBest {
+  color: var(--sector-purple);
+  border-color: rgba(156, 240, 255, 0.36);
+}
+
+.sectorGood {
+  color: var(--sector-green);
+  border-color: rgba(205, 255, 19, 0.28);
+}
+
+.sectorSlow {
+  color: var(--sector-yellow);
+  border-color: rgba(255, 179, 178, 0.28);
 }
 
 .wearCell {

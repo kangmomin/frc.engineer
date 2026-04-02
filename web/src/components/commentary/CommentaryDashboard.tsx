@@ -4,10 +4,13 @@ import { getTeamColor } from '../../constants/teamColors';
 import { getTyreColor, getWearStatusColor } from '../../constants/tyreCompounds';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo, WeatherForecast } from '../../types/telemetry';
-import { formatLapTime } from '../../utils/formatters';
+import { formatDelta, formatLapTime } from '../../utils/formatters';
 import styles from './CommentaryDashboard.module.css';
 
 const MAX_ERS_ENERGY = 4_000_000;
+const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
+type SectorBestTimes = [number, number, number];
+type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
 
 interface CommentaryDashboardProps {
   onSwitchToCockpit: () => void;
@@ -203,6 +206,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
   const isQualifying = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(session?.sessionType ?? '');
   const safetyCarLabel = getSafetyCarLabel(session?.safetyCar);
   const forecasts = session?.weatherForecast ?? [];
+  const sectorBestTimes = useMemo(() => getSectorBestTimes(drivers), [drivers]);
 
 
   // Qualifying sector top 10
@@ -286,15 +290,15 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
           <span className={styles.stripLabel}>Track</span>
           <strong>{session?.trackName ?? 'No Session'}</strong>
         </div>
-        <div className={`${styles.stripCard} ${styles.neutral}`}>
+        <div className={`${styles.stripCard} ${styles.stripNeutral}`}>
           <span className={styles.stripLabel}>Session</span>
           <strong>{session?.sessionType ?? '--'}</strong>
         </div>
-        <div className={`${styles.stripCard} ${styles.neutral}`}>
+        <div className={`${styles.stripCard} ${styles.stripNeutral}`}>
           <span className={styles.stripLabel}>{isQualifying ? 'Time' : 'Lap'}</span>
           <strong>
             {isQualifying
-              ? formatSessionTimeLeft(session?.sessionTimeLeft)
+              ? formatSessionTimeLeft(session?.sessionTimeLeft, session?.sessionDuration)
               : `${drivers[0]?.currentLapNum ?? 0}/${session?.totalLaps ?? '--'}`}
           </strong>
         </div>
@@ -302,21 +306,24 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
           <span className={styles.stripLabel}>Weather</span>
           <strong>{formatWeather(session?.weather)}</strong>
         </div>
-        <div className={`${styles.stripCard} ${styles.neutral}`}>
+        <div className={`${styles.stripCard} ${styles.stripNeutral}`}>
           <span className={styles.stripLabel}>Track / Air</span>
           <strong>
             {session ? `${session.trackTemp.toFixed(0)}° / ${session.airTemp.toFixed(0)}°` : '--'}
           </strong>
         </div>
         <div className={styles.stripCard}>
-          <span className={styles.stripLabel}>Status</span>
+          <span className={styles.stripLabel}>Sector</span>
           <strong className={styles.trackStatusRow}>
             <span style={getSectorFlagColor(session?.marshalZones, 1)}>S1</span>
             <span style={getSectorFlagColor(session?.marshalZones, 2)}>S2</span>
             <span style={getSectorFlagColor(session?.marshalZones, 3)}>S3</span>
-            <span className={styles.scBadge}>
-              {safetyCarLabel ?? 'CLR'}
-            </span>
+          </strong>
+        </div>
+        <div className={`${styles.stripCard} ${styles.secondary}`}>
+          <span className={styles.stripLabel}>Status</span>
+          <strong className={styles.scBadge}>
+            {safetyCarLabel ?? 'CLR'}
           </strong>
         </div>
       </div>
@@ -331,7 +338,8 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
               <col style={{ width: 36 }} />   {/* Pos */}
               <col style={{ width: 110 }} />  {/* Driver */}
               <col style={{ width: 80 }} />   {/* Fastest */}
-              <col style={{ width: 150 }} />  {/* Status */}
+              <col style={{ width: 44 }} />   {/* Status */}
+              <col style={{ width: 150 }} />  {/* Sector */}
               <col style={{ width: 60 }} />   {/* Tire */}
               <col style={{ width: 40 }} />   {/* Wear */}
               <col style={{ width: 48 }} />   {/* Life */}
@@ -350,6 +358,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                 <th>Driver</th>
                 <th>Fastest</th>
                 <th>Status</th>
+                <th>Sector</th>
                 <th>Tire</th>
                 <th>Wear</th>
                 <th>Life</th>
@@ -389,7 +398,12 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                     </td>
                     <td className={styles.fastestCell}>{formatLapTime(driver.bestLapTime)}</td>
                     <td className={styles.statusCell}>
-                      <DriverStatusBadge driver={driver} acc={acc} />
+                      <span className={driver.driverStatus === 1 ? styles.statusFlying : ''}>
+                        {getDriverStatusLabel(driver.driverStatus)}
+                      </span>
+                    </td>
+                    <td>
+                      <SectorDeltaCell driver={driver} sectorBestTimes={sectorBestTimes} />
                     </td>
                     <td>
                       <span className={styles.tyreBadge}>
@@ -551,45 +565,87 @@ function getDriverStatusLabel(status: number): string {
   }
 }
 
-function sectorTone(current: number, prev: number): string {
-  if (current <= 0) return 'neutral';
-  if (prev <= 0) return 'neutral';
-  if (current < prev) return 'improving';
-  if (current > prev) return 'slower';
-  return 'neutral';
-}
-
-function formatSector(ms: number): string {
-  if (ms <= 0) return '--';
-  return (ms / 1000).toFixed(3);
-}
-
-function DriverStatusBadge({ driver, acc }: { driver: DriverInfo; acc: DriverAccState | undefined }) {
-  const statusLabel = getDriverStatusLabel(driver.driverStatus);
-  const isFlying = driver.driverStatus === 1;
-  const prevS1 = acc?.prevLapSector1Ms ?? 0;
-  const prevS2 = acc?.prevLapSector2Ms ?? 0;
-  const prevS3 = acc?.prevLapSector3Ms ?? 0;
-
-  const s1 = driver.sector1TimeMs;
-  const s2 = driver.sector2TimeMs;
-  const s3 = acc?.lastS3Ms ?? 0; // S3 from most recent completed lap
+function SectorDeltaCell({ driver, sectorBestTimes }: { driver: DriverInfo; sectorBestTimes: SectorBestTimes }) {
+  const sectorTimes = getDriverSectorTimes(driver);
 
   return (
-    <span className={`${styles.driverStatusBadge} ${isFlying ? styles.statusFlying : ''}`}>
-      <span>{statusLabel}</span>
-      <span className={styles[sectorTone(s1, prevS1)]}>{formatSector(s1)}</span>
-      <span className={styles[sectorTone(s2, prevS2)]}>{formatSector(s2)}</span>
-      <span className={styles[sectorTone(s3, prevS3)]}>{formatSector(s3)}</span>
+    <span className={styles.sectorCell}>
+      {SECTOR_LABELS.map((label, index) => {
+        const sectorTime = sectorTimes[index];
+        const bestTime = sectorBestTimes[index];
+        const delta = sectorTime > 0 && bestTime > 0 ? sectorTime - bestTime : null;
+        const title = sectorTime > 0 ? `${label} ${formatLapTime(sectorTime)}` : `${label} pending`;
+
+        return (
+          <span
+            key={label}
+            className={`${styles.sectorChip} ${styles[getSectorDeltaTone(delta)]}`}
+            title={title}
+          >
+            <span className={styles.sectorChipLabel}>{label}</span>
+            <span className={styles.sectorChipValue}>{formatSectorDelta(delta)}</span>
+          </span>
+        );
+      })}
     </span>
   );
 }
 
-function formatSessionTimeLeft(seconds?: number): string {
-  if (seconds == null || seconds <= 0) return '--:--';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+function formatSessionTimeLeft(seconds?: number, duration?: number): string {
+  const value = (seconds != null && seconds > 0) ? seconds : duration;
+  if (value == null || value <= 0) return '--:--';
+  const m = Math.floor(value / 60);
+  const s = value % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function normalizeSectorTime(value: number | undefined): number {
+  if (!value || value <= 0) return 0;
+  return Math.round(value);
+}
+
+function getDriverSector3TimeMs(driver: DriverInfo): number {
+  const lapTime = Math.round(driver.lastLapTime ?? 0);
+  const sector1 = normalizeSectorTime(driver.sector1TimeMs);
+  const sector2 = normalizeSectorTime(driver.sector2TimeMs);
+  if (lapTime <= 0 || sector1 <= 0 || sector2 <= 0) return 0;
+  const sector3 = lapTime - sector1 - sector2;
+  if (sector3 <= 0 || sector3 >= lapTime) return 0;
+  return sector3;
+}
+
+function getDriverSectorTimes(driver: DriverInfo): SectorBestTimes {
+  return [
+    normalizeSectorTime(driver.sector1TimeMs),
+    normalizeSectorTime(driver.sector2TimeMs),
+    getDriverSector3TimeMs(driver),
+  ];
+}
+
+function getSectorBestTimes(drivers: DriverInfo[]): SectorBestTimes {
+  const bestTimes: SectorBestTimes = [0, 0, 0];
+  for (const driver of drivers) {
+    const sectorTimes = getDriverSectorTimes(driver);
+    sectorTimes.forEach((sectorTime, index) => {
+      if (sectorTime <= 0) return;
+      if (bestTimes[index] === 0 || sectorTime < bestTimes[index]) {
+        bestTimes[index] = sectorTime;
+      }
+    });
+  }
+  return bestTimes;
+}
+
+function formatSectorDelta(deltaMs: number | null): string {
+  if (deltaMs == null) return '--';
+  return formatDelta(deltaMs);
+}
+
+function getSectorDeltaTone(deltaMs: number | null): SectorDeltaTone {
+  if (deltaMs == null) return 'sectorPending';
+  if (deltaMs <= 0) return 'sectorBest';
+  if (deltaMs <= 250) return 'sectorGood';
+  return 'sectorSlow';
 }
 
 // ── Track Status ──
