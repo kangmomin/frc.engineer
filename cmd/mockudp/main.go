@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"embed"
 	"encoding/binary"
 	"flag"
@@ -14,6 +15,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -62,7 +64,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to read %s: %v", *replay, err)
 		}
-		runReplayFromBytes(conn, filepath.Base(*replay), data, *speed, *loopFlag)
+		ctx, cancel := interruptContext()
+		runReplayFromBytes(ctx, conn, filepath.Base(*replay), data, *speed, *loopFlag)
+		cancel()
 		return
 	}
 
@@ -92,11 +96,15 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 
 		for i, rec := range recordings {
 			label := rec.name
-			if len(label) > 30 {
-				label = label[:27] + "..."
+			if len(label) > 22 {
+				label = label[:19] + "..."
 			}
 			size := fmt.Sprintf("%.1fMB", float64(rec.size)/(1024*1024))
-			fmt.Printf("║  %d. Replay: %-22s %5s ║\n", i+2, label, size)
+			st := rec.sessionType
+			if len(st) > 7 {
+				st = st[:7]
+			}
+			fmt.Printf("║  %d. %-22s %7s %5s ║\n", i+2, label, st, size)
 		}
 
 		fmt.Printf("║  S. Speed (current: %.1fx)               ║\n", speed)
@@ -136,8 +144,10 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		}
 
 		if choice == "1" {
-			fmt.Printf("Simulating %d laps at %d Hz...\n", laps, hz)
-			runSimulation(conn, laps, hz)
+			fmt.Printf("Simulating %d laps at %d Hz... (Ctrl+C to stop)\n", laps, hz)
+			ctx, cancel := interruptContext()
+			runSimulation(ctx, conn, laps, hz)
+			cancel()
 			continue
 		}
 
@@ -148,16 +158,21 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		}
 
 		rec := recordings[idx-2]
-		fmt.Printf("Replaying: %s (%.1f MB) at %.1fx\n", rec.name, float64(rec.size)/(1024*1024), speed)
-		runReplayFromBytes(conn, rec.name, rec.data, speed, loop)
+		fmt.Printf("Replaying: %s (%.1f MB) at %.1fx (Ctrl+C to stop)\n", rec.name, float64(rec.size)/(1024*1024), speed)
+		ctx, cancel := interruptContext()
+		runReplayFromBytes(ctx, conn, rec.name, rec.data, speed, loop)
+		cancel()
 	}
 }
 
 type recordingEntry struct {
-	name string
-	size int
-	data []byte
+	name        string
+	size        int
+	data        []byte
+	sessionType string
 }
+
+const minRecordingSize = 1 * 1024 * 1024 // 1 MB
 
 func listRecordings() []recordingEntry {
 	var entries []recordingEntry
@@ -171,9 +186,12 @@ func listRecordings() []recordingEntry {
 		if err != nil {
 			return nil
 		}
+		if len(data) < minRecordingSize {
+			return nil
+		}
 		name := strings.TrimPrefix(path, "recordings/")
 		name = strings.TrimSuffix(name, ".bin")
-		entries = append(entries, recordingEntry{name: name, size: len(data), data: data})
+		entries = append(entries, recordingEntry{name: name, size: len(data), data: data, sessionType: extractSessionType(data)})
 		return nil
 	})
 
@@ -190,10 +208,10 @@ func listRecordings() []recordingEntry {
 			}
 			rawPath := filepath.Join(base, d.Name(), "raw.bin")
 			data, err := os.ReadFile(rawPath)
-			if err != nil {
+			if err != nil || len(data) < minRecordingSize {
 				continue
 			}
-			entries = append(entries, recordingEntry{name: d.Name(), size: len(data), data: data})
+			entries = append(entries, recordingEntry{name: d.Name(), size: len(data), data: data, sessionType: extractSessionType(data)})
 		}
 	}
 
@@ -201,7 +219,75 @@ func listRecordings() []recordingEntry {
 	return entries
 }
 
-func runSimulation(conn net.Conn, laps, hz int) {
+// extractSessionType scans length-prefixed packets to find the first Session packet
+// and returns a human-readable session type label.
+func extractSessionType(data []byte) string {
+	r := bytes.NewReader(data)
+	var lenBuf [4]byte
+	for {
+		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
+			break
+		}
+		pktLen := binary.LittleEndian.Uint32(lenBuf[:])
+		if pktLen == 0 || pktLen > 65535 {
+			break
+		}
+		pkt := make([]byte, pktLen)
+		if _, err := io.ReadFull(r, pkt); err != nil {
+			break
+		}
+		// PacketID at offset 6, Session = 1
+		if len(pkt) > 35 && pkt[6] == PacketIDSession {
+			return sessionTypeLabel(pkt[35]) // sessionTypeOffset = PacketHeaderSize + 6 = 35
+		}
+	}
+	return "?"
+}
+
+func sessionTypeLabel(v byte) string {
+	switch v {
+	case 1:
+		return "P1"
+	case 2:
+		return "P2"
+	case 3:
+		return "P3"
+	case 4:
+		return "Short P"
+	case 5:
+		return "Q1"
+	case 6:
+		return "Q2"
+	case 7:
+		return "Q3"
+	case 8:
+		return "Short Q"
+	case 9:
+		return "OSQ"
+	case 10:
+		return "SS1"
+	case 11:
+		return "SS2"
+	case 12:
+		return "SS3"
+	case 13:
+		return "Short SS"
+	case 14:
+		return "OSSS"
+	case 15:
+		return "Race"
+	case 16:
+		return "Race2"
+	case 17:
+		return "Race3"
+	case 18:
+		return "TT"
+	default:
+		return "?"
+	}
+}
+
+func runSimulation(ctx context.Context, conn net.Conn, laps, hz int) {
 	if hz <= 0 {
 		hz = 60
 	}
@@ -215,7 +301,14 @@ func runSimulation(conn net.Conn, laps, hz int) {
 	defer ticker.Stop()
 
 	frameID := uint32(0)
-	for range ticker.C {
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("\nSimulation interrupted.")
+			return
+		case <-ticker.C:
+		}
+
 		if sim.Done() {
 			fmt.Println("\nSimulation complete!")
 			return
@@ -305,6 +398,23 @@ func runSimulationWithRecord(conn net.Conn, outPath string, laps, hz int) {
 	}
 }
 
+// interruptContext returns a context that is cancelled on SIGINT (Ctrl+C).
+// The caller must call the returned cancel function to restore default signal handling.
+func interruptContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		select {
+		case <-sigCh:
+			cancel()
+		case <-ctx.Done():
+		}
+		signal.Stop(sigCh)
+	}()
+	return ctx, cancel
+}
+
 func send(conn net.Conn, pkt []byte) {
 	if _, err := conn.Write(pkt); err != nil {
 		log.Printf("send failed: %v", err)
@@ -312,24 +422,31 @@ func send(conn net.Conn, pkt []byte) {
 }
 
 // runReplayFromBytes replays length-prefixed packets from an in-memory byte slice.
-func runReplayFromBytes(conn net.Conn, name string, data []byte, speedMul float64, loop bool) {
+func runReplayFromBytes(ctx context.Context, conn net.Conn, name string, data []byte, speedMul float64, loop bool) {
 	if speedMul <= 0 {
 		speedMul = 1.0
 	}
 	for {
 		fmt.Printf("Replaying %s (%.1f MB) at %.1fx speed\n", name, float64(len(data))/(1024*1024), speedMul)
-		if err := replayFromReader(conn, bytes.NewReader(data), speedMul); err != nil {
+		if err := replayFromReader(ctx, conn, bytes.NewReader(data), speedMul); err != nil {
+			if ctx.Err() != nil {
+				fmt.Println("\nReplay interrupted.")
+				return
+			}
 			log.Printf("Replay error: %v", err)
 			return
 		}
 		if !loop {
 			return
 		}
+		if ctx.Err() != nil {
+			return
+		}
 		fmt.Println("Looping...")
 	}
 }
 
-func replayFromReader(conn net.Conn, r io.Reader, speedMul float64) error {
+func replayFromReader(ctx context.Context, conn net.Conn, r io.Reader, speedMul float64) error {
 	var (
 		lenBuf      [4]byte
 		prevSession float32
@@ -339,6 +456,12 @@ func replayFromReader(conn net.Conn, r io.Reader, speedMul float64) error {
 	)
 
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
 			if err == io.EOF {
 				break
@@ -361,7 +484,11 @@ func replayFromReader(conn net.Conn, r io.Reader, speedMul float64) error {
 			if prevSession > 0 && sessionTime > prevSession {
 				delay := time.Duration(float64(sessionTime-prevSession) / speedMul * float64(time.Second))
 				if delay > 0 && delay < 2*time.Second {
-					time.Sleep(delay)
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(delay):
+					}
 				}
 			}
 			prevSession = sessionTime
