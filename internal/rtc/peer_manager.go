@@ -623,7 +623,7 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 			}
 			if json.Unmarshal(msg.Data, &viewMsg) == nil && viewMsg.Type == "setView" {
 				switch viewMsg.View {
-				case "cockpit", "commentary", "qualifying":
+				case "cockpit", "commentary", "qualifying", "combat":
 					pm.mu.Lock()
 					pm.peerViews[peerID] = viewMsg.View
 					pm.mu.Unlock()

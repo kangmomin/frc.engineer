@@ -107,6 +107,9 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 	if permissions.ViewQualifying {
 		key += "|qualifying"
 	}
+	if permissions.ViewCombat {
+		key += "|combat"
+	}
 	if cached, ok := v.cache[key]; ok {
 		return cached
 	}
@@ -124,9 +127,21 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 		state.Session = &sessionCopy
 	}
 	state.ERSComparisonEnabled = permissions.ViewERSActual && hasERSActualData(state.Drivers)
-	state.ERSEstimateEnabled = permissions.ViewERSEstimate
+	state.ERSEstimateEnabled = permissions.ViewERSEstimate || view == "combat"
+
+	// Pre-compute combat car positions (player + ahead + behind)
+	var combatPos [3]int // [player, ahead, behind]
+	if view == "combat" && state.PlayerIndex >= 0 && state.PlayerIndex < len(state.Drivers) {
+		pp := state.Drivers[state.PlayerIndex].Position
+		combatPos = [3]int{pp, pp - 1, pp + 1}
+	}
+
 	for i := range state.Drivers {
-		if !permissions.ViewERSEstimate {
+		isCombatCar := view == "combat" && (state.Drivers[i].Position == combatPos[0] ||
+			state.Drivers[i].Position == combatPos[1] ||
+			state.Drivers[i].Position == combatPos[2])
+
+		if !permissions.ViewERSEstimate && !isCombatCar {
 			state.Drivers[i].ERSEstimatePct = 0
 			state.Drivers[i].ERSEstimateReady = false
 		}
@@ -158,18 +173,46 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 
 		// View-based filtering: strip data not needed for current tab
 		if view == "cockpit" {
-			// Cockpit doesn't need commentary-heavy fields for non-player cars
 			state.Drivers[i].StintHistory = nil
 		}
+		if view == "combat" {
+			state.Drivers[i].StintHistory = nil
+			state.Drivers[i].Dynamics = nil
+			state.Drivers[i].ResultStatus = 0
+			if !isCombatCar {
+				// Non-combat cars: strip heavy fields, keep position basics
+				state.Drivers[i].Speed = 0
+				state.Drivers[i].Throttle = 0
+				state.Drivers[i].Brake = 0
+				state.Drivers[i].Steering = 0
+				state.Drivers[i].BrakeTemp = [4]int{}
+				state.Drivers[i].TireSurfaceTemp = [4]int{}
+				state.Drivers[i].TireInnerTemp = [4]int{}
+				state.Drivers[i].FuelInTank = 0
+				state.Drivers[i].FuelRemainingLaps = 0
+				state.Drivers[i].ERSDeployedThisLap = 0
+				state.Drivers[i].ERSHarvestedThisLap = 0
+				state.Drivers[i].Damage = nil
+			}
+		}
 		if view != "commentary" {
-			// Only commentary needs these detailed per-driver fields
 			state.Drivers[i].ResultStatus = 0
 		}
 	}
 
 	// MarshalZones only needed for commentary (flags) and qualifying
-	if view == "cockpit" && state.Session != nil {
+	if (view == "cockpit" || view == "combat") && state.Session != nil {
 		state.Session.MarshalZones = nil
+	}
+	// Combat view: strip heavy session data not needed
+	if view == "combat" && state.Session != nil {
+		state.Session.WeatherForecast = nil
+		state.Session.CrossoverPrediction = nil
+	}
+	// Combat view: no track map or positions needed
+	if view == "combat" {
+		state.TrackMap = nil
+		state.Positions = nil
 	}
 
 	payload, err := dto.MsgpackMarshal(dto.WSResponse{
