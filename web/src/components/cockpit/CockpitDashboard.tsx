@@ -406,7 +406,7 @@ export function CockpitDashboard({
               <span>Pos</span>
               <span>Driver</span>
               <span>DRS</span>
-              <span>{ersEstimateVisible ? (ersComparisonEnabled ? 'ERS Est/Act' : 'ERS Est.') : ''}</span>
+              <span>{ersEstimateVisible ? 'ERS' : ''}</span>
               <span>{playerDeltaVisible ? 'To You' : 'Gap'}</span>
               <span>Interval</span>
               <span>Last Lap</span>
