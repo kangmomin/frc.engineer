@@ -175,9 +175,6 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 		}
 
 		// View-based filtering: strip data not needed for current tab
-		if view == "cockpit" {
-			state.Drivers[i].StintHistory = nil
-		}
 		if view == "combat" {
 			state.Drivers[i].StintHistory = nil
 			state.Drivers[i].Dynamics = nil

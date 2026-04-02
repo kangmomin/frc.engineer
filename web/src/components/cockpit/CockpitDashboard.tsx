@@ -398,12 +398,7 @@ export function CockpitDashboard({
               tone="tertiary"
             />
             <WeatherRibbon forecasts={topForecasts} />
-            <StatRibbon
-              label="Status"
-              value={raceStatus.label}
-              detail={getConnectionLabel(connectionState)}
-              tone={raceStatus.tone}
-            />
+            <TrackStatusRibbon session={session} connectionState={connectionState} />
           </div>
 
           <div className={`${styles.panel} ${styles.leaderboardPanel}`}>
@@ -467,6 +462,9 @@ export function CockpitDashboard({
                     <span>{formatLapTime(driver.lastLapTime)}</span>
                     <PenaltyCell driver={driver} />
                     <span className={styles.tyreCell}>
+                      {(driver.stintHistory ?? []).map((stint, si) => (
+                        <span key={si} className={styles.stintDot} style={{ backgroundColor: getTyreColor(stint.compound) }} title={`${stint.compound} ${stint.laps}L`} />
+                      ))}
                       <span
                         className={styles.tyreDot}
                         style={{ backgroundColor: getTyreColor(driver.tireCompound) }}
@@ -1315,6 +1313,62 @@ function getTrackCondition(weather?: string): { label: string; tone: 'tertiary' 
     return { label: 'MIXED', tone: 'primary' };
   }
   return { label: 'DRY', tone: 'tertiary' };
+}
+
+const FLAG_COLORS: Record<number, string> = {
+  1: '#22c55e', // GREEN
+  2: '#3b82f6', // BLUE
+  3: '#eab308', // YELLOW
+  4: '#ef4444', // RED
+};
+
+function getSectorFlag(zones: { start: number; flag: number }[] | undefined, sector: number): number {
+  if (!zones) return 0;
+  const lo = (sector - 1) / 3;
+  const hi = sector / 3;
+  for (const z of zones) {
+    if (z.start >= lo && z.start < hi && z.flag >= 1) return z.flag;
+  }
+  return 0;
+}
+
+function formatSafetyCarShort(sc: string | undefined): string {
+  if (!sc || sc === 'none') return '';
+  if (sc === 'full') return 'SC';
+  if (sc === 'virtual') return 'VSC';
+  if (sc === 'virtual_ending' || sc === 'virtual_standing') return 'VSCE';
+  if (sc === 'formation') return 'SCI';
+  return sc.toUpperCase();
+}
+
+function TrackStatusRibbon({ session, connectionState }: {
+  session: SessionInfo | null;
+  connectionState: string;
+}) {
+  const s1Flag = getSectorFlag(session?.marshalZones, 1);
+  const s2Flag = getSectorFlag(session?.marshalZones, 2);
+  const s3Flag = getSectorFlag(session?.marshalZones, 3);
+  const scLabel = formatSafetyCarShort(session?.safetyCar);
+
+  return (
+    <div className={styles.trackStatusRibbon}>
+      <span className={styles.trackStatusLabel}>Status</span>
+      <div className={styles.trackStatusRow}>
+        <span className={styles.sectorFlag} style={s1Flag ? { color: FLAG_COLORS[s1Flag] } : undefined}>
+          S1
+        </span>
+        <span className={styles.sectorFlag} style={s2Flag ? { color: FLAG_COLORS[s2Flag] } : undefined}>
+          S2
+        </span>
+        <span className={styles.sectorFlag} style={s3Flag ? { color: FLAG_COLORS[s3Flag] } : undefined}>
+          S3
+        </span>
+        <span className={styles.scBadge}>
+          {scLabel || (connectionState === 'connected' ? 'CLR' : '---')}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function getRaceStatus(
