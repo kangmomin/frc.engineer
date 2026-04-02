@@ -392,7 +392,6 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.Position = int(ld.CarPosition)
 				d.CurrentLapNum = int(ld.CurrentLapNum)
 				d.LastLapTime = float32(ld.LastLapTimeInMS)
-				d.BestLapTime = 0
 				d.PitStatus = int(ld.PitStatus)
 				d.DriverStatus = int(ld.DriverStatus)
 				d.ResultStatus = int(ld.ResultStatus)
@@ -525,6 +524,13 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 
 			if sh := pm.sessionHistory[i]; sh != nil {
 				numLaps := int(sh.NumLaps)
+				// Best lap time
+				blLap := int(sh.BestLapTimeLapNum)
+				if blLap > 0 && blLap <= numLaps && blLap <= packets.MaxNumLapsInHistory {
+					if t := sh.LapHistoryData[blLap-1].LapTimeInMS; t > 0 {
+						d.BestLapTime = float32(t)
+					}
+				}
 				// Best sector 1
 				s1Lap := int(sh.BestSector1LapNum)
 				if s1Lap > 0 && s1Lap <= numLaps && s1Lap <= packets.MaxNumLapsInHistory {
