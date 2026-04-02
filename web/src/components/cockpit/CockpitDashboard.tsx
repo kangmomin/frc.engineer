@@ -919,6 +919,25 @@ function StatRibbon({
 }
 
 function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
+  const receivedAtRef = useRef(Date.now());
+  const lastOffsetsRef = useRef('');
+  const [, tick] = useState(0);
+
+  // Detect when game updates forecast offsets → reset timer
+  const currentOffsets = forecasts.map((f) => f.timeOffset).join(',');
+  if (currentOffsets !== lastOffsetsRef.current) {
+    lastOffsetsRef.current = currentOffsets;
+    receivedAtRef.current = Date.now();
+  }
+
+  // Re-render every second for countdown
+  useEffect(() => {
+    const id = setInterval(() => tick((c) => c + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsedMin = (Date.now() - receivedAtRef.current) / 60_000;
+
   return (
     <div className={`${styles.ribbonCard} ${styles.neutral} ${styles.weatherRibbon}`}>
       <div className={styles.weatherRibbonHeader}>
@@ -930,7 +949,9 @@ function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
         ) : (
           forecasts.map((forecast) => (
             <div key={forecast.timeOffset} className={styles.weatherRibbonSlot}>
-              <span className={styles.weatherRibbonTime}>{formatForecastLabel(forecast.timeOffset)}</span>
+              <span className={styles.weatherRibbonTime}>
+                {formatForecastLabel(forecast.timeOffset - elapsedMin)}
+              </span>
               <div className={styles.weatherRibbonIcon}>
                 <WeatherIcon weather={forecast.weather} />
               </div>
@@ -1606,9 +1627,10 @@ function getDrsProgress(player: DriverInfo | null): number {
   return clamp(100 - (player.deltaToCarInFront / 1000) * 100, 0, 100);
 }
 
-function formatForecastLabel(offsetMinutes: number): string {
-  if (offsetMinutes <= 0) return 'NOW';
-  return `+${offsetMinutes}M`;
+function formatForecastLabel(remainingMinutes: number): string {
+  if (remainingMinutes <= 0.5) return 'NOW';
+  const rounded = Math.ceil(remainingMinutes);
+  return `+${rounded}M`;
 }
 
 

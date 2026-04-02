@@ -261,16 +261,19 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				}
 			}
 		}
-		// Weather forecast samples
+		// Weather forecast samples — current session only
 		numForecast := int(pm.session.NumWeatherForecastSamples)
 		if numForecast > 64 {
 			numForecast = 64
 		}
 		if numForecast > 0 {
-			si.WeatherForecast = make([]dto.WeatherForecastDTO, numForecast)
+			forecasts := make([]dto.WeatherForecastDTO, 0, numForecast)
 			for i := range numForecast {
 				fs := &pm.session.WeatherForecastSamples[i]
-				si.WeatherForecast[i] = dto.WeatherForecastDTO{
+				if fs.SessionType != pm.session.SessionType {
+					continue
+				}
+				forecasts = append(forecasts, dto.WeatherForecastDTO{
 					SessionType:     sessionTypeString(fs.SessionType),
 					TimeOffset:      int(fs.TimeOffset),
 					Weather:         weatherString(fs.Weather),
@@ -279,7 +282,10 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 					AirTemp:         float32(fs.AirTemperature),
 					AirTempChange:   int(fs.AirTemperatureChange),
 					RainPercentage:  int(fs.RainPercentage),
-				}
+				})
+			}
+			if len(forecasts) > 0 {
+				si.WeatherForecast = forecasts
 			}
 		}
 		prediction := pm.strategyMgr.GetCrossoverPrediction()
