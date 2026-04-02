@@ -290,7 +290,7 @@
 .tableHeader,
 .tableRow {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1.3fr) 56px 72px minmax(76px, 0.95fr) 72px 88px auto 90px 56px 60px minmax(190px, 1.28fr);
+  grid-template-columns: 52px minmax(0, 1.1fr) 56px 46px minmax(72px, 0.95fr) 72px 88px auto 90px 56px 60px minmax(190px, 1.28fr);
   gap: 8px;
   align-items: center;
   padding: 10px 14px;
@@ -414,6 +414,7 @@
   justify-self: end;
   font-weight: 800;
   letter-spacing: 0.04em;
+  padding: 0 3px;
 }
 
 .ersCellCompare {
