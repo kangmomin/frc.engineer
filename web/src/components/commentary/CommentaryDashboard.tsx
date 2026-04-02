@@ -338,8 +338,8 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
               <col style={{ width: 36 }} />   {/* Pos */}
               <col style={{ width: 110 }} />  {/* Driver */}
               <col style={{ width: 80 }} />   {/* Fastest */}
-              <col style={{ width: 44 }} />   {/* Status */}
-              <col style={{ width: 150 }} />  {/* Sector */}
+              <col style={{ width: 56 }} />   {/* Status */}
+              <col style={{ width: 200 }} />  {/* Sector */}
               <col style={{ width: 60 }} />   {/* Tire */}
               <col style={{ width: 40 }} />   {/* Wear */}
               <col style={{ width: 48 }} />   {/* Life */}
@@ -347,7 +347,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
               <col style={{ width: 68 }} />   {/* Gap */}
               <col style={{ width: 64 }} />   {/* Int */}
               <col style={{ width: 40 }} />   {/* Pen */}
-              <col />                         {/* Lap Times — fills remaining */}
+              <col style={{ width: 160 }} />  {/* Lap Times */}
               <col style={{ width: 32 }} />   {/* Pits */}
               <col style={{ width: 40 }} />   {/* Trap */}
               <col style={{ width: 40 }} />   {/* Vmax */}
