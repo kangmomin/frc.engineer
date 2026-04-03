@@ -3,6 +3,7 @@ package strategydata
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -46,6 +47,25 @@ var strategyTrackSlugByID = map[int8]string{
 }
 
 var strategyTrackAliases = map[string]string{
+	// trackFileMap 이름 → strategy slug (recorded track 매칭용)
+	"melbourne":   "australia",
+	"shanghai":    "china",
+	"sakhir":      "bahrain",
+	"catalunya":   "spain",
+	"montreal":    "canada",
+	"silverstone": "britain",
+	"hungaroring": "hungary",
+	"spa":         "belgium",
+	"monza":       "italy",
+	"suzuka":      "japan",
+	"baku":        "azerbaijan",
+	"zandvoort":   "netherlands",
+	"jeddah":      "saudi-arabia",
+	"losail":      "qatar",
+	"las_vegas":   "las-vegas",
+	"abu_dhabi":   "abu-dhabi",
+
+	// 공식 서킷명 별칭
 	"albert park":                   "australia",
 	"bahrain international":         "bahrain",
 	"bahrain international circuit": "bahrain",
@@ -115,6 +135,12 @@ func LoadStore(root string) (*Store, error) {
 		store.aliases[normalizeTrackLookupKey(alias)] = slug
 	}
 
+	for trackID, slug := range strategyTrackSlugByID {
+		if _, ok := store.tracks[slug]; !ok {
+			slog.Warn("strategy data missing for track", "trackID", trackID, "slug", slug)
+		}
+	}
+
 	tyreData, err := os.ReadFile(filepath.Join(root, "tyre_temps.json"))
 	if err != nil {
 		return nil, err
@@ -157,7 +183,11 @@ func (s *Store) TrackBySession(trackID int8, trackName string) *NormalizedTrackF
 	if track := s.TrackByID(trackID); track != nil {
 		return track
 	}
-	return s.TrackByName(trackName)
+	if track := s.TrackByName(trackName); track != nil {
+		return track
+	}
+	slog.Warn("strategy track lookup failed", "trackID", trackID, "trackName", trackName)
+	return nil
 }
 
 func (s *Store) TyreTemps() *NormalizedTyreTempDataset {

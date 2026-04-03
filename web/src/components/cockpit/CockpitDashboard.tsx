@@ -211,7 +211,7 @@ export function CockpitDashboard({
   ];
 
   useEffect(() => {
-    if (!featurePermissions.viewAdvancedStrategy || sessionTrackId == null) {
+    if (!featurePermissions.viewAdvancedStrategy || sessionTrackId == null || sessionTrackId < 0) {
       setStrategyGuide(null);
       setStrategyGuideLoading(false);
       return;

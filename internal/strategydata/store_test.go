@@ -13,10 +13,21 @@ func TestTrackByNameResolvesTelemetryAliases(t *testing.T) {
 		want string
 	}{
 		{name: "melbourne", want: "australia"},
+		{name: "shanghai", want: "china"},
+		{name: "sakhir", want: "bahrain"},
+		{name: "catalunya", want: "spain"},
+		{name: "montreal", want: "canada"},
 		{name: "silverstone", want: "britain"},
+		{name: "hungaroring", want: "hungary"},
+		{name: "spa", want: "belgium"},
 		{name: "monza", want: "italy"},
+		{name: "suzuka", want: "japan"},
+		{name: "baku", want: "azerbaijan"},
+		{name: "zandvoort", want: "netherlands"},
 		{name: "jeddah", want: "saudi-arabia"},
 		{name: "losail", want: "qatar"},
+		{name: "las_vegas", want: "las-vegas"},
+		{name: "abu_dhabi", want: "abu-dhabi"},
 	}
 
 	for _, tc := range cases {

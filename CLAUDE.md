@@ -11,15 +11,25 @@
 > deploy 레포(`kangmomin/frc.engineer-deploy`)는 두 프로젝트의 바이너리를 통합 릴리스하는 단일 배포 지점이다.
 
 ### Version Source of Truth
-- **`cmd/server/update_notice.go`** 의 `appVersion` 변수가 앱 내 버전 표시의 단일 소스
-- 릴리스 시 반드시 이 값을 릴리스 버전과 동일하게 업데이트할 것
+
+두 바이너리가 **각각 독립된 `appVersion` 변수**를 갖고 있다. 릴리스 시 **반드시 두 파일 모두** 동일 버전으로 업데이트해야 한다.
+
+| 파일 | 바이너리 | 역할 |
+|---|---|---|
+| `cmd/server/update_notice.go` | frc-co-driver | 서버(대시보드) 버전 표시 + 업데이트 체크 |
+| `cmd/sender/main.go` | frc-pitwall-sender | 센더 버전 표시 + **자동 업데이트 비교 기준** |
+
+> **주의**: sender의 `appVersion`을 올리지 않으면 빌드된 바이너리가 항상 구버전으로 인식하여 **자동 업데이트 무한 루프**가 발생한다.
+
 - deploy 레포(`kangmomin/frc.engineer-deploy`)의 태그가 배포 버전의 기준
 
 ### Deploy Checklist
 
 릴리스 배포 시 아래 순서를 따른다:
 
-1. **버전 업데이트**: `cmd/server/update_notice.go` 의 `appVersion` 을 새 버전으로 변경
+1. **버전 업데이트** (두 파일 모두 동일 버전으로 변경):
+   - `cmd/server/update_notice.go` 의 `appVersion`
+   - `cmd/sender/main.go` 의 `appVersion`
 2. **커밋 & 푸시**: 메인 레포 (`kangmomin/frc.engineer`) 에 커밋 후 push
 3. **source-deploy-1 동기화**: `build/source-deploy-1` 에서 `git pull origin main`
 4. **빌드** (pitwall-sender, Windows GUI 크로스 컴파일):
