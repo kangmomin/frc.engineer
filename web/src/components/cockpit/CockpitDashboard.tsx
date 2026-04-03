@@ -175,7 +175,6 @@ export function CockpitDashboard({
   const ersPct = clamp(player ? (player.ersStoreEnergy / MAX_ERS_ENERGY) * 100 : 0, 0, 100);
   const deploySplit = getErsSplit(player);
   const fuelMargin = getFuelMargin(player, session);
-  const wheelSurfaceTemp = normalizeWheelData(player?.tireSurfaceTemp);
   const wheelCoreTemp = normalizeWheelData(player?.tireInnerTemp);
   const wheelWear = normalizeWheelData(player?.tireWear);
   const averageWear = wheelWear.reduce((sum, value) => sum + value, 0) / WHEEL_LABELS.length;
