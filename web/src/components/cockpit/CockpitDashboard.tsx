@@ -635,7 +635,7 @@ export function CockpitDashboard({
                   <span className={styles.tyreCardLabel}>{label}</span>
                   <div className={styles.tyreCardSplit}>
                     <div>
-                      <strong>{Math.round(wheelSurfaceTemp[index])}°C</strong>
+                      <strong>{Math.round(wheelCoreTemp[index])}°C</strong>
                       <span className={`${styles.tyreStatus} ${styles[tempTone]}`}>
                         {getTemperatureStatus(wheelCoreTemp[index], pitSettings.optimalTempLow, pitSettings.optimalTempHigh)}
                       </span>
