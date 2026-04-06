@@ -247,6 +247,14 @@ func main() {
 		w.Write(settingsHTML)
 	})
 
+	mux.HandleFunc("GET /radar", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(radarHTML)
+	})
+
+	radarSSE := newRadarSSEHub(processor.PitwallManager())
+	mux.Handle("GET /api/radar/stream", radarSSE)
+
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.Lock()
 		port := cfgUDPPort

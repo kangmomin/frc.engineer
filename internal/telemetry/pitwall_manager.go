@@ -358,6 +358,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				X:     m.WorldPositionX,
 				Y:     m.WorldPositionY,
 				Z:     m.WorldPositionZ,
+				Yaw:   m.Yaw,
 			}
 		}
 	}
@@ -610,9 +611,44 @@ func (pm *PitwallManager) BuildPositions() []dto.CarPosition {
 			X:     m.WorldPositionX,
 			Y:     m.WorldPositionY,
 			Z:     m.WorldPositionZ,
+			Yaw:   m.Yaw,
 		}
 	}
 	return positions
+}
+
+// BuildRadarData returns a lightweight radar payload for the local overlay SSE stream.
+func (pm *PitwallManager) BuildRadarData() *dto.RadarData {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.motion == nil {
+		return nil
+	}
+
+	numCars := packets.MaxCars
+	if pm.participants != nil && int(pm.participants.NumActiveCars) < numCars {
+		numCars = int(pm.participants.NumActiveCars)
+	}
+
+	data := &dto.RadarData{
+		PlayerIndex: int(pm.playerIndex),
+		Cars:        make([]dto.RadarCarData, numCars),
+	}
+	for i := range numCars {
+		m := &pm.motion.CarMotionData[i]
+		car := dto.RadarCarData{
+			Index: i,
+			X:     m.WorldPositionX,
+			Z:     m.WorldPositionZ,
+			Yaw:   m.Yaw,
+		}
+		if pm.participants != nil {
+			car.TeamID = int(pm.participants.Participants[i].TeamID)
+		}
+		data.Cars[i] = car
+	}
+	return data
 }
 
 // HasData returns true if at least session or motion data has been received

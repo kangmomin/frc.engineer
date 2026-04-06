@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radar</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050505;
+    color: #e0e0e0;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 500;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+  canvas {
+    display: block;
+    margin: 0 auto;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 12px;
+    -webkit-app-region: no-drag;
+  }
+  .controls label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.55rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .controls input[type="range"] {
+    width: 100px;
+    accent-color: #00d2ff;
+  }
+  .range-val {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.8rem;
+    color: #00d2ff;
+    min-width: 36px;
+    text-align: right;
+  }
+  .status {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.5rem;
+    color: #333;
+    text-align: center;
+    padding-bottom: 4px;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="radar"></canvas>
+<div class="controls">
+  <label>Range</label>
+  <input type="range" id="rangeSlider" min="50" max="200" value="80" step="10">
+  <span class="range-val" id="rangeVal">80m</span>
+</div>
+<div class="status" id="status">CONNECTING</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('radar');
+  const ctx = canvas.getContext('2d');
+  const rangeSlider = document.getElementById('rangeSlider');
+  const rangeVal = document.getElementById('rangeVal');
+  const statusEl = document.getElementById('status');
+
+  let radarRange = 80;
+  let latestData = null;
+
+  // Team colors (F1 2024 team IDs)
+  const TEAM_COLORS = {
+    0: '#00d2be',   // Mercedes
+    1: '#dc0000',   // Ferrari
+    2: '#0600ef',   // Red Bull
+    3: '#ff8700',   // Williams → McLaren-ish
+    4: '#005aff',   // Alpine (Renault legacy)
+    5: '#006f62',   // Aston Martin
+    6: '#2b4562',   // AlphaTauri / RB
+    7: '#b6babd',   // Haas
+    8: '#ff8700',   // McLaren
+    9: '#52e252',   // Kick Sauber
+    // Fallback for any other ID
+  };
+  const DEFAULT_COLOR = '#888';
+
+  function teamColor(id) {
+    return TEAM_COLORS[id] || DEFAULT_COLOR;
+  }
+
+  // Resize canvas to fit window
+  function resize() {
+    const w = window.innerWidth;
+    const controlsH = 56; // controls + status height
+    const h = window.innerHeight - controlsH;
+    const size = Math.min(w, h);
+    canvas.width = size;
+    canvas.height = size;
+    draw();
+  }
+  window.addEventListener('resize', resize);
+
+  rangeSlider.addEventListener('input', function() {
+    radarRange = parseInt(this.value);
+    rangeVal.textContent = radarRange + 'm';
+    draw();
+  });
+
+  // Dragging the window
+  let dragStart = null;
+  document.body.addEventListener('mousedown', function(e) {
+    if (e.target.tagName === 'INPUT') return;
+    dragStart = { x: e.screenX, y: e.screenY };
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!dragStart) return;
+    const dx = e.screenX - dragStart.x;
+    const dy = e.screenY - dragStart.y;
+    window.moveBy(dx, dy);
+    dragStart = { x: e.screenX, y: e.screenY };
+  });
+  document.addEventListener('mouseup', function() {
+    dragStart = null;
+  });
+
+  function draw() {
+    const w = canvas.width;
+    const h = canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.min(cx, cy) - 8;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Background circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fill();
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Range rings
+    for (let i = 1; i <= 3; i++) {
+      const r = (radius / 3) * i;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+
+    // Cross lines
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - radius);
+    ctx.lineTo(cx, cy + radius);
+    ctx.moveTo(cx - radius, cy);
+    ctx.lineTo(cx + radius, cy);
+    ctx.strokeStyle = '#151515';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+
+    // North indicator
+    ctx.fillStyle = '#333';
+    ctx.font = "600 9px 'Rajdhani', sans-serif";
+    ctx.textAlign = 'center';
+    ctx.fillText('FWD', cx, cy - radius + 12);
+
+    if (!latestData || !latestData.cars || latestData.cars.length === 0) return;
+
+    const player = latestData.cars[latestData.playerIndex];
+    if (!player) return;
+
+    const playerX = player.x;
+    const playerZ = player.z;
+    const playerYaw = player.yaw;
+    const scale = radius / radarRange;
+
+    // Draw other cars
+    for (let i = 0; i < latestData.cars.length; i++) {
+      if (i === latestData.playerIndex) continue;
+      const car = latestData.cars[i];
+
+      // Relative position in world space
+      let dx = car.x - playerX;
+      let dz = car.z - playerZ;
+
+      // Rotate so player's forward = up (negative Y on canvas)
+      // F1 game: Yaw=0 means facing +Z, increases clockwise
+      const sin = Math.sin(-playerYaw);
+      const cos = Math.cos(-playerYaw);
+      const rx = dx * cos - dz * sin;
+      const rz = dx * sin + dz * cos;
+
+      // Distance check
+      const dist = Math.sqrt(rx * rx + rz * rz);
+      if (dist > radarRange) continue;
+
+      // Canvas coordinates: right = +X, up = -Y
+      const sx = cx + rx * scale;
+      const sy = cy - rz * scale;
+
+      const color = teamColor(car.teamId);
+
+      // Car dot
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      // Direction indicator (small triangle pointing in car's heading)
+      const carRelYaw = car.yaw - playerYaw;
+      const triLen = 7;
+      const triAngle = Math.PI / 6;
+      // In our rotated frame: car heading relative to player heading
+      // tip points in the car's forward direction
+      const tipX = sx + Math.sin(carRelYaw) * triLen;
+      const tipY = sy - Math.cos(carRelYaw) * triLen;
+      const baseX1 = sx - Math.sin(carRelYaw - triAngle) * 3;
+      const baseY1 = sy + Math.cos(carRelYaw - triAngle) * 3;
+      const baseX2 = sx - Math.sin(carRelYaw + triAngle) * 3;
+      const baseY2 = sy + Math.cos(carRelYaw + triAngle) * 3;
+
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(baseX1, baseY1);
+      ctx.lineTo(baseX2, baseY2);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.6;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    }
+
+    // Player dot (center)
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#00d2ff';
+    ctx.fill();
+
+    // Player direction (up arrow)
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 10);
+    ctx.lineTo(cx - 4, cy - 4);
+    ctx.lineTo(cx + 4, cy - 4);
+    ctx.closePath();
+    ctx.fillStyle = '#00d2ff';
+    ctx.globalAlpha = 0.7;
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+  }
+
+  // SSE connection
+  function connect() {
+    statusEl.textContent = 'CONNECTING';
+    const es = new EventSource('/api/radar/stream');
+
+    es.onopen = function() {
+      statusEl.textContent = 'LIVE';
+      statusEl.style.color = '#00d2ff';
+    };
+
+    es.onmessage = function(e) {
+      try {
+        latestData = JSON.parse(e.data);
+        draw();
+      } catch(err) {}
+    };
+
+    es.onerror = function() {
+      statusEl.textContent = 'RECONNECTING';
+      statusEl.style.color = '#e74c3c';
+      es.close();
+      setTimeout(connect, 2000);
+    };
+  }
+
+  resize();
+  connect();
+})();
+</script>
+</body>
+</html>
