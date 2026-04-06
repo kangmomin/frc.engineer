@@ -309,7 +309,7 @@ func (o *radarOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 		delta := int16(wp >> 16)
 		if delta > 0 && o.rangeM > 30 {
 			o.rangeM -= 10
-		} else if delta < 0 && o.rangeM < 200 {
+		} else if delta < 0 && o.rangeM < 400 {
 			o.rangeM += 10
 		}
 		return 0
@@ -396,8 +396,8 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 			// Proximity-based sizing
 			dist := math.Sqrt(distSq)
 			prox := 1 - dist/o.rangeM
-			carLen := 8 + prox*6
-			carWid := 4 + prox*3
+			carLen := 14 + prox*10
+			carWid := 7 + prox*5
 
 			// Rotated rectangle aligned with car heading
 			relYaw := float64(c.Yaw - p.Yaw)

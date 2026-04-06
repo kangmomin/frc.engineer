@@ -61,7 +61,7 @@
 <canvas id="radar"></canvas>
 <div class="controls">
   <label>Range</label>
-  <input type="range" id="rangeSlider" min="50" max="200" value="80" step="10">
+  <input type="range" id="rangeSlider" min="50" max="400" value="80" step="10">
   <span class="range-val" id="rangeVal">80m</span>
 </div>
 <div class="status" id="status">CONNECTING</div>
@@ -218,8 +218,8 @@
       const alpha = 0.35 + proximity * 0.65;
 
       // Car rectangle dimensions (scale with proximity)
-      const carLen = 8 + proximity * 6;
-      const carWid = 4 + proximity * 3;
+      const carLen = 14 + proximity * 10;
+      const carWid = 7 + proximity * 5;
 
       // Direction vectors for the rotated rectangle
       const fwdX = Math.sin(carRelYaw);
