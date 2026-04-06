@@ -186,6 +186,10 @@
     const playerYaw = player.yaw;
     const scale = radius / radarRange;
 
+    // F1 car real dimensions: ~5.5m long x 2.0m wide
+    const carLen = Math.max(5.5 * scale, 6);
+    const carWid = Math.max(2.0 * scale, 2.2);
+
     // Draw other cars as rotated rectangles
     for (let i = 0; i < latestData.cars.length; i++) {
       if (i === latestData.playerIndex) continue;
@@ -213,13 +217,9 @@
       const color = teamColor(car.teamId);
       const carRelYaw = car.yaw - playerYaw;
 
-      // Proximity: 1.0 (nearest) to 0.0 (farthest)
+      // Proximity-based opacity
       const proximity = 1 - (dist / radarRange);
       const alpha = 0.35 + proximity * 0.65;
-
-      // Car rectangle dimensions (scale with proximity)
-      const carLen = 20 + proximity * 16;
-      const carWid = 10 + proximity * 8;
 
       // Direction vectors for the rotated rectangle
       const fwdX = Math.sin(carRelYaw);

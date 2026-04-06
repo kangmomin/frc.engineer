@@ -375,6 +375,10 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 		p := data.Cars[data.PlayerIndex]
 		scale := float64(rad) / o.rangeM
 
+		// F1 car real dimensions: ~5.5m long x 2.0m wide
+		carLen := math.Max(5.5*scale, 6)
+		carWid := math.Max(2.0*scale, 2.2)
+
 		for i, c := range data.Cars {
 			if i == data.PlayerIndex {
 				continue
@@ -384,20 +388,13 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 			sin, cos := math.Sincos(float64(p.Yaw))
 			rx := dx*cos - dz*sin
 			rz := dx*sin + dz*cos
-			distSq := rx*rx + rz*rz
-			if distSq > o.rangeM*o.rangeM {
+			if rx*rx+rz*rz > o.rangeM*o.rangeM {
 				continue
 			}
 
 			sx := float64(cx) + rx*scale
 			sy := float64(cy) - rz*scale
 			col := ovTeamColor(c.TeamID)
-
-			// Proximity-based sizing
-			dist := math.Sqrt(distSq)
-			prox := 1 - dist/o.rangeM
-			carLen := 20 + prox*16
-			carWid := 10 + prox*8
 
 			// Rotated rectangle aligned with car heading
 			relYaw := float64(c.Yaw - p.Yaw)
