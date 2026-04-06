@@ -480,8 +480,8 @@
         cursor:pointer;transition:background 0.2s,border-color 0.2s;
       " onmouseover="this.style.background='#00d2ff15';this.style.borderColor='#00d2ff'"
          onmouseout="this.style.background='#1a1a1a';this.style.borderColor='#00d2ff33'"
-         onclick="window.open('/radar','radar','width=280,height=320,toolbar=no,menubar=no')">
-        Open Radar
+         onclick="toggleRadar()">
+        Radar Overlay
       </button>
     </div>
   </div>
@@ -1075,10 +1075,41 @@
     showToast('Existing track data kept.', true);
   });
 
+  // Radar overlay toggle
+  async function toggleRadar() {
+    try {
+      const res = await fetch('/api/radar/toggle', { method: 'POST' });
+      const data = await res.json();
+      updateRadarBtn(data.active);
+      showToast(data.active ? 'Radar overlay opened' : 'Radar overlay closed', true);
+    } catch { showToast('Failed to toggle radar', false); }
+  }
+  function updateRadarBtn(active) {
+    const btn = document.getElementById('radarBtn');
+    if (active) {
+      btn.style.borderColor = '#00d2ff';
+      btn.style.background = '#00d2ff20';
+      btn.textContent = 'Close Radar';
+    } else {
+      btn.style.borderColor = '#00d2ff33';
+      btn.style.background = '#1a1a1a';
+      btn.textContent = 'Radar Overlay';
+    }
+  }
+  async function pollRadarStatus() {
+    try {
+      const res = await fetch('/api/radar/status');
+      const data = await res.json();
+      updateRadarBtn(data.active);
+    } catch {}
+  }
+
   loadConfig();
   loadTracks();
   pollStatus();
+  pollRadarStatus();
   setInterval(pollStatus, 2000);
+  setInterval(pollRadarStatus, 2000);
 </script>
 </body>
 </html>

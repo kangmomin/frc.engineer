@@ -1,0 +1,405 @@
+//go:build windows
+
+package main
+
+import (
+	"fmt"
+	"math"
+	"runtime"
+	"sync/atomic"
+	"syscall"
+	"unsafe"
+
+	"frc.engineer/internal/telemetry"
+)
+
+// Win32 constants
+const (
+	csHRedraw  = 0x0002
+	csVRedraw  = 0x0001
+	wsPopup    = 0x80000000
+	wsVisible  = 0x10000000
+	exTopmost  = 0x00000008
+	exToolWin  = 0x00000080
+	swpNoSize  = 0x0001
+	swpNoZOrd  = 0x0004
+	srcCopy    = 0x00CC0020
+	psSolid    = 0
+	bkTransp   = 1
+	dtCenter   = 0x01
+	dtVCenter  = 0x04
+	dtSingle   = 0x20
+
+	wmDestroy  = 0x0002
+	wmPaint    = 0x000F
+	wmClose    = 0x0010
+	wmTimer    = 0x0113
+	wmLBtnDown = 0x0201
+	wmLBtnUp   = 0x0202
+	wmRBtnUp   = 0x0205
+	wmMMove    = 0x0200
+	wmMWheel   = 0x020A
+)
+
+// Win32 DLL procs
+var (
+	u32 = syscall.NewLazyDLL("user32.dll")
+	g32 = syscall.NewLazyDLL("gdi32.dll")
+
+	uRegClassEx     = u32.NewProc("RegisterClassExW")
+	uCreateWindowEx = u32.NewProc("CreateWindowExW")
+	uDefWindowProc  = u32.NewProc("DefWindowProcW")
+	uGetMessage     = u32.NewProc("GetMessageW")
+	uTranslateMsg   = u32.NewProc("TranslateMessage")
+	uDispatchMsg    = u32.NewProc("DispatchMessageW")
+	uPostQuitMsg    = u32.NewProc("PostQuitMessage")
+	uDestroyWindow  = u32.NewProc("DestroyWindow")
+	uSetWindowPos   = u32.NewProc("SetWindowPos")
+	uBeginPaint     = u32.NewProc("BeginPaint")
+	uEndPaint       = u32.NewProc("EndPaint")
+	uInvalidateRect = u32.NewProc("InvalidateRect")
+	uSetTimer       = u32.NewProc("SetTimer")
+	uKillTimer      = u32.NewProc("KillTimer")
+	uGetCursorPos   = u32.NewProc("GetCursorPos")
+	uSetCapture     = u32.NewProc("SetCapture")
+	uReleaseCapture = u32.NewProc("ReleaseCapture")
+	uPostMessage    = u32.NewProc("PostMessageW")
+	uGetWindowRect  = u32.NewProc("GetWindowRect")
+	uLoadCursor     = u32.NewProc("LoadCursorW")
+	uSetWindowRgn   = u32.NewProc("SetWindowRgn")
+
+	gCreateDC     = g32.NewProc("CreateCompatibleDC")
+	gCreateBmp    = g32.NewProc("CreateCompatibleBitmap")
+	gDeleteDC     = g32.NewProc("DeleteDC")
+	gDeleteObj    = g32.NewProc("DeleteObject")
+	gSelectObj    = g32.NewProc("SelectObject")
+	gBitBlt       = g32.NewProc("BitBlt")
+	gSolidBrush   = g32.NewProc("CreateSolidBrush")
+	gCreatePen    = g32.NewProc("CreatePen")
+	gEllipse      = g32.NewProc("Ellipse")
+	gMoveToEx     = g32.NewProc("MoveToEx")
+	gLineTo       = g32.NewProc("LineTo")
+	gSetBkMode    = g32.NewProc("SetBkMode")
+	gSetTextColor = g32.NewProc("SetTextColor")
+	gCreateFont   = g32.NewProc("CreateFontW")
+	gDrawText     = g32.NewProc("DrawTextW")
+	gFillRect     = g32.NewProc("FillRect")
+	gStockObj     = g32.NewProc("GetStockObject")
+	gEllipticRgn  = g32.NewProc("CreateEllipticRgn")
+)
+
+type w32Rect struct{ Left, Top, Right, Bottom int32 }
+type w32Point struct{ X, Y int32 }
+type w32Msg struct {
+	Hwnd uintptr; Message uint32; WParam, LParam uintptr
+	Time uint32; Pt w32Point
+}
+type w32PaintStruct struct {
+	HDC     uintptr; FErase int32; RcPaint w32Rect
+	Restore int32; IncUpdate int32; Rgb [32]byte
+}
+type w32WndClassEx struct {
+	Size       uint32; Style uint32; WndProc uintptr
+	ClsExtra   int32; WndExtra int32; Instance uintptr
+	Icon       uintptr; Cursor uintptr; Background uintptr
+	MenuName   *uint16; ClassName *uint16; IconSm uintptr
+}
+
+func rgb(r, g, b uint8) uintptr {
+	return uintptr(uint32(r) | uint32(g)<<8 | uint32(b)<<16)
+}
+
+func utf16Ptr(s string) *uint16 {
+	p, _ := syscall.UTF16PtrFromString(s)
+	return p
+}
+
+func utf16Str(s string) []uint16 {
+	r, _ := syscall.UTF16FromString(s)
+	return r
+}
+
+func ovTeamColor(id int) uintptr {
+	switch id {
+	case 0:
+		return rgb(0, 210, 190)
+	case 1:
+		return rgb(220, 0, 0)
+	case 2:
+		return rgb(6, 0, 239)
+	case 3:
+		return rgb(255, 135, 0)
+	case 4:
+		return rgb(0, 90, 255)
+	case 5:
+		return rgb(0, 111, 98)
+	case 6:
+		return rgb(43, 69, 98)
+	case 7:
+		return rgb(182, 186, 189)
+	case 8:
+		return rgb(255, 135, 0)
+	case 9:
+		return rgb(82, 226, 82)
+	default:
+		return rgb(136, 136, 136)
+	}
+}
+
+// radarOverlay is a transparent, always-on-top, circular Win32 overlay.
+type radarOverlay struct {
+	pm      *telemetry.PitwallManager
+	hwnd    uintptr
+	size    int
+	rangeM  float64
+	drag    bool
+	lastPt  w32Point
+	running atomic.Bool
+}
+
+func newRadarOverlay(pm *telemetry.PitwallManager) *radarOverlay {
+	return &radarOverlay{pm: pm, size: 250, rangeM: 80}
+}
+
+func (o *radarOverlay) IsRunning() bool { return o.running.Load() }
+
+func (o *radarOverlay) Start() {
+	if o.running.Load() {
+		return
+	}
+	go o.run()
+}
+
+func (o *radarOverlay) Stop() {
+	if !o.running.Load() {
+		return
+	}
+	uPostMessage.Call(o.hwnd, wmClose, 0, 0)
+}
+
+func (o *radarOverlay) Toggle() bool {
+	if o.running.Load() {
+		o.Stop()
+		return false
+	}
+	o.Start()
+	return true
+}
+
+func (o *radarOverlay) run() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	o.running.Store(true)
+	defer o.running.Store(false)
+
+	cls, _ := syscall.UTF16PtrFromString("FRCRadarOverlay")
+	cursor, _, _ := uLoadCursor.Call(0, uintptr(32512)) // IDC_ARROW
+
+	wc := w32WndClassEx{
+		Size:      uint32(unsafe.Sizeof(w32WndClassEx{})),
+		Style:     csHRedraw | csVRedraw,
+		WndProc:   syscall.NewCallback(o.wndProc),
+		Cursor:    cursor,
+		ClassName: cls,
+	}
+	uRegClassEx.Call(uintptr(unsafe.Pointer(&wc)))
+
+	s := uintptr(o.size)
+	hwnd, _, _ := uCreateWindowEx.Call(
+		exTopmost|exToolWin,
+		uintptr(unsafe.Pointer(cls)), 0,
+		wsPopup|wsVisible,
+		200, 200, s, s,
+		0, 0, 0, 0,
+	)
+	o.hwnd = hwnd
+
+	// Clip to circle
+	rgn, _, _ := gEllipticRgn.Call(0, 0, s, s)
+	uSetWindowRgn.Call(hwnd, rgn, 1)
+
+	// 30 fps timer
+	uSetTimer.Call(hwnd, 1, 33, 0)
+
+	var msg w32Msg
+	for {
+		ret, _, _ := uGetMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)
+		if ret == 0 || int32(ret) == -1 {
+			break
+		}
+		uTranslateMsg.Call(uintptr(unsafe.Pointer(&msg)))
+		uDispatchMsg.Call(uintptr(unsafe.Pointer(&msg)))
+	}
+}
+
+func (o *radarOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
+	switch msg {
+	case wmPaint:
+		o.paint(hwnd)
+		return 0
+	case wmTimer:
+		uInvalidateRect.Call(hwnd, 0, 0)
+		return 0
+	case wmLBtnDown:
+		o.drag = true
+		uGetCursorPos.Call(uintptr(unsafe.Pointer(&o.lastPt)))
+		uSetCapture.Call(hwnd)
+		return 0
+	case wmMMove:
+		if o.drag {
+			var pt w32Point
+			uGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+			var rc w32Rect
+			uGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			uSetWindowPos.Call(hwnd, 0,
+				uintptr(rc.Left+pt.X-o.lastPt.X),
+				uintptr(rc.Top+pt.Y-o.lastPt.Y),
+				0, 0, swpNoSize|swpNoZOrd)
+			o.lastPt = pt
+		}
+		return 0
+	case wmLBtnUp:
+		o.drag = false
+		uReleaseCapture.Call()
+		return 0
+	case wmMWheel:
+		delta := int16(wp >> 16)
+		if delta > 0 && o.rangeM > 30 {
+			o.rangeM -= 10
+		} else if delta < 0 && o.rangeM < 200 {
+			o.rangeM += 10
+		}
+		return 0
+	case wmRBtnUp, wmClose:
+		uKillTimer.Call(hwnd, 1)
+		uDestroyWindow.Call(hwnd)
+		return 0
+	case wmDestroy:
+		uPostQuitMsg.Call(0)
+		return 0
+	}
+	ret, _, _ := uDefWindowProc.Call(hwnd, msg, wp, lp)
+	return ret
+}
+
+func (o *radarOverlay) paint(hwnd uintptr) {
+	var ps w32PaintStruct
+	hdc, _, _ := uBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
+
+	sz := o.size
+	cx, cy := sz/2, sz/2
+	rad := cx - 4
+
+	// Double buffer
+	mem, _, _ := gCreateDC.Call(hdc)
+	bmp, _, _ := gCreateBmp.Call(hdc, uintptr(sz), uintptr(sz))
+	oldBmp, _, _ := gSelectObj.Call(mem, bmp)
+
+	// Background
+	bg, _, _ := gSolidBrush.Call(rgb(12, 12, 12))
+	rc := w32Rect{0, 0, int32(sz), int32(sz)}
+	gFillRect.Call(mem, uintptr(unsafe.Pointer(&rc)), bg)
+	gDeleteObj.Call(bg)
+
+	// Range rings + cross
+	hollow, _, _ := gStockObj.Call(5) // HOLLOW_BRUSH
+	ringPen, _, _ := gCreatePen.Call(psSolid, 1, rgb(30, 30, 30))
+	gSelectObj.Call(mem, hollow)
+	gSelectObj.Call(mem, ringPen)
+	for i := 1; i <= 3; i++ {
+		r := rad * i / 3
+		gEllipse.Call(mem, uintptr(cx-r), uintptr(cy-r), uintptr(cx+r), uintptr(cy+r))
+	}
+	gDeleteObj.Call(ringPen)
+
+	crossPen, _, _ := gCreatePen.Call(psSolid, 1, rgb(25, 25, 25))
+	gSelectObj.Call(mem, crossPen)
+	gMoveToEx.Call(mem, uintptr(cx), uintptr(cy-rad), 0)
+	gLineTo.Call(mem, uintptr(cx), uintptr(cy+rad))
+	gMoveToEx.Call(mem, uintptr(cx-rad), uintptr(cy), 0)
+	gLineTo.Call(mem, uintptr(cx+rad), uintptr(cy))
+	gDeleteObj.Call(crossPen)
+
+	// Radar data
+	data := o.pm.BuildRadarData()
+	if data != nil && len(data.Cars) > data.PlayerIndex {
+		p := data.Cars[data.PlayerIndex]
+		scale := float64(rad) / o.rangeM
+
+		for i, c := range data.Cars {
+			if i == data.PlayerIndex {
+				continue
+			}
+			dx := float64(c.X - p.X)
+			dz := float64(c.Z - p.Z)
+			sin, cos := math.Sincos(float64(-p.Yaw))
+			rx := dx*cos - dz*sin
+			rz := dx*sin + dz*cos
+			if rx*rx+rz*rz > o.rangeM*o.rangeM {
+				continue
+			}
+
+			sx := cx + int(rx*scale)
+			sy := cy - int(rz*scale)
+			col := ovTeamColor(c.TeamID)
+
+			br, _, _ := gSolidBrush.Call(col)
+			pn, _, _ := gCreatePen.Call(psSolid, 1, col)
+			gSelectObj.Call(mem, br)
+			gSelectObj.Call(mem, pn)
+			gEllipse.Call(mem, uintptr(sx-4), uintptr(sy-4), uintptr(sx+4), uintptr(sy+4))
+
+			// Direction tick
+			relYaw := float64(c.Yaw - p.Yaw)
+			tx := float64(sx) + math.Sin(relYaw)*9
+			ty := float64(sy) - math.Cos(relYaw)*9
+			gMoveToEx.Call(mem, uintptr(sx), uintptr(sy), 0)
+			gLineTo.Call(mem, uintptr(tx), uintptr(ty))
+
+			gDeleteObj.Call(br)
+			gDeleteObj.Call(pn)
+		}
+	}
+
+	// Player dot
+	pb, _, _ := gSolidBrush.Call(rgb(0, 210, 255))
+	pp, _, _ := gCreatePen.Call(psSolid, 1, rgb(0, 210, 255))
+	gSelectObj.Call(mem, pb)
+	gSelectObj.Call(mem, pp)
+	gEllipse.Call(mem, uintptr(cx-5), uintptr(cy-5), uintptr(cx+5), uintptr(cy+5))
+	// Player forward arrow
+	gMoveToEx.Call(mem, uintptr(cx), uintptr(cy-5), 0)
+	gLineTo.Call(mem, uintptr(cx), uintptr(cy-11))
+	gDeleteObj.Call(pb)
+	gDeleteObj.Call(pp)
+
+	// Labels
+	gSetBkMode.Call(mem, bkTransp)
+	gSetTextColor.Call(mem, rgb(60, 60, 60))
+	fontName := utf16Ptr("Segoe UI")
+	font, _, _ := gCreateFont.Call(11, 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 0, 0,
+		uintptr(unsafe.Pointer(fontName)))
+	oldFont, _, _ := gSelectObj.Call(mem, font)
+
+	fwd := utf16Str("FWD")
+	fwdRc := w32Rect{0, int32(cy-rad) + 3, int32(sz), int32(cy-rad) + 15}
+	gDrawText.Call(mem, uintptr(unsafe.Pointer(&fwd[0])), uintptr(len(fwd)-1),
+		uintptr(unsafe.Pointer(&fwdRc)), dtCenter|dtVCenter|dtSingle)
+
+	rm := utf16Str(fmt.Sprintf("%dm", int(o.rangeM)))
+	rmRc := w32Rect{0, int32(cy+rad) - 15, int32(sz), int32(cy+rad) - 2}
+	gDrawText.Call(mem, uintptr(unsafe.Pointer(&rm[0])), uintptr(len(rm)-1),
+		uintptr(unsafe.Pointer(&rmRc)), dtCenter|dtVCenter|dtSingle)
+
+	gSelectObj.Call(mem, oldFont)
+	gDeleteObj.Call(font)
+
+	// Blit
+	gBitBlt.Call(hdc, 0, 0, uintptr(sz), uintptr(sz), mem, 0, 0, srcCopy)
+	gSelectObj.Call(mem, oldBmp)
+	gDeleteObj.Call(bmp)
+	gDeleteDC.Call(mem)
+
+	uEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
+}
