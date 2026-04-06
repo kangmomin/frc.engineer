@@ -49,8 +49,10 @@ var (
 	g32 = syscall.NewLazyDLL("gdi32.dll")
 
 	kGetModuleHandle = k32.NewProc("GetModuleHandleW")
+	kGetLastError    = k32.NewProc("GetLastError")
 
 	uRegClassEx     = u32.NewProc("RegisterClassExW")
+	uUnregClass     = u32.NewProc("UnregisterClassW")
 	uCreateWindowEx = u32.NewProc("CreateWindowExW")
 	uDefWindowProc  = u32.NewProc("DefWindowProcW")
 	uGetMessage     = u32.NewProc("GetMessageW")
@@ -152,17 +154,21 @@ func ovTeamColor(id int) uintptr {
 
 // radarOverlay is a transparent, always-on-top, circular Win32 overlay.
 type radarOverlay struct {
-	pm      *telemetry.PitwallManager
-	hwnd    uintptr
-	size    int
-	rangeM  float64
-	drag    bool
-	lastPt  w32Point
-	running atomic.Bool
+	pm         *telemetry.PitwallManager
+	hwnd       uintptr
+	wndProcPtr uintptr // callback created once, reused across restarts
+	size       int
+	rangeM     float64
+	drag       bool
+	lastPt     w32Point
+	running   atomic.Bool
+	classReg  atomic.Bool // true after the window class has been registered
 }
 
 func newRadarOverlay(pm *telemetry.PitwallManager) *radarOverlay {
-	return &radarOverlay{pm: pm, size: 250, rangeM: 80}
+	ov := &radarOverlay{pm: pm, size: 250, rangeM: 80}
+	ov.wndProcPtr = syscall.NewCallback(ov.wndProc)
+	return ov
 }
 
 func (o *radarOverlay) IsRunning() bool { return o.running.Load() }
@@ -204,30 +210,48 @@ func (o *radarOverlay) run() {
 	}()
 
 	hInst, _, _ := kGetModuleHandle.Call(0)
+	if hInst == 0 {
+		slog.Error("radar overlay: GetModuleHandle failed")
+		return
+	}
 
 	cls, _ := syscall.UTF16PtrFromString("FRCRadarOverlay")
 	cursor, _, _ := uLoadCursor.Call(0, uintptr(32512)) // IDC_ARROW
 
+	// Always try to unregister first — handles both restart within same
+	// process and stale class from a previous overlay run.
+	uUnregClass.Call(uintptr(unsafe.Pointer(cls)), hInst)
+
 	wc := w32WndClassEx{
 		Size:      uint32(unsafe.Sizeof(w32WndClassEx{})),
 		Style:     csHRedraw | csVRedraw,
-		WndProc:   syscall.NewCallback(o.wndProc),
+		WndProc:   o.wndProcPtr,
 		Instance:  hInst,
 		Cursor:    cursor,
 		ClassName: cls,
 	}
-	uRegClassEx.Call(uintptr(unsafe.Pointer(&wc)))
+	atom, _, regErr := uRegClassEx.Call(uintptr(unsafe.Pointer(&wc)))
+	if atom == 0 {
+		errno, _, _ := kGetLastError.Call()
+		slog.Error("radar overlay: RegisterClassExW failed",
+			"err", regErr, "lastError", errno)
+		return
+	}
+	o.classReg.Store(true)
 
 	s := uintptr(o.size)
-	hwnd, _, _ := uCreateWindowEx.Call(
+	hwnd, _, createErr := uCreateWindowEx.Call(
 		exTopmost|exToolWin,
 		uintptr(unsafe.Pointer(cls)), 0,
 		wsPopup|wsVisible,
 		200, 200, s, s,
 		0, 0, hInst, 0,
 	)
+	runtime.KeepAlive(cls)
 	if hwnd == 0 {
-		slog.Error("radar overlay: CreateWindowEx failed")
+		errno, _, _ := kGetLastError.Call()
+		slog.Error("radar overlay: CreateWindowExW failed",
+			"err", createErr, "lastError", errno)
 		return
 	}
 	o.hwnd = hwnd
