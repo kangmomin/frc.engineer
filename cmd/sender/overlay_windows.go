@@ -85,6 +85,7 @@ var (
 	gEllipse      = g32.NewProc("Ellipse")
 	gMoveToEx     = g32.NewProc("MoveToEx")
 	gLineTo       = g32.NewProc("LineTo")
+	gPolygon      = g32.NewProc("Polygon")
 	gSetBkMode    = g32.NewProc("SetBkMode")
 	gSetTextColor = g32.NewProc("SetTextColor")
 	gCreateFont   = g32.NewProc("CreateFontW")
@@ -383,29 +384,50 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 			sin, cos := math.Sincos(float64(-p.Yaw))
 			rx := dx*cos - dz*sin
 			rz := dx*sin + dz*cos
-			if rx*rx+rz*rz > o.rangeM*o.rangeM {
+			distSq := rx*rx + rz*rz
+			if distSq > o.rangeM*o.rangeM {
 				continue
 			}
 
-			sx := cx + int(rx*scale)
-			sy := cy - int(rz*scale)
+			sx := float64(cx) + rx*scale
+			sy := float64(cy) - rz*scale
 			col := ovTeamColor(c.TeamID)
+
+			// Proximity-based sizing
+			dist := math.Sqrt(distSq)
+			prox := 1 - dist/o.rangeM
+			carLen := 8 + prox*6
+			carWid := 4 + prox*3
+
+			// Rotated rectangle aligned with car heading
+			relYaw := float64(c.Yaw - p.Yaw)
+			sinY, cosY := math.Sincos(relYaw)
+			fwdX, fwdY := sinY, -cosY
+			sideX, sideY := cosY, sinY
+			hl, hw := carLen/2, carWid/2
+
+			pts := [4]w32Point{
+				{int32(sx + fwdX*hl - sideX*hw), int32(sy + fwdY*hl - sideY*hw)},
+				{int32(sx + fwdX*hl + sideX*hw), int32(sy + fwdY*hl + sideY*hw)},
+				{int32(sx - fwdX*hl + sideX*hw), int32(sy - fwdY*hl + sideY*hw)},
+				{int32(sx - fwdX*hl - sideX*hw), int32(sy - fwdY*hl - sideY*hw)},
+			}
 
 			br, _, _ := gSolidBrush.Call(col)
 			pn, _, _ := gCreatePen.Call(psSolid, 1, col)
 			gSelectObj.Call(mem, br)
 			gSelectObj.Call(mem, pn)
-			gEllipse.Call(mem, uintptr(sx-4), uintptr(sy-4), uintptr(sx+4), uintptr(sy+4))
+			gPolygon.Call(mem, uintptr(unsafe.Pointer(&pts[0])), 4)
 
-			// Direction tick
-			relYaw := float64(c.Yaw - p.Yaw)
-			tx := float64(sx) + math.Sin(relYaw)*9
-			ty := float64(sy) - math.Cos(relYaw)*9
-			gMoveToEx.Call(mem, uintptr(sx), uintptr(sy), 0)
-			gLineTo.Call(mem, uintptr(tx), uintptr(ty))
+			// Front edge highlight
+			frontPen, _, _ := gCreatePen.Call(psSolid, 1, rgb(200, 200, 200))
+			gSelectObj.Call(mem, frontPen)
+			gMoveToEx.Call(mem, uintptr(pts[0].X), uintptr(pts[0].Y), 0)
+			gLineTo.Call(mem, uintptr(pts[1].X), uintptr(pts[1].Y))
 
 			gDeleteObj.Call(br)
 			gDeleteObj.Call(pn)
+			gDeleteObj.Call(frontPen)
 		}
 	}
 

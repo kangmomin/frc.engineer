@@ -186,7 +186,7 @@
     const playerYaw = player.yaw;
     const scale = radius / radarRange;
 
-    // Draw other cars
+    // Draw other cars as rotated rectangles
     for (let i = 0; i < latestData.cars.length; i++) {
       if (i === latestData.playerIndex) continue;
       const car = latestData.cars[i];
@@ -196,7 +196,6 @@
       let dz = car.z - playerZ;
 
       // Rotate so player's forward = up (negative Y on canvas)
-      // F1 game: Yaw=0 means facing +Z, increases clockwise
       const sin = Math.sin(-playerYaw);
       const cos = Math.cos(-playerYaw);
       const rx = dx * cos - dz * sin;
@@ -211,34 +210,55 @@
       const sy = cy - rz * scale;
 
       const color = teamColor(car.teamId);
-
-      // Car dot
-      ctx.beginPath();
-      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-
-      // Direction indicator (small triangle pointing in car's heading)
       const carRelYaw = car.yaw - playerYaw;
-      const triLen = 7;
-      const triAngle = Math.PI / 6;
-      // In our rotated frame: car heading relative to player heading
-      // tip points in the car's forward direction
-      const tipX = sx + Math.sin(carRelYaw) * triLen;
-      const tipY = sy - Math.cos(carRelYaw) * triLen;
-      const baseX1 = sx - Math.sin(carRelYaw - triAngle) * 3;
-      const baseY1 = sy + Math.cos(carRelYaw - triAngle) * 3;
-      const baseX2 = sx - Math.sin(carRelYaw + triAngle) * 3;
-      const baseY2 = sy + Math.cos(carRelYaw + triAngle) * 3;
 
+      // Proximity: 1.0 (nearest) to 0.0 (farthest)
+      const proximity = 1 - (dist / radarRange);
+      const alpha = 0.35 + proximity * 0.65;
+
+      // Car rectangle dimensions (scale with proximity)
+      const carLen = 8 + proximity * 6;
+      const carWid = 4 + proximity * 3;
+
+      // Direction vectors for the rotated rectangle
+      const fwdX = Math.sin(carRelYaw);
+      const fwdY = -Math.cos(carRelYaw);
+      const sideX = Math.cos(carRelYaw);
+      const sideY = Math.sin(carRelYaw);
+
+      const hl = carLen / 2;
+      const hw = carWid / 2;
+
+      // 4 corners: front-left, front-right, back-right, back-left
+      const c0x = sx + fwdX * hl - sideX * hw;
+      const c0y = sy + fwdY * hl - sideY * hw;
+      const c1x = sx + fwdX * hl + sideX * hw;
+      const c1y = sy + fwdY * hl + sideY * hw;
+      const c2x = sx - fwdX * hl + sideX * hw;
+      const c2y = sy - fwdY * hl + sideY * hw;
+      const c3x = sx - fwdX * hl - sideX * hw;
+      const c3y = sy - fwdY * hl - sideY * hw;
+
+      // Draw rectangle body
       ctx.beginPath();
-      ctx.moveTo(tipX, tipY);
-      ctx.lineTo(baseX1, baseY1);
-      ctx.lineTo(baseX2, baseY2);
+      ctx.moveTo(c0x, c0y);
+      ctx.lineTo(c1x, c1y);
+      ctx.lineTo(c2x, c2y);
+      ctx.lineTo(c3x, c3y);
       ctx.closePath();
       ctx.fillStyle = color;
-      ctx.globalAlpha = 0.6;
+      ctx.globalAlpha = alpha;
       ctx.fill();
+
+      // Front edge highlight (indicates heading direction)
+      ctx.beginPath();
+      ctx.moveTo(c0x, c0y);
+      ctx.lineTo(c1x, c1y);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.stroke();
+
       ctx.globalAlpha = 1.0;
     }
 
