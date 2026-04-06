@@ -88,7 +88,7 @@ var (
 	gSetBkMode    = g32.NewProc("SetBkMode")
 	gSetTextColor = g32.NewProc("SetTextColor")
 	gCreateFont   = g32.NewProc("CreateFontW")
-	gDrawText     = g32.NewProc("DrawTextW")
+	gDrawText     = u32.NewProc("DrawTextW")
 	gFillRect     = u32.NewProc("FillRect")
 	gStockObj     = g32.NewProc("GetStockObject")
 	gEllipticRgn  = g32.NewProc("CreateEllipticRgn")
