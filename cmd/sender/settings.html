@@ -945,6 +945,8 @@
           renderTrackPreview();
         }
       }
+
+      updateRadarBtn(!!d.radarActive);
     } catch {}
   }
 
@@ -1096,20 +1098,10 @@
       btn.textContent = 'Radar Overlay';
     }
   }
-  async function pollRadarStatus() {
-    try {
-      const res = await fetch('/api/radar/status');
-      const data = await res.json();
-      updateRadarBtn(data.active);
-    } catch {}
-  }
-
   loadConfig();
   loadTracks();
   pollStatus();
-  pollRadarStatus();
   setInterval(pollStatus, 2000);
-  setInterval(pollRadarStatus, 2000);
 </script>
 </body>
 </html>

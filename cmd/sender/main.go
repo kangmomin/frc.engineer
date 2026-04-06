@@ -261,11 +261,6 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"active": active})
 	})
-	mux.HandleFunc("GET /api/radar/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"active": radarOv.IsRunning()})
-	})
-
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.Lock()
 		port := cfgUDPPort
@@ -284,6 +279,7 @@ func main() {
 			"saveFiles":          sf,
 			"ersCompareMetrics":  compareMonitor.Snapshot(),
 			"currentTrack":       getCurrentTrack(trackState, trackStore),
+			"radarActive":        radarOv.IsRunning(),
 		})
 	})
 
