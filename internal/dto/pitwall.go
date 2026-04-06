@@ -212,4 +212,20 @@ type CarPosition struct {
 	X     float32 `json:"x"`
 	Y     float32 `json:"y"`
 	Z     float32 `json:"z"`
+	Yaw   float32 `json:"yaw"`
+}
+
+// RadarData is a lightweight payload for the local radar overlay SSE stream.
+type RadarData struct {
+	PlayerIndex int            `json:"playerIndex"`
+	Cars        []RadarCarData `json:"cars"`
+}
+
+// RadarCarData contains per-car data needed by the radar overlay.
+type RadarCarData struct {
+	Index  int     `json:"index"`
+	X      float32 `json:"x"`
+	Z      float32 `json:"z"`
+	Yaw    float32 `json:"yaw"`
+	TeamID int     `json:"teamId"`
 }
