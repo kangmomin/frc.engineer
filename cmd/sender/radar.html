@@ -63,6 +63,9 @@
   <label>Range</label>
   <input type="range" id="rangeSlider" min="5" max="200" value="80" step="5">
   <span class="range-val" id="rangeVal">80m</span>
+  <label>BG</label>
+  <input type="range" id="bgSlider" min="0" max="100" value="100" step="5">
+  <span class="range-val" id="bgVal">100%</span>
 </div>
 <div class="status" id="status">CONNECTING</div>
 
@@ -75,7 +78,10 @@
   const statusEl = document.getElementById('status');
 
   let radarRange = 80;
+  let bgOpacity = 1.0;
   let latestData = null;
+  const bgSlider = document.getElementById('bgSlider');
+  const bgVal = document.getElementById('bgVal');
 
   // Team colors (F1 2024 team IDs)
   const TEAM_COLORS = {
@@ -115,6 +121,12 @@
     draw();
   });
 
+  bgSlider.addEventListener('input', function() {
+    bgOpacity = parseInt(this.value) / 100;
+    bgVal.textContent = this.value + '%';
+    draw();
+  });
+
   // Dragging the window
   let dragStart = null;
   document.body.addEventListener('mousedown', function(e) {
@@ -145,7 +157,9 @@
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fillStyle = '#0a0a0a';
+    ctx.globalAlpha = bgOpacity;
     ctx.fill();
+    ctx.globalAlpha = 1.0;
     ctx.strokeStyle = '#1a1a1a';
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -263,21 +277,20 @@
       ctx.globalAlpha = 1.0;
     }
 
-    // Player dot (center)
+    // Player car (center, facing up) — same F1 proportions
     ctx.beginPath();
-    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.rect(cx - carWid/2, cy - carLen/2, carWid, carLen);
     ctx.fillStyle = '#00d2ff';
     ctx.fill();
 
-    // Player direction (up arrow)
+    // Player front edge highlight
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 10);
-    ctx.lineTo(cx - 4, cy - 4);
-    ctx.lineTo(cx + 4, cy - 4);
-    ctx.closePath();
-    ctx.fillStyle = '#00d2ff';
+    ctx.moveTo(cx - carWid/2, cy - carLen/2);
+    ctx.lineTo(cx + carWid/2, cy - carLen/2);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
     ctx.globalAlpha = 0.7;
-    ctx.fill();
+    ctx.stroke();
     ctx.globalAlpha = 1.0;
   }
 

@@ -22,6 +22,8 @@ const (
 	wsVisible  = 0x10000000
 	exTopmost  = 0x00000008
 	exToolWin  = 0x00000080
+	exLayered  = 0x00080000
+	lwaAlpha   = 0x00000002
 	swpNoSize  = 0x0001
 	swpNoZOrd  = 0x0004
 	srcCopy    = 0x00CC0020
@@ -73,6 +75,7 @@ var (
 	uGetWindowRect  = u32.NewProc("GetWindowRect")
 	uLoadCursor     = u32.NewProc("LoadCursorW")
 	uSetWindowRgn   = u32.NewProc("SetWindowRgn")
+	uSetLayeredAttr = u32.NewProc("SetLayeredWindowAttributes")
 
 	gCreateDC     = g32.NewProc("CreateCompatibleDC")
 	gCreateBmp    = g32.NewProc("CreateCompatibleBitmap")
@@ -162,12 +165,13 @@ type radarOverlay struct {
 	rangeM     float64
 	drag       bool
 	lastPt     w32Point
+	alpha     uint8
 	running   atomic.Bool
 	classReg  atomic.Bool // true after the window class has been registered
 }
 
 func newRadarOverlay(pm *telemetry.PitwallManager) *radarOverlay {
-	ov := &radarOverlay{pm: pm, size: 250, rangeM: 80}
+	ov := &radarOverlay{pm: pm, size: 250, rangeM: 80, alpha: 230}
 	ov.wndProcPtr = syscall.NewCallback(ov.wndProc)
 	return ov
 }
@@ -242,7 +246,7 @@ func (o *radarOverlay) run() {
 
 	s := uintptr(o.size)
 	hwnd, _, createErr := uCreateWindowEx.Call(
-		exTopmost|exToolWin,
+		exTopmost|exToolWin|exLayered,
 		uintptr(unsafe.Pointer(cls)), 0,
 		wsPopup|wsVisible,
 		200, 200, s, s,
@@ -260,6 +264,9 @@ func (o *radarOverlay) run() {
 	// Clip to circle
 	rgn, _, _ := gEllipticRgn.Call(0, 0, s, s)
 	uSetWindowRgn.Call(hwnd, rgn, 1)
+
+	// Set initial window opacity
+	uSetLayeredAttr.Call(hwnd, 0, uintptr(o.alpha), lwaAlpha)
 
 	// 30 fps timer
 	uSetTimer.Call(hwnd, 1, 33, 0)
@@ -307,10 +314,20 @@ func (o *radarOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 		return 0
 	case wmMWheel:
 		delta := int16(wp >> 16)
-		if delta > 0 && o.rangeM > 5 {
-			o.rangeM -= 5
-		} else if delta < 0 && o.rangeM < 200 {
-			o.rangeM += 5
+		keys := wp & 0xFFFF
+		if keys&0x0008 != 0 { // Ctrl+Wheel → opacity
+			if delta > 0 && o.alpha < 245 {
+				o.alpha += 10
+			} else if delta < 0 && o.alpha > 30 {
+				o.alpha -= 10
+			}
+			uSetLayeredAttr.Call(o.hwnd, 0, uintptr(o.alpha), lwaAlpha)
+		} else { // Wheel → zoom
+			if delta > 0 && o.rangeM > 5 {
+				o.rangeM -= 5
+			} else if delta < 0 && o.rangeM < 200 {
+				o.rangeM += 5
+			}
 		}
 		return 0
 	case wmRBtnUp, wmClose:
@@ -426,19 +443,29 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 			gDeleteObj.Call(pn)
 			gDeleteObj.Call(frontPen)
 		}
-	}
 
-	// Player dot
-	pb, _, _ := gSolidBrush.Call(rgb(0, 210, 255))
-	pp, _, _ := gCreatePen.Call(psSolid, 1, rgb(0, 210, 255))
-	gSelectObj.Call(mem, pb)
-	gSelectObj.Call(mem, pp)
-	gEllipse.Call(mem, uintptr(cx-5), uintptr(cy-5), uintptr(cx+5), uintptr(cy+5))
-	// Player forward arrow
-	gMoveToEx.Call(mem, uintptr(cx), uintptr(cy-5), 0)
-	gLineTo.Call(mem, uintptr(cx), uintptr(cy-11))
-	gDeleteObj.Call(pb)
-	gDeleteObj.Call(pp)
+		// Player car (center, facing up) — same F1 proportions
+		pHL := int(carLen / 2)
+		pHW := int(carWid / 2)
+		playerPts := [4]w32Point{
+			{int32(cx - pHW), int32(cy - pHL)},
+			{int32(cx + pHW), int32(cy - pHL)},
+			{int32(cx + pHW), int32(cy + pHL)},
+			{int32(cx - pHW), int32(cy + pHL)},
+		}
+		pb, _, _ := gSolidBrush.Call(rgb(0, 210, 255))
+		pp, _, _ := gCreatePen.Call(psSolid, 1, rgb(0, 210, 255))
+		gSelectObj.Call(mem, pb)
+		gSelectObj.Call(mem, pp)
+		gPolygon.Call(mem, uintptr(unsafe.Pointer(&playerPts[0])), 4)
+		pFrontPen, _, _ := gCreatePen.Call(psSolid, 1, rgb(200, 200, 200))
+		gSelectObj.Call(mem, pFrontPen)
+		gMoveToEx.Call(mem, uintptr(playerPts[0].X), uintptr(playerPts[0].Y), 0)
+		gLineTo.Call(mem, uintptr(playerPts[1].X), uintptr(playerPts[1].Y))
+		gDeleteObj.Call(pb)
+		gDeleteObj.Call(pp)
+		gDeleteObj.Call(pFrontPen)
+	}
 
 	// Labels
 	gSetBkMode.Call(mem, bkTransp)
