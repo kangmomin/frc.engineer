@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"runtime"
 	"sync/atomic"
@@ -43,8 +44,11 @@ const (
 
 // Win32 DLL procs
 var (
+	k32 = syscall.NewLazyDLL("kernel32.dll")
 	u32 = syscall.NewLazyDLL("user32.dll")
 	g32 = syscall.NewLazyDLL("gdi32.dll")
+
+	kGetModuleHandle = k32.NewProc("GetModuleHandleW")
 
 	uRegClassEx     = u32.NewProc("RegisterClassExW")
 	uCreateWindowEx = u32.NewProc("CreateWindowExW")
@@ -193,6 +197,14 @@ func (o *radarOverlay) run() {
 	o.running.Store(true)
 	defer o.running.Store(false)
 
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("radar overlay panic", "error", r)
+		}
+	}()
+
+	hInst, _, _ := kGetModuleHandle.Call(0)
+
 	cls, _ := syscall.UTF16PtrFromString("FRCRadarOverlay")
 	cursor, _, _ := uLoadCursor.Call(0, uintptr(32512)) // IDC_ARROW
 
@@ -200,6 +212,7 @@ func (o *radarOverlay) run() {
 		Size:      uint32(unsafe.Sizeof(w32WndClassEx{})),
 		Style:     csHRedraw | csVRedraw,
 		WndProc:   syscall.NewCallback(o.wndProc),
+		Instance:  hInst,
 		Cursor:    cursor,
 		ClassName: cls,
 	}
@@ -211,8 +224,12 @@ func (o *radarOverlay) run() {
 		uintptr(unsafe.Pointer(cls)), 0,
 		wsPopup|wsVisible,
 		200, 200, s, s,
-		0, 0, 0, 0,
+		0, hInst, 0, 0,
 	)
+	if hwnd == 0 {
+		slog.Error("radar overlay: CreateWindowEx failed")
+		return
+	}
 	o.hwnd = hwnd
 
 	// Clip to circle
@@ -284,6 +301,12 @@ func (o *radarOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 }
 
 func (o *radarOverlay) paint(hwnd uintptr) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("radar paint panic", "error", r)
+		}
+	}()
+
 	var ps w32PaintStruct
 	hdc, _, _ := uBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 
