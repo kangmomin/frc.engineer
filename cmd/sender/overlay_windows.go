@@ -224,7 +224,7 @@ func (o *radarOverlay) run() {
 		uintptr(unsafe.Pointer(cls)), 0,
 		wsPopup|wsVisible,
 		200, 200, s, s,
-		0, hInst, 0, 0,
+		0, 0, hInst, 0,
 	)
 	if hwnd == 0 {
 		slog.Error("radar overlay: CreateWindowEx failed")
