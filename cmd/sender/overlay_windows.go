@@ -381,7 +381,7 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 			}
 			dx := float64(c.X - p.X)
 			dz := float64(c.Z - p.Z)
-			sin, cos := math.Sincos(float64(-p.Yaw))
+			sin, cos := math.Sincos(float64(p.Yaw))
 			rx := dx*cos - dz*sin
 			rz := dx*sin + dz*cos
 			distSq := rx*rx + rz*rz

@@ -195,9 +195,10 @@
       let dx = car.x - playerX;
       let dz = car.z - playerZ;
 
-      // Rotate so player's forward = up (negative Y on canvas)
-      const sin = Math.sin(-playerYaw);
-      const cos = Math.cos(-playerYaw);
+      // Rotate so player's forward = up on canvas
+      // F1: Yaw=0 → +Z, increases clockwise
+      const sin = Math.sin(playerYaw);
+      const cos = Math.cos(playerYaw);
       const rx = dx * cos - dz * sin;
       const rz = dx * sin + dz * cos;
 
