@@ -45,9 +45,10 @@ type Message struct {
 	RoomID          string          `json:"roomId,omitempty"`
 	RoomCode        string          `json:"roomCode,omitempty"`
 	RoomName        string          `json:"roomName,omitempty"`
-	Password        string          `json:"password,omitempty"`
-	PermissionsCode string          `json:"permissionsCode,omitempty"`
-	Permissions     Permissions     `json:"permissions,omitempty"`
+	Password               string          `json:"password,omitempty"`
+	PermissionsCode        string          `json:"permissionsCode,omitempty"`
+	DefaultPermissionsCode string          `json:"defaultPermissionsCode,omitempty"`
+	Permissions            Permissions     `json:"permissions,omitempty"`
 	PeerID          string          `json:"peerId,omitempty"`
 	Payload         json.RawMessage `json:"payload,omitempty"`
 	Error           string          `json:"error,omitempty"`

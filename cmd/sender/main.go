@@ -78,6 +78,7 @@ func main() {
 		}
 	}
 	roomPassword := os.Getenv("SENDER_ROOM_PASSWORD")
+	defaultPermissionsCode := os.Getenv("DEFAULT_PERMISSIONS_CODE")
 
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
@@ -106,6 +107,7 @@ func main() {
 	// Create peer manager
 	peerManager := rtc.NewPeerManager(signalingURL, logger)
 	peerManager.SetRoomMetadata(roomName, roomPassword)
+	peerManager.SetDefaultPermissionsCode(defaultPermissionsCode)
 
 	// Create DataChannel broadcaster
 	broadcaster := rtc.NewDataChannelBroadcaster(peerManager)
@@ -131,6 +133,7 @@ func main() {
 	cfgTrackRecording := trackRecording
 	cfgRoomName := roomName
 	cfgRoomPassword := roomPassword
+	cfgDefaultPermissionsCode := defaultPermissionsCode
 	cfgForwardTargets := []rtconfig.ForwardTarget{}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
@@ -372,18 +375,20 @@ func main() {
 		tr := cfgTrackRecording
 		rn := cfgRoomName
 		rp := cfgRoomPassword
+		dpc := cfgDefaultPermissionsCode
 		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
 		copy(ft, cfgForwardTargets)
 		cfgMu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":        port,
-			"saveFiles":      sf,
-			"trackRecording": tr,
-			"roomName":       rn,
-			"roomPassword":   rp,
-			"forwardTargets": ft,
+			"udpPort":                port,
+			"saveFiles":              sf,
+			"trackRecording":         tr,
+			"roomName":               rn,
+			"roomPassword":           rp,
+			"defaultPermissionsCode": dpc,
+			"forwardTargets":         ft,
 		})
 	})
 
@@ -395,6 +400,7 @@ func main() {
 			TrackRecordingOverwriteApprovedFor string                   `json:"trackRecordingOverwriteApprovedFor"`
 			RoomName                           string                   `json:"roomName"`
 			RoomPassword                       string                   `json:"roomPassword"`
+			DefaultPermissionsCode             string                   `json:"defaultPermissionsCode"`
 			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -484,11 +490,14 @@ func main() {
 			logger.Info("track recording changed", "enabled", body.TrackRecording)
 		}
 
-		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword {
+		nextDefaultCode := strings.TrimSpace(body.DefaultPermissionsCode)
+		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword || nextDefaultCode != cfgDefaultPermissionsCode {
 			cfgRoomName = nextRoomName
 			cfgRoomPassword = nextRoomPassword
+			cfgDefaultPermissionsCode = nextDefaultCode
+			peerManager.SetDefaultPermissionsCode(cfgDefaultPermissionsCode)
 			peerManager.UpdateRoomMetadata(cfgRoomName, cfgRoomPassword)
-			logger.Info("room metadata changed", "roomName", cfgRoomName, "protected", cfgRoomPassword != "")
+			logger.Info("room metadata changed", "roomName", cfgRoomName, "protected", cfgRoomPassword != "", "defaultPermissionsCode", cfgDefaultPermissionsCode)
 		}
 
 		// Update forward targets
@@ -499,12 +508,13 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":        cfgUDPPort,
-			"saveFiles":      cfgSaveFiles,
-			"trackRecording": cfgTrackRecording,
-			"roomName":       cfgRoomName,
-			"roomPassword":   cfgRoomPassword,
-			"forwardTargets": cfgForwardTargets,
+			"udpPort":                cfgUDPPort,
+			"saveFiles":              cfgSaveFiles,
+			"trackRecording":         cfgTrackRecording,
+			"roomName":               cfgRoomName,
+			"roomPassword":           cfgRoomPassword,
+			"defaultPermissionsCode": cfgDefaultPermissionsCode,
+			"forwardTargets":         cfgForwardTargets,
 		})
 	})
 

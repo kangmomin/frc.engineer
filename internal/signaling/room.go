@@ -51,15 +51,16 @@ func (p *peer) sendJSON(msg Message) error {
 
 // Room represents a single signaling room owned by a sender.
 type Room struct {
-	ID           string
-	Code         string
-	Name         string
-	Password     string
-	Driver       *peer
-	Engineers    map[string]*peer // peerId → peer
-	DriverLostAt *time.Time       // set when driver disconnects; nil when connected
-	UpdatedAt    time.Time
-	mu           sync.Mutex
+	ID                     string
+	Code                   string
+	Name                   string
+	Password               string
+	DefaultPermissionsCode string
+	Driver                 *peer
+	Engineers              map[string]*peer // peerId → peer
+	DriverLostAt           *time.Time       // set when driver disconnects; nil when connected
+	UpdatedAt              time.Time
+	mu                     sync.Mutex
 }
 
 // RoomSummary is the public room-list payload for engineer clients.
@@ -101,7 +102,7 @@ func (rm *RoomManager) Stop() {
 
 // CreateRoom allocates a new room for the given driver connection.
 // If requestedRoomID is set, it will be reused for room recreation.
-func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mutex, requestedRoomID, roomName, password string) (string, string, error) {
+func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mutex, requestedRoomID, roomName, password, defaultPermissionsCode string) (string, string, error) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
@@ -139,6 +140,7 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 	room.Code = code
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
+	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.Driver = driverPeer
 	room.DriverLostAt = nil
 	room.UpdatedAt = time.Now()
@@ -171,14 +173,18 @@ func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, 
 	}
 
 	grantedPermissions := Permissions{}
-	if strings.TrimSpace(permissionsCode) != "" {
+	codeToResolve := strings.TrimSpace(permissionsCode)
+	if codeToResolve == "" {
+		codeToResolve = strings.TrimSpace(room.DefaultPermissionsCode)
+	}
+	if codeToResolve != "" {
 		var ok bool
 		var err error
-		grantedPermissions, ok, err = rm.permissionCodes.Resolve(permissionsCode)
+		grantedPermissions, ok, err = rm.permissionCodes.Resolve(codeToResolve)
 		if err != nil {
 			return "", "", Permissions{}, fmt.Errorf("resolve permissions code: %w", err)
 		}
-		if !ok {
+		if !ok && strings.TrimSpace(permissionsCode) != "" {
 			return "", "", Permissions{}, fmt.Errorf("invalid permissions code")
 		}
 	}
@@ -211,7 +217,7 @@ func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, 
 }
 
 // RejoinRoom reconnects a driver to an existing room after a transient disconnect.
-func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *sync.Mutex, roomName, password string) (string, error) {
+func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *sync.Mutex, roomName, password, defaultPermissionsCode string) (string, error) {
 	rm.mu.RLock()
 	room, ok := rm.roomsByID[roomID]
 	rm.mu.RUnlock()
@@ -237,6 +243,7 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 	room.DriverLostAt = nil
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
+	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.UpdatedAt = time.Now()
 
 	rm.logger.Info("driver rejoined room", "roomId", room.ID, "code", room.Code)
@@ -244,7 +251,7 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 }
 
 // UpdateRoomMetadata updates room list metadata for a connected sender.
-func (rm *RoomManager) UpdateRoomMetadata(roomID, roomName, password string) (string, error) {
+func (rm *RoomManager) UpdateRoomMetadata(roomID, roomName, password, defaultPermissionsCode string) (string, error) {
 	rm.mu.RLock()
 	room, ok := rm.roomsByID[roomID]
 	rm.mu.RUnlock()
@@ -256,6 +263,7 @@ func (rm *RoomManager) UpdateRoomMetadata(roomID, roomName, password string) (st
 	defer room.mu.Unlock()
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
+	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.UpdatedAt = time.Now()
 	rm.logger.Info("room metadata updated", "roomId", room.ID, "code", room.Code, "name", room.Name)
 	return room.Code, nil
@@ -536,7 +544,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 
 	switch msg.Type {
 	case TypeRoomCreate:
-		roomID, code, err := rm.CreateRoom(conn, writeMu, msg.RoomID, msg.RoomName, msg.Password)
+		roomID, code, err := rm.CreateRoom(conn, writeMu, msg.RoomID, msg.RoomName, msg.Password, msg.DefaultPermissionsCode)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -554,7 +562,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			sendErrorRaw(conn, "roomId required", writeMu)
 			return currentPeer
 		}
-		code, err := rm.RejoinRoom(msg.RoomID, conn, writeMu, msg.RoomName, msg.Password)
+		code, err := rm.RejoinRoom(msg.RoomID, conn, writeMu, msg.RoomName, msg.Password, msg.DefaultPermissionsCode)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -572,7 +580,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			sendErrorRaw(conn, "driver room update only", writeMu)
 			return currentPeer
 		}
-		code, err := rm.UpdateRoomMetadata(currentPeer.roomID, msg.RoomName, msg.Password)
+		code, err := rm.UpdateRoomMetadata(currentPeer.roomID, msg.RoomName, msg.Password, msg.DefaultPermissionsCode)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer

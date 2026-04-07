@@ -42,10 +42,11 @@ type PeerManager struct {
 	peerViews    map[string]string // per-peer active view: "cockpit", "commentary", "qualifying"
 	mu           sync.RWMutex
 
-	roomID        string
-	roomCode      string
-	roomName      string
-	roomPassword  string
+	roomID                 string
+	roomCode               string
+	roomName               string
+	roomPassword           string
+	defaultPermissionsCode string
 	onRequest     RequestHandler
 	onCountChange func(int) // called when engineer count changes
 	logger        *slog.Logger
@@ -86,21 +87,30 @@ func (pm *PeerManager) SetRoomMetadata(name, password string) {
 	pm.sigMu.Unlock()
 }
 
+// SetDefaultPermissionsCode sets the default permission code for engineers joining without one.
+func (pm *PeerManager) SetDefaultPermissionsCode(code string) {
+	pm.sigMu.Lock()
+	pm.defaultPermissionsCode = code
+	pm.sigMu.Unlock()
+}
+
 // UpdateRoomMetadata updates the active signaling room metadata if connected.
 func (pm *PeerManager) UpdateRoomMetadata(name, password string) {
 	pm.sigMu.Lock()
 	pm.roomName = name
 	pm.roomPassword = password
+	defaultCode := pm.defaultPermissionsCode
 	connected := pm.sigConn != nil
 	roomID := pm.roomID
 	pm.sigMu.Unlock()
 
 	if connected && roomID != "" {
 		pm.sendSignaling(signaling.Message{
-			Type:     signaling.TypeRoomUpdate,
-			RoomID:   roomID,
-			RoomName: name,
-			Password: password,
+			Type:                   signaling.TypeRoomUpdate,
+			RoomID:                 roomID,
+			RoomName:               name,
+			Password:               password,
+			DefaultPermissionsCode: defaultCode,
 		})
 	}
 }
@@ -119,10 +129,11 @@ func (pm *PeerManager) Connect() error {
 
 	// Send room_create
 	create := signaling.Message{
-		Type:     signaling.TypeRoomCreate,
-		RoomID:   pm.roomID,
-		RoomName: pm.roomName,
-		Password: pm.roomPassword,
+		Type:                   signaling.TypeRoomCreate,
+		RoomID:                 pm.roomID,
+		RoomName:               pm.roomName,
+		Password:               pm.roomPassword,
+		DefaultPermissionsCode: pm.defaultPermissionsCode,
 	}
 	if err := pm.sigConn.WriteJSON(create); err != nil {
 		pm.sigConn.Close()
@@ -471,10 +482,11 @@ func (pm *PeerManager) reconnectLoop() {
 
 		// Try room_rejoin with the stable room id.
 		rejoin := signaling.Message{
-			Type:     signaling.TypeRoomRejoin,
-			RoomID:   pm.roomID,
-			RoomName: pm.roomName,
-			Password: pm.roomPassword,
+			Type:                   signaling.TypeRoomRejoin,
+			RoomID:                 pm.roomID,
+			RoomName:               pm.roomName,
+			Password:               pm.roomPassword,
+			DefaultPermissionsCode: pm.defaultPermissionsCode,
 		}
 		pm.sigMu.Lock()
 		err := pm.sigConn.WriteJSON(rejoin)
@@ -505,10 +517,11 @@ func (pm *PeerManager) reconnectLoop() {
 			pm.logger.Warn("room_rejoin failed, creating new room", "error", resp.Error)
 
 			create := signaling.Message{
-				Type:     signaling.TypeRoomCreate,
-				RoomID:   pm.roomID,
-				RoomName: pm.roomName,
-				Password: pm.roomPassword,
+				Type:                   signaling.TypeRoomCreate,
+				RoomID:                 pm.roomID,
+				RoomName:               pm.roomName,
+				Password:               pm.roomPassword,
+				DefaultPermissionsCode: pm.defaultPermissionsCode,
 			}
 			pm.sigMu.Lock()
 			err = pm.sigConn.WriteJSON(create)

@@ -21,7 +21,7 @@ func TestRoomManagerListAndPasswordJoin(t *testing.T) {
 	rm := NewRoomManager(testLogger(), store)
 	defer rm.Stop()
 
-	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "secret")
+	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "secret", "")
 	if err != nil {
 		t.Fatalf("CreateRoom failed: %v", err)
 	}
@@ -64,12 +64,12 @@ func TestRoomManagerRejoinAndUpdateMetadata(t *testing.T) {
 	rm := NewRoomManager(testLogger(), store)
 	defer rm.Stop()
 
-	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "First Room", "one")
+	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "First Room", "one", "")
 	if err != nil {
 		t.Fatalf("CreateRoom failed: %v", err)
 	}
 
-	rejoinedCode, err := rm.RejoinRoom(roomID, nil, &sync.Mutex{}, "Renamed Room", "two")
+	rejoinedCode, err := rm.RejoinRoom(roomID, nil, &sync.Mutex{}, "Renamed Room", "two", "")
 	if err != nil {
 		t.Fatalf("RejoinRoom failed: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestRoomManagerRejoinAndUpdateMetadata(t *testing.T) {
 		t.Fatalf("expected room code to remain %q, got %q", roomCode, rejoinedCode)
 	}
 
-	if _, err := rm.UpdateRoomMetadata(roomID, "Final Room", "three"); err != nil {
+	if _, err := rm.UpdateRoomMetadata(roomID, "Final Room", "three", ""); err != nil {
 		t.Fatalf("UpdateRoomMetadata failed: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestListRoomsHidesOfflineRooms(t *testing.T) {
 	rm := NewRoomManager(testLogger(), store)
 	defer rm.Stop()
 
-	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Offline Room", "")
+	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Offline Room", "", "")
 	if err != nil {
 		t.Fatalf("CreateRoom failed: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestRoomManagerJoinWithPermissionCode(t *testing.T) {
 	rm := NewRoomManager(testLogger(), store)
 	defer rm.Stop()
 
-	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "")
+	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "", "")
 	if err != nil {
 		t.Fatalf("CreateRoom failed: %v", err)
 	}
