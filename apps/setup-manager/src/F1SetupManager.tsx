@@ -63,6 +63,59 @@ const P = {
   panelShadow: '0 20px 40px rgba(0, 229, 255, 0.08)', // --shadow-panel
 };
 
+// ─── Telemetry: sender track name → setup DB name mapping ───
+const TRACK_MAP: Record<string, string> = {
+  melbourne:"Australia",shanghai:"China",suzuka:"Japan",sakhir:"Bahrain",
+  jeddah:"Jeddah",miami:"Miami",imola:"Imola",monaco:"Monaco",
+  catalunya:"Spain",montreal:"Canada",austria:"Austria",silverstone:"Silverstone",
+  spa:"Spa",hungaroring:"Hungary",zandvoort:"Zandvoort",monza:"Monza",
+  baku:"Baku",singapore:"Singapore",texas:"COTA",mexico:"Mexico",
+  brazil:"Brazil",las_vegas:"Vegas",losail:"Qatar",abu_dhabi:"Abu Dhabi",
+};
+
+const DEFAULT_SENDER_URL = 'http://localhost:8099';
+
+function useSenderConnection(senderUrl: string) {
+  const [status, setStatus] = useState<any>(null);
+  const [session, setSession] = useState<any>(null);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    if (!senderUrl) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`${senderUrl}/api/status`, { signal: AbortSignal.timeout(3000) });
+        if (cancelled) return;
+        const data = await res.json();
+        setStatus(data);
+        setConnected(true);
+      } catch {
+        if (!cancelled) { setConnected(false); setStatus(null); }
+      }
+
+      try {
+        const res = await fetch(`${senderUrl}/api/debug`, { signal: AbortSignal.timeout(3000) });
+        if (cancelled) return;
+        const data = await res.json();
+        setSession(data.pitwallState?.session || null);
+      } catch {
+        if (!cancelled) setSession(null);
+      }
+    };
+
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [senderUrl]);
+
+  const trackName = status?.currentTrack?.name;
+  const detectedTrack = trackName ? TRACK_MAP[trackName] || null : null;
+
+  return { connected, status, session, detectedTrack };
+}
+
 function Bar({v,min,max}){const p=Math.max(0,Math.min(100,((v-min)/(max-min))*100));const c=p<33?P.accent:p<66?P.accent2:P.danger;return(<div style={{background:'rgba(255,255,255,0.04)',borderRadius:2,height:3,overflow:'hidden'}}><div style={{width:`${p}%`,height:'100%',background:c,borderRadius:2}}/></div>);}
 
 function RC({s1,s2,m1,m2,size=240}){const cx=size/2,cy=size/2,r=size/2-40,n=RK.length;const nm=(k,v)=>{const d=DEFS[k];return(v-d.min)/(d.max-d.min);};const pt=(i,v)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return{x:cx+r*v*Math.cos(a),y:cy+r*v*Math.sin(a)};};const p1=RK.map((k,i)=>pt(i,nm(k.k,s1[k.k])));const p2=s2?RK.map((k,i)=>pt(i,nm(k.k,s2[k.k]))):null;const po=pts=>pts.map(p=>`${p.x},${p.y}`).join(" ");return(<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>{[0.25,0.5,0.75,1].map(lv=><polygon key={lv} points={po(RK.map((_,i)=>pt(i,lv)))} fill="none" stroke="rgba(0,229,255,0.06)" strokeWidth={1}/>)}{RK.map((_,i)=>{const p=pt(i,1);return<line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="rgba(0,229,255,0.04)" strokeWidth={1}/>;})}<polygon points={po(p1)} fill={`${m1?.color||P.accent}20`} stroke={m1?.color||P.accent} strokeWidth={1.5} filter="url(#glow)"/>{p1.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m1?.color||P.accent}/>)}{p2&&<><polygon points={po(p2)} fill={`${m2?.color||P.accent2}20`} stroke={m2?.color||P.accent2} strokeWidth={1.5} strokeDasharray="5,3" filter="url(#glow)"/>{p2.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m2?.color||P.accent2}/>)}</>}{RK.map((k,i)=>{const p=pt(i,1.18);return<text key={i} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fill={P.muted} fontSize={8} fontFamily={P.mono} fontWeight={600}>{k.l}</text>;})}</svg>);}
@@ -196,6 +249,9 @@ export function F1SetupManager() {
   const [apiKey, setApiKey] = useState(() => { try { return localStorage.getItem('frc_api_key') || ENV_KEY || ''; } catch { return ''; } });
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyInput, setKeyInput] = useState('');
+  // Sender telemetry connection
+  const [senderUrl] = useState(() => { try { return localStorage.getItem('frc_sender_url') || DEFAULT_SENDER_URL; } catch { return DEFAULT_SENDER_URL; } });
+  const { connected: senderConnected, status: senderStatus, session: liveSession, detectedTrack } = useSenderConnection(senderUrl);
   // Main tab
   const [track, setTrack] = useState(null);
   const [mode, setMode] = useState(null);
@@ -311,6 +367,29 @@ export function F1SetupManager() {
             );
           })}
         </div>
+        {/* Telemetry status */}
+        <div title={senderConnected ? `Sender: ${senderUrl}\n${detectedTrack ? `Track: ${detectedTrack}` : 'No session'}` : `Sender offline (${senderUrl})`}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: senderConnected ? (liveSession ? P.accent2 : P.accent) : P.danger,
+            boxShadow: senderConnected ? `0 0 8px ${liveSession ? P.accent2 : P.accent}` : 'none',
+          }} />
+          <span style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>
+            {senderConnected ? (liveSession ? 'LIVE' : 'IDLE') : 'OFF'}
+          </span>
+        </div>
+        {/* Auto-detect track from telemetry */}
+        {senderConnected && detectedTrack && detectedTrack !== track && (
+          <button onClick={() => sTrack(detectedTrack)} title={`Switch to ${detectedTrack}`} style={{
+            width: 44, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+            background: 'rgba(0,229,255,0.08)', border: `1px solid ${P.accent}`, borderRadius: 3,
+            cursor: 'pointer', color: P.accent, fontSize: 7, fontFamily: P.mono, fontWeight: 700,
+            letterSpacing: 0.5, marginBottom: 8, animation: 'none',
+          }}>
+            SYNC
+          </button>
+        )}
         {/* API Key */}
         <button onClick={() => { setKeyInput(apiKey); setShowKeyModal(true); }} title="API Key" style={{
           width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -330,7 +409,15 @@ export function F1SetupManager() {
           WebkitAppRegion: 'drag', flexShrink: 0,
         } as any}>
           <span style={{ fontFamily: P.mono, fontSize: 11, fontWeight: 700, letterSpacing: 3, color: P.text, textTransform: 'uppercase' }}>FRC SETUP LAB</span>
-          <span style={{ fontFamily: P.mono, fontSize: 9, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase' }}>{getTabs().find(t => t.id === tab)?.label}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {senderConnected && liveSession && (
+              <span style={{ fontFamily: P.mono, fontSize: 8, color: P.accent, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: P.accent2, boxShadow: `0 0 6px ${P.accent2}` }} />
+                {liveSession.weather?.toUpperCase()} {liveSession.trackTemp?.toFixed(0)}{'\u00B0'}C
+              </span>
+            )}
+            <span style={{ fontFamily: P.mono, fontSize: 9, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase' }}>{getTabs().find(t => t.id === tab)?.label}</span>
+          </div>
         </div>
 
         {/* Scrollable content */}
@@ -355,7 +442,10 @@ export function F1SetupManager() {
                       }}>
                         <FI flag={t.flag} size={14} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 10, fontFamily: P.sans, fontWeight: active ? 700 : 500, color: active ? P.accent : P.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}{t.sprint ? " S" : ""}</div>
+                          <div style={{ fontSize: 10, fontFamily: P.sans, fontWeight: active ? 700 : 500, color: active ? P.accent : P.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {t.name}{t.sprint ? " S" : ""}
+                            {detectedTrack === t.name && <span style={{ fontSize: 7, fontFamily: P.mono, color: P.accent2, background: 'rgba(205,255,19,0.1)', padding: '1px 4px', borderRadius: 2, fontWeight: 700 }}>LIVE</span>}
+                          </div>
                           <div style={{ fontSize: 8, fontFamily: P.mono, color: P.dim }}>R{t.round}</div>
                         </div>
                       </button>
