@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"runtime"
 	"sync/atomic"
 	"syscall"
@@ -14,19 +15,34 @@ import (
 )
 
 var (
-	shcore              = syscall.NewLazyDLL("shcore.dll")
-	setProcessDpiAware  = u32.NewProc("SetProcessDPIAware")
-	setDpiAwareness     = shcore.NewProc("SetProcessDpiAwareness")
+	shcore          = syscall.NewLazyDLL("shcore.dll")
+	setDpiAwareness = shcore.NewProc("SetProcessDpiAwareness")
+	getDpiForWindow = u32.NewProc("GetDpiForWindow")
+	gGetDeviceCaps  = g32.NewProc("GetDeviceCaps")
 )
 
-// weatherOverlay is a transparent, always-on-top, rectangular Win32 overlay
+const (
+	swpNoMove    = 0x0002
+	logPixelsX   = 88 // GetDeviceCaps index for horizontal DPI
+	minScale     = 0.6
+	maxScale     = 2.5
+	baseWidth    = 340
+	baseHeight   = 420
+	defaultScale = 1.0
+)
+
+// weatherOverlay is a transparent, always-on-top, borderless Win32 overlay
 // that displays a compact weather forecast list for drivers.
+// - Scroll wheel: resize window
+// - Ctrl+Scroll: adjust opacity
+// - Left-drag: move window
+// - Right-click: close
 type weatherOverlay struct {
 	pm         *telemetry.PitwallManager
 	hwnd       uintptr
 	wndProcPtr uintptr
-	width      int
-	height     int
+	scale      float64 // user zoom factor (0.6 .. 2.5)
+	dpiScale   float64 // system DPI / 96
 	drag       bool
 	lastPt     w32Point
 	alpha      uint8
@@ -35,10 +51,18 @@ type weatherOverlay struct {
 }
 
 func newWeatherOverlay(pm *telemetry.PitwallManager) *weatherOverlay {
-	ov := &weatherOverlay{pm: pm, width: 340, height: 420, alpha: 230}
+	ov := &weatherOverlay{pm: pm, scale: defaultScale, dpiScale: 1.0, alpha: 230}
 	ov.wndProcPtr = syscall.NewCallback(ov.wndProc)
 	return ov
 }
+
+// px converts a logical dimension to physical pixels.
+func (o *weatherOverlay) px(v float64) int32 {
+	return int32(math.Round(v * o.scale * o.dpiScale))
+}
+
+func (o *weatherOverlay) winWidth() int  { return int(math.Round(float64(baseWidth) * o.scale * o.dpiScale)) }
+func (o *weatherOverlay) winHeight() int { return int(math.Round(float64(baseHeight) * o.scale * o.dpiScale)) }
 
 func (o *weatherOverlay) IsRunning() bool { return o.running.Load() }
 
@@ -78,10 +102,9 @@ func (o *weatherOverlay) run() {
 		}
 	}()
 
-	// Enable per-monitor DPI awareness so Windows doesn't bitmap-scale the overlay.
-	// Try shcore (Win8.1+) first, fall back to user32 (Vista+).
-	if ret, _, _ := setDpiAwareness.Call(2); ret != 0 { // 2 = PROCESS_PER_MONITOR_DPI_AWARE
-		setProcessDpiAware.Call()
+	// Per-monitor DPI awareness (Win8.1+), fallback to Vista+.
+	if ret, _, _ := setDpiAwareness.Call(2); ret != 0 {
+		u32.NewProc("SetProcessDPIAware").Call()
 	}
 
 	hInst, _, _ := kGetModuleHandle.Call(0)
@@ -92,7 +115,6 @@ func (o *weatherOverlay) run() {
 
 	cls, _ := syscall.UTF16PtrFromString("FRCWeatherOverlay")
 	cursor, _, _ := uLoadCursor.Call(0, uintptr(32512))
-
 	uUnregClass.Call(uintptr(unsafe.Pointer(cls)), hInst)
 
 	wc := w32WndClassEx{
@@ -106,31 +128,37 @@ func (o *weatherOverlay) run() {
 	atom, _, regErr := uRegClassEx.Call(uintptr(unsafe.Pointer(&wc)))
 	if atom == 0 {
 		errno, _, _ := kGetLastError.Call()
-		slog.Error("weather overlay: RegisterClassExW failed",
-			"err", regErr, "lastError", errno)
+		slog.Error("weather overlay: RegisterClassExW failed", "err", regErr, "lastError", errno)
 		return
 	}
 	o.classReg.Store(true)
 
+	// Create at temporary 1x1 to get DPI, then resize.
 	hwnd, _, createErr := uCreateWindowEx.Call(
 		exTopmost|exToolWin|exLayered,
 		uintptr(unsafe.Pointer(cls)), 0,
 		wsPopup|wsVisible,
-		100, 100, uintptr(o.width), uintptr(o.height),
+		200, 200, 1, 1,
 		0, 0, hInst, 0,
 	)
 	runtime.KeepAlive(cls)
 	if hwnd == 0 {
 		errno, _, _ := kGetLastError.Call()
-		slog.Error("weather overlay: CreateWindowExW failed",
-			"err", createErr, "lastError", errno)
+		slog.Error("weather overlay: CreateWindowExW failed", "err", createErr, "lastError", errno)
 		return
 	}
 	o.hwnd = hwnd
 
+	// Query actual DPI for this window's monitor.
+	o.dpiScale = o.queryDPI(hwnd)
+
+	// Resize to real dimensions now that we know DPI.
+	w, h := uintptr(o.winWidth()), uintptr(o.winHeight())
+	uSetWindowPos.Call(hwnd, 0, 200, 200, w, h, swpNoZOrd)
+
 	uSetLayeredAttr.Call(hwnd, 0, uintptr(o.alpha), lwaAlpha)
 
-	// 2 fps timer — weather data doesn't need fast refresh
+	// 2 fps refresh — weather data is slow-changing.
 	uSetTimer.Call(hwnd, 1, 500, 0)
 
 	var msg w32Msg
@@ -142,6 +170,28 @@ func (o *weatherOverlay) run() {
 		uTranslateMsg.Call(uintptr(unsafe.Pointer(&msg)))
 		uDispatchMsg.Call(uintptr(unsafe.Pointer(&msg)))
 	}
+}
+
+func (o *weatherOverlay) queryDPI(hwnd uintptr) float64 {
+	// Try GetDpiForWindow (Win10 1607+).
+	if dpi, _, _ := getDpiForWindow.Call(hwnd); dpi > 0 {
+		return float64(dpi) / 96.0
+	}
+	// Fallback: GetDeviceCaps.
+	hdc, _, _ := u32.NewProc("GetDC").Call(0)
+	if hdc != 0 {
+		dpi, _, _ := gGetDeviceCaps.Call(hdc, logPixelsX)
+		u32.NewProc("ReleaseDC").Call(0, hdc)
+		if dpi > 0 {
+			return float64(dpi) / 96.0
+		}
+	}
+	return 1.0
+}
+
+func (o *weatherOverlay) resize() {
+	w, h := uintptr(o.winWidth()), uintptr(o.winHeight())
+	uSetWindowPos.Call(o.hwnd, 0, 0, 0, w, h, swpNoMove|swpNoZOrd)
 }
 
 func (o *weatherOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
@@ -177,13 +227,23 @@ func (o *weatherOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 	case wmMWheel:
 		delta := int16(wp >> 16)
 		keys := wp & 0xFFFF
-		if keys&0x0008 != 0 { // Ctrl+Wheel → opacity
+		if keys&0x0008 != 0 {
+			// Ctrl+Wheel → opacity
 			if delta > 0 && o.alpha < 245 {
 				o.alpha += 10
 			} else if delta < 0 && o.alpha > 30 {
 				o.alpha -= 10
 			}
 			uSetLayeredAttr.Call(o.hwnd, 0, uintptr(o.alpha), lwaAlpha)
+		} else {
+			// Wheel → resize window
+			step := 0.1
+			if delta > 0 && o.scale < maxScale {
+				o.scale = math.Min(o.scale+step, maxScale)
+			} else if delta < 0 && o.scale > minScale {
+				o.scale = math.Max(o.scale-step, minScale)
+			}
+			o.resize()
 		}
 		return 0
 	case wmRBtnUp, wmClose:
@@ -198,6 +258,8 @@ func (o *weatherOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 	return ret
 }
 
+// ── Paint ──────────────────────────────────────────────────────────
+
 func (o *weatherOverlay) paint(hwnd uintptr) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -208,7 +270,7 @@ func (o *weatherOverlay) paint(hwnd uintptr) {
 	var ps w32PaintStruct
 	hdc, _, _ := uBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 
-	w, h := o.width, o.height
+	w, h := o.winWidth(), o.winHeight()
 
 	// Double buffer
 	mem, _, _ := gCreateDC.Call(hdc)
@@ -235,160 +297,170 @@ func (o *weatherOverlay) paint(hwnd uintptr) {
 
 	gSetBkMode.Call(mem, bkTransp)
 
-	// Fonts — larger sizes for readability on high-DPI displays
-	fontTitle := createWeatherFont(mem, 18, 700)
-	fontBody := createWeatherFont(mem, 15, 600)
-	fontSmall := createWeatherFont(mem, 13, 500)
+	// Fonts — scaled to DPI and user zoom
+	fontTitle := o.makeFont(18, 700)
+	fontBody := o.makeFont(15, 600)
+	fontSmall := o.makeFont(12, 600)
 
 	data := o.pm.BuildWeatherData()
-	y := int32(12)
 
-	// Header
+	// Layout constants: proportional column positions (fraction of width)
+	pad := o.px(14)
+	ww := int32(w)
+	col1 := pad                        // TIME start
+	col2 := int32(float64(ww) * 0.18)  // COND start
+	col3 := int32(float64(ww) * 0.47)  // TRACK start
+	col4 := int32(float64(ww) * 0.63)  // AIR start
+	col5 := int32(float64(ww) * 0.78)  // RAIN start
+	col5End := ww - pad
+
+	rowH := o.px(24) // row height
+	fontH := o.px(16)
+	y := pad
+
+	// ── Header ──
 	gSetTextColor.Call(mem, rgb(0, 229, 255))
 	gSelectObj.Call(mem, fontTitle)
-	title := utf16Str("WEATHER FORECAST")
-	titleRc := w32Rect{14, y, int32(w) - 14, y + 22}
-	gDrawText.Call(mem, uintptr(unsafe.Pointer(&title[0])), uintptr(len(title)-1),
-		uintptr(unsafe.Pointer(&titleRc)), 0)
-	y += 28
+	o.text(mem, "WEATHER FORECAST", pad, y, ww-pad, y+o.px(20))
+	y += o.px(26)
 
 	if data == nil {
 		gSetTextColor.Call(mem, rgb(80, 80, 80))
 		gSelectObj.Call(mem, fontBody)
-		waiting := utf16Str("Waiting for session...")
-		wRc := w32Rect{14, y + 30, int32(w) - 14, y + 50}
-		gDrawText.Call(mem, uintptr(unsafe.Pointer(&waiting[0])), uintptr(len(waiting)-1),
-			uintptr(unsafe.Pointer(&wRc)), dtCenter)
-	} else {
-		// Current conditions bar
-		accentBar, _, _ := gSolidBrush.Call(rgb(0, 229, 255))
-		barRc := w32Rect{0, y, int32(w), y + 2}
-		gFillRect.Call(mem, uintptr(unsafe.Pointer(&barRc)), accentBar)
-		gDeleteObj.Call(accentBar)
-		y += 8
+		o.text(mem, "Waiting for session...", pad, y+o.px(30), ww-pad, y+o.px(48))
+		goto cleanup
+	}
 
+	{
+		// ── Accent bar ──
+		accentBr, _, _ := gSolidBrush.Call(rgb(0, 229, 255))
+		barRc := w32Rect{0, y, ww, y + 2}
+		gFillRect.Call(mem, uintptr(unsafe.Pointer(&barRc)), accentBr)
+		gDeleteObj.Call(accentBr)
+		y += o.px(6)
+
+		// ── Current conditions ──
 		gSelectObj.Call(mem, fontBody)
 		gSetTextColor.Call(mem, rgb(200, 200, 200))
-		currentLine := utf16Str(fmt.Sprintf("NOW  %s  Track %.0f°C  Air %.0f°C",
-			weatherLabel(data.CurrentWeather), data.TrackTemp, data.AirTemp))
-		curRc := w32Rect{14, y, int32(w) - 14, y + 18}
-		gDrawText.Call(mem, uintptr(unsafe.Pointer(&currentLine[0])), uintptr(len(currentLine)-1),
-			uintptr(unsafe.Pointer(&curRc)), 0)
-		y += 26
+		cur := fmt.Sprintf("NOW   %s   Track %.0f\u00B0C   Air %.0f\u00B0C",
+			weatherLabel(data.CurrentWeather), data.TrackTemp, data.AirTemp)
+		o.text(mem, cur, pad, y, ww-pad, y+fontH)
+		y += o.px(24)
 
-		// Separator
+		// ── Separator ──
 		sepPen, _, _ := gCreatePen.Call(psSolid, 1, rgb(30, 30, 30))
 		gSelectObj.Call(mem, sepPen)
-		gMoveToEx.Call(mem, 14, uintptr(y), 0)
-		gLineTo.Call(mem, uintptr(w-14), uintptr(y))
+		gMoveToEx.Call(mem, uintptr(pad), uintptr(y), 0)
+		gLineTo.Call(mem, uintptr(ww-pad), uintptr(y))
 		gDeleteObj.Call(sepPen)
-		y += 8
+		y += o.px(6)
 
-		// Column headers
+		// ── Column headers ──
 		gSelectObj.Call(mem, fontSmall)
 		gSetTextColor.Call(mem, rgb(80, 93, 96))
-		o.drawTextH(mem, "TIME", 14, y, 56, 16)
-		o.drawTextH(mem, "COND", 74, y, 80, 16)
-		o.drawTextH(mem, "TRACK", 160, y, 52, 16)
-		o.drawTextH(mem, "AIR", 216, y, 46, 16)
-		o.drawTextH(mem, "RAIN", int32(w)-62, y, 48, 16)
-		y += 20
+		hdrH := o.px(14)
+		o.text(mem, "TIME", col1, y, col2, y+hdrH)
+		o.text(mem, "CONDITION", col2, y, col3, y+hdrH)
+		o.text(mem, "TRACK", col3, y, col4, y+hdrH)
+		o.text(mem, "AIR", col4, y, col5, y+hdrH)
+		o.text(mem, "RAIN", col5, y, col5End, y+hdrH)
+		y += o.px(18)
 
-		// Forecast rows
+		// ── Forecast rows ──
 		gSelectObj.Call(mem, fontBody)
 		for _, f := range data.Forecasts {
-			if y > int32(h)-20 {
+			if y+rowH > int32(h)-pad {
 				break
 			}
 
-			// Row background for high rain
+			// Row highlight for high rain
 			if f.RainPercentage >= 50 {
 				rowBg, _, _ := gSolidBrush.Call(rgb(40, 15, 15))
-				rowRc := w32Rect{1, y - 2, int32(w) - 1, y + 22}
+				rowRc := w32Rect{1, y - 1, ww - 1, y + rowH}
 				gFillRect.Call(mem, uintptr(unsafe.Pointer(&rowRc)), rowBg)
 				gDeleteObj.Call(rowBg)
 			}
 
-			// Time offset
+			// Time
 			gSetTextColor.Call(mem, rgb(229, 226, 227))
-			timeStr := fmt.Sprintf("+%dM", f.TimeOffset)
-			o.drawTextH(mem, timeStr, 14, y, 56, 18)
+			o.text(mem, fmt.Sprintf("+%dM", f.TimeOffset), col1, y, col2, y+fontH)
 
-			// Weather condition
-			condColor := weatherConditionColor(f.Weather)
-			gSetTextColor.Call(mem, condColor)
-			o.drawTextH(mem, weatherLabel(f.Weather), 74, y, 80, 18)
+			// Condition
+			gSetTextColor.Call(mem, weatherConditionColor(f.Weather))
+			o.text(mem, weatherLabel(f.Weather), col2, y, col3, y+fontH)
 
 			// Track temp + trend
 			gSetTextColor.Call(mem, rgb(229, 226, 227))
-			trackStr := fmt.Sprintf("%.0f°", f.TrackTemp)
-			o.drawTextH(mem, trackStr+tempTrend(f.TrackTempChange), 160, y, 52, 18)
+			o.text(mem, fmt.Sprintf("%.0f\u00B0%s", f.TrackTemp, tempTrend(f.TrackTempChange)), col3, y, col4, y+fontH)
 
 			// Air temp + trend
-			airStr := fmt.Sprintf("%.0f°", f.AirTemp)
-			o.drawTextH(mem, airStr+tempTrend(f.AirTempChange), 216, y, 46, 18)
+			o.text(mem, fmt.Sprintf("%.0f\u00B0%s", f.AirTemp, tempTrend(f.AirTempChange)), col4, y, col5, y+fontH)
 
-			// Rain percentage
-			rainColor := rainPercentColor(f.RainPercentage)
-			gSetTextColor.Call(mem, rainColor)
-			rainStr := fmt.Sprintf("%d%%", f.RainPercentage)
-			o.drawTextH(mem, rainStr, int32(w)-62, y, 48, 18)
+			// Rain %
+			rainCol := rainPercentColor(f.RainPercentage)
+			gSetTextColor.Call(mem, rainCol)
+			o.text(mem, fmt.Sprintf("%d%%", f.RainPercentage), col5, y, col5End, y+fontH)
 
 			// Rain bar
-			barX := int32(w) - 62
-			barY := y + 19
-			barW := int32(48)
+			barTop := y + fontH + 1
+			barH := int32(math.Max(float64(o.px(3)), 2))
+			barW := col5End - col5
 			barBgBr, _, _ := gSolidBrush.Call(rgb(30, 30, 30))
-			barBgRc := w32Rect{barX, barY, barX + barW, barY + 3}
+			barBgRc := w32Rect{col5, barTop, col5 + barW, barTop + barH}
 			gFillRect.Call(mem, uintptr(unsafe.Pointer(&barBgRc)), barBgBr)
 			gDeleteObj.Call(barBgBr)
 
 			fillW := int32(float64(barW) * float64(f.RainPercentage) / 100.0)
 			if fillW > 0 {
-				barFillBr, _, _ := gSolidBrush.Call(rainColor)
-				barFillRc := w32Rect{barX, barY, barX + fillW, barY + 3}
+				barFillBr, _, _ := gSolidBrush.Call(rainCol)
+				barFillRc := w32Rect{col5, barTop, col5 + fillW, barTop + barH}
 				gFillRect.Call(mem, uintptr(unsafe.Pointer(&barFillRc)), barFillBr)
 				gDeleteObj.Call(barFillBr)
 			}
 
-			y += 28
+			y += rowH
 		}
 
 		if len(data.Forecasts) == 0 {
 			gSetTextColor.Call(mem, rgb(80, 80, 80))
 			gSelectObj.Call(mem, fontSmall)
-			noData := utf16Str("No forecast data")
-			ndRc := w32Rect{10, y + 10, int32(w) - 10, y + 24}
-			gDrawText.Call(mem, uintptr(unsafe.Pointer(&noData[0])), uintptr(len(noData)-1),
-				uintptr(unsafe.Pointer(&ndRc)), dtCenter)
+			o.text(mem, "No forecast data", pad, y+o.px(10), ww-pad, y+o.px(26))
 		}
 	}
 
+cleanup:
 	gDeleteObj.Call(fontTitle)
 	gDeleteObj.Call(fontBody)
 	gDeleteObj.Call(fontSmall)
 
-	// Blit
 	gBitBlt.Call(hdc, 0, 0, uintptr(w), uintptr(h), mem, 0, 0, srcCopy)
 	gSelectObj.Call(mem, oldBmp)
 	gDeleteObj.Call(bmp)
 	gDeleteDC.Call(mem)
-
 	uEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 }
 
-func (o *weatherOverlay) drawTextH(mem uintptr, s string, x, y, w, h int32) {
+// ── Helpers ────────────────────────────────────────────────────────
+
+func (o *weatherOverlay) text(mem uintptr, s string, left, top, right, bottom int32) {
 	t := utf16Str(s)
-	rc := w32Rect{x, y, x + w, y + h}
+	rc := w32Rect{left, top, right, bottom}
 	gDrawText.Call(mem, uintptr(unsafe.Pointer(&t[0])), uintptr(len(t)-1),
-		uintptr(unsafe.Pointer(&rc)), 0)
+		uintptr(unsafe.Pointer(&rc)), dtVCenter|dtSingle)
 }
 
-func createWeatherFont(_ uintptr, height int, weight int) uintptr {
+func (o *weatherOverlay) makeFont(logicalPx int, weight int) uintptr {
+	// Negative height = character height (not cell height) → sharper glyph sizing.
+	h := -int(math.Round(float64(logicalPx) * o.scale * o.dpiScale))
 	fontName := utf16Ptr("Segoe UI")
-	// quality=6 → CLEARTYPE_QUALITY for sharp text on LCD panels
-	font, _, _ := gCreateFont.Call(uintptr(height), 0, 0, 0, uintptr(weight), 0, 0, 0, 1, 0, 0, 6, 0,
-		uintptr(unsafe.Pointer(fontName)))
+	font, _, _ := gCreateFont.Call(
+		uintptr(h), 0, 0, 0, uintptr(weight),
+		0, 0, 0, 1,  // italic=0, underline=0, strikeout=0, charset=DEFAULT
+		0, 0,         // outPrecision, clipPrecision
+		6,            // quality = CLEARTYPE_QUALITY
+		0,            // pitchAndFamily
+		uintptr(unsafe.Pointer(fontName)),
+	)
 	return font
 }
 
@@ -399,7 +471,7 @@ func weatherLabel(w string) string {
 	case "light_cloud":
 		return "CLOUD"
 	case "overcast":
-		return "OVCST"
+		return "OVERCAST"
 	case "light_rain":
 		return "L.RAIN"
 	case "heavy_rain":
@@ -414,15 +486,15 @@ func weatherLabel(w string) string {
 func weatherConditionColor(w string) uintptr {
 	switch w {
 	case "clear":
-		return rgb(205, 255, 19) // lime
+		return rgb(205, 255, 19)
 	case "light_cloud", "overcast":
-		return rgb(195, 245, 255) // light cyan
+		return rgb(195, 245, 255)
 	case "light_rain":
-		return rgb(0, 229, 255) // cyan
+		return rgb(0, 229, 255)
 	case "heavy_rain":
-		return rgb(255, 179, 178) // soft red
+		return rgb(255, 179, 178)
 	case "storm":
-		return rgb(255, 82, 92) // red
+		return rgb(255, 82, 92)
 	default:
 		return rgb(132, 147, 150)
 	}
@@ -431,9 +503,9 @@ func weatherConditionColor(w string) uintptr {
 func tempTrend(change int) string {
 	switch {
 	case change > 0:
-		return "^"
+		return "\u2191" // ↑
 	case change < 0:
-		return "v"
+		return "\u2193" // ↓
 	default:
 		return ""
 	}
@@ -442,11 +514,10 @@ func tempTrend(change int) string {
 func rainPercentColor(pct int) uintptr {
 	switch {
 	case pct >= 60:
-		return rgb(255, 82, 92) // red
+		return rgb(255, 82, 92)
 	case pct >= 30:
-		return rgb(255, 179, 178) // soft orange/red
+		return rgb(255, 179, 178)
 	default:
-		return rgb(0, 229, 255) // cyan
+		return rgb(0, 229, 255)
 	}
 }
-
