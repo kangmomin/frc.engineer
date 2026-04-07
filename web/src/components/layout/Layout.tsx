@@ -188,13 +188,9 @@ export function Layout() {
     }
   }, [rtcOptions, setConnectionState, setFeaturePermissions, setPitwallState]);
 
-  // Setup manager runs independently of telemetry
+  // Setup manager runs independently — no .shell wrapper (it has overflow:hidden)
   if (dashboardView === 'setup') {
-    return (
-      <div className={styles.shell}>
-        <F1SetupManager onBack={() => switchView('cockpit')} />
-      </div>
-    );
+    return <F1SetupManager onBack={() => switchView('cockpit')} />;
   }
 
   if (!rtcOptions) {
