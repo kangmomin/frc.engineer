@@ -25,7 +25,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.39.9"
+var appVersion = "v4.0.0"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
