@@ -13,7 +13,7 @@ function createWindow() {
     height: 860,
     minWidth: 420,
     minHeight: 600,
-    backgroundColor: '#06080d',
+    backgroundColor: '#131314',
     frame: false,
     webPreferences: {
       nodeIntegration: false,
@@ -27,7 +27,7 @@ function createWindow() {
   // Windows: use titleBarOverlay for native controls on frameless window
   if (isWin) {
     winOpts.titleBarOverlay = {
-      color: '#06080d',
+      color: '#131314',
       symbolColor: '#5a6577',
       height: 32,
     };

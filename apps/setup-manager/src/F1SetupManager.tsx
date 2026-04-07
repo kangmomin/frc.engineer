@@ -39,12 +39,28 @@ async function callClaude(messages, systemPrompt, signal, key?) {
 }
 
 // ─── Design tokens ───
+// Matched to frc.pitwall theme (web/src/styles/theme.css)
 const P = {
-  bg: '#06080d', surface: '#0c1018', surface2: '#121822',
-  border: 'rgba(0,229,255,0.08)', borderHi: 'rgba(0,229,255,0.18)',
-  accent: '#00e5ff', accent2: '#cdff13', danger: '#ff525c',
-  text: '#c8d0da', muted: '#5a6577', dim: '#3a4353',
-  mono: "'JetBrains Mono', monospace", sans: "'Plus Jakarta Sans', sans-serif",
+  bg: '#131314',                              // --bg-primary
+  surface: 'rgba(32, 31, 32, 0.92)',          // --bg-panel
+  surface2: '#201f20',                        // --bg-surface
+  surfaceHover: 'rgba(42, 42, 43, 0.95)',     // --bg-panel-hover
+  elevated: '#2a2a2b',                        // --bg-surface-elevated
+  border: 'rgba(59, 73, 76, 0.15)',           // --bg-panel-border
+  borderHi: 'rgba(59, 73, 76, 0.22)',         // --border-color
+  accent: '#00e5ff',                          // --accent
+  accent2: '#cdff13',                         // --accent-lime
+  accentSoft: '#c3f5ff',                      // --accent-yellow (light cyan)
+  danger: '#ff525c',                          // --accent-red
+  dangerSoft: '#ffb3b2',                      // --accent-soft
+  text: '#e5e2e3',                            // --text-primary
+  textSec: '#bac9cc',                         // --text-secondary
+  muted: '#849396',                           // --text-muted
+  dim: '#3b494c',                             // --drs-inactive
+  mono: "'Space Grotesk', sans-serif",        // --font-racing
+  sans: "'Inter', sans-serif",                // --font-body
+  glow: '0 0 18px rgba(0, 229, 255, 0.18)',  // --shadow-glow
+  panelShadow: '0 20px 40px rgba(0, 229, 255, 0.08)', // --shadow-panel
 };
 
 function Bar({v,min,max}){const p=Math.max(0,Math.min(100,((v-min)/(max-min))*100));const c=p<33?P.accent:p<66?P.accent2:P.danger;return(<div style={{background:'rgba(255,255,255,0.04)',borderRadius:2,height:3,overflow:'hidden'}}><div style={{width:`${p}%`,height:'100%',background:c,borderRadius:2}}/></div>);}
