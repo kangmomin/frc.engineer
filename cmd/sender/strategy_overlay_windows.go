@@ -37,7 +37,7 @@ func newStrategyOverlay(pm *telemetry.PitwallManager, getConfig func(int8) track
 
 const (
 	stratBaseW = 320
-	stratBaseH = 380
+	stratBaseH = 270
 )
 
 func (o *strategyOverlay) px(v float64) int32 {

@@ -27,7 +27,7 @@ const (
 	minScale     = 0.6
 	maxScale     = 2.5
 	baseWidth    = 340
-	baseHeight   = 420
+	baseHeight   = 280
 	defaultScale = 1.0
 )
 

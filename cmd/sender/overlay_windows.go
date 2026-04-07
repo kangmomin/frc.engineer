@@ -417,7 +417,7 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 			relYaw := float64(c.Yaw - p.Yaw)
 			sinY, cosY := math.Sincos(relYaw)
 			fwdX, fwdY := sinY, -cosY
-			sideX, sideY := cosY, sinY
+			sideX, sideY := cosY, -sinY
 			hl, hw := carLen/2, carWid/2
 
 			pts := [4]w32Point{
