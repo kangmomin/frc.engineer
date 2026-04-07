@@ -229,3 +229,12 @@ type RadarCarData struct {
 	Yaw    float32 `json:"yaw"`
 	TeamID int     `json:"teamId"`
 }
+
+// WeatherOverlayData is a lightweight payload for the weather forecast overlay SSE stream.
+type WeatherOverlayData struct {
+	CurrentWeather string                `json:"currentWeather"`
+	TrackTemp      float32               `json:"trackTemp"`
+	AirTemp        float32               `json:"airTemp"`
+	SessionType    string                `json:"sessionType"`
+	Forecasts      []WeatherForecastDTO  `json:"forecasts"`
+}

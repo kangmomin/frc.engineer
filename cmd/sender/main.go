@@ -25,7 +25,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.39.5"
+var appVersion = "v3.39.6"
 
 func main() {
 	// Log to file so the cmd banner stays clean
@@ -252,12 +252,27 @@ func main() {
 		w.Write(radarHTML)
 	})
 
+	mux.HandleFunc("GET /weather", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(weatherHTML)
+	})
+
 	radarSSE := newRadarSSEHub(processor.PitwallManager())
 	mux.Handle("GET /api/radar/stream", radarSSE)
+
+	weatherSSE := newWeatherSSEHub(processor.PitwallManager())
+	mux.Handle("GET /api/weather/stream", weatherSSE)
 
 	radarOv := newRadarOverlay(processor.PitwallManager())
 	mux.HandleFunc("POST /api/radar/toggle", func(w http.ResponseWriter, r *http.Request) {
 		active := radarOv.Toggle()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"active": active})
+	})
+
+	weatherOv := newWeatherOverlay(processor.PitwallManager())
+	mux.HandleFunc("POST /api/weather/toggle", func(w http.ResponseWriter, r *http.Request) {
+		active := weatherOv.Toggle()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"active": active})
 	})
@@ -280,6 +295,7 @@ func main() {
 			"ersCompareMetrics":  compareMonitor.Snapshot(),
 			"currentTrack":       getCurrentTrack(trackState, trackStore),
 			"radarActive":        radarOv.IsRunning(),
+			"weatherActive":      weatherOv.IsRunning(),
 		})
 	})
 

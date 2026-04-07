@@ -8,5 +8,8 @@ var settingsHTML []byte
 //go:embed radar.html
 var radarHTML []byte
 
+//go:embed weather.html
+var weatherHTML []byte
+
 //go:embed icon.ico
 var trayIconBytes []byte

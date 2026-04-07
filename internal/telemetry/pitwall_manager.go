@@ -651,6 +651,49 @@ func (pm *PitwallManager) BuildRadarData() *dto.RadarData {
 	return data
 }
 
+// BuildWeatherData returns a lightweight weather payload for the local overlay SSE stream.
+func (pm *PitwallManager) BuildWeatherData() *dto.WeatherOverlayData {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.session == nil {
+		return nil
+	}
+
+	data := &dto.WeatherOverlayData{
+		CurrentWeather: weatherString(pm.session.Weather),
+		TrackTemp:      float32(pm.session.TrackTemperature),
+		AirTemp:        float32(pm.session.AirTemperature),
+		SessionType:    sessionTypeString(pm.session.SessionType),
+	}
+
+	numForecast := int(pm.session.NumWeatherForecastSamples)
+	if numForecast > 64 {
+		numForecast = 64
+	}
+	if numForecast > 0 {
+		forecasts := make([]dto.WeatherForecastDTO, 0, numForecast)
+		for i := range numForecast {
+			fs := &pm.session.WeatherForecastSamples[i]
+			if fs.SessionType != pm.session.SessionType {
+				continue
+			}
+			forecasts = append(forecasts, dto.WeatherForecastDTO{
+				SessionType:     sessionTypeString(fs.SessionType),
+				TimeOffset:      int(fs.TimeOffset),
+				Weather:         weatherString(fs.Weather),
+				TrackTemp:       float32(fs.TrackTemperature),
+				TrackTempChange: int(fs.TrackTemperatureChange),
+				AirTemp:         float32(fs.AirTemperature),
+				AirTempChange:   int(fs.AirTemperatureChange),
+				RainPercentage:  int(fs.RainPercentage),
+			})
+		}
+		data.Forecasts = forecasts
+	}
+	return data
+}
+
 // HasData returns true if at least session or motion data has been received
 func (pm *PitwallManager) HasData() bool {
 	pm.mu.RLock()
