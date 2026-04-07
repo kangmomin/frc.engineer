@@ -11,9 +11,10 @@ import { CombatDashboard } from '../combat/CombatDashboard';
 import { CommentaryDashboard } from '../commentary/CommentaryDashboard';
 import { QualifyingDashboard } from '../qualifying/QualifyingDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
+import { F1SetupManager } from '../setup/F1SetupManager';
 import styles from './Layout.module.css';
 
-type DashboardView = 'cockpit' | 'commentary' | 'qualifying' | 'combat';
+type DashboardView = 'cockpit' | 'commentary' | 'qualifying' | 'combat' | 'setup';
 
 function readInitialView(): DashboardView {
   const params = new URLSearchParams(window.location.search);
@@ -21,6 +22,7 @@ function readInitialView(): DashboardView {
   if (view === 'commentary') return 'commentary';
   if (view === 'qualifying') return 'qualifying';
   if (view === 'combat') return 'combat';
+  if (view === 'setup') return 'setup';
   return 'cockpit';
 }
 
@@ -185,6 +187,15 @@ export function Layout() {
       setPitwallState(null);
     }
   }, [rtcOptions, setConnectionState, setFeaturePermissions, setPitwallState]);
+
+  // Setup manager runs independently of telemetry
+  if (dashboardView === 'setup') {
+    return (
+      <div className={styles.shell}>
+        <F1SetupManager onBack={() => switchView('cockpit')} />
+      </div>
+    );
+  }
 
   if (!rtcOptions) {
     return (
