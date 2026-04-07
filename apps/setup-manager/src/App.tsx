@@ -1,5 +1,66 @@
-import { Component, type ReactNode } from 'react';
+import { Component, useState, useEffect, type ReactNode } from 'react';
 import { F1SetupManager } from './F1SetupManager';
+
+declare global {
+  interface Window {
+    electronAPI?: {
+      platform: string;
+      onUpdateStatus?: (cb: (data: UpdateStatus) => void) => void;
+      installUpdate?: () => void;
+    };
+  }
+}
+
+interface UpdateStatus {
+  status: 'available' | 'downloading' | 'ready' | 'error';
+  version?: string;
+  percent?: number;
+}
+
+function UpdateBanner() {
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+
+  useEffect(() => {
+    window.electronAPI?.onUpdateStatus?.((data: UpdateStatus) => setUpdate(data));
+  }, []);
+
+  if (!update) return null;
+
+  if (update.status === 'downloading') {
+    return (
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(0,229,255,0.1)', zIndex: 10000 }}>
+        <div style={{ height: '100%', width: `${update.percent || 0}%`, background: '#00e5ff', transition: 'width 0.3s' }} />
+      </div>
+    );
+  }
+
+  if (update.status === 'ready') {
+    return (
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        background: 'rgba(0,229,255,0.08)', backdropFilter: 'blur(8px)',
+        borderTop: '1px solid rgba(0,229,255,0.15)',
+        padding: '8px 16px', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', zIndex: 10000,
+        fontFamily: 'Inter, sans-serif', fontSize: 13,
+      }}>
+        <span style={{ color: '#c8d0da' }}>v{update.version} 업데이트 준비 완료</span>
+        <button
+          onClick={() => window.electronAPI?.installUpdate?.()}
+          style={{
+            background: '#00e5ff', color: '#06080d', border: 'none',
+            borderRadius: 4, padding: '4px 14px', fontWeight: 600,
+            fontSize: 12, cursor: 'pointer',
+          }}
+        >
+          재시작
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -22,6 +83,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <F1SetupManager />
+      <UpdateBanner />
     </ErrorBoundary>
   );
 }

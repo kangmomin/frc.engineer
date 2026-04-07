@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -64,6 +65,44 @@ function stopSender() {
   senderProcess = null;
 }
 
+// ─── Auto-updater ───
+function setupAutoUpdater(win) {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[updater] Update available:', info.version);
+    win.webContents.send('update-status', { status: 'available', version: info.version });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    win.webContents.send('update-status', {
+      status: 'downloading',
+      percent: Math.round(progress.percent),
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[updater] Update downloaded:', info.version);
+    win.webContents.send('update-status', { status: 'ready', version: info.version });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[updater] Error:', err.message);
+  });
+
+  ipcMain.on('install-update', () => {
+    stopSender();
+    autoUpdater.quitAndInstall(true, true);
+  });
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[updater] Check failed:', err.message);
+    });
+  }, 3000);
+}
+
 // ─── Window ───
 function createWindow() {
   const winOpts = {
@@ -72,7 +111,7 @@ function createWindow() {
     minWidth: 560,
     minHeight: 700,
     backgroundColor: '#131314',
-    frame: false,
+    titleBarStyle: 'hidden',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -104,12 +143,17 @@ function createWindow() {
     require('electron').shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  return win;
 }
 
 // ─── Lifecycle ───
 app.whenReady().then(() => {
   startSender();
-  createWindow();
+  const win = createWindow();
+  if (app.isPackaged) {
+    setupAutoUpdater(win);
+  }
 });
 
 app.on('window-all-closed', () => {

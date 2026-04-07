@@ -45,18 +45,26 @@
 6. **deploy 레포 동기화**: `build/deploy-inspect-1` 에서 `git pull origin main`
 7. **Electron 산출물을 deploy 레포에 복사**:
    ```bash
-   cp apps/setup-manager/release/*.exe build/deploy-inspect-1/
+   cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe build/deploy-inspect-1/
+   cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap build/deploy-inspect-1/
+   cp apps/setup-manager/release/latest.yml build/deploy-inspect-1/
    ```
 8. **deploy 레포 푸시**: `build/deploy-inspect-1` 에서 커밋 & push (태그 포함)
    ```bash
    cd build/deploy-inspect-1
-   git add *.exe
+   git add *.exe *.blockmap latest.yml
    git commit -m "deploy: Minmo Driver Pack vX.Y.Z"
    git tag vX.Y.Z
    git push origin refs/heads/main:refs/heads/main
    git push origin vX.Y.Z
    ```
-9. **GitHub Release 생성**: `kangmomin/frc.engineer-deploy` 에 릴리스 생성 + Electron 앱 installer/portable exe 에셋 업로드
+9. **GitHub Release 생성**: `kangmomin/frc.engineer-deploy` 에 릴리스 생성 + Setup 인스톨러 + `latest.yml` + `.blockmap` 3개 에셋 업로드 (auto-update에 필요)
+   ```bash
+   gh release create vX.Y.Z \
+     Minmo-Driver-Pack-Setup-X.Y.Z.exe \
+     Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap \
+     latest.yml
+   ```
 10. **메인 레포 태그**: 메인 레포에도 동일 버전 태그 생성 & push
 
 ### WebRTC 페이로드 사이즈 제약

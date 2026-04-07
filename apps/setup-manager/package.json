@@ -15,6 +15,13 @@
   "build": {
     "appId": "engineer.frc.setup-manager",
     "productName": "Minmo Driver Pack",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kangmomin",
+        "repo": "frc.engineer-deploy"
+      }
+    ],
     "directories": {
       "output": "release"
     },
@@ -29,19 +36,24 @@
       }
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "electron/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": true,
-      "perMachine": false
+      "perMachine": false,
+      "artifactName": "Minmo-Driver-Pack-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "Minmo-Driver-Pack-Portable.exe"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

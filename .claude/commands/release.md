@@ -38,6 +38,12 @@ deploy 레포(`kangmomin/frc.engineer-deploy`)의 최신 태그를 기준으로 
   cp build/source-deploy-1/frc-pitwall-sender.exe build/deploy-inspect-1/frc-pitwall-sender.exe
   cp build/source-deploy-1/frc-pitwall-sender.exe build/artifacts/frc-pitwall-sender.exe
   ```
+- Electron 산출물 복사:
+  ```
+  cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe build/deploy-inspect-1/
+  cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap build/deploy-inspect-1/
+  cp apps/setup-manager/release/latest.yml build/deploy-inspect-1/
+  ```
 
 ### 5. deploy 레포 커밋 & 태그 & 푸시
 ```
@@ -50,9 +56,15 @@ git push origin vX.Y.Z
 ```
 
 ### 6. GitHub Release 생성
-- `gh release create vX.Y.Z frc-co-driver.exe frc-pitwall-sender.exe` (deploy-inspect-1 디렉토리에서)
+- deploy-inspect-1 디렉토리에서:
+  ```
+  gh release create vX.Y.Z \
+    Minmo-Driver-Pack-Setup-X.Y.Z.exe \
+    Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap \
+    latest.yml
+  ```
 - 릴리스 노트에 주요 변경사항 포함
-- `frc-co-driver.exe`와 `frc-pitwall-sender.exe` 두 에셋 모두 업로드
+- Setup 인스톨러 + `latest.yml` + `.blockmap` 3개 파일을 에셋으로 업로드 (auto-update에 필요)
 
 ### 7. 메인 레포 태그
 - 메인 레포 루트에서: `git tag vX.Y.Z && git push origin vX.Y.Z`
@@ -64,4 +76,4 @@ git push origin vX.Y.Z
 ## 주의사항
 - 빌드 결과가 **PE32+ executable (GUI)** 인지 반드시 확인. "console"이면 중단하고 `-H windowsgui` 누락 경고
 - `build/source-deploy-1` 또는 `build/deploy-inspect-1`이 비어있으면 `git clone`으로 초기화
-- 릴리스 생성 시 deploy-inspect-1에 `frc-co-driver.exe`가 없으면 sender만 에셋으로 업로드하고 경고 출력
+- 릴리스 에셋은 Setup 인스톨러 + `latest.yml` + `.blockmap` 3개 업로드 (auto-update 필수)
