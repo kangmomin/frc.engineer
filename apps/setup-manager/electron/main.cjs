@@ -1,7 +1,10 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 
-const isDev = !app.isPackaged;
+// Check if Vite dev server is running; fall back to built files
+const fs = require('fs');
+const distIndex = path.join(__dirname, '..', 'dist', 'index.html');
+const isDev = !app.isPackaged && !fs.existsSync(distIndex);
 const isWin = process.platform === 'win32';
 
 function createWindow() {
