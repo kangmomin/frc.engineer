@@ -64,13 +64,15 @@ const Icons = {
   key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
 };
 
-const TABS = [
-  { id: "main", label: "SETUP", icon: Icons.wrench },
-  { id: "teams", label: "TEAMS", icon: Icons.flag },
-  { id: "compare", label: "COMPARE", icon: Icons.chartBar },
-  { id: "mysetup", label: "MY SETUP", icon: Icons.sliders },
-  { id: "ask", label: "ASK", icon: Icons.msgCircle },
-];
+function getTabs() {
+  return [
+    { id: "main", label: "SETUP", icon: Icons.wrench },
+    { id: "teams", label: "TEAMS", icon: Icons.flag },
+    { id: "compare", label: "COMPARE", icon: Icons.chartBar },
+    { id: "mysetup", label: "MY SETUP", icon: Icons.sliders },
+    { id: "ask", label: "ASK", icon: Icons.msgCircle },
+  ];
+}
 
 function Stepper({ steps, current }) {
   return (
@@ -179,13 +181,13 @@ export function F1SetupManager() {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   // Main tab
-  const step = selSetup ? 5 : weather ? 4 : (team || (mode && mode !== "nonequal")) ? 3 : mode === "nonequal" ? 2.5 : track ? 2 : 1;
   const [track, setTrack] = useState(null);
   const [mode, setMode] = useState(null);
   const [weather, setWeather] = useState(null);
   const [team, setTeam] = useState(null);
   const [selSetup, setSelSetup] = useState(null);
   const [selMeta, setSelMeta] = useState(null);
+  const step = selSetup ? 5 : weather ? 4 : (team || (mode && mode !== "nonequal")) ? 3 : mode === "nonequal" ? 2.5 : track ? 2 : 1;
   const [expanded, setExpanded] = useState({});
   const [fg, setFg] = useState("all");
   const [chat, setChat] = useState([]); const [input, setInput] = useState(""); const [loading, setLoading] = useState(false); const [chatHist, setChatHist] = useState([]);
@@ -278,7 +280,7 @@ export function F1SetupManager() {
         zIndex: 10,
       }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-          {TABS.map(t => {
+          {getTabs().map(t => {
             const active = tab === t.id;
             return (
               <button key={t.id} onClick={() => setTab(t.id)} title={t.label} style={{
@@ -312,7 +314,7 @@ export function F1SetupManager() {
           WebkitAppRegion: 'drag', flexShrink: 0,
         } as any}>
           <span style={{ fontFamily: P.mono, fontSize: 11, fontWeight: 700, letterSpacing: 3, color: P.text, textTransform: 'uppercase' }}>FRC SETUP LAB</span>
-          <span style={{ fontFamily: P.mono, fontSize: 9, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase' }}>{TABS.find(t => t.id === tab)?.label}</span>
+          <span style={{ fontFamily: P.mono, fontSize: 9, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase' }}>{getTabs().find(t => t.id === tab)?.label}</span>
         </div>
 
         {/* Scrollable content */}
