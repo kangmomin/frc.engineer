@@ -179,7 +179,7 @@ export function F1SetupManager() {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   // Main tab
-  const [step, setStep] = useState(1);
+  const step = selSetup ? 5 : weather ? 4 : (team || (mode && mode !== "nonequal")) ? 3 : mode === "nonequal" ? 2.5 : track ? 2 : 1;
   const [track, setTrack] = useState(null);
   const [mode, setMode] = useState(null);
   const [weather, setWeather] = useState(null);
@@ -196,7 +196,7 @@ export function F1SetupManager() {
   // Ask tab
   const [askQ, setAskQ] = useState(""); const [askChat, setAskChat] = useState([]); const [askLoad, setAskLoad] = useState(false); const [askHist, setAskHist] = useState([]);
   // MySetup tab
-  const [myTrack, setMyTrack] = useState(null); const [myMode, setMyMode] = useState(null); const [myTeam, setMyTeam] = useState(null);
+  const [myTrack, setMyTrack] = useState(null);
   const [myVals, setMyVals] = useState(() => { const iv = {}; FIELDS.forEach(f => { const d = DEFS[f.k]; iv[f.k] = Math.round(((d.min + d.max) / 2) * 10) / 10; }); return iv; });
   const [myChat, setMyChat] = useState([]); const [myInput, setMyInput] = useState(""); const [myLoad, setMyLoad] = useState(false); const [myHist, setMyHist] = useState([]);
   const chatEnd = useRef(null); const askRef = useRef(null); const myEnd = useRef(null);
@@ -209,13 +209,12 @@ export function F1SetupManager() {
   const dd = track ? DB[track] : null;
   const ti = TEAMS.find(t => t.name === team);
   const isNE = mode === "nonequal";
-  const ts = isNE ? 6 : 5;
 
-  const sTrack = t => { setTrack(t); setMode(null); setWeather(null); setTeam(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); setStep(2); };
-  const sMode = m => { setMode(m); setWeather(null); setTeam(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); setStep(m === "nonequal" ? 2.5 : 3); };
-  const sTeam = t => { setTeam(t); setWeather(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); setStep(3); };
-  const sW = w => { setWeather(w); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); setFg("all"); setStep(4); };
-  const sSt = (m, s) => { setSelMeta(m); setSelSetup(s); setChat([]); setChatHist([]); setLoading(false); setStep(5); };
+  const sTrack = t => { setTrack(t); setMode(null); setWeather(null); setTeam(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); };
+  const sMode = m => { setMode(m); setWeather(null); setTeam(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); };
+  const sTeam = t => { setTeam(t); setWeather(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); };
+  const sW = w => { setWeather(w); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); setFg("all"); };
+  const sSt = (m, s) => { setSelMeta(m); setSelSetup(s); setChat([]); setChatHist([]); setLoading(false); };
 
   const bSys = () => { if (!selSetup) return ""; const sw = FIELDS.map(f => `${DEFS[f.k].name}:${selSetup[f.k]}(${DEFS[f.k].min}~${DEFS[f.k].max})`).join("\n"); const ti2 = dd?.track ? `\n[트랙]${track}|${dd.track.notes}\nS:${dd.track.softLife} M:${dd.track.medLife} H:${dd.track.hardLife}\n전략:${dd.track.strategy}` : ""; const tw = ti ? `\n[차량]${ti.name} 장점:${ti.pros} 단점:${ti.cons}` : ""; return `F1 25 셋업 엔지니어. 피드백\u2192셋업 변경.\n\n${KNOWLEDGE_BASE}\n\n[환경]${track}|${isNE ? "논이퀄" : "이퀄"}|${weather === "rain" ? "우천" : "건조"}|${selMeta?.label}${ti2}${tw}\n[셋업]\n${sw}\n[규칙]1.공감+해석 2."항목 현재\u2192추천" 3.이유1줄 4.한국어3~5줄 5.2~3개변경`; };
 
@@ -242,7 +241,7 @@ export function F1SetupManager() {
   const mySend = () => {
     if (!myTrack) return;
     const sw = FIELDS.map(f => `${DEFS[f.k].name}:${myVals[f.k]}`).join("\n");
-    const myTi = TEAMS.find(t => t.name === myTeam);
+    const myTi = null;
     const myDD = DB[myTrack];
     const ti2 = myDD?.track ? `\n[트랙]${myTrack}|${myDD.track.notes}` : "";
     const tw = myTi ? `\n[차량]${myTi.name} 장점:${myTi.pros} 단점:${myTi.cons}` : "";
@@ -542,7 +541,7 @@ export function F1SetupManager() {
                           maxWidth: '85%', padding: '7px 10px', fontSize: 11, lineHeight: 1.6, borderRadius: 3,
                           background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
                           border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
-                          color: P.text, whiteSpace: 'pre-wrap', fontFamily: m.r === "a" ? P.sans : P.sans,
+                          color: P.text, whiteSpace: 'pre-wrap', fontFamily: P.sans,
                         }}>{m.t}</div>
                       </div>
                     ))}
