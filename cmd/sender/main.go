@@ -22,7 +22,6 @@ import (
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
-	"frc.engineer/internal/updater"
 )
 
 var appVersion = "v4.0.0"
@@ -64,33 +63,7 @@ func main() {
 	})
 	<-trayReady
 
-	// Auto-update with CMD progress window
-	updater.CleanOldBinary(logger)
-	trayPrefix := "FRC Pitwall Sender " + appVersion
-	consoleOpened := false
-	onProgress := func(status string, pct int) {
-		if !consoleOpened {
-			openConsole("FRC Pitwall Sender — Auto Update")
-			fmt.Println()
-			fmt.Println("  ========================================")
-			fmt.Println("    FRC Pitwall Sender — Auto Update")
-			fmt.Println("  ========================================")
-			fmt.Println()
-			consoleOpened = true
-		}
-		printProgress(status, pct)
-		systray.SetTooltip(trayPrefix + " — " + status)
-	}
-	if err := updater.AutoUpdate(logger, appVersion, onProgress); err != nil {
-		logger.Warn("auto-update failed, continuing with current version", "error", err)
-	}
-	if consoleOpened {
-		fmt.Println()
-		fmt.Println()
-		fmt.Println("  Update complete. Restarting...")
-		closeConsole()
-	}
-	systray.SetTooltip(trayPrefix + " — Running")
+	systray.SetTooltip("FRC Pitwall Sender " + appVersion + " — Running")
 
 	signalingURL := os.Getenv("SIGNALING_URL")
 	if signalingURL == "" {
