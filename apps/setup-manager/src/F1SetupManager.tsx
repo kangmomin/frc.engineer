@@ -274,7 +274,7 @@ function ChatMessages({ messages, endRef }) {
     {messages.map((m, i) => (
       <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
         <div style={{
-          maxWidth: '85%', padding: '7px 10px', fontSize: 11, lineHeight: 1.6, borderRadius: 3,
+          maxWidth: '85%', padding: '8px 12px', fontSize: 12, lineHeight: 1.7, borderRadius: 4,
           background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
           border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
           color: P.text, whiteSpace: 'pre-wrap', fontFamily: P.sans,
@@ -289,17 +289,17 @@ function ChatLoading({ loading, label = "ANALYZING..." }) {
   if (!loading) return null;
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-      <div style={{ padding: '7px 12px', borderRadius: 3, fontSize: 10, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>{label}</div>
+      <div style={{ padding: '8px 14px', borderRadius: 4, fontSize: 11, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>{label}</div>
     </div>
   );
 }
 
 function ChatChips({ items, onSelect, mb = 8 }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: mb }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: mb }}>
       {items.map(q => (
         <button key={q} onClick={() => onSelect(q)} style={{
-          fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
+          fontSize: 11, padding: '4px 10px', borderRadius: 3, cursor: 'pointer',
           border: `1px solid ${P.border}`, background: 'transparent', color: P.muted, fontFamily: P.sans,
         }}>{q}</button>
       ))}
@@ -309,14 +309,14 @@ function ChatChips({ items, onSelect, mb = 8 }) {
 
 function ChatInput({ value, onChange, onSend, loading, placeholder, buttonLabel = "SEND" }) {
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
+    <div style={{ display: 'flex', gap: 8 }}>
       <input value={value} onChange={e => onChange(e.target.value)} onKeyDown={e => e.key === "Enter" && onSend()}
         placeholder={placeholder} style={{
-          flex: 1, padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
-          background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.sans, outline: 'none',
+          flex: 1, padding: '10px 14px', borderRadius: 4, border: `1px solid ${P.border}`,
+          background: P.surface2, color: P.text, fontSize: 13, fontFamily: P.sans, outline: 'none',
         }} />
       <button onClick={onSend} disabled={loading} style={{
-        padding: '8px 16px', borderRadius: 3, border: 'none',
+        padding: '10px 20px', borderRadius: 4, border: 'none',
         background: loading ? P.dim : P.accent, color: P.bg,
         fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
         cursor: loading ? 'not-allowed' : 'pointer',
@@ -328,14 +328,14 @@ function ChatInput({ value, onChange, onSend, loading, placeholder, buttonLabel 
 // ─── Panel component ───
 function Panel({ title, children, style: s = {} }) {
   return (
-    <div style={{ background: P.surface, border: `1px solid ${P.border}`, borderRadius: 3, ...s }}>
+    <div style={{ background: P.surface, border: `1px solid ${P.border}`, borderRadius: 4, ...s }}>
       {title && (
-        <div style={{ padding: '10px 14px 8px', borderBottom: `1px solid ${P.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 2, height: 12, background: P.accent, borderRadius: 1, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, fontFamily: P.mono, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', color: P.muted }}>{title}</span>
+        <div style={{ padding: '12px 16px 10px', borderBottom: `1px solid ${P.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 2, height: 14, background: P.accent, borderRadius: 1, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', color: P.muted }}>{title}</span>
         </div>
       )}
-      <div style={{ padding: '12px 14px' }}>{children}</div>
+      <div style={{ padding: '14px 16px' }}>{children}</div>
     </div>
   );
 }
@@ -595,10 +595,10 @@ export function F1SetupManager() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: P.bg, fontFamily: P.sans }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: P.bg, fontFamily: P.sans, fontSize: 13 }}>
       {/* ═══ Left Sidebar ═══ */}
       <div style={{
-        width: 52, minHeight: '100vh', background: P.surface, borderRight: `1px solid ${P.border}`,
+        width: 60, minHeight: '100vh', background: P.surface, borderRight: `1px solid ${P.border}`,
         display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 40, flexShrink: 0,
         zIndex: 10,
       }}>
@@ -607,7 +607,7 @@ export function F1SetupManager() {
             const active = tab === t.id;
             return (
               <button key={t.id} onClick={() => setTab(t.id)} title={t.label} style={{
-                width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative',
                 color: active ? P.accent : P.muted, borderRadius: 2,
                 transition: 'color 0.15s',
@@ -633,7 +633,7 @@ export function F1SetupManager() {
         {/* Auto-detect track from telemetry */}
         {senderConnected && detectedTrack && detectedTrack !== track && (
           <button onClick={() => sTrack(detectedTrack)} title={`Switch to ${detectedTrack}`} style={{
-            width: 44, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
+            width: 50, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
             background: 'rgba(0,229,255,0.08)', border: `1px solid ${P.accent}`, borderRadius: 3,
             cursor: 'pointer', color: P.accent, fontSize: 7, fontFamily: P.mono, fontWeight: 700,
             letterSpacing: 0.5, marginBottom: 8, animation: 'none',
@@ -643,7 +643,7 @@ export function F1SetupManager() {
         )}
         {/* API Key */}
         <button onClick={() => { setKeyInput(apiKey); setShowKeyModal(true); }} title="API Key" style={{
-          width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'transparent', border: 'none', cursor: 'pointer', marginBottom: 12,
           color: apiKey ? P.muted : P.danger,
         }}>
@@ -655,11 +655,11 @@ export function F1SetupManager() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Header bar (32px drag region) */}
         <div style={{
-          height: 32, background: P.surface, borderBottom: `1px solid ${P.border}`,
+          height: 38, background: P.surface, borderBottom: `1px solid ${P.border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px',
           WebkitAppRegion: 'drag', flexShrink: 0,
         } as any}>
-          <span style={{ fontFamily: P.mono, fontSize: 11, fontWeight: 700, letterSpacing: 3, color: P.text, textTransform: 'uppercase' }}>FRC SETUP LAB</span>
+          <span style={{ fontFamily: P.mono, fontSize: 13, fontWeight: 700, letterSpacing: 3, color: P.text, textTransform: 'uppercase' }}>MINMO DRIVER PACK</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {senderConnected && liveSession && (
               <span style={{ fontFamily: P.mono, fontSize: 8, color: P.accent, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -672,7 +672,7 @@ export function F1SetupManager() {
         </div>
 
         {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 16px 80px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '18px 20px 80px' }}>
 
           {/* ═══════ SETUP TAB ═══════ */}
           {tab === "main" && (

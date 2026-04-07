@@ -1,7 +1,7 @@
 {
-  "name": "frc-setup-manager",
+  "name": "minmo-driver-pack",
   "version": "1.0.0",
-  "description": "F1 25 Setup Manager — Standalone Electron App",
+  "description": "Minmo Driver Pack — F1 25 Setup + Telemetry Suite",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
@@ -14,7 +14,7 @@
   },
   "build": {
     "appId": "engineer.frc.setup-manager",
-    "productName": "FRC Pitwall Suite",
+    "productName": "Minmo Driver Pack",
     "directories": {
       "output": "release"
     },
@@ -38,7 +38,7 @@
       "perMachine": false
     },
     "portable": {
-      "artifactName": "FRC-Setup-Manager-Portable.exe"
+      "artifactName": "Minmo-Driver-Pack-Portable.exe"
     }
   },
   "dependencies": {

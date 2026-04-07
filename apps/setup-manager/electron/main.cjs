@@ -41,7 +41,7 @@ function startSender() {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
-    env: { ...process.env, SETTINGS_PORT: '8099' },
+    env: { ...process.env, SETTINGS_PORT: '8099', FRC_NO_BROWSER: '1' },
   });
 
   senderProcess.stdout?.on('data', d => console.log('[sender]', d.toString().trim()));
@@ -67,10 +67,10 @@ function stopSender() {
 // ─── Window ───
 function createWindow() {
   const winOpts = {
-    width: 580,
-    height: 900,
-    minWidth: 480,
-    minHeight: 650,
+    width: 680,
+    height: 960,
+    minWidth: 560,
+    minHeight: 700,
     backgroundColor: '#131314',
     frame: false,
     webPreferences: {

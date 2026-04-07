@@ -580,9 +580,11 @@ func main() {
 		"settingsPort", settingsPort,
 	)
 
-	// Auto-open browser to settings page
-	time.Sleep(200 * time.Millisecond)
-	openBrowser(settingsURL)
+	// Auto-open browser to settings page (skip if embedded in another app)
+	if os.Getenv("FRC_NO_BROWSER") == "" {
+		time.Sleep(200 * time.Millisecond)
+		openBrowser(settingsURL)
+	}
 
 	// Block until user clicks Quit in the system tray
 	<-ctx.Done()
