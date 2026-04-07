@@ -107,9 +107,10 @@ export function F1SetupManager() {
   const [myChat, setMyChat] = useState([]); const [myInput, setMyInput] = useState(""); const [myLoad, setMyLoad] = useState(false); const [myHist, setMyHist] = useState([]);
   const chatEnd = useRef(null); const askRef = useRef(null); const myEnd = useRef(null);
 
-  useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [chat]);
-  useEffect(() => { askRef.current?.scrollIntoView({ behavior: "smooth" }); }, [askChat]);
-  useEffect(() => { myEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [myChat]);
+  const useAutoScroll = (ref, dep) => useEffect(() => { ref.current?.scrollIntoView({ behavior: "smooth" }); }, [dep]);
+  useAutoScroll(chatEnd, chat);
+  useAutoScroll(askRef, askChat);
+  useAutoScroll(myEnd, myChat);
 
   const dd = track ? DB[track] : null;
   const ti = TEAMS.find(t => t.name === team);
@@ -124,11 +125,36 @@ export function F1SetupManager() {
 
   const bSys = () => { if (!selSetup) return ""; const sw = FIELDS.map(f => `${DEFS[f.k].name}:${selSetup[f.k]}(${DEFS[f.k].min}~${DEFS[f.k].max})`).join("\n"); const ti2 = dd?.track ? `\n[트랙]${track}|${dd.track.notes}\nS:${dd.track.softLife} M:${dd.track.medLife} H:${dd.track.hardLife}\n전략:${dd.track.strategy}` : ""; const tw = ti ? `\n[차량]${ti.name} 장점:${ti.pros} 단점:${ti.cons}` : ""; return `F1 25 셋업 엔지니어. 피드백\u2192셋업 변경.\n\n${KNOWLEDGE_BASE}\n\n[환경]${track}|${isNE ? "논이퀄" : "이퀄"}|${weather === "rain" ? "우천" : "건조"}|${selMeta?.label}${ti2}${tw}\n[셋업]\n${sw}\n[규칙]1.공감+해석 2."항목 현재\u2192추천" 3.이유1줄 4.한국어3~5줄 5.2~3개변경`; };
 
-  const send = async () => { if (!input.trim() || loading) return; const m = input.trim(); setInput(""); setChat(p => [...p, { r: "u", t: m }]); const nh = [...chatHist, { role: "user", content: m }]; setLoading(true); try { const ctrl = new AbortController(); const tid = setTimeout(() => ctrl.abort(), 30000); const txt = await callClaude(nh, bSys(), ctrl.signal, apiKey); clearTimeout(tid); setChat(p => [...p, { r: "a", t: txt }]); setChatHist([...nh, { role: "assistant", content: txt }]); } catch (e) { setChat(p => [...p, { r: "a", t: e.name === "AbortError" ? "TIMEOUT" : "ERR: " + e.message }]); } setLoading(false); };
+  // Unified chat send helper
+  const chatSend = async (inputVal, guard, sys, setInp, setMsgs, setHist, hist, setLoad) => {
+    if (!inputVal.trim() || guard) return;
+    const m = inputVal.trim(); setInp("");
+    setMsgs(p => [...p, { r: "u", t: m }]);
+    const nh = [...hist, { role: "user", content: m }];
+    setLoad(true);
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 30000);
+      const txt = await callClaude(nh, sys, ctrl.signal, apiKey);
+      clearTimeout(tid);
+      setMsgs(p => [...p, { r: "a", t: txt }]);
+      setHist([...nh, { role: "assistant", content: txt }]);
+    } catch (e) { setMsgs(p => [...p, { r: "a", t: e.name === "AbortError" ? "TIMEOUT" : "ERR: " + e.message }]); }
+    setLoad(false);
+  };
 
-  const askSend = async () => { if (!askQ.trim() || askLoad) return; const m = askQ.trim(); setAskQ(""); setAskChat(p => [...p, { r: "u", t: m }]); const sys = `F1 25 셋업 전문가. 한국어 3~8줄 답변.\n\n${KNOWLEDGE_BASE}`; const nh = [...askHist, { role: "user", content: m }]; setAskLoad(true); try { const ctrl = new AbortController(); const tid = setTimeout(() => ctrl.abort(), 30000); const txt = await callClaude(nh, sys, ctrl.signal, apiKey); clearTimeout(tid); setAskChat(p => [...p, { r: "a", t: txt }]); setAskHist([...nh, { role: "assistant", content: txt }]); } catch (e) { setAskChat(p => [...p, { r: "a", t: "ERR: " + e.message }]); } setAskLoad(false); };
-
-  const mySend = async () => { if (!myInput.trim() || myLoad || !myTrack) return; const m = myInput.trim(); setMyInput(""); setMyChat(p => [...p, { r: "u", t: m }]); const sw = FIELDS.map(f => `${DEFS[f.k].name}:${myVals[f.k]}`).join("\n"); const myTi = TEAMS.find(t => t.name === myTeam); const myDD = DB[myTrack]; const ti2 = myDD?.track ? `\n[트랙]${myTrack}|${myDD.track.notes}` : ""; const tw = myTi ? `\n[차량]${myTi.name} 장점:${myTi.pros} 단점:${myTi.cons}` : ""; const sys = `F1 25 셋업 엔지니어. 사용자 커스텀 셋업 분석.\n\n${KNOWLEDGE_BASE}\n\n[환경]${myTrack}${ti2}${tw}\n[사용자 셋업]\n${sw}\n[규칙]한국어3~5줄, 2~3개변경 추천`; const nh = [...myHist, { role: "user", content: m }]; setMyLoad(true); try { const ctrl = new AbortController(); const tid = setTimeout(() => ctrl.abort(), 30000); const txt = await callClaude(nh, sys, ctrl.signal, apiKey); clearTimeout(tid); setMyChat(p => [...p, { r: "a", t: txt }]); setMyHist([...nh, { role: "assistant", content: txt }]); } catch (e) { setMyChat(p => [...p, { r: "a", t: "ERR: " + e.message }]); } setMyLoad(false); };
+  const send = () => chatSend(input, loading, bSys(), setInput, setChat, setChatHist, chatHist, setLoading);
+  const askSend = () => chatSend(askQ, askLoad, `F1 25 셋업 전문가. 한국어 3~8줄 답변.\n\n${KNOWLEDGE_BASE}`, setAskQ, setAskChat, setAskHist, askHist, setAskLoad);
+  const mySend = () => {
+    if (!myTrack) return;
+    const sw = FIELDS.map(f => `${DEFS[f.k].name}:${myVals[f.k]}`).join("\n");
+    const myTi = TEAMS.find(t => t.name === myTeam);
+    const myDD = DB[myTrack];
+    const ti2 = myDD?.track ? `\n[트랙]${myTrack}|${myDD.track.notes}` : "";
+    const tw = myTi ? `\n[차량]${myTi.name} 장점:${myTi.pros} 단점:${myTi.cons}` : "";
+    const sys = `F1 25 셋업 엔지니어. 사용자 커스텀 셋업 분석.\n\n${KNOWLEDGE_BASE}\n\n[환경]${myTrack}${ti2}${tw}\n[사용자 셋업]\n${sw}\n[규칙]한국어3~5줄, 2~3개변경 추천`;
+    chatSend(myInput, myLoad, sys, setMyInput, setMyChat, setMyHist, myHist, setMyLoad);
+  };
 
   const fM = SM.filter(m => { const wO = weather === "rain" ? m.rain : !m.rain; const gO = fg === "all" || m.group === fg; return wO && gO; });
   const sortM = isNE && ti ? [...fM].sort((a, b) => { const sa = dd?.[getDbKey(a)]; const sb = dd?.[getDbKey(b)]; if (!sa || !sb) return 0; return (gCS(sb, ti) || 0) - (gCS(sa, ti) || 0); }) : fM;
