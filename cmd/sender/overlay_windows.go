@@ -403,21 +403,21 @@ func (o *radarOverlay) paint(hwnd uintptr) {
 			dx := float64(c.X - p.X)
 			dz := float64(c.Z - p.Z)
 			sin, cos := math.Sincos(float64(p.Yaw))
-			rx := dx*cos + dz*sin
-			rz := -dx*sin + dz*cos
+			rx := dx*cos - dz*sin
+			rz := dx*sin + dz*cos
 			if rx*rx+rz*rz > o.rangeM*o.rangeM {
 				continue
 			}
 
-			sx := float64(cx) + rx*scale
+			sx := float64(cx) - rx*scale
 			sy := float64(cy) - rz*scale
 			col := ovTeamColor(c.TeamID)
 
-			// Rotated rectangle aligned with car heading
+			// Rotated rectangle aligned with car heading (X negated for screen)
 			relYaw := float64(c.Yaw - p.Yaw)
 			sinY, cosY := math.Sincos(relYaw)
-			fwdX, fwdY := sinY, -cosY
-			sideX, sideY := cosY, -sinY
+			fwdX, fwdY := -sinY, -cosY
+			sideX, sideY := -cosY, sinY
 			hl, hw := carLen/2, carWid/2
 
 			pts := [4]w32Point{

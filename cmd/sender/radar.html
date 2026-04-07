@@ -217,15 +217,15 @@
       // F1: Yaw=0 → +Z, increases clockwise
       const sin = Math.sin(playerYaw);
       const cos = Math.cos(playerYaw);
-      const rx = dx * cos + dz * sin;
-      const rz = -dx * sin + dz * cos;
+      const rx = dx * cos - dz * sin;
+      const rz = dx * sin + dz * cos;
 
       // Distance check
       const dist = Math.sqrt(rx * rx + rz * rz);
       if (dist > radarRange) continue;
 
-      // Canvas coordinates: right = +X, up = -Y
-      const sx = cx + rx * scale;
+      // Canvas coordinates: flip X (game X = left-positive)
+      const sx = cx - rx * scale;
       const sy = cy - rz * scale;
 
       const color = teamColor(car.teamId);
@@ -235,11 +235,11 @@
       const proximity = 1 - (dist / radarRange);
       const alpha = 0.35 + proximity * 0.65;
 
-      // Direction vectors for the rotated rectangle
-      const fwdX = Math.sin(carRelYaw);
+      // Direction vectors for the rotated rectangle (X negated for screen)
+      const fwdX = -Math.sin(carRelYaw);
       const fwdY = -Math.cos(carRelYaw);
-      const sideX = Math.cos(carRelYaw);
-      const sideY = -Math.sin(carRelYaw);
+      const sideX = -Math.cos(carRelYaw);
+      const sideY = Math.sin(carRelYaw);
 
       const hl = carLen / 2;
       const hw = carWid / 2;
