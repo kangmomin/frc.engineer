@@ -217,8 +217,8 @@
       // F1: Yaw=0 → +Z, increases clockwise
       const sin = Math.sin(playerYaw);
       const cos = Math.cos(playerYaw);
-      const rx = dx * cos - dz * sin;
-      const rz = dx * sin + dz * cos;
+      const rx = dx * cos + dz * sin;
+      const rz = -dx * sin + dz * cos;
 
       // Distance check
       const dist = Math.sqrt(rx * rx + rz * rz);
