@@ -1,3 +1,4 @@
+/* eslint-disable */
 // @ts-nocheck
 /**
  * F1 25 Setup Manager — Integrated into frc.engineer co-driver

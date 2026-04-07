@@ -93,6 +93,7 @@ export function SettingsView() {
   const [permissionError, setPermissionError] = useState('');
   const [permissionStatus, setPermissionStatus] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     if (config && !draft) {
@@ -336,8 +337,6 @@ export function SettingsView() {
       setPermissionSaving(false);
     }
   }
-
-  const [guideOpen, setGuideOpen] = useState(false);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
 

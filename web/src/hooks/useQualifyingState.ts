@@ -83,7 +83,7 @@ export function processFrame(
 ): QualifyingState {
   if (!prev) return state;
 
-  let next = { ...state };
+  const next = { ...state };
 
   // Session reset detection (lap number rewind)
   if (curr.currentLapNum < prev.currentLapNum - 1) {
