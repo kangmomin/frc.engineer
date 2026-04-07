@@ -230,6 +230,38 @@ type RadarCarData struct {
 	TeamID int     `json:"teamId"`
 }
 
+// StrategyOverlayData is a lightweight payload for the strategy overlay SSE stream.
+type StrategyOverlayData struct {
+	PlayerPosition    int    `json:"playerPosition"`
+	PlayerLap         int    `json:"playerLap"`
+	TotalLaps         int    `json:"totalLaps"`
+	TrackID           int8   `json:"trackId"`
+	PitRejoinPosition int    `json:"pitRejoinPosition"`
+
+	CarAhead  *StrategyCar `json:"carAhead,omitempty"`
+	CarBehind *StrategyCar `json:"carBehind,omitempty"`
+
+	UndercutVerdict string `json:"undercutVerdict"` // VIABLE, RISKY, NO
+	OvercutVerdict  string `json:"overcutVerdict"`  // VIABLE, RISKY, NO
+
+	TrainSize int  `json:"trainSize"`
+	InTrain   bool `json:"inTrain"`
+}
+
+// StrategyCar holds strategy-relevant data for a nearby car.
+type StrategyCar struct {
+	Name         string  `json:"name"`
+	Position     int     `json:"position"`
+	GapMs        int     `json:"gapMs"`
+	TireCompound string  `json:"tireCompound"`
+	TireAge      int     `json:"tireAge"`
+	LastLapMs    float32 `json:"lastLapMs"`
+	AvgPaceMs    float32 `json:"avgPaceMs"`
+	PitStops     int     `json:"pitStops"`
+	HasPitted    bool    `json:"hasPitted"`
+	PaceDeltaMs  float32 `json:"paceDeltaMs"` // vs player: negative = faster
+}
+
 // WeatherOverlayData is a lightweight payload for the weather forecast overlay SSE stream.
 type WeatherOverlayData struct {
 	CurrentWeather string                `json:"currentWeather"`

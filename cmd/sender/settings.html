@@ -493,6 +493,16 @@
          onclick="toggleWeather()">
         Weather Overlay
       </button>
+      <button id="strategyBtn" style="
+        background:#1a1a1a;border:1px solid #00d2ff33;border-radius:4px;
+        color:#00d2ff;font-family:'Orbitron',sans-serif;font-size:0.65rem;
+        letter-spacing:1.5px;text-transform:uppercase;padding:8px 20px;
+        cursor:pointer;transition:background 0.2s,border-color 0.2s;margin-left:8px;
+      " onmouseover="this.style.background='#00d2ff15';this.style.borderColor='#00d2ff'"
+         onmouseout="this.style.background='#1a1a1a';this.style.borderColor='#00d2ff33'"
+         onclick="toggleStrategy()">
+        Strategy Overlay
+      </button>
     </div>
   </div>
 
@@ -958,6 +968,7 @@
 
       updateRadarBtn(!!d.radarActive);
       updateWeatherBtn(!!d.weatherActive);
+      updateStrategyBtn(!!d.strategyActive);
     } catch {}
   }
 
@@ -1129,6 +1140,27 @@
       btn.style.borderColor = '#00d2ff33';
       btn.style.background = '#1a1a1a';
       btn.textContent = 'Weather Overlay';
+    }
+  }
+  // Strategy overlay toggle
+  async function toggleStrategy() {
+    try {
+      const res = await fetch('/api/strategy/toggle', { method: 'POST' });
+      const data = await res.json();
+      updateStrategyBtn(data.active);
+      showToast(data.active ? 'Strategy overlay opened' : 'Strategy overlay closed', true);
+    } catch { showToast('Failed to toggle strategy', false); }
+  }
+  function updateStrategyBtn(active) {
+    const btn = document.getElementById('strategyBtn');
+    if (active) {
+      btn.style.borderColor = '#00d2ff';
+      btn.style.background = '#00d2ff20';
+      btn.textContent = 'Close Strategy';
+    } else {
+      btn.style.borderColor = '#00d2ff33';
+      btn.style.background = '#1a1a1a';
+      btn.textContent = 'Strategy Overlay';
     }
   }
   loadConfig();

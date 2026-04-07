@@ -3,6 +3,7 @@ package telemetry
 import (
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 
 	"frc.engineer/internal/dto"
@@ -692,6 +693,284 @@ func (pm *PitwallManager) BuildWeatherData() *dto.WeatherOverlayData {
 		data.Forecasts = forecasts
 	}
 	return data
+}
+
+// CurrentTrackID returns the current session track ID, or -1 if unknown.
+func (pm *PitwallManager) CurrentTrackID() int8 {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	if pm.session == nil {
+		return -1
+	}
+	return pm.session.TrackID
+}
+
+// BuildStrategyOverlayData returns a lightweight strategy payload for the overlay.
+// pitTimeLossMs is the per-track pit lane time loss in milliseconds.
+// undercutDiff is the track undercut difficulty (1=easy, 2=medium, 3=hard).
+func (pm *PitwallManager) BuildStrategyOverlayData(pitTimeLossMs int, undercutDiff int) *dto.StrategyOverlayData {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.session == nil || pm.lapData == nil {
+		return nil
+	}
+	// Only produce data during race sessions (15=Race, 16=Race2, 17=Race3)
+	st := pm.session.SessionType
+	if st < 15 || st > 17 {
+		return nil
+	}
+	// Suppress during safety car / formation lap
+	if pm.session.SafetyCarStatus != 0 {
+		return nil
+	}
+
+	playerIdx := int(pm.playerIndex)
+	numCars := pm.effectiveNumCars()
+
+	// Build a lightweight per-car slice sorted by position.
+	type carEntry struct {
+		idx             int
+		position        int
+		lapNum          int
+		deltaToLeaderMs int
+		deltaToFrontMs  int
+		lastLapMs       float32
+		tireCompound    string
+		tireAge         int
+		pitStatus       int
+		numPitStops     int
+		resultStatus    int
+		name            string
+		avgPaceMs       float32
+	}
+
+	cars := make([]carEntry, 0, numCars)
+	for i := range numCars {
+		ld := &pm.lapData.LapData[i]
+		// Skip inactive / retired / DNF / DSQ
+		if ld.ResultStatus != 2 && ld.ResultStatus != 3 { // 2=active, 3=finished
+			continue
+		}
+		c := carEntry{
+			idx:             i,
+			position:        int(ld.CarPosition),
+			lapNum:          int(ld.CurrentLapNum),
+			deltaToLeaderMs: int(ld.DeltaToRaceLeaderMinutesPart)*60000 + int(ld.DeltaToRaceLeaderMSPart),
+			deltaToFrontMs:  int(ld.DeltaToCarInFrontMinutesPart)*60000 + int(ld.DeltaToCarInFrontMSPart),
+			lastLapMs:       float32(ld.LastLapTimeInMS),
+			pitStatus:       int(ld.PitStatus),
+			numPitStops:     int(ld.NumPitStops),
+			resultStatus:    int(ld.ResultStatus),
+		}
+		if pm.carStatus != nil {
+			cs := &pm.carStatus.CarStatusData[i]
+			c.tireCompound = tireCompoundString(cs.VisualTyreCompound)
+			c.tireAge = int(cs.TyresAgeLaps)
+		}
+		if pm.participants != nil {
+			c.name = pm.participants.Participants[i].GetName()
+		}
+		// Clean recent pace from strategy manager (last 5 laps avg)
+		ds := pm.strategyMgr.GetDriverStrategy(i)
+		if n := len(ds.RecentLaps); n > 0 {
+			cnt := min(5, n)
+			sum := 0
+			for _, l := range ds.RecentLaps[n-cnt:] {
+				sum += l.TimeMS
+			}
+			c.avgPaceMs = float32(sum) / float32(cnt)
+		}
+		cars = append(cars, c)
+	}
+	// Sort by position ascending
+	sort.Slice(cars, func(i, j int) bool { return cars[i].position < cars[j].position })
+
+	// Find player in sorted list
+	playerPos := -1
+	var player *carEntry
+	for i := range cars {
+		if cars[i].idx == playerIdx {
+			playerPos = i
+			player = &cars[i]
+			break
+		}
+	}
+	if player == nil {
+		return nil
+	}
+
+	data := &dto.StrategyOverlayData{
+		PlayerPosition: player.position,
+		PlayerLap:      player.lapNum,
+		TotalLaps:      int(pm.session.TotalLaps),
+		TrackID:        pm.session.TrackID,
+	}
+
+	// ── Pit Rejoin Position ──
+	// Primary: game-provided value
+	gameRejoin := int(pm.session.PitStopRejoinPosition)
+	if gameRejoin > 0 {
+		data.PitRejoinPosition = gameRejoin
+	} else {
+		// Fallback: estimate from gaps
+		effectiveGap := player.deltaToLeaderMs + pitTimeLossMs
+		rejoinPos := 1
+		for _, c := range cars {
+			if c.idx == playerIdx {
+				continue
+			}
+			if c.deltaToLeaderMs < effectiveGap {
+				rejoinPos++
+			}
+		}
+		data.PitRejoinPosition = rejoinPos
+	}
+
+	// ── Car Ahead / Behind (skip pitting cars) ──
+	var ahead, behind *carEntry
+	for i := playerPos - 1; i >= 0; i-- {
+		if cars[i].pitStatus == 0 { // on track
+			ahead = &cars[i]
+			break
+		}
+	}
+	for i := playerPos + 1; i < len(cars); i++ {
+		if cars[i].pitStatus == 0 {
+			behind = &cars[i]
+			break
+		}
+	}
+
+	playerAvg := player.avgPaceMs
+	if ahead != nil {
+		gapMs := player.deltaToLeaderMs - ahead.deltaToLeaderMs
+		if gapMs < 0 {
+			gapMs = ahead.deltaToFrontMs // fallback
+		}
+		paceDelta := float32(0)
+		if playerAvg > 0 && ahead.avgPaceMs > 0 {
+			paceDelta = playerAvg - ahead.avgPaceMs // positive = player slower
+		}
+		data.CarAhead = &dto.StrategyCar{
+			Name:         ahead.name,
+			Position:     ahead.position,
+			GapMs:        gapMs,
+			TireCompound: ahead.tireCompound,
+			TireAge:      ahead.tireAge,
+			LastLapMs:    ahead.lastLapMs,
+			AvgPaceMs:    ahead.avgPaceMs,
+			PitStops:     ahead.numPitStops,
+			HasPitted:    ahead.numPitStops > 0,
+			PaceDeltaMs:  paceDelta,
+		}
+	}
+	if behind != nil {
+		gapMs := behind.deltaToLeaderMs - player.deltaToLeaderMs
+		if gapMs < 0 {
+			gapMs = 0
+		}
+		paceDelta := float32(0)
+		if playerAvg > 0 && behind.avgPaceMs > 0 {
+			paceDelta = playerAvg - behind.avgPaceMs
+		}
+		data.CarBehind = &dto.StrategyCar{
+			Name:         behind.name,
+			Position:     behind.position,
+			GapMs:        gapMs,
+			TireCompound: behind.tireCompound,
+			TireAge:      behind.tireAge,
+			LastLapMs:    behind.lastLapMs,
+			AvgPaceMs:    behind.avgPaceMs,
+			PitStops:     behind.numPitStops,
+			HasPitted:    behind.numPitStops > 0,
+			PaceDeltaMs:  paceDelta,
+		}
+	}
+
+	// ── Undercut / Overcut Viability ──
+	// Undercut window (ms) varies by difficulty: easy=5000, medium=3500, hard=2000
+	undercutWindow := 3500
+	switch undercutDiff {
+	case 1:
+		undercutWindow = 5000
+	case 3:
+		undercutWindow = 2000
+	}
+
+	data.UndercutVerdict = "NO"
+	data.OvercutVerdict = "NO"
+
+	if ahead != nil && player.pitStatus == 0 && player.lapNum > 1 {
+		gapMs := data.CarAhead.GapMs
+
+		// Undercut: smaller gap + old tires = easier
+		playerTireAge := 0
+		if pm.carStatus != nil {
+			playerTireAge = int(pm.carStatus.CarStatusData[playerIdx].TyresAgeLaps)
+		}
+		if gapMs > 0 && gapMs < undercutWindow && playerTireAge >= 10 &&
+			(ahead.numPitStops == 0 || ahead.tireAge >= playerTireAge-3) {
+			data.UndercutVerdict = "VIABLE"
+		} else if gapMs > 0 && gapMs < undercutWindow*3/2 && playerTireAge >= 6 {
+			data.UndercutVerdict = "RISKY"
+		}
+
+		// Overcut: player on newer tires, car ahead degrading
+		if gapMs > 0 && gapMs < 3500 && playerTireAge < ahead.tireAge && ahead.tireAge >= 12 {
+			data.OvercutVerdict = "VIABLE"
+		} else if gapMs > 0 && gapMs < 5000 && playerTireAge < ahead.tireAge && ahead.tireAge >= 8 {
+			data.OvercutVerdict = "RISKY"
+		}
+	}
+
+	// ── Train Detection ──
+	// Find chains of consecutive cars within 1.5s
+	const trainThreshold = 1500
+	type chain struct{ start, end int }
+	var chains []chain
+	chainStart := 0
+	for i := 1; i < len(cars); i++ {
+		gap := cars[i].deltaToFrontMs
+		if gap <= 0 || gap > trainThreshold || cars[i].pitStatus != 0 {
+			if i-chainStart >= 2 {
+				chains = append(chains, chain{chainStart, i - 1})
+			}
+			chainStart = i
+		}
+	}
+	if len(cars)-chainStart >= 2 {
+		chains = append(chains, chain{chainStart, len(cars) - 1})
+	}
+	for _, ch := range chains {
+		if playerPos >= ch.start && playerPos <= ch.end {
+			data.TrainSize = ch.end - ch.start + 1
+			data.InTrain = data.TrainSize >= 3
+			break
+		}
+	}
+
+	return data
+}
+
+func (pm *PitwallManager) effectiveNumCars() int {
+	numCars := packets.MaxCars
+	if pm.participants != nil {
+		active := int(pm.participants.NumActiveCars)
+		if pm.peakActiveCars > 0 && pm.peakActiveCars < numCars {
+			numCars = pm.peakActiveCars
+		}
+		if active > numCars {
+			numCars = active
+		}
+	}
+	if int(pm.playerIndex) >= numCars {
+		numCars = int(pm.playerIndex) + 1
+	}
+	if numCars > packets.MaxCars {
+		numCars = packets.MaxCars
+	}
+	return numCars
 }
 
 // HasData returns true if at least session or motion data has been received

@@ -25,7 +25,15 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v3.39.8"
+var appVersion = "v3.39.9"
+
+// trackStrategyConfig holds per-track strategy overlay settings.
+type trackStrategyConfig struct {
+	PitTimeLossMs      int `json:"pitTimeLossMs"`
+	UndercutDifficulty int `json:"undercutDifficulty"` // 1=easy, 2=medium, 3=hard
+}
+
+var defaultStrategyConfig = trackStrategyConfig{PitTimeLossMs: 22000, UndercutDifficulty: 2}
 
 func main() {
 	// Log to file so the cmd banner stays clean
@@ -151,6 +159,15 @@ func main() {
 	cfgRoomName := roomName
 	cfgRoomPassword := roomPassword
 	cfgForwardTargets := []rtconfig.ForwardTarget{}
+	cfgStrategySettings := map[int8]trackStrategyConfig{}
+	getStrategyConfig := func(trackID int8) trackStrategyConfig {
+		cfgMu.Lock()
+		defer cfgMu.Unlock()
+		if cfg, ok := cfgStrategySettings[trackID]; ok {
+			return cfg
+		}
+		return defaultStrategyConfig
+	}
 	var raceStorage *races.FileStorage
 	if saveFiles {
 		rs, err := races.NewFileStorage("data/races", logger)
@@ -276,6 +293,63 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"active": active})
 	})
+
+	mux.HandleFunc("GET /strategy", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(strategyHTML)
+	})
+
+	strategySSE := newStrategySSEHub(processor.PitwallManager(), getStrategyConfig)
+	mux.Handle("GET /api/strategy/stream", strategySSE)
+
+	strategyOv := newStrategyOverlay(processor.PitwallManager(), getStrategyConfig)
+	mux.HandleFunc("POST /api/strategy/toggle", func(w http.ResponseWriter, r *http.Request) {
+		active := strategyOv.Toggle()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"active": active})
+	})
+
+	mux.HandleFunc("GET /api/strategy-settings", func(w http.ResponseWriter, r *http.Request) {
+		cfgMu.Lock()
+		settings := make(map[string]trackStrategyConfig, len(cfgStrategySettings))
+		for k, v := range cfgStrategySettings {
+			settings[fmt.Sprintf("%d", k)] = v
+		}
+		cfgMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"defaults": defaultStrategyConfig, "tracks": settings})
+	})
+
+	mux.HandleFunc("PUT /api/strategy-settings", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			TrackID            int8 `json:"trackId"`
+			PitTimeLossMs      int  `json:"pitTimeLossMs"`
+			UndercutDifficulty int  `json:"undercutDifficulty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid body"})
+			return
+		}
+		if body.PitTimeLossMs < 5000 || body.PitTimeLossMs > 60000 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "pitTimeLossMs must be 5000-60000"})
+			return
+		}
+		if body.UndercutDifficulty < 1 || body.UndercutDifficulty > 3 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "undercutDifficulty must be 1-3"})
+			return
+		}
+		cfgMu.Lock()
+		cfgStrategySettings[body.TrackID] = trackStrategyConfig{
+			PitTimeLossMs:      body.PitTimeLossMs,
+			UndercutDifficulty: body.UndercutDifficulty,
+		}
+		cfgMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.Lock()
 		port := cfgUDPPort
@@ -296,6 +370,7 @@ func main() {
 			"currentTrack":       getCurrentTrack(trackState, trackStore),
 			"radarActive":        radarOv.IsRunning(),
 			"weatherActive":      weatherOv.IsRunning(),
+			"strategyActive":     strategyOv.IsRunning(),
 		})
 	})
 

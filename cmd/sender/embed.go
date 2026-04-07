@@ -11,5 +11,8 @@ var radarHTML []byte
 //go:embed weather.html
 var weatherHTML []byte
 
+//go:embed strategy.html
+var strategyHTML []byte
+
 //go:embed icon.ico
 var trayIconBytes []byte

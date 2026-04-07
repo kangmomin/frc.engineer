@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategy</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0b;
+    color: #e0e0e0;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 500;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid #1a1a1a; flex-shrink: 0;
+  }
+  .title { font-family: 'Orbitron', sans-serif; font-size: 0.7rem; font-weight: 700; color: #00d2ff; letter-spacing: 2px; text-transform: uppercase; }
+  .pos-info { font-family: 'Rajdhani'; font-size: 0.9rem; font-weight: 700; color: #bac9cc; }
+
+  .section { padding: 8px 16px; border-bottom: 1px solid #111; }
+  .section-label { font-family: 'Orbitron'; font-size: 0.45rem; color: #555; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 4px; }
+
+  .pit-rejoin { display: flex; align-items: center; gap: 10px; }
+  .pit-pos { font-family: 'Rajdhani'; font-size: 1.4rem; font-weight: 700; }
+  .pit-loss { font-size: 0.7rem; color: #666; }
+
+  .car-block { padding: 6px 16px; border-bottom: 1px solid #111; }
+  .car-header { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+  .car-arrow { font-size: 0.7rem; font-weight: 700; }
+  .car-arrow.ahead { color: #00d2ff; }
+  .car-arrow.behind { color: #ffb3b2; }
+  .car-name { font-size: 0.85rem; font-weight: 700; color: #e5e2e3; }
+  .car-gap { font-family: 'Rajdhani'; font-size: 0.85rem; font-weight: 700; color: #bac9cc; }
+  .car-details { display: flex; align-items: center; gap: 12px; font-size: 0.72rem; color: #849396; }
+  .tire { font-weight: 700; }
+  .tire-soft { color: #ff525c; }
+  .tire-medium { color: #ffc800; }
+  .tire-hard { color: #e5e2e3; }
+  .tire-inter { color: #00c850; }
+  .tire-wet { color: #008cff; }
+  .pace-faster { color: #cdff13; }
+  .pace-slower { color: #ff525c; }
+
+  .verdicts { display: flex; gap: 20px; padding: 8px 16px; border-bottom: 1px solid #111; }
+  .verdict-item { display: flex; flex-direction: column; gap: 2px; }
+  .verdict-label { font-family: 'Orbitron'; font-size: 0.45rem; color: #555; letter-spacing: 1px; text-transform: uppercase; }
+  .verdict-value { font-family: 'Rajdhani'; font-size: 0.9rem; font-weight: 700; }
+  .v-viable { color: #cdff13; }
+  .v-risky { color: #ffb3b2; }
+  .v-no { color: #444; }
+
+  .train { padding: 8px 16px; }
+  .train-info { font-size: 0.85rem; font-weight: 600; }
+  .train-stuck { color: #ff525c; }
+  .train-ok { color: #849396; }
+
+  .empty { display: flex; align-items: center; justify-content: center; flex: 1; color: #333; font-family: 'Orbitron'; font-size: 0.6rem; letter-spacing: 2px; }
+
+  .controls { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; border-top: 1px solid #1a1a1a; flex-shrink: 0; -webkit-app-region: no-drag; }
+  .controls label { font-family: 'Orbitron'; font-size: 0.5rem; color: #555; letter-spacing: 1px; text-transform: uppercase; }
+  .controls input[type="range"] { width: 80px; accent-color: #00d2ff; }
+  .range-val { font-family: 'Rajdhani'; font-size: 0.75rem; color: #00d2ff; min-width: 32px; text-align: right; }
+  .status { font-family: 'Orbitron'; font-size: 0.45rem; color: #333; text-align: center; padding-bottom: 4px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <span class="title">Strategy</span>
+  <span class="pos-info" id="posInfo">--</span>
+</div>
+
+<div id="content">
+  <div class="empty">Connecting...</div>
+</div>
+
+<div class="controls">
+  <label>BG</label>
+  <input type="range" id="bgSlider" min="0" max="100" value="100" step="5">
+  <span class="range-val" id="bgVal">100%</span>
+</div>
+<div class="status" id="status">CONNECTING</div>
+
+<script>
+(function() {
+  const posInfo = document.getElementById('posInfo');
+  const content = document.getElementById('content');
+  const statusEl = document.getElementById('status');
+  const bgSlider = document.getElementById('bgSlider');
+  const bgVal = document.getElementById('bgVal');
+
+  bgSlider.addEventListener('input', function() {
+    document.body.style.background = 'rgba(10,10,11,' + (parseInt(this.value)/100) + ')';
+    bgVal.textContent = this.value + '%';
+  });
+
+  const TIRE_CLASS = { soft:'tire-soft', medium:'tire-medium', hard:'tire-hard', inter:'tire-inter', wet:'tire-wet' };
+  const TIRE_LABEL = { soft:'SOFT', medium:'MED', hard:'HARD', inter:'INTER', wet:'WET' };
+
+  function verdictClass(v) { return v === 'VIABLE' ? 'v-viable' : v === 'RISKY' ? 'v-risky' : 'v-no'; }
+
+  function paceHtml(deltaMs) {
+    if (!deltaMs) return '';
+    var sec = deltaMs / 1000;
+    if (sec > 0) return '<span class="pace-slower">+' + sec.toFixed(1) + 's</span>';
+    return '<span class="pace-faster">' + sec.toFixed(1) + 's</span>';
+  }
+
+  function carBlock(car, label, arrowClass) {
+    if (!car) return '<div class="car-block"><div class="car-header"><span class="car-arrow ' + arrowClass + '">' + label + '</span><span class="car-name" style="color:#444">---</span></div></div>';
+    var gapSec = (car.gapMs / 1000).toFixed(1);
+    var tc = TIRE_CLASS[car.tireCompound] || '';
+    var tl = TIRE_LABEL[car.tireCompound] || '---';
+    var pitLabel = car.pitStops > 0 ? car.pitStops + ' stop' + (car.pitStops > 1 ? 's' : '') : '0 stops';
+    var nameShort = car.name && car.name.length > 3 ? car.name.slice(-3) : (car.name || '---');
+
+    return '<div class="car-block">' +
+      '<div class="car-header">' +
+        '<span class="car-arrow ' + arrowClass + '">' + label + '</span>' +
+        '<span class="car-name">' + nameShort + '</span>' +
+        '<span class="car-gap">+' + gapSec + 's</span>' +
+      '</div>' +
+      '<div class="car-details">' +
+        '<span class="tire ' + tc + '">' + tl + ' ' + car.tireAge + 'L</span>' +
+        '<span>' + pitLabel + '</span>' +
+        paceHtml(car.paceDeltaMs) +
+      '</div>' +
+    '</div>';
+  }
+
+  function render(d) {
+    posInfo.textContent = 'P' + d.playerPosition + '  ' + d.playerLap + '/' + d.totalLaps + 'L';
+
+    var pitColor = d.pitRejoinPosition <= d.playerPosition ? '#cdff13' : '#ffb3b2';
+    var html = '<div class="section"><div class="section-label">Pit Rejoin</div>' +
+      '<div class="pit-rejoin"><span class="pit-pos" style="color:' + pitColor + '">P' + d.pitRejoinPosition + '</span></div></div>';
+
+    html += carBlock(d.carAhead, '\u25B2 AHEAD', 'ahead');
+    html += carBlock(d.carBehind, '\u25BC BEHIND', 'behind');
+
+    html += '<div class="verdicts">' +
+      '<div class="verdict-item"><span class="verdict-label">Undercut</span><span class="verdict-value ' + verdictClass(d.undercutVerdict) + '">' + d.undercutVerdict + '</span></div>' +
+      '<div class="verdict-item"><span class="verdict-label">Overcut</span><span class="verdict-value ' + verdictClass(d.overcutVerdict) + '">' + d.overcutVerdict + '</span></div>' +
+    '</div>';
+
+    if (d.trainSize >= 2) {
+      var trainCls = d.inTrain ? 'train-stuck' : 'train-ok';
+      var trainTxt = d.trainSize + ' cars' + (d.inTrain ? ' \u26A0 STUCK' : '');
+      html += '<div class="train"><div class="section-label">Train</div><span class="train-info ' + trainCls + '">' + trainTxt + '</span></div>';
+    }
+
+    content.innerHTML = html;
+  }
+
+  function connect() {
+    statusEl.textContent = 'CONNECTING'; statusEl.style.color = '#333';
+    var es = new EventSource('/api/strategy/stream');
+    es.onopen = function() { statusEl.textContent = 'LIVE'; statusEl.style.color = '#00d2ff'; };
+    es.onmessage = function(e) { try { render(JSON.parse(e.data)); } catch(err) {} };
+    es.onerror = function() { statusEl.textContent = 'RECONNECTING'; statusEl.style.color = '#e74c3c'; es.close(); setTimeout(connect, 2000); };
+  }
+  connect();
+})();
+</script>
+</body>
+</html>
