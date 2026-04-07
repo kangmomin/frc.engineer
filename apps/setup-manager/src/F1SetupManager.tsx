@@ -722,7 +722,7 @@ export function F1SetupManager() {
       </div>
 
       {/* ═══ Main area ═══ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100vh', overflow: 'hidden' }}>
         {/* Header bar (32px drag region) */}
         <div style={{
           height: 38, background: P.surface, borderBottom: `1px solid ${P.border}`,
