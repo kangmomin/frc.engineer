@@ -78,6 +78,7 @@ const DEFAULT_SENDER_URL = 'http://localhost:8099';
 function useSenderConnection(senderUrl: string) {
   const [status, setStatus] = useState<any>(null);
   const [session, setSession] = useState<any>(null);
+  const [player, setPlayer] = useState<any>(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
@@ -99,9 +100,15 @@ function useSenderConnection(senderUrl: string) {
         const res = await fetch(`${senderUrl}/api/debug`, { signal: AbortSignal.timeout(3000) });
         if (cancelled) return;
         const data = await res.json();
-        setSession(data.pitwallState?.session || null);
+        const pw = data.pitwallState;
+        setSession(pw?.session || null);
+        if (pw?.drivers && pw.playerIndex >= 0 && pw.playerIndex < pw.drivers.length) {
+          setPlayer(pw.drivers[pw.playerIndex]);
+        } else {
+          setPlayer(null);
+        }
       } catch {
-        if (!cancelled) setSession(null);
+        if (!cancelled) { setSession(null); setPlayer(null); }
       }
     };
 
@@ -113,7 +120,97 @@ function useSenderConnection(senderUrl: string) {
   const trackName = status?.currentTrack?.name;
   const detectedTrack = trackName ? TRACK_MAP[trackName] || null : null;
 
-  return { connected, status, session, detectedTrack };
+  return { connected, status, session, player, detectedTrack };
+}
+
+// ─── Telemetry-based diagnostic engine ───
+type Diagnostic = { label: string; severity: 'high' | 'med' | 'low'; prompt: string };
+
+function diagnoseFromTelemetry(player: any, session: any): Diagnostic[] {
+  if (!player) return [];
+  const diags: Diagnostic[] = [];
+
+  const tw = player.tireWear; // [FL, FR, RL, RR]
+  const ti = player.tireInnerTemp; // [FL, FR, RL, RR]
+  const ts = player.tireSurfaceTemp;
+  const bt = player.brakeTemp;
+
+  if (tw && ti) {
+    const avgFrontWear = (tw[0] + tw[1]) / 2;
+    const avgRearWear = (tw[2] + tw[3]) / 2;
+    const avgFrontTemp = (ti[0] + ti[1]) / 2;
+    const avgRearTemp = (ti[2] + ti[3]) / 2;
+
+    // Understeer: front tires degrading faster
+    if (avgFrontWear > avgRearWear + 8) {
+      diags.push({ label: '언더스티어 감지', severity: avgFrontWear > avgRearWear + 15 ? 'high' : 'med',
+        prompt: `텔레메트리 분석: 프론트 타이어 마모 ${avgFrontWear.toFixed(0)}% > 리어 ${avgRearWear.toFixed(0)}%. 언더스티어 징후. 해결 방법은?` });
+    }
+
+    // Oversteer: rear tires degrading faster
+    if (avgRearWear > avgFrontWear + 8) {
+      diags.push({ label: '오버스티어 감지', severity: avgRearWear > avgFrontWear + 15 ? 'high' : 'med',
+        prompt: `텔레메트리 분석: 리어 타이어 마모 ${avgRearWear.toFixed(0)}% > 프론트 ${avgFrontWear.toFixed(0)}%. 오버스티어 징후. 해결 방법은?` });
+    }
+
+    // Front overheating
+    if (avgFrontTemp > 105) {
+      diags.push({ label: '프론트 과열', severity: avgFrontTemp > 115 ? 'high' : 'med',
+        prompt: `텔레메트리 분석: 프론트 타이어 코어 온도 ${avgFrontTemp.toFixed(0)}°C (이상: 85-105°C). 프론트 과열 해결 방법은?` });
+    }
+
+    // Rear overheating
+    if (avgRearTemp > 105) {
+      diags.push({ label: '리어 과열', severity: avgRearTemp > 115 ? 'high' : 'med',
+        prompt: `텔레메트리 분석: 리어 타이어 코어 온도 ${avgRearTemp.toFixed(0)}°C. 리어 과열 해결 방법은?` });
+    }
+
+    // Asymmetric wear (left vs right)
+    if (tw[0] && tw[1] && Math.abs(tw[0] - tw[1]) > 10) {
+      const side = tw[0] > tw[1] ? '좌측' : '우측';
+      diags.push({ label: `프론트 ${side} 편마모`, severity: 'med',
+        prompt: `텔레메트리 분석: FL ${tw[0]}% / FR ${tw[1]}%. 프론트 ${side} 편마모. 원인과 해결 방법은?` });
+    }
+    if (tw[2] && tw[3] && Math.abs(tw[2] - tw[3]) > 10) {
+      const side = tw[2] > tw[3] ? '좌측' : '우측';
+      diags.push({ label: `리어 ${side} 편마모`, severity: 'med',
+        prompt: `텔레메트리 분석: RL ${tw[2]}% / RR ${tw[3]}%. 리어 ${side} 편마모. 원인과 해결 방법은?` });
+    }
+
+    // Overall high wear
+    const maxWear = Math.max(...tw);
+    if (maxWear > 60) {
+      diags.push({ label: '타이어 수명 위험', severity: maxWear > 80 ? 'high' : 'med',
+        prompt: `텔레메트리 분석: 최대 타이어 마모 ${maxWear}% (FL:${tw[0]} FR:${tw[1]} RL:${tw[2]} RR:${tw[3]}). 타이어 관리 방법은?` });
+    }
+  }
+
+  // Brake lockup indicator: front brake temps much higher
+  if (bt && bt[0] > 0) {
+    const avgFBrake = (bt[0] + bt[1]) / 2;
+    const avgRBrake = (bt[2] + bt[3]) / 2;
+    if (avgFBrake > avgRBrake + 100 && avgFBrake > 600) {
+      diags.push({ label: '프론트 브레이크 과열', severity: 'med',
+        prompt: `텔레메트리 분석: 프론트 브레이크 ${avgFBrake.toFixed(0)}°C >> 리어 ${avgRBrake.toFixed(0)}°C. 앞바퀴 잠김 가능성. 브레이크 바이어스 조정은?` });
+    }
+  }
+
+  // Low fuel warning
+  if (player.fuelRemainingLaps > 0 && player.fuelRemainingLaps < 3) {
+    diags.push({ label: '연료 부족', severity: 'high',
+      prompt: `텔레메트리 분석: 잔여 연료 ${player.fuelRemainingLaps.toFixed(1)}랩. 연료 절약 팁은?` });
+  }
+
+  // Tire cold (just out of pits or early laps)
+  if (ti && player.tireAge <= 2) {
+    const avgTemp = (ti[0] + ti[1] + ti[2] + ti[3]) / 4;
+    if (avgTemp < 80) {
+      diags.push({ label: '타이어 미열', severity: 'low',
+        prompt: `텔레메트리 분석: 타이어 평균 코어 온도 ${avgTemp.toFixed(0)}°C, 나이 ${player.tireAge}랩. 타이어 웜업 팁은?` });
+    }
+  }
+
+  return diags;
 }
 
 function Bar({v,min,max}){const p=Math.max(0,Math.min(100,((v-min)/(max-min))*100));const c=p<33?P.accent:p<66?P.accent2:P.danger;return(<div style={{background:'rgba(255,255,255,0.04)',borderRadius:2,height:3,overflow:'hidden'}}><div style={{width:`${p}%`,height:'100%',background:c,borderRadius:2}}/></div>);}
@@ -251,7 +348,8 @@ export function F1SetupManager() {
   const [keyInput, setKeyInput] = useState('');
   // Sender telemetry connection
   const [senderUrl] = useState(() => { try { return localStorage.getItem('frc_sender_url') || DEFAULT_SENDER_URL; } catch { return DEFAULT_SENDER_URL; } });
-  const { connected: senderConnected, status: senderStatus, session: liveSession, detectedTrack } = useSenderConnection(senderUrl);
+  const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack } = useSenderConnection(senderUrl);
+  const teleDiags = useMemo(() => diagnoseFromTelemetry(livePlayer, liveSession), [livePlayer, liveSession]);
   // Main tab
   const [track, setTrack] = useState(null);
   const [mode, setMode] = useState(null);
@@ -657,11 +755,25 @@ export function F1SetupManager() {
                     <div ref={chatEnd} />
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                    {/* Telemetry-based diagnostic chips (priority) */}
+                    {teleDiags.map(d => (
+                      <button key={d.label} onClick={() => setInput(d.prompt)} style={{
+                        fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
+                        border: `1px solid ${d.severity === 'high' ? P.danger : d.severity === 'med' ? P.accent : P.border}`,
+                        background: d.severity === 'high' ? 'rgba(255,82,92,0.1)' : d.severity === 'med' ? 'rgba(0,229,255,0.06)' : 'transparent',
+                        color: d.severity === 'high' ? P.danger : d.severity === 'med' ? P.accent : P.muted,
+                        fontFamily: P.sans, display: 'flex', alignItems: 'center', gap: 4,
+                      }}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: d.severity === 'high' ? P.danger : d.severity === 'med' ? P.accent : P.dim }} />
+                        {d.label}
+                      </button>
+                    ))}
+                    {/* Static fallback chips */}
                     {qQ.map(q => (
                       <button key={q} onClick={() => setInput(q)} style={{
                         fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
                         border: `1px solid ${P.border}`, background: 'transparent', color: P.muted,
-                        fontFamily: P.sans, transition: 'border-color 0.15s',
+                        fontFamily: P.sans,
                       }}>{q}</button>
                     ))}
                   </div>
