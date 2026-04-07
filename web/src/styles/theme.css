@@ -101,7 +101,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
-  font-size: 24px;
+  font-size: 36px;
   line-height: 1.4;
 }
 
@@ -124,7 +124,7 @@ select {
 
 .label {
   font-family: var(--font-body);
-  font-size: 15px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -138,17 +138,17 @@ select {
 }
 
 .value-large {
-  font-size: 64px;
+  font-size: 96px;
   line-height: 0.9;
 }
 
 .value-medium {
-  font-size: 40px;
+  font-size: 60px;
   line-height: 0.9;
 }
 
 .value-small {
-  font-size: 20px;
+  font-size: 30px;
   line-height: 1;
 }
 
