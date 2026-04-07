@@ -3,7 +3,7 @@
  * F1 25 Setup Manager — Pitwall Command Terminal
  * Full version with all 5 tabs: Setup, Teams, Compare, MySetup, Ask
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 const ENV_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
@@ -51,6 +51,9 @@ function Bar({v,min,max}){const p=Math.max(0,Math.min(100,((v-min)/(max-min))*10
 
 function RC({s1,s2,m1,m2,size=240}){const cx=size/2,cy=size/2,r=size/2-40,n=RK.length;const nm=(k,v)=>{const d=DEFS[k];return(v-d.min)/(d.max-d.min);};const pt=(i,v)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return{x:cx+r*v*Math.cos(a),y:cy+r*v*Math.sin(a)};};const p1=RK.map((k,i)=>pt(i,nm(k.k,s1[k.k])));const p2=s2?RK.map((k,i)=>pt(i,nm(k.k,s2[k.k]))):null;const po=pts=>pts.map(p=>`${p.x},${p.y}`).join(" ");return(<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>{[0.25,0.5,0.75,1].map(lv=><polygon key={lv} points={po(RK.map((_,i)=>pt(i,lv)))} fill="none" stroke="rgba(0,229,255,0.06)" strokeWidth={1}/>)}{RK.map((_,i)=>{const p=pt(i,1);return<line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="rgba(0,229,255,0.04)" strokeWidth={1}/>;})}<polygon points={po(p1)} fill={`${m1?.color||P.accent}20`} stroke={m1?.color||P.accent} strokeWidth={1.5} filter="url(#glow)"/>{p1.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m1?.color||P.accent}/>)}{p2&&<><polygon points={po(p2)} fill={`${m2?.color||P.accent2}20`} stroke={m2?.color||P.accent2} strokeWidth={1.5} strokeDasharray="5,3" filter="url(#glow)"/>{p2.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m2?.color||P.accent2}/>)}</>}{RK.map((k,i)=>{const p=pt(i,1.18);return<text key={i} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fill={P.muted} fontSize={8} fontFamily={P.mono} fontWeight={600}>{k.l}</text>;})}</svg>);}
 
+const SORTED_TEAMS = [...TEAMS].sort((a, b) => b.total - a.total);
+const MAX_HISTORY = 20;
+
 // ─── SVG Icons ───
 const Icons = {
   wrench: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
@@ -60,6 +63,97 @@ const Icons = {
   msgCircle: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>,
   key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
 };
+
+const TABS = [
+  { id: "main", label: "SETUP", icon: Icons.wrench },
+  { id: "teams", label: "TEAMS", icon: Icons.flag },
+  { id: "compare", label: "COMPARE", icon: Icons.chartBar },
+  { id: "mysetup", label: "MY SETUP", icon: Icons.sliders },
+  { id: "ask", label: "ASK", icon: Icons.msgCircle },
+];
+
+function Stepper({ steps, current }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '6px 0 10px', overflowX: 'auto' }}>
+      {steps.map((s, i) => {
+        const done = current > s.n;
+        const active = Math.floor(current) === s.n || current === s.n;
+        return (
+          <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : 'none' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 36 }}>
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, fontFamily: P.mono, fontWeight: 700,
+                background: done || active ? P.accent : 'transparent',
+                border: `1.5px solid ${done || active ? P.accent : P.dim}`,
+                color: done || active ? P.bg : P.dim,
+              }}>{done ? '\u2713' : s.n}</div>
+              <span style={{ fontSize: 8, fontFamily: P.mono, color: active ? P.accent : P.muted, marginTop: 3, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>{s.label}</span>
+            </div>
+            {i < steps.length - 1 && <div style={{ flex: 1, height: 1, background: done ? P.accent : P.dim, margin: '0 4px', marginBottom: 14, opacity: 0.5 }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Chat UI helpers (eliminate 3x JSX repetition) ───
+function ChatMessages({ messages, endRef }) {
+  return (<>
+    {messages.map((m, i) => (
+      <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
+        <div style={{
+          maxWidth: '85%', padding: '7px 10px', fontSize: 11, lineHeight: 1.6, borderRadius: 3,
+          background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
+          border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
+          color: P.text, whiteSpace: 'pre-wrap', fontFamily: P.sans,
+        }}>{m.t}</div>
+      </div>
+    ))}
+    <div ref={endRef} />
+  </>);
+}
+
+function ChatLoading({ loading, label = "ANALYZING..." }) {
+  if (!loading) return null;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+      <div style={{ padding: '7px 12px', borderRadius: 3, fontSize: 10, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>{label}</div>
+    </div>
+  );
+}
+
+function ChatChips({ items, onSelect, mb = 8 }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: mb }}>
+      {items.map(q => (
+        <button key={q} onClick={() => onSelect(q)} style={{
+          fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
+          border: `1px solid ${P.border}`, background: 'transparent', color: P.muted, fontFamily: P.sans,
+        }}>{q}</button>
+      ))}
+    </div>
+  );
+}
+
+function ChatInput({ value, onChange, onSend, loading, placeholder, buttonLabel = "SEND" }) {
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      <input value={value} onChange={e => onChange(e.target.value)} onKeyDown={e => e.key === "Enter" && onSend()}
+        placeholder={placeholder} style={{
+          flex: 1, padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
+          background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.sans, outline: 'none',
+        }} />
+      <button onClick={onSend} disabled={loading} style={{
+        padding: '8px 16px', borderRadius: 3, border: 'none',
+        background: loading ? P.dim : P.accent, color: P.bg,
+        fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
+        cursor: loading ? 'not-allowed' : 'pointer',
+      }}>{buttonLabel}</button>
+    </div>
+  );
+}
 
 // ─── Panel component ───
 function Panel({ title, children, style: s = {} }) {
@@ -130,7 +224,7 @@ export function F1SetupManager() {
     if (!inputVal.trim() || guard) return;
     const m = inputVal.trim(); setInp("");
     setMsgs(p => [...p, { r: "u", t: m }]);
-    const nh = [...hist, { role: "user", content: m }];
+    const nh = [...hist.slice(-MAX_HISTORY), { role: "user", content: m }];
     setLoad(true);
     try {
       const ctrl = new AbortController();
@@ -157,43 +251,10 @@ export function F1SetupManager() {
   };
 
   const fM = SM.filter(m => { const wO = weather === "rain" ? m.rain : !m.rain; const gO = fg === "all" || m.group === fg; return wO && gO; });
-  const sortM = isNE && ti ? [...fM].sort((a, b) => { const sa = dd?.[getDbKey(a)]; const sb = dd?.[getDbKey(b)]; if (!sa || !sb) return 0; return (gCS(sb, ti) || 0) - (gCS(sa, ti) || 0); }) : fM;
+  const sortM = useMemo(() => isNE && ti ? [...fM].sort((a, b) => { const sa = dd?.[getDbKey(a)]; const sb = dd?.[getDbKey(b)]; if (!sa || !sb) return 0; return (gCS(sb, ti) || 0) - (gCS(sa, ti) || 0); }) : fM, [fM, dd, ti, isNE]);
   const cD = cmpT ? DB[cmpT] : null; const cSA = cmpA && cD ? cD[getDbKey(SM.find(m => m.key === cmpA) || { key: cmpA })] : null; const cSB = cmpB && cD ? cD[getDbKey(SM.find(m => m.key === cmpB) || { key: cmpB })] : null; const cMA = SM.find(m => m.key === cmpA); const cMB = SM.find(m => m.key === cmpB);
 
   const qQ = weather === "rain" ? ["비에서 스핀", "비에서 안꺾임", "웻 브레이킹 불안"] : ["리어 미끄러움", "언더스티어", "탑스피드 낮음", "앞바퀴 잠김", "타이어 과열", "코너 탈출 느림"];
-  const TABS = [
-    { id: "main", label: "SETUP", icon: Icons.wrench },
-    { id: "teams", label: "TEAMS", icon: Icons.flag },
-    { id: "compare", label: "COMPARE", icon: Icons.chartBar },
-    { id: "mysetup", label: "MY SETUP", icon: Icons.sliders },
-    { id: "ask", label: "ASK", icon: Icons.msgCircle },
-  ];
-
-  // ─── Stepper ───
-  const Stepper = ({ steps, current }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '6px 0 10px', overflowX: 'auto' }}>
-      {steps.map((s, i) => {
-        const done = current > s.n;
-        const active = Math.floor(current) === s.n || current === s.n;
-        return (
-          <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : 'none' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 36 }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontFamily: P.mono, fontWeight: 700,
-                background: done ? P.accent : active ? P.accent : 'transparent',
-                border: `1.5px solid ${done || active ? P.accent : P.dim}`,
-                color: done || active ? P.bg : P.dim,
-                transition: 'all 0.2s',
-              }}>{done ? '\u2713' : s.n}</div>
-              <span style={{ fontSize: 8, fontFamily: P.mono, color: active ? P.accent : P.muted, marginTop: 3, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>{s.label}</span>
-            </div>
-            {i < steps.length - 1 && <div style={{ flex: 1, height: 1, background: done ? P.accent : P.dim, margin: '0 4px', marginBottom: 14, opacity: 0.5 }} />}
-          </div>
-        );
-      })}
-    </div>
-  );
 
   const stepDefs = isNE
     ? [{ n: 1, label: "TRACK" }, { n: 2, label: "MODE" }, { n: 2.5, label: "TEAM" }, { n: 3, label: "WTHR" }, { n: 4, label: "SETUP" }, { n: 5, label: "AI" }]
@@ -311,7 +372,7 @@ export function F1SetupManager() {
               {step >= 2.5 && isNE && (
                 <Panel title="TEAM SELECT">
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    {TEAMS.sort((a, b) => b.total - a.total).map(t => {
+                    {SORTED_TEAMS.map(t => {
                       const active = team === t.name;
                       const pct = (t.total / 55) * 100;
                       return (
@@ -517,7 +578,7 @@ export function F1SetupManager() {
           {/* ═══════ TEAMS TAB ═══════ */}
           {tab === "teams" && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {TEAMS.sort((a, b) => b.total - a.total).map((t, i) => {
+              {SORTED_TEAMS.map((t, i) => {
                 const isOpen = te === t.name;
                 const pct = (t.total / 55) * 100;
                 const stats = [
