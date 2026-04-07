@@ -229,6 +229,7 @@ const Icons = {
   msgCircle: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>,
   key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
   gear: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+  activity: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
 };
 
 function getTabs() {
@@ -237,6 +238,7 @@ function getTabs() {
     { id: "teams", label: "TEAMS", icon: Icons.flag },
     { id: "compare", label: "COMPARE", icon: Icons.chartBar },
     { id: "mysetup", label: "MY SETUP", icon: Icons.sliders },
+    { id: "telemetry", label: "TELEMETRY", icon: Icons.activity },
     { id: "ask", label: "ASK", icon: Icons.msgCircle },
     { id: "settings", label: "SETTINGS", icon: Icons.gear },
   ];
@@ -457,6 +459,10 @@ function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, li
               <div style={lbl}>Room Password</div>
               <input type="password" value={draft.roomPassword || ''} onChange={e => setDraft(d => ({ ...d, roomPassword: e.target.value }))} style={inp} placeholder="Optional" />
             </div>
+            <div>
+              <div style={lbl}>Default Permission Code</div>
+              <input value={draft.defaultPermissionsCode || ''} onChange={e => setDraft(d => ({ ...d, defaultPermissionsCode: e.target.value }))} style={inp} placeholder="Optional" />
+            </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                 <input type="checkbox" checked={draft.saveFiles || false} onChange={e => setDraft(d => ({ ...d, saveFiles: e.target.checked }))} />
@@ -524,12 +530,24 @@ export function F1SetupManager() {
   const [myTrack, setMyTrack] = useState(null);
   const [myVals, setMyVals] = useState(() => { const iv = {}; FIELDS.forEach(f => { const d = DEFS[f.k]; iv[f.k] = Math.round(((d.min + d.max) / 2) * 10) / 10; }); return iv; });
   const [myChat, setMyChat] = useState([]); const [myInput, setMyInput] = useState(""); const [myLoad, setMyLoad] = useState(false); const [myHist, setMyHist] = useState([]);
-  const chatEnd = useRef(null); const askRef = useRef(null); const myEnd = useRef(null);
+  // Telemetry tab
+  const [recOn, setRecOn] = useState(false);
+  const [recSnaps, setRecSnaps] = useState<any[]>([]);
+  const [recStart, setRecStart] = useState<number | null>(null);
+  const [recChat, setRecChat] = useState([]); const [recInput, setRecInput] = useState(""); const [recLoad, setRecLoad] = useState(false); const [recHist, setRecHist] = useState([]);
+  const chatEnd = useRef(null); const askRef = useRef(null); const myEnd = useRef(null); const recEnd = useRef(null);
 
   const useAutoScroll = (ref, dep) => useEffect(() => { ref.current?.scrollIntoView({ behavior: "smooth" }); }, [dep]);
   useAutoScroll(chatEnd, chat);
   useAutoScroll(askRef, askChat);
   useAutoScroll(myEnd, myChat);
+  useAutoScroll(recEnd, recChat);
+
+  // Record telemetry snapshots while recording
+  useEffect(() => {
+    if (!recOn || !livePlayer) return;
+    setRecSnaps(prev => [...prev, { ts: Date.now(), player: { ...livePlayer }, session: liveSession ? { ...liveSession } : null, diags: [...teleDiags] }]);
+  }, [recOn, livePlayer]);
 
   const dd = track ? DB[track] : null;
   const ti = TEAMS.find(t => t.name === team);
@@ -573,6 +591,58 @@ export function F1SetupManager() {
     const sys = `F1 25 셋업 엔지니어. 사용자 커스텀 셋업 분석.\n\n${KNOWLEDGE_BASE}\n\n[환경]${myTrack}${ti2}${tw}\n[사용자 셋업]\n${sw}\n[규칙]한국어3~5줄, 2~3개변경 추천`;
     chatSend(myInput, myLoad, sys, setMyInput, setMyChat, setMyHist, myHist, setMyLoad);
   };
+
+  // Telemetry recording helpers
+  const startRec = () => { setRecSnaps([]); setRecChat([]); setRecHist([]); setRecStart(Date.now()); setRecOn(true); };
+  const stopRec = () => setRecOn(false);
+  const buildRecSummary = () => {
+    if (recSnaps.length < 2) return '';
+    const first = recSnaps[0], last = recSnaps[recSnaps.length - 1];
+    const dur = ((last.ts - first.ts) / 1000).toFixed(0);
+    const laps = new Set(recSnaps.map(s => s.player?.currentLapNum).filter(Boolean));
+    const tw0 = first.player?.tireWear, tw1 = last.player?.tireWear;
+    const wearDelta = tw0 && tw1 ? `FL:${(tw1[0]-tw0[0]).toFixed(1)}% FR:${(tw1[1]-tw0[1]).toFixed(1)}% RL:${(tw1[2]-tw0[2]).toFixed(1)}% RR:${(tw1[3]-tw0[3]).toFixed(1)}%` : 'N/A';
+    const maxSpeed = Math.max(...recSnaps.map(s => s.player?.topSpeed || 0));
+    const avgFrontTemp = recSnaps.reduce((a, s) => a + ((s.player?.tireInnerTemp?.[0] || 0) + (s.player?.tireInnerTemp?.[1] || 0)) / 2, 0) / recSnaps.length;
+    const avgRearTemp = recSnaps.reduce((a, s) => a + ((s.player?.tireInnerTemp?.[2] || 0) + (s.player?.tireInnerTemp?.[3] || 0)) / 2, 0) / recSnaps.length;
+    const dynamics = last.player?.dynamics;
+    const lastDyn = dynamics?.length ? dynamics[dynamics.length - 1] : null;
+    const lapTimes = recSnaps.filter(s => s.player?.lastLapTime > 0).map(s => ({ lap: s.player.currentLapNum, time: s.player.lastLapTime }));
+    const uniqueLaps = [...new Map(lapTimes.map(l => [l.lap, l])).values()];
+    const bestLap = last.player?.bestLapTime;
+    const fuel0 = first.player?.fuelRemainingLaps, fuel1 = last.player?.fuelRemainingLaps;
+    const brakeBias = last.player?.brakeBias;
+    const compound = last.player?.tireCompound;
+    const tireAge = last.player?.tireAge;
+    // Aggregate diagnostics frequency
+    const diagCounts: Record<string, number> = {};
+    recSnaps.forEach(s => s.diags?.forEach(d => { diagCounts[d.label] = (diagCounts[d.label] || 0) + 1; }));
+    const diagSummary = Object.entries(diagCounts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}(${((v / recSnaps.length) * 100).toFixed(0)}%)`).join(', ');
+
+    const trackName = detectedTrack || liveSession?.trackName || '알 수 없음';
+    const sessionType = liveSession?.sessionType || '';
+    const weather = liveSession?.weather || '';
+
+    return [
+      `[녹화 데이터 ${dur}초 / ${laps.size}랩 / ${recSnaps.length}샘플]`,
+      `트랙:${trackName} 세션:${sessionType} 날씨:${weather}`,
+      `타이어:${compound || '?'} 에이지:${tireAge || '?'}랩`,
+      `마모변화: ${wearDelta}`,
+      `최종마모: FL:${tw1?.[0]?.toFixed(1)}% FR:${tw1?.[1]?.toFixed(1)}% RL:${tw1?.[2]?.toFixed(1)}% RR:${tw1?.[3]?.toFixed(1)}%`,
+      `평균타이어온도: 프론트${avgFrontTemp.toFixed(0)}°C 리어${avgRearTemp.toFixed(0)}°C`,
+      `최고속:${maxSpeed}km/h 베스트랩:${bestLap ? (bestLap / 1000).toFixed(3) + 's' : 'N/A'}`,
+      uniqueLaps.length ? `랩타임: ${uniqueLaps.slice(-5).map(l => `L${l.lap}:${(l.time / 1000).toFixed(3)}`).join(' ')}` : '',
+      lastDyn ? `다이나믹스(마지막랩): 언더스티어${lastDyn.understeerPct?.toFixed(1)}% 오버스티어${lastDyn.oversteerPct?.toFixed(1)}% 락업${lastDyn.lockupCount} 스핀${lastDyn.spinCount}` : '',
+      `연료잔여: ${fuel1?.toFixed(1) || '?'}랩 (변화:${fuel0 && fuel1 ? (fuel1 - fuel0).toFixed(1) : '?'})`,
+      `브레이크바이어스:${brakeBias || '?'}%`,
+      diagSummary ? `감지된 이슈: ${diagSummary}` : '감지된 이슈 없음',
+    ].filter(Boolean).join('\n');
+  };
+  const recSysBuild = () => {
+    const summary = buildRecSummary();
+    return `F1 25 셋업 엔지니어. 실시간 텔레메트리 녹화 데이터 기반 분석.\n\n${KNOWLEDGE_BASE}\n\n${summary}\n\n[규칙]1.데이터 기반 구체적 분석 2."항목 현재→추천" 형식 3.이유1줄 4.한국어5~8줄 5.마모/온도/다이나믹스 종합 판단`;
+  };
+  const recSend = () => chatSend(recInput, recLoad, recSysBuild(), setRecInput, setRecChat, setRecHist, recHist, setRecLoad);
 
   const fM = SM.filter(m => { const wO = weather === "rain" ? m.rain : !m.rain; const gO = fg === "all" || m.group === fg; return wO && gO; });
   const sortM = useMemo(() => isNE && ti ? [...fM].sort((a, b) => { const sa = dd?.[getDbKey(a)]; const sb = dd?.[getDbKey(b)]; if (!sa || !sb) return 0; return (gCS(sb, ti) || 0) - (gCS(sa, ti) || 0); }) : fM, [fM, dd, ti, isNE]);
@@ -1182,6 +1252,200 @@ export function F1SetupManager() {
                       background: myLoad ? P.dim : P.accent, color: P.bg,
                       fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
                       cursor: myLoad ? 'not-allowed' : 'pointer',
+                    }}>ANALYZE</button>
+                  </div>
+                </Panel>
+              )}
+            </div>
+          )}
+
+          {/* ═══════ TELEMETRY TAB ═══════ */}
+          {tab === "telemetry" && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Record Control */}
+              <Panel title="RECORDING">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                  {!recOn ? (
+                    <button onClick={startRec} disabled={!senderConnected || !livePlayer} style={{
+                      padding: '10px 24px', borderRadius: 3, border: 'none', cursor: senderConnected && livePlayer ? 'pointer' : 'not-allowed',
+                      background: senderConnected && livePlayer ? '#ff3b5c' : P.dim, color: '#fff',
+                      fontFamily: P.mono, fontSize: 11, fontWeight: 700, letterSpacing: 1,
+                      display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff' }} />
+                      START RECORD
+                    </button>
+                  ) : (
+                    <button onClick={stopRec} style={{
+                      padding: '10px 24px', borderRadius: 3, border: `1px solid ${P.border}`, cursor: 'pointer',
+                      background: P.surface2, color: P.text,
+                      fontFamily: P.mono, fontSize: 11, fontWeight: 700, letterSpacing: 1,
+                      display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: '#ff3b5c', animation: 'none' }} />
+                      STOP RECORD
+                    </button>
+                  )}
+                  {recOn && (
+                    <div style={{ display: 'flex', gap: 16, fontSize: 11, fontFamily: P.mono }}>
+                      <span style={{ color: '#ff3b5c', fontWeight: 700 }}>● REC</span>
+                      <span style={{ color: P.muted }}>Samples: <span style={{ color: P.text, fontWeight: 700 }}>{recSnaps.length}</span></span>
+                      <span style={{ color: P.muted }}>Duration: <span style={{ color: P.text, fontWeight: 700 }}>{recStart ? Math.round((Date.now() - recStart) / 1000) + 's' : '--'}</span></span>
+                    </div>
+                  )}
+                  {!recOn && recSnaps.length > 0 && (
+                    <span style={{ fontSize: 10, fontFamily: P.mono, color: P.accent }}>{recSnaps.length} samples recorded</span>
+                  )}
+                </div>
+                {!senderConnected && <div style={{ fontSize: 10, color: P.muted }}>Sender 연결이 필요합니다</div>}
+                {senderConnected && !livePlayer && <div style={{ fontSize: 10, color: P.muted }}>라이브 세션 대기 중...</div>}
+              </Panel>
+
+              {/* Live Metrics (visible while connected) */}
+              {senderConnected && livePlayer && (
+                <Panel title={recOn ? "LIVE TELEMETRY ● REC" : "LIVE TELEMETRY"}>
+                  {/* Tire Wear */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>TIRE WEAR</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+                      {[['FL', 0], ['FR', 1], ['RL', 2], ['RR', 3]].map(([label, idx]) => {
+                        const w = livePlayer.tireWear?.[idx] || 0;
+                        const c = w > 80 ? P.danger : w > 50 ? '#f59e0b' : P.accent;
+                        return (
+                          <div key={label}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                              <span style={{ fontSize: 9, fontFamily: P.mono, color: P.muted }}>{label}</span>
+                              <span style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 700, color: c }}>{w.toFixed(1)}%</span>
+                            </div>
+                            <div style={{ height: 4, background: P.surface2, borderRadius: 2 }}>
+                              <div style={{ height: '100%', width: `${Math.min(w, 100)}%`, background: c, borderRadius: 2, transition: 'width 0.3s' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Tire Temps */}
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>TIRE TEMP (INNER)</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
+                      {[['FL', 0], ['FR', 1], ['RL', 2], ['RR', 3]].map(([label, idx]) => {
+                        const t = livePlayer.tireInnerTemp?.[idx] || 0;
+                        const c = t > 115 ? P.danger : t > 105 ? '#f59e0b' : t < 80 ? '#60a5fa' : P.accent;
+                        return (
+                          <div key={label} style={{ background: P.surface2, borderRadius: 2, padding: '4px 6px', textAlign: 'center' }}>
+                            <div style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>{label}</div>
+                            <div style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 700, color: c }}>{t.toFixed(0)}°</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Key Metrics Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 12 }}>
+                    {[
+                      ['TOP SPEED', `${livePlayer.topSpeed || '--'}`, 'km/h'],
+                      ['COMPOUND', livePlayer.tireCompound?.toUpperCase() || '--', `${livePlayer.tireAge || 0}L`],
+                      ['FUEL LEFT', livePlayer.fuelRemainingLaps?.toFixed(1) || '--', 'laps'],
+                      ['BEST LAP', livePlayer.bestLapTime ? (livePlayer.bestLapTime / 1000).toFixed(3) : '--', 's'],
+                      ['LAST LAP', livePlayer.lastLapTime ? (livePlayer.lastLapTime / 1000).toFixed(3) : '--', 's'],
+                      ['BRAKE BIAS', `${livePlayer.brakeBias || '--'}`, '%'],
+                    ].map(([label, val, unit]) => (
+                      <div key={label} style={{ background: P.surface2, borderRadius: 2, padding: '6px 8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>{label}</div>
+                        <div style={{ fontSize: 13, fontFamily: P.mono, fontWeight: 700, color: P.accent }}>{val}</div>
+                        <div style={{ fontSize: 7, fontFamily: P.mono, color: P.dim }}>{unit}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Dynamics */}
+                  {(() => {
+                    const dyn = livePlayer.dynamics;
+                    const last = dyn?.length ? dyn[dyn.length - 1] : null;
+                    if (!last) return null;
+                    return (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>DYNAMICS (LAP {last.lapNum})</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
+                          {[
+                            ['UNDERSTEER', `${last.understeerPct?.toFixed(1)}%`, last.understeerPct > 15 ? P.danger : last.understeerPct > 8 ? '#f59e0b' : P.accent],
+                            ['OVERSTEER', `${last.oversteerPct?.toFixed(1)}%`, last.oversteerPct > 15 ? P.danger : last.oversteerPct > 8 ? '#f59e0b' : P.accent],
+                            ['LOCKUPS', `${last.lockupCount}`, last.lockupCount > 3 ? P.danger : P.accent],
+                            ['SPINS', `${last.spinCount}`, last.spinCount > 0 ? P.danger : P.accent],
+                          ].map(([label, val, color]) => (
+                            <div key={label} style={{ background: P.surface2, borderRadius: 2, padding: '4px 6px', textAlign: 'center' }}>
+                              <div style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>{label}</div>
+                              <div style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 700, color }}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {/* Live Diagnostics */}
+                  {teleDiags.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>DIAGNOSTICS</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {teleDiags.map(d => (
+                          <div key={d.label} style={{
+                            fontSize: 9, padding: '3px 8px', borderRadius: 2,
+                            border: `1px solid ${d.severity === 'high' ? P.danger : d.severity === 'med' ? '#f59e0b' : P.border}`,
+                            background: d.severity === 'high' ? 'rgba(255,82,92,0.1)' : d.severity === 'med' ? 'rgba(245,158,11,0.08)' : 'transparent',
+                            color: d.severity === 'high' ? P.danger : d.severity === 'med' ? '#f59e0b' : P.muted,
+                            fontFamily: P.sans, display: 'flex', alignItems: 'center', gap: 4,
+                          }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: d.severity === 'high' ? P.danger : d.severity === 'med' ? '#f59e0b' : P.dim }} />
+                            {d.label}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Panel>
+              )}
+
+              {/* AI Analysis (after recording) */}
+              {!recOn && recSnaps.length >= 2 && (
+                <Panel title="AI ANALYSIS">
+                  <div style={{ minHeight: 120, maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                    {recChat.length === 0 && (
+                      <div style={{ textAlign: 'center', color: P.dim, paddingTop: 20, fontSize: 10, fontFamily: P.mono }}>
+                        -- 녹화 데이터 기반으로 질문하세요 --
+                        <div style={{ marginTop: 8, fontSize: 9, color: P.muted, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{buildRecSummary()}</div>
+                      </div>
+                    )}
+                    {recChat.map((m, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
+                        <div style={{
+                          maxWidth: '85%', padding: '7px 10px', fontSize: 11, lineHeight: 1.6, borderRadius: 3,
+                          background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
+                          border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
+                          color: P.text, whiteSpace: 'pre-wrap',
+                        }}>{m.t}</div>
+                      </div>
+                    ))}
+                    {recLoad && <div style={{ display: 'flex', justifyContent: 'flex-start' }}><div style={{ padding: '7px 12px', borderRadius: 3, fontSize: 10, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>ANALYZING...</div></div>}
+                    <div ref={recEnd} />
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                    {["전체 분석해줘", "셋업 추천해줘", "타이어 마모 원인은?", "언더/오버 해결법은?", "랩타임 개선 방법은?"].map(q => (
+                      <button key={q} onClick={() => setRecInput(q)} style={{
+                        fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
+                        border: `1px solid ${P.border}`, background: 'transparent', color: P.muted, fontFamily: P.sans,
+                      }}>{q}</button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input value={recInput} onChange={e => setRecInput(e.target.value)} onKeyDown={e => e.key === "Enter" && recSend()} placeholder="녹화 데이터에 대해 질문하세요..." style={{
+                      flex: 1, padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
+                      background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.sans, outline: 'none',
+                    }} />
+                    <button onClick={recSend} disabled={recLoad} style={{
+                      padding: '8px 16px', borderRadius: 3, border: 'none',
+                      background: recLoad ? P.dim : P.accent, color: P.bg,
+                      fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
+                      cursor: recLoad ? 'not-allowed' : 'pointer',
                     }}>ANALYZE</button>
                   </div>
                 </Panel>
