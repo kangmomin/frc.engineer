@@ -137,6 +137,12 @@ export function F1SetupManager({ onBack }: F1SetupManagerProps) {
   const fM=SM.filter(m=>{const wO=weather==="rain"?m.rain:!m.rain;const gO=fg==="all"||m.group===fg;return wO&&gO;});
   const qQ=weather==="rain"?["Spinning in rain","Understeer in wet","Wet braking unstable"]:["Rear sliding","Understeer","Low top speed","Front lockup","Tyre overheating","Slow corner exit"];
 
+  // Override body overflow:hidden so this page can scroll
+  useEffect(() => {
+    document.body.style.overflow = 'auto';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   return (
     <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"system-ui,sans-serif",fontSize:13}}>
       <div style={{background:"#0d1220",borderBottom:"1px solid rgba(255,255,255,0.15)",padding:"13px 16px",display:"flex",alignItems:"center",gap:12}}>
