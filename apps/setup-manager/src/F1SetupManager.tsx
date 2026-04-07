@@ -228,6 +228,7 @@ const Icons = {
   sliders: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>,
   msgCircle: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>,
   key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
+  gear: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
 };
 
 function getTabs() {
@@ -237,6 +238,7 @@ function getTabs() {
     { id: "compare", label: "COMPARE", icon: Icons.chartBar },
     { id: "mysetup", label: "MY SETUP", icon: Icons.sliders },
     { id: "ask", label: "ASK", icon: Icons.msgCircle },
+    { id: "settings", label: "SETTINGS", icon: Icons.gear },
   ];
 }
 
@@ -334,6 +336,157 @@ function Panel({ title, children, style: s = {} }) {
         </div>
       )}
       <div style={{ padding: '12px 14px' }}>{children}</div>
+    </div>
+  );
+}
+
+// ─── Settings Tab (integrated sender control) ───
+function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, livePlayer }) {
+  const [config, setConfig] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<any>({});
+
+  // Fetch sender config
+  useEffect(() => {
+    if (!senderConnected) return;
+    fetch(`${senderUrl}/api/config`).then(r => r.json()).then(d => { setConfig(d); setDraft(d); }).catch(() => {});
+  }, [senderUrl, senderConnected]);
+
+  const saveConfig = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${senderUrl}/api/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
+      setConfig(draft);
+    } catch {}
+    setSaving(false);
+  };
+
+  const toggleOverlay = async (endpoint: string) => {
+    try { await fetch(`${senderUrl}${endpoint}`, { method: 'POST' }); } catch {}
+  };
+
+  const lbl = { fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase' as const, marginBottom: 4 };
+  const inp = { width: '100%', padding: '7px 10px', borderRadius: 3, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.mono, outline: 'none' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Connection Status */}
+      <Panel title="CONNECTION">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: senderConnected ? P.accent : P.danger, boxShadow: senderConnected ? `0 0 8px ${P.accent}` : 'none' }} />
+          <span style={{ fontFamily: P.mono, fontSize: 12, fontWeight: 700, color: senderConnected ? P.accent : P.danger }}>
+            {senderConnected ? 'SENDER ONLINE' : 'SENDER OFFLINE'}
+          </span>
+        </div>
+        {senderConnected && senderStatus && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {[
+              ['Room', senderStatus.roomName],
+              ['Code', senderStatus.roomCode],
+              ['Engineers', senderStatus.connectedEngineers],
+              ['UDP Port', senderStatus.udpPort],
+            ].map(([k, v]) => (
+              <div key={k} style={{ background: P.surface2, borderRadius: 2, padding: '6px 8px' }}>
+                <div style={lbl}>{k}</div>
+                <div style={{ fontFamily: P.mono, fontSize: 12, fontWeight: 700, color: P.text }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {senderConnected && liveSession && (
+          <div style={{ marginTop: 10, background: 'rgba(0,229,255,0.04)', borderRadius: 2, padding: '8px 10px', border: `1px solid rgba(0,229,255,0.1)` }}>
+            <div style={lbl}>LIVE SESSION</div>
+            <div style={{ fontFamily: P.mono, fontSize: 11, color: P.text }}>
+              {liveSession.trackName} — {liveSession.sessionType} — {liveSession.weather}
+              {liveSession.trackTemp && ` — Track ${liveSession.trackTemp.toFixed(0)}°C`}
+            </div>
+          </div>
+        )}
+        {senderConnected && livePlayer && (
+          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+            {[
+              ['Compound', livePlayer.tireCompound?.toUpperCase()],
+              ['Tire Age', `${livePlayer.tireAge}L`],
+              ['Fuel', `${livePlayer.fuelRemainingLaps?.toFixed(1)}L`],
+            ].map(([k, v]) => (
+              <div key={k} style={{ background: P.surface2, borderRadius: 2, padding: '4px 6px', textAlign: 'center' }}>
+                <div style={{ ...lbl, fontSize: 7 }}>{k}</div>
+                <div style={{ fontFamily: P.mono, fontSize: 11, fontWeight: 700, color: P.accent }}>{v || '--'}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* Overlay Toggles */}
+      {senderConnected && (
+        <Panel title="OVERLAYS">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {[
+              ['Radar', '/api/radar/toggle', senderStatus?.radarActive],
+              ['Weather', '/api/weather/toggle', senderStatus?.weatherActive],
+              ['Strategy', '/api/strategy/toggle', senderStatus?.strategyActive],
+            ].map(([name, endpoint, active]) => (
+              <button key={name} onClick={() => toggleOverlay(endpoint as string)} style={{
+                padding: '8px 16px', borderRadius: 3, cursor: 'pointer', fontFamily: P.mono, fontSize: 10,
+                fontWeight: 700, letterSpacing: 1,
+                border: `1px solid ${active ? P.accent : P.border}`,
+                background: active ? 'rgba(0,229,255,0.1)' : 'transparent',
+                color: active ? P.accent : P.muted,
+              }}>
+                {active ? '■' : '▶'} {name}
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {/* Sender Config */}
+      {senderConnected && config && (
+        <Panel title="SENDER CONFIG">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <div style={lbl}>UDP Port</div>
+              <input type="number" value={draft.udpPort || ''} onChange={e => setDraft(d => ({ ...d, udpPort: parseInt(e.target.value) || 20777 }))} style={inp} />
+            </div>
+            <div>
+              <div style={lbl}>Room Name</div>
+              <input value={draft.roomName || ''} onChange={e => setDraft(d => ({ ...d, roomName: e.target.value }))} style={inp} />
+            </div>
+            <div>
+              <div style={lbl}>Room Password</div>
+              <input type="password" value={draft.roomPassword || ''} onChange={e => setDraft(d => ({ ...d, roomPassword: e.target.value }))} style={inp} placeholder="Optional" />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={draft.saveFiles || false} onChange={e => setDraft(d => ({ ...d, saveFiles: e.target.checked }))} />
+                <span style={{ fontSize: 10, fontFamily: P.sans, color: P.text }}>Save Files</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={draft.trackRecording || false} onChange={e => setDraft(d => ({ ...d, trackRecording: e.target.checked }))} />
+                <span style={{ fontSize: 10, fontFamily: P.sans, color: P.text }}>Track Recording</span>
+              </label>
+            </div>
+            <button onClick={saveConfig} disabled={saving} style={{
+              padding: '8px 20px', borderRadius: 3, border: 'none',
+              background: saving ? P.dim : P.accent, color: P.bg,
+              fontFamily: P.mono, fontSize: 10, fontWeight: 700, letterSpacing: 1,
+              cursor: saving ? 'not-allowed' : 'pointer', alignSelf: 'flex-end',
+            }}>APPLY</button>
+          </div>
+        </Panel>
+      )}
+
+      {!senderConnected && (
+        <Panel title="INFO">
+          <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.8 }}>
+            Sender binary not detected. Place <span style={{ fontFamily: P.mono, color: P.accent }}>frc-pitwall-sender.exe</span> in:
+            <br />• <span style={{ fontFamily: P.mono, fontSize: 10 }}>build/artifacts/</span>
+            <br />• or same directory as this app
+            <br /><br />The app will auto-start the sender on next launch.
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
@@ -1084,6 +1237,11 @@ export function F1SetupManager() {
                 }}>ASK</button>
               </div>
             </div>
+          )}
+
+          {/* ═══ SETTINGS TAB ═══ */}
+          {tab === "settings" && (
+            <SettingsTab senderUrl={senderUrl} senderConnected={senderConnected} senderStatus={senderStatus} liveSession={liveSession} livePlayer={livePlayer} />
           )}
 
         </div>

@@ -14,13 +14,19 @@
   },
   "build": {
     "appId": "engineer.frc.setup-manager",
-    "productName": "FRC Setup Manager",
+    "productName": "FRC Pitwall Suite",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
       "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../../build/artifacts/frc-pitwall-sender.exe",
+        "to": "sender/frc-pitwall-sender.exe"
+      }
     ],
     "win": {
       "target": ["nsis", "portable"],
