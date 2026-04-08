@@ -93,7 +93,6 @@ export function Layout() {
   const viewCommentary = useTelemetryStore((state) => state.featurePermissions.viewCommentary);
   const viewQualifying = useTelemetryStore((state) => state.featurePermissions.viewQualifying);
   const viewCombat = useTelemetryStore((state) => state.featurePermissions.viewCombat);
-  const setupSupport = useTelemetryStore((state) => state.featurePermissions.setupSupport);
   const sessionType = useTelemetryStore((state) => state.pitwallState?.session?.sessionType ?? '');
   const isQualiSession = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(sessionType);
   const showQualifying = viewQualifying && isQualiSession;
@@ -191,10 +190,6 @@ export function Layout() {
 
   // Setup manager runs independently — no .shell wrapper (it has overflow:hidden)
   if (dashboardView === 'setup') {
-    if (!setupSupport) {
-      switchView('cockpit');
-      return null;
-    }
     return <F1SetupManager onBack={() => switchView('cockpit')} />;
   }
 

@@ -63,9 +63,6 @@ export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewCommentary: false,
   viewQualifying: false,
   viewCombat: false,
-  pitwall: false,
-  overlay: false,
-  setupSupport: false,
 };
 
 export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
@@ -78,9 +75,6 @@ export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewCommentary: true,
   viewQualifying: true,
   viewCombat: true,
-  pitwall: true,
-  overlay: true,
-  setupSupport: true,
 };
 
 export const useTelemetryStore = create<TelemetryState>((set) => ({

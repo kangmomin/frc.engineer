@@ -7,7 +7,7 @@ import (
 	"frc.engineer/internal/updater"
 )
 
-var appVersion = "v4.10.2"
+var appVersion = "v4.10.3"
 
 func printStartupAccessGuide(logger *slog.Logger, port int) {
 	url := fmt.Sprintf("http://localhost:%d", port)

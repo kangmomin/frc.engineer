@@ -47,9 +47,6 @@ export interface FeaturePermissions {
   viewCommentary: boolean;
   viewQualifying: boolean;
   viewCombat: boolean;
-  pitwall: boolean;
-  overlay: boolean;
-  setupSupport: boolean;
 }
 
 export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';
