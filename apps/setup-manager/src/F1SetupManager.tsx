@@ -464,7 +464,7 @@ function Panel({ title, children, style: s = {} }) {
 }
 
 // ─── Settings Tab (integrated sender control) ───
-function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, livePlayer }) {
+function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, livePlayer, hasOverlay = true }) {
   const [config, setConfig] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<any>({});
@@ -1717,7 +1717,7 @@ export function F1SetupManager() {
 
           {/* ═══ SETTINGS TAB ═══ */}
           {tab === "settings" && (
-            <SettingsTab senderUrl={senderUrl} senderConnected={senderConnected} senderStatus={senderStatus} liveSession={liveSession} livePlayer={livePlayer} />
+            <SettingsTab senderUrl={senderUrl} senderConnected={senderConnected} senderStatus={senderStatus} liveSession={liveSession} livePlayer={livePlayer} hasOverlay={hasOverlay} />
           )}
 
         </div>
