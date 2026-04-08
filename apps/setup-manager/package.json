@@ -1,6 +1,6 @@
 {
   "name": "minmo-driver-pack",
-  "version": "4.10.3",
+  "version": "4.10.4",
   "description": "Minmo Driver Pack — F1 25 Setup + Telemetry Suite",
   "main": "electron/main.cjs",
   "scripts": {

@@ -19,7 +19,7 @@
 
 .topBarTitle {
   font-family: var(--font-racing);
-  font-size: 21px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -36,7 +36,7 @@
   border: 1px solid var(--bg-panel-border);
   color: var(--text-secondary);
   padding: 4px 12px;
-  font-size: 17px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -91,7 +91,7 @@
 }
 
 .cardLabel {
-  font-size: 17px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -123,7 +123,7 @@
 }
 
 .metric span {
-  font-size: 15px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -154,7 +154,7 @@
 }
 
 .tyreAge {
-  font-size: 17px;
+  font-size: 11px;
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -170,13 +170,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 17px;
+  font-size: 11px;
   gap: 6px;
 }
 
 .tyreWheel span:first-child {
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 10px;
   letter-spacing: 0.05em;
 }
 
@@ -192,7 +192,7 @@
 }
 
 .ersLabel {
-  font-size: 15px;
+  font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -241,7 +241,7 @@
 }
 
 .drsLabel {
-  font-size: 17px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -277,7 +277,7 @@
 }
 
 .drsFooter span {
-  font-size: 17px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -291,7 +291,7 @@
 
 .empty {
   color: var(--text-muted);
-  font-size: 20px;
+  font-size: 13px;
   text-align: center;
   padding: 32px;
 }
