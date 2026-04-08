@@ -862,6 +862,24 @@
   transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+.trainCard {
+  padding: 12px;
+}
+
+.trainValueRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trainStuck {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-red);
+}
+
 .progressCard {
   display: flex;
   flex-direction: column;
@@ -1488,6 +1506,7 @@
   .battleHeader,
   .damageHeader,
   .trafficValueRow,
+  .trainValueRow,
   .footerStrip {
     align-items: flex-start;
     flex-direction: column;

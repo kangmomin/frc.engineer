@@ -65,6 +65,9 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewCommentary: false,
       viewQualifying: false,
       viewCombat: false,
+      pitwall: true,
+      overlay: true,
+      setupSupport: true,
     },
   };
 }
@@ -482,20 +485,8 @@ export function RemoteConnect({
               <div className={styles.roomOpenHint}>This room is open. No password required.</div>
             )}
 
-            <label className={styles.urlLabel}>Permission Code</label>
-            <input
-              type="password"
-              value={permissionsCode}
-              onChange={(e) => {
-                setPermissionsCode(e.target.value);
-                localStorage.setItem('frc_permission_code', e.target.value);
-              }}
-              placeholder="Optional feature permission code"
-              className={styles.urlInput}
-              disabled={isConnecting}
-            />
             <div className={styles.permissionHint}>
-              Saved automatically. Use a permissions code to unlock features.
+              Feature permissions are managed by the driver.
             </div>
           </form>
         )}
