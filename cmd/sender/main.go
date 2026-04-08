@@ -36,6 +36,44 @@ type trackStrategyConfig struct {
 
 var defaultStrategyConfig = trackStrategyConfig{PitTimeLossMs: 22000, UndercutDifficulty: 2}
 
+// senderConfig is the persistent config saved to disk.
+type senderConfig struct {
+	UDPPort                int                      `json:"udpPort"`
+	RoomName               string                   `json:"roomName,omitempty"`
+	RoomPassword           string                   `json:"roomPassword,omitempty"`
+	DefaultPermissionsCode string                   `json:"defaultPermissionsCode,omitempty"`
+	FRCAccountKey          string                   `json:"frcAccountKey,omitempty"`
+	SaveFiles              bool                     `json:"saveFiles"`
+	TrackRecording         bool                     `json:"trackRecording"`
+	ForwardTargets         []rtconfig.ForwardTarget `json:"forwardTargets"`
+}
+
+const senderConfigPath = "data/sender-config.json"
+
+func loadSenderConfig() *senderConfig {
+	data, err := os.ReadFile(senderConfigPath)
+	if err != nil {
+		return nil
+	}
+	var cfg senderConfig
+	if json.Unmarshal(data, &cfg) != nil {
+		return nil
+	}
+	return &cfg
+}
+
+func saveSenderConfig(cfg senderConfig) error {
+	dir := filepath.Dir(senderConfigPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(senderConfigPath, data, 0644)
+}
+
 func main() {
 	// Log to file so the cmd banner stays clean
 	if err := os.MkdirAll("logs", 0755); err != nil {
@@ -71,6 +109,7 @@ func main() {
 	if signalingURL == "" {
 		signalingURL = "wss://signaling-server-production-23c9.up.railway.app/ws"
 	}
+	// Defaults from environment variables
 	roomName := strings.TrimSpace(os.Getenv("SENDER_ROOM_NAME"))
 	if roomName == "" {
 		if host, err := os.Hostname(); err == nil && strings.TrimSpace(host) != "" {
@@ -85,14 +124,31 @@ func main() {
 	if frcAccountKey != "" {
 		defaultPermissionsCode = frcAccountKey
 	}
-
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &udpPort)
 	}
-
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
-	trackRecording := saveFiles // default: follow saveFiles for backward compat
+	trackRecording := saveFiles
+
+	// Override with saved config (persisted from previous session)
+	if saved := loadSenderConfig(); saved != nil {
+		if saved.UDPPort > 0 && saved.UDPPort <= 65535 {
+			udpPort = saved.UDPPort
+		}
+		if saved.RoomName != "" {
+			roomName = saved.RoomName
+		}
+		roomPassword = saved.RoomPassword
+		if saved.FRCAccountKey != "" {
+			frcAccountKey = saved.FRCAccountKey
+			defaultPermissionsCode = frcAccountKey
+		} else if saved.DefaultPermissionsCode != "" {
+			defaultPermissionsCode = saved.DefaultPermissionsCode
+		}
+		saveFiles = saved.SaveFiles
+		trackRecording = saved.TrackRecording
+	}
 
 	// Create UDP listener & parser
 	udpListener, err := udp.NewListener(udpPort, 2048, logger)
@@ -142,7 +198,13 @@ func main() {
 	cfgDefaultPermissionsCode := defaultPermissionsCode
 	cfgFRCAccountKey := frcAccountKey
 	var cachedDriverPerms *signaling.DriverPermissions
-	cfgForwardTargets := []rtconfig.ForwardTarget{}
+	var cfgForwardTargets []rtconfig.ForwardTarget
+	if saved := loadSenderConfig(); saved != nil && len(saved.ForwardTargets) > 0 {
+		cfgForwardTargets = saved.ForwardTargets
+		forwarder.UpdateTargets(cfgForwardTargets)
+	} else {
+		cfgForwardTargets = []rtconfig.ForwardTarget{}
+	}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
 		cfgMu.Lock()
@@ -575,6 +637,20 @@ func main() {
 		copy(cfgForwardTargets, body.ForwardTargets)
 		forwarder.UpdateTargets(body.ForwardTargets)
 		logger.Info("forward targets updated", "count", len(body.ForwardTargets))
+
+		// Persist config to disk
+		if err := saveSenderConfig(senderConfig{
+			UDPPort:                cfgUDPPort,
+			RoomName:               cfgRoomName,
+			RoomPassword:           cfgRoomPassword,
+			DefaultPermissionsCode: cfgDefaultPermissionsCode,
+			FRCAccountKey:          cfgFRCAccountKey,
+			SaveFiles:              cfgSaveFiles,
+			TrackRecording:         cfgTrackRecording,
+			ForwardTargets:         cfgForwardTargets,
+		}); err != nil {
+			logger.Warn("failed to save sender config", "error", err)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
