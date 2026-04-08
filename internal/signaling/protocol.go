@@ -31,6 +31,9 @@ type Permissions struct {
 	ViewCommentary       bool `json:"viewCommentary"`
 	ViewQualifying       bool `json:"viewQualifying"`
 	ViewCombat           bool `json:"viewCombat"`
+	Pitwall              bool `json:"pitwall"`
+	Overlay              bool `json:"overlay"`
+	SetupSupport         bool `json:"setupSupport"`
 }
 
 type PermissionCode struct {

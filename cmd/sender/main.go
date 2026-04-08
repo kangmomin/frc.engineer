@@ -20,12 +20,13 @@ import (
 	"frc.engineer/internal/frcapi"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rtc"
+	"frc.engineer/internal/signaling"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
 )
 
-var appVersion = "v4.9.0"
+var appVersion = "v4.10.0"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
@@ -140,6 +141,7 @@ func main() {
 	cfgRoomPassword := roomPassword
 	cfgDefaultPermissionsCode := defaultPermissionsCode
 	cfgFRCAccountKey := frcAccountKey
+	var cachedDriverPerms *signaling.DriverPermissions
 	cfgForwardTargets := []rtconfig.ForwardTarget{}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
@@ -200,10 +202,39 @@ func main() {
 		}
 	})
 
-	// Connect to signaling server (starts goroutine that reads peer events)
-	if err := peerManager.Connect(); err != nil {
-		logger.Error("failed to connect to signaling server", "error", err)
-		os.Exit(1)
+	// Check driver permissions before connecting to signaling
+	frcClient := frcapi.NewClient("https://f1-rivals-cup-production.up.railway.app")
+	resolveDriverPerms := func(accountKey string) *signaling.DriverPermissions {
+		if accountKey == "" || !frcapi.IsAccountKey(accountKey) {
+			return nil
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		result, err := frcClient.CheckPermissions(ctx, accountKey, signaling.FRCDriverPermissionKeys())
+		if err != nil {
+			logger.Warn("failed to check driver permissions", "error", err)
+			return nil
+		}
+		if result == nil {
+			return nil
+		}
+		dp := signaling.MapFRCDriverPermissions(result)
+		return &dp
+	}
+
+	cfgMu.Lock()
+	cachedDriverPerms = resolveDriverPerms(cfgFRCAccountKey)
+	cfgMu.Unlock()
+
+	// Connect to signaling server (skip if pitwall permission denied)
+	shouldConnect := cachedDriverPerms == nil || cachedDriverPerms.Pitwall
+	if shouldConnect {
+		if err := peerManager.Connect(); err != nil {
+			logger.Error("failed to connect to signaling server", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		logger.Warn("pitwall permission denied, skipping signaling connection")
 	}
 
 	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, state *dto.PitwallState) error {
@@ -338,10 +369,10 @@ func main() {
 		sf := cfgSaveFiles
 		rn := cfgRoomName
 		rp := cfgRoomPassword
+		dp := cachedDriverPerms
 		cfgMu.Unlock()
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		statusMap := map[string]any{
 			"roomCode":           peerManager.RoomCode(),
 			"roomName":           rn,
 			"roomProtected":      rp != "",
@@ -353,7 +384,12 @@ func main() {
 			"radarActive":        radarOv.IsRunning(),
 			"weatherActive":      weatherOv.IsRunning(),
 			"strategyActive":     strategyOv.IsRunning(),
-		})
+		}
+		if dp != nil {
+			statusMap["driverPermissions"] = dp
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(statusMap)
 	})
 
 	mux.HandleFunc("GET /api/tracks", func(w http.ResponseWriter, r *http.Request) {
@@ -499,6 +535,7 @@ func main() {
 			logger.Info("track recording changed", "enabled", body.TrackRecording)
 		}
 
+		prevFRCKey := cfgFRCAccountKey
 		cfgFRCAccountKey = strings.TrimSpace(body.FRCAccountKey)
 		nextDefaultCode := strings.TrimSpace(body.DefaultPermissionsCode)
 		if cfgFRCAccountKey != "" {
@@ -511,6 +548,26 @@ func main() {
 			peerManager.SetDefaultPermissionsCode(cfgDefaultPermissionsCode)
 			peerManager.UpdateRoomMetadata(cfgRoomName, cfgRoomPassword)
 			logger.Info("room metadata changed", "roomName", cfgRoomName, "protected", cfgRoomPassword != "", "defaultPermissionsCode", cfgDefaultPermissionsCode)
+		}
+
+		// Re-check driver permissions when FRC key changes
+		if cfgFRCAccountKey != prevFRCKey {
+			newDP := resolveDriverPerms(cfgFRCAccountKey)
+			prevDP := cachedDriverPerms
+			cachedDriverPerms = newDP
+			wasPitwall := prevDP == nil || prevDP.Pitwall
+			nowPitwall := newDP == nil || newDP.Pitwall
+			if wasPitwall && !nowPitwall {
+				peerManager.Close()
+				logger.Warn("pitwall permission revoked, disconnected from signaling")
+			} else if !wasPitwall && nowPitwall {
+				go func() {
+					if err := peerManager.Connect(); err != nil {
+						logger.Error("failed to reconnect to signaling", "error", err)
+					}
+				}()
+				logger.Info("pitwall permission granted, reconnecting to signaling")
+			}
 		}
 
 		// Update forward targets
@@ -533,7 +590,6 @@ func main() {
 	})
 
 
-	frcClient := frcapi.NewClient("https://f1-rivals-cup-production.up.railway.app")
 	mux.HandleFunc("GET /api/frc-verify", func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
 		if key == "" {
@@ -555,8 +611,19 @@ func main() {
 			json.NewEncoder(w).Encode(map[string]string{"error": "account key not found"})
 			return
 		}
+		// Also check driver permissions
+		dp := resolveDriverPerms(key)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(info)
+		json.NewEncoder(w).Encode(map[string]any{
+			"valid":      info.Valid,
+			"accountKey": info.AccountKey,
+			"id":         info.ID,
+			"nickname":   info.Nickname,
+			"avatarUrl":  info.AvatarURL,
+			"role":       info.Role,
+			"createdAt":  info.CreatedAt,
+			"driverPermissions": dp,
+		})
 	})
 
 	mux.HandleFunc("GET /api/debug", func(w http.ResponseWriter, r *http.Request) {

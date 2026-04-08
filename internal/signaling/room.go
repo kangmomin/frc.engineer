@@ -176,7 +176,7 @@ func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, 
 		return "", "", Permissions{}, fmt.Errorf("room %s is full (max %d)", room.Name, maxEngineersPerRoom)
 	}
 
-	grantedPermissions := Permissions{}
+	grantedPermissions := Permissions{Pitwall: true, Overlay: true, SetupSupport: true}
 	codeToResolve := strings.TrimSpace(permissionsCode)
 	if codeToResolve == "" {
 		codeToResolve = strings.TrimSpace(room.DefaultPermissionsCode)
@@ -204,6 +204,10 @@ func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, 
 			if !ok && strings.TrimSpace(permissionsCode) != "" {
 				return "", "", Permissions{}, fmt.Errorf("invalid permissions code")
 			}
+			// Non-FRC codes don't gate app-level access
+			grantedPermissions.Pitwall = true
+			grantedPermissions.Overlay = true
+			grantedPermissions.SetupSupport = true
 		}
 	}
 

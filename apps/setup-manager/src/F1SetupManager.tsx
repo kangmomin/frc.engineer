@@ -542,7 +542,7 @@ function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, li
       </Panel>
 
       {/* Overlay Toggles */}
-      {senderConnected && (
+      {senderConnected && hasOverlay && (
         <Panel title="OVERLAYS">
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {[
@@ -644,6 +644,20 @@ export function F1SetupManager() {
   const [senderUrl] = useState(() => { try { return localStorage.getItem('frc_sender_url') || DEFAULT_SENDER_URL; } catch { return DEFAULT_SENDER_URL; } });
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack } = useSenderConnection(senderUrl);
   const teleDiags = useMemo(() => diagnoseFromTelemetry(livePlayer, liveSession), [livePlayer, liveSession]);
+
+  // Driver permissions from FRC (null = unrestricted / no FRC key)
+  const dp = senderStatus?.driverPermissions;
+  const hasPitwall = dp ? dp.pitwall : true;
+  const hasOverlay = dp ? dp.overlay : true;
+  const hasSetupSupport = dp ? dp.setupSupport : true;
+
+  // Redirect to settings if current tab is gated
+  useEffect(() => {
+    if (!hasPitwall && tab !== 'settings') setTab('settings');
+    else if (!hasSetupSupport && ['main', 'teams', 'compare', 'mysetup', 'ask'].includes(tab)) setTab('settings');
+    else if (!hasOverlay && tab === 'telemetry') setTab('settings');
+  }, [hasPitwall, hasOverlay, hasSetupSupport, tab]);
+
   // Main tab
   const [track, setTrack] = useState(null);
   const [mode, setMode] = useState(null);
@@ -808,7 +822,12 @@ export function F1SetupManager() {
         zIndex: 10,
       }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-          {getTabs().map(t => {
+          {getTabs().filter(t => {
+            if (!hasPitwall && t.id !== 'settings') return false;
+            if (!hasSetupSupport && ['main', 'teams', 'compare', 'mysetup', 'ask'].includes(t.id)) return false;
+            if (!hasOverlay && t.id === 'telemetry') return false;
+            return true;
+          }).map(t => {
             const active = tab === t.id;
             return (
               <button key={t.id} onClick={() => setTab(t.id)} title={t.label} style={{
@@ -878,6 +897,20 @@ export function F1SetupManager() {
 
         {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '18px 20px 80px' }}>
+
+          {!hasPitwall && (
+            <div style={{
+              background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.2)',
+              borderRadius: 3, padding: '12px 16px', marginBottom: 16,
+            }}>
+              <div style={{ fontFamily: P.mono, fontSize: 10, fontWeight: 700, letterSpacing: 1, color: '#ff3b5c', marginBottom: 4 }}>
+                PITWALL DISABLED
+              </div>
+              <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                FRC 계정에 Pitwall 권한이 없습니다. Signaling 서버에 연결되지 않으며, 설정만 사용 가능합니다.
+              </div>
+            </div>
+          )}
 
           {/* ═══════ SETUP TAB ═══════ */}
           {tab === "main" && (

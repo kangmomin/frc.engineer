@@ -16,6 +16,9 @@ func FRCPermissionKeys() []string {
 		"commentary",
 		"quali",
 		"combat",
+		"pitwall",
+		"overlay",
+		"setup_support",
 	}
 	keys := make([]string, len(features))
 	for i, f := range features {
@@ -48,6 +51,46 @@ func MapFRCPermissions(m map[string]bool) Permissions {
 			p.ViewQualifying = granted
 		case "combat":
 			p.ViewCombat = granted
+		case "pitwall":
+			p.Pitwall = granted
+		case "overlay":
+			p.Overlay = granted
+		case "setup_support":
+			p.SetupSupport = granted
+		}
+	}
+	return p
+}
+
+// DriverPermissions is a lightweight subset used by the sender to gate driver-side features.
+type DriverPermissions struct {
+	Pitwall      bool `json:"pitwall"`
+	Overlay      bool `json:"overlay"`
+	SetupSupport bool `json:"setupSupport"`
+}
+
+// FRCDriverPermissionKeys returns only the 3 driver-level permission keys.
+func FRCDriverPermissionKeys() []string {
+	features := []string{"pitwall", "overlay", "setup_support"}
+	keys := make([]string, len(features))
+	for i, f := range features {
+		keys[i] = frcProductPrefix + f
+	}
+	return keys
+}
+
+// MapFRCDriverPermissions converts FRC API results to DriverPermissions.
+func MapFRCDriverPermissions(m map[string]bool) DriverPermissions {
+	var p DriverPermissions
+	for key, granted := range m {
+		feature := strings.TrimPrefix(key, frcProductPrefix)
+		switch feature {
+		case "pitwall":
+			p.Pitwall = granted
+		case "overlay":
+			p.Overlay = granted
+		case "setup_support":
+			p.SetupSupport = granted
 		}
 	}
 	return p
