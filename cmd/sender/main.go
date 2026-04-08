@@ -26,7 +26,7 @@ import (
 	"frc.engineer/internal/udp"
 )
 
-var appVersion = "v4.10.1"
+var appVersion = "v4.10.2"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
@@ -226,8 +226,8 @@ func main() {
 	cachedDriverPerms = resolveDriverPerms(cfgFRCAccountKey)
 	cfgMu.Unlock()
 
-	// Connect to signaling server (skip if pitwall permission denied)
-	shouldConnect := cachedDriverPerms == nil || cachedDriverPerms.Pitwall
+	// Connect to signaling server (require pitwall permission)
+	shouldConnect := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
 	if shouldConnect {
 		if err := peerManager.Connect(); err != nil {
 			logger.Error("failed to connect to signaling server", "error", err)
@@ -555,8 +555,8 @@ func main() {
 			newDP := resolveDriverPerms(cfgFRCAccountKey)
 			prevDP := cachedDriverPerms
 			cachedDriverPerms = newDP
-			wasPitwall := prevDP == nil || prevDP.Pitwall
-			nowPitwall := newDP == nil || newDP.Pitwall
+			wasPitwall := prevDP != nil && prevDP.Pitwall
+			nowPitwall := newDP != nil && newDP.Pitwall
 			if wasPitwall && !nowPitwall {
 				peerManager.Close()
 				logger.Warn("pitwall permission revoked, disconnected from signaling")

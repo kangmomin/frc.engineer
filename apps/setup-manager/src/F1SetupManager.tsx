@@ -647,9 +647,9 @@ export function F1SetupManager() {
 
   // Driver permissions from FRC (null = unrestricted / no FRC key)
   const dp = senderStatus?.driverPermissions;
-  const hasPitwall = dp ? dp.pitwall : true;
-  const hasOverlay = dp ? dp.overlay : true;
-  const hasSetupSupport = dp ? dp.setupSupport : true;
+  const hasPitwall = dp?.pitwall ?? false;
+  const hasOverlay = dp?.overlay ?? false;
+  const hasSetupSupport = dp?.setupSupport ?? false;
 
   // Redirect to settings if current tab is gated
   useEffect(() => {
