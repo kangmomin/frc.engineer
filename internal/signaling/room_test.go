@@ -18,7 +18,7 @@ func TestRoomManagerListAndPasswordJoin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
 	}
-	rm := NewRoomManager(testLogger(), store)
+	rm := NewRoomManager(testLogger(), store, nil)
 	defer rm.Stop()
 
 	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "secret", "")
@@ -61,7 +61,7 @@ func TestRoomManagerRejoinAndUpdateMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
 	}
-	rm := NewRoomManager(testLogger(), store)
+	rm := NewRoomManager(testLogger(), store, nil)
 	defer rm.Stop()
 
 	roomID, roomCode, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "First Room", "one", "")
@@ -99,7 +99,7 @@ func TestListRoomsHidesOfflineRooms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPermissionCodeStore failed: %v", err)
 	}
-	rm := NewRoomManager(testLogger(), store)
+	rm := NewRoomManager(testLogger(), store, nil)
 	defer rm.Stop()
 
 	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Offline Room", "", "")
@@ -138,7 +138,7 @@ func TestRoomManagerJoinWithPermissionCode(t *testing.T) {
 		t.Fatalf("Upsert failed: %v", err)
 	}
 
-	rm := NewRoomManager(testLogger(), store)
+	rm := NewRoomManager(testLogger(), store, nil)
 	defer rm.Stop()
 
 	roomID, _, err := rm.CreateRoom(nil, &sync.Mutex{}, "", "Alpha Room", "", "")

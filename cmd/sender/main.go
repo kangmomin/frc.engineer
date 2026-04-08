@@ -17,6 +17,7 @@ import (
 
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/frcapi"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rtc"
 	"frc.engineer/internal/telemetry"
@@ -79,6 +80,10 @@ func main() {
 	}
 	roomPassword := os.Getenv("SENDER_ROOM_PASSWORD")
 	defaultPermissionsCode := os.Getenv("DEFAULT_PERMISSIONS_CODE")
+	frcAccountKey := os.Getenv("FRC_ACCOUNT_KEY")
+	if frcAccountKey != "" {
+		defaultPermissionsCode = frcAccountKey
+	}
 
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
@@ -134,6 +139,7 @@ func main() {
 	cfgRoomName := roomName
 	cfgRoomPassword := roomPassword
 	cfgDefaultPermissionsCode := defaultPermissionsCode
+	cfgFRCAccountKey := frcAccountKey
 	cfgForwardTargets := []rtconfig.ForwardTarget{}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
@@ -376,6 +382,7 @@ func main() {
 		rn := cfgRoomName
 		rp := cfgRoomPassword
 		dpc := cfgDefaultPermissionsCode
+		fak := cfgFRCAccountKey
 		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
 		copy(ft, cfgForwardTargets)
 		cfgMu.Unlock()
@@ -388,6 +395,7 @@ func main() {
 			"roomName":               rn,
 			"roomPassword":           rp,
 			"defaultPermissionsCode": dpc,
+			"frcAccountKey":          fak,
 			"forwardTargets":         ft,
 		})
 	})
@@ -401,6 +409,7 @@ func main() {
 			RoomName                           string                   `json:"roomName"`
 			RoomPassword                       string                   `json:"roomPassword"`
 			DefaultPermissionsCode             string                   `json:"defaultPermissionsCode"`
+			FRCAccountKey                      string                   `json:"frcAccountKey"`
 			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -490,7 +499,11 @@ func main() {
 			logger.Info("track recording changed", "enabled", body.TrackRecording)
 		}
 
+		cfgFRCAccountKey = strings.TrimSpace(body.FRCAccountKey)
 		nextDefaultCode := strings.TrimSpace(body.DefaultPermissionsCode)
+		if cfgFRCAccountKey != "" {
+			nextDefaultCode = cfgFRCAccountKey
+		}
 		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword || nextDefaultCode != cfgDefaultPermissionsCode {
 			cfgRoomName = nextRoomName
 			cfgRoomPassword = nextRoomPassword
@@ -514,10 +527,37 @@ func main() {
 			"roomName":               cfgRoomName,
 			"roomPassword":           cfgRoomPassword,
 			"defaultPermissionsCode": cfgDefaultPermissionsCode,
+			"frcAccountKey":          cfgFRCAccountKey,
 			"forwardTargets":         cfgForwardTargets,
 		})
 	})
 
+
+	frcClient := frcapi.NewClient("https://f1-rivals-cup-production.up.railway.app")
+	mux.HandleFunc("GET /api/frc-verify", func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "key parameter required"})
+			return
+		}
+		info, err := frcClient.VerifyKey(r.Context(), key)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		if info == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "account key not found"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(info)
+	})
 
 	mux.HandleFunc("GET /api/debug", func(w http.ResponseWriter, r *http.Request) {
 		state := processor.PitwallManager().BuildState()

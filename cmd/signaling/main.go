@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"frc.engineer/internal/frcapi"
 	"frc.engineer/internal/signaling"
 	"github.com/gorilla/websocket"
 )
@@ -67,7 +68,14 @@ func main() {
 		logger.Warn("SIGNALING_SETTINGS_PASSWORD not set; permission code admin endpoints accept any provided password")
 	}
 
-	roomManager := signaling.NewRoomManager(logger, permissionStore)
+	frcAPIURL := strings.TrimSpace(os.Getenv("FRC_API_URL"))
+	if frcAPIURL == "" {
+		frcAPIURL = "https://f1-rivals-cup-production.up.railway.app"
+	}
+	frcAPI := frcapi.NewClient(frcAPIURL)
+	logger.Info("FRC API client configured", "url", frcAPIURL)
+
+	roomManager := signaling.NewRoomManager(logger, permissionStore, frcAPI)
 	defer roomManager.Stop()
 
 	upgrader := websocket.Upgrader{

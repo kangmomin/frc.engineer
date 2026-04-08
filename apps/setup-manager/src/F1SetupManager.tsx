@@ -460,8 +460,22 @@ function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, li
               <input type="password" value={draft.roomPassword || ''} onChange={e => setDraft(d => ({ ...d, roomPassword: e.target.value }))} style={inp} placeholder="Optional" />
             </div>
             <div>
-              <div style={lbl}>Default Permission Code</div>
-              <input value={draft.defaultPermissionsCode || ''} onChange={e => setDraft(d => ({ ...d, defaultPermissionsCode: e.target.value }))} style={inp} placeholder="Optional" />
+              <div style={lbl}>FRC Account Key</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={draft.frcAccountKey || ''} onChange={e => setDraft(d => ({ ...d, frcAccountKey: e.target.value }))} style={{ ...inp, flex: 1 }} placeholder="F1RC-XXXXXXXX" />
+                <button type="button" disabled={!draft.frcAccountKey} onClick={async () => {
+                  try {
+                    const res = await fetch(`${senderUrl}/api/frc-verify?key=${encodeURIComponent(draft.frcAccountKey)}`);
+                    if (res.ok) { const d = await res.json(); alert(`Verified: ${d.nickname} (${d.role})`); }
+                    else { const d = await res.json().catch(() => null); alert(d?.error || 'Verification failed'); }
+                  } catch { alert('Cannot reach sender'); }
+                }} style={{
+                  padding: '0 12px', borderRadius: 3, border: `1px solid ${P.accent}`,
+                  background: 'transparent', color: P.accent,
+                  fontFamily: P.mono, fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                  cursor: draft.frcAccountKey ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap',
+                }}>VERIFY</button>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>

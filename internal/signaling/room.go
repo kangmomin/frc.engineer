@@ -1,6 +1,7 @@
 package signaling
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"frc.engineer/internal/frcapi"
 	"github.com/gorilla/websocket"
 )
 
@@ -77,17 +79,19 @@ type RoomManager struct {
 	roomsByCode     map[string]*Room // roomCode → Room
 	roomsByID       map[string]*Room // roomId → Room
 	permissionCodes *PermissionCodeStore
+	frcAPI          *frcapi.Client
 	mu              sync.RWMutex
 	logger          *slog.Logger
 	done            chan struct{}
 }
 
 // NewRoomManager creates a new RoomManager and starts a background cleanup goroutine.
-func NewRoomManager(logger *slog.Logger, permissionCodes *PermissionCodeStore) *RoomManager {
+func NewRoomManager(logger *slog.Logger, permissionCodes *PermissionCodeStore, frcAPI *frcapi.Client) *RoomManager {
 	rm := &RoomManager{
 		roomsByCode:     make(map[string]*Room),
 		roomsByID:       make(map[string]*Room),
 		permissionCodes: permissionCodes,
+		frcAPI:          frcAPI,
 		logger:          logger,
 		done:            make(chan struct{}),
 	}
@@ -178,14 +182,28 @@ func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, 
 		codeToResolve = strings.TrimSpace(room.DefaultPermissionsCode)
 	}
 	if codeToResolve != "" {
-		var ok bool
-		var err error
-		grantedPermissions, ok, err = rm.permissionCodes.Resolve(codeToResolve)
-		if err != nil {
-			return "", "", Permissions{}, fmt.Errorf("resolve permissions code: %w", err)
-		}
-		if !ok && strings.TrimSpace(permissionsCode) != "" {
-			return "", "", Permissions{}, fmt.Errorf("invalid permissions code")
+		if frcapi.IsAccountKey(codeToResolve) && rm.frcAPI != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			result, err := rm.frcAPI.CheckPermissions(ctx, codeToResolve, FRCPermissionKeys())
+			if err != nil {
+				rm.logger.Warn("FRC API error, granting no permissions", "error", err)
+			}
+			if result != nil {
+				grantedPermissions = MapFRCPermissions(result)
+			} else if strings.TrimSpace(permissionsCode) != "" {
+				return "", "", Permissions{}, fmt.Errorf("invalid account key")
+			}
+		} else {
+			var ok bool
+			var err error
+			grantedPermissions, ok, err = rm.permissionCodes.Resolve(codeToResolve)
+			if err != nil {
+				return "", "", Permissions{}, fmt.Errorf("resolve permissions code: %w", err)
+			}
+			if !ok && strings.TrimSpace(permissionsCode) != "" {
+				return "", "", Permissions{}, fmt.Errorf("invalid permissions code")
+			}
 		}
 	}
 
