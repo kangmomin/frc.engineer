@@ -197,6 +197,7 @@ export function CockpitDashboard({
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
+  const trainStatus = useMemo(() => getTrainStatus(drivers, player), [drivers, player]);
   const strategyPanel = useMemo(
     () => buildStrategyPanelData(player, session, strategyGuide, recommendedTyre, pitWindow, trafficStatus),
     [pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
@@ -584,6 +585,22 @@ export function CockpitDashboard({
               />
             </div>
           </div>
+          {trainStatus.trainSize >= 2 && (
+            <div className={styles.trainCard}>
+              <span className={styles.trafficLabel}>Train</span>
+              <div className={styles.trainValueRow}>
+                <strong
+                  className={styles.trafficValue}
+                  style={{ color: trainStatus.inTrain ? 'var(--accent-red)' : 'var(--text-secondary)' }}
+                >
+                  {trainStatus.trainSize} cars
+                </strong>
+                {trainStatus.inTrain && (
+                  <span className={styles.trainStuck}>{'\u26A0'} STUCK</span>
+                )}
+              </div>
+            </div>
+          )}
           {strategyPanel.notes && (
             <div className={styles.strategyNotes}>{strategyPanel.notes}</div>
           )}
@@ -1685,6 +1702,44 @@ function getTrafficStatus(carBehind: DriverInfo | null): { label: string; detail
     return { label: 'TIGHT EXIT', detail: `+${(gapMs / 1000).toFixed(1)}s`, meter: 48 };
   }
   return { label: 'TRAFFIC RISK', detail: `+${(gapMs / 1000).toFixed(1)}s`, meter: 22 };
+}
+
+function getTrainStatus(
+  drivers: DriverInfo[],
+  player: DriverInfo | null,
+): { trainSize: number; inTrain: boolean } {
+  if (!player || drivers.length < 2) return { trainSize: 0, inTrain: false };
+
+  const TRAIN_THRESHOLD = 1500;
+  let playerIdx = -1;
+  for (let i = 0; i < drivers.length; i++) {
+    if (drivers[i].index === player.index) {
+      playerIdx = i;
+      break;
+    }
+  }
+  if (playerIdx === -1) return { trainSize: 0, inTrain: false };
+
+  const chains: { start: number; end: number }[] = [];
+  let chainStart = 0;
+  for (let i = 1; i < drivers.length; i++) {
+    const gap = drivers[i].deltaToCarInFront ?? 0;
+    if (gap <= 0 || gap > TRAIN_THRESHOLD || drivers[i].pitStatus !== 0) {
+      if (i - chainStart >= 2) chains.push({ start: chainStart, end: i - 1 });
+      chainStart = i;
+    }
+  }
+  if (drivers.length - chainStart >= 2) {
+    chains.push({ start: chainStart, end: drivers.length - 1 });
+  }
+
+  for (const ch of chains) {
+    if (playerIdx >= ch.start && playerIdx <= ch.end) {
+      const size = ch.end - ch.start + 1;
+      return { trainSize: size, inTrain: size >= 3 };
+    }
+  }
+  return { trainSize: 0, inTrain: false };
 }
 
 function getDrsProgress(player: DriverInfo | null): number {
