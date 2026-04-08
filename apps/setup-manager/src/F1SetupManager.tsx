@@ -213,6 +213,127 @@ function diagnoseFromTelemetry(player: any, session: any): Diagnostic[] {
   return diags;
 }
 
+// ─── Rule-based setup feedback engine (no AI needed) ───
+type SetupTip = { issue: string; severity: 'high' | 'med' | 'low'; changes: { param: string; dir: '↑' | '↓'; val?: string }[]; reason: string };
+
+function buildSetupTips(snaps: any[]): SetupTip[] {
+  if (!snaps || snaps.length < 2) return [];
+  const tips: SetupTip[] = [];
+  const last = snaps[snaps.length - 1];
+  const first = snaps[0];
+  const p = last.player;
+  if (!p) return tips;
+
+  const tw = p.tireWear, ti = p.tireInnerTemp, bt = p.brakeTemp;
+  if (!tw || !ti) return tips;
+
+  const avgFW = (tw[0] + tw[1]) / 2, avgRW = (tw[2] + tw[3]) / 2;
+  const avgFT = (ti[0] + ti[1]) / 2, avgRT = (ti[2] + ti[3]) / 2;
+
+  // Wear rate from recording
+  const tw0 = first.player?.tireWear;
+  const wearRateF = tw0 ? ((tw[0] - tw0[0] + tw[1] - tw0[1]) / 2) : 0;
+  const wearRateR = tw0 ? ((tw[2] - tw0[2] + tw[3] - tw0[3]) / 2) : 0;
+
+  // Dynamics
+  const dyn = p.dynamics;
+  const lastDyn = dyn?.length ? dyn[dyn.length - 1] : null;
+  const usP = lastDyn?.understeerPct || 0;
+  const osP = lastDyn?.oversteerPct || 0;
+  const lockups = lastDyn?.lockupCount || 0;
+
+  // Understeer
+  if (avgFW > avgRW + 8 || usP > 10) {
+    const sev = (avgFW > avgRW + 15 || usP > 20) ? 'high' : 'med';
+    tips.push({ issue: '언더스티어', severity: sev, reason: `프론트 마모 ${avgFW.toFixed(0)}% vs 리어 ${avgRW.toFixed(0)}%${usP > 5 ? `, 언더스티어 ${usP.toFixed(0)}%` : ''}`, changes: [
+      { param: '프론트 윙', dir: '↑', val: '+2~4' },
+      { param: '프론트 안티롤바', dir: '↓', val: '-2~3' },
+      { param: '프론트 서스', dir: '↓', val: '-2~4' },
+      { param: '디프 오프스로틀', dir: '↑', val: '+5~10' },
+    ]});
+  }
+
+  // Oversteer
+  if (avgRW > avgFW + 8 || osP > 10) {
+    const sev = (avgRW > avgFW + 15 || osP > 20) ? 'high' : 'med';
+    tips.push({ issue: '오버스티어', severity: sev, reason: `리어 마모 ${avgRW.toFixed(0)}% vs 프론트 ${avgFW.toFixed(0)}%${osP > 5 ? `, 오버스티어 ${osP.toFixed(0)}%` : ''}`, changes: [
+      { param: '리어 윙', dir: '↑', val: '+2~4' },
+      { param: '리어 안티롤바', dir: '↓', val: '-2~3' },
+      { param: '리어 서스', dir: '↓', val: '-2~4' },
+      { param: '온스로틀 디프', dir: '↓', val: '-5~10' },
+    ]});
+  }
+
+  // Front overheat
+  if (avgFT > 105) {
+    tips.push({ issue: '프론트 과열', severity: avgFT > 115 ? 'high' : 'med', reason: `프론트 코어 온도 ${avgFT.toFixed(0)}°C (적정 85~105°C)`, changes: [
+      { param: 'FL/FR 압력', dir: '↑', val: '+0.5~1.0 psi' },
+      { param: '프론트 RH', dir: '↑', val: '+1~2' },
+      { param: '프론트 서스', dir: '↑', val: '+1~2' },
+    ]});
+  }
+
+  // Rear overheat
+  if (avgRT > 105) {
+    tips.push({ issue: '리어 과열', severity: avgRT > 115 ? 'high' : 'med', reason: `리어 코어 온도 ${avgRT.toFixed(0)}°C (적정 85~105°C)`, changes: [
+      { param: 'RL/RR 압력', dir: '↑', val: '+0.5~1.0 psi' },
+      { param: '리어 RH', dir: '↑', val: '+1~2' },
+      { param: '온스로틀 디프', dir: '↓', val: '-5~10' },
+    ]});
+  }
+
+  // Brake lockup / front brake overheat
+  if (bt && bt[0] > 0) {
+    const avgFB = (bt[0] + bt[1]) / 2, avgRB = (bt[2] + bt[3]) / 2;
+    if ((avgFB > avgRB + 100 && avgFB > 600) || lockups > 3) {
+      tips.push({ issue: '프론트 브레이크 과열 / 락업', severity: lockups > 5 ? 'high' : 'med', reason: `프론트 브레이크 ${avgFB.toFixed(0)}°C, 락업 ${lockups}회`, changes: [
+        { param: '브레이크 바이어스', dir: '↓', val: '-1~3%' },
+        { param: '브레이크 압력', dir: '↓', val: '-2~5%' },
+      ]});
+    }
+  }
+
+  // Asymmetric front wear
+  if (Math.abs(tw[0] - tw[1]) > 10) {
+    const side = tw[0] > tw[1] ? '좌측' : '우측';
+    const param = tw[0] > tw[1] ? 'FL 압력' : 'FR 압력';
+    tips.push({ issue: `프론트 ${side} 편마모`, severity: 'med', reason: `FL ${tw[0].toFixed(0)}% / FR ${tw[1].toFixed(0)}%`, changes: [
+      { param, dir: '↑', val: '+0.5 psi' },
+    ]});
+  }
+
+  // Asymmetric rear wear
+  if (Math.abs(tw[2] - tw[3]) > 10) {
+    const side = tw[2] > tw[3] ? '좌측' : '우측';
+    const param = tw[2] > tw[3] ? 'RL 압력' : 'RR 압력';
+    tips.push({ issue: `리어 ${side} 편마모`, severity: 'med', reason: `RL ${tw[2].toFixed(0)}% / RR ${tw[3].toFixed(0)}%`, changes: [
+      { param, dir: '↑', val: '+0.5 psi' },
+    ]});
+  }
+
+  // High overall wear rate
+  if (wearRateF > 15 && wearRateR > 15) {
+    tips.push({ issue: '전체 마모 과다', severity: 'med', reason: `녹화 중 프론트 +${wearRateF.toFixed(0)}%, 리어 +${wearRateR.toFixed(0)}%`, changes: [
+      { param: '프론트/리어 서스', dir: '↑', val: '+2~4 (부드러운 승차감)' },
+      { param: '전체 타이어 압력', dir: '↑', val: '+0.5 psi' },
+    ]});
+  }
+
+  // Low top speed (from recording)
+  const maxSpeed = Math.max(...snaps.map(s => s.player?.topSpeed || 0));
+  const bestLap = p.bestLapTime;
+  if (maxSpeed > 0 && maxSpeed < 300 && bestLap > 0) {
+    // Only suggest if speed seems low (heuristic, can't know track without more data)
+    // Skip this heuristic unless user explicitly asks — too track-dependent
+  }
+
+  if (tips.length === 0) {
+    tips.push({ issue: '양호', severity: 'low', reason: '주요 이슈 감지되지 않음. 현재 셋업 유지 권장.', changes: [] });
+  }
+
+  return tips;
+}
+
 function Bar({v,min,max}){const p=Math.max(0,Math.min(100,((v-min)/(max-min))*100));const c=p<33?P.accent:p<66?P.accent2:P.danger;return(<div style={{background:'rgba(255,255,255,0.04)',borderRadius:2,height:3,overflow:'hidden'}}><div style={{width:`${p}%`,height:'100%',background:c,borderRadius:2}}/></div>);}
 
 function RC({s1,s2,m1,m2,size=240}){const cx=size/2,cy=size/2,r=size/2-40,n=RK.length;const nm=(k,v)=>{const d=DEFS[k];return(v-d.min)/(d.max-d.min);};const pt=(i,v)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return{x:cx+r*v*Math.cos(a),y:cy+r*v*Math.sin(a)};};const p1=RK.map((k,i)=>pt(i,nm(k.k,s1[k.k])));const p2=s2?RK.map((k,i)=>pt(i,nm(k.k,s2[k.k]))):null;const po=pts=>pts.map(p=>`${p.x},${p.y}`).join(" ");return(<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>{[0.25,0.5,0.75,1].map(lv=><polygon key={lv} points={po(RK.map((_,i)=>pt(i,lv)))} fill="none" stroke="rgba(0,229,255,0.06)" strokeWidth={1}/>)}{RK.map((_,i)=>{const p=pt(i,1);return<line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="rgba(0,229,255,0.04)" strokeWidth={1}/>;})}<polygon points={po(p1)} fill={`${m1?.color||P.accent}20`} stroke={m1?.color||P.accent} strokeWidth={1.5} filter="url(#glow)"/>{p1.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m1?.color||P.accent}/>)}{p2&&<><polygon points={po(p2)} fill={`${m2?.color||P.accent2}20`} stroke={m2?.color||P.accent2} strokeWidth={1.5} strokeDasharray="5,3" filter="url(#glow)"/>{p2.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m2?.color||P.accent2}/>)}</>}{RK.map((k,i)=>{const p=pt(i,1.18);return<text key={i} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fill={P.muted} fontSize={8} fontFamily={P.mono} fontWeight={600}>{k.l}</text>;})}</svg>);}
@@ -1419,7 +1540,51 @@ export function F1SetupManager() {
                 </Panel>
               )}
 
-              {/* AI Analysis (after recording) */}
+              {/* Rule-based Setup Feedback (no AI needed) */}
+              {recSnaps.length >= 2 && (() => {
+                const tips = buildSetupTips(recSnaps);
+                if (tips.length === 0) return null;
+                return (
+                  <Panel title="SETUP FEEDBACK">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {tips.map((tip, i) => (
+                        <div key={i} style={{
+                          background: tip.severity === 'high' ? 'rgba(255,82,92,0.06)' : tip.severity === 'med' ? 'rgba(0,229,255,0.04)' : 'rgba(255,255,255,0.02)',
+                          border: `1px solid ${tip.severity === 'high' ? 'rgba(255,82,92,0.2)' : tip.severity === 'med' ? 'rgba(0,229,255,0.12)' : P.border}`,
+                          borderRadius: 3, padding: '8px 10px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <span style={{
+                              width: 6, height: 6, borderRadius: '50%',
+                              background: tip.severity === 'high' ? P.danger : tip.severity === 'med' ? P.accent : P.dim,
+                            }} />
+                            <span style={{ fontSize: 11, fontFamily: P.mono, fontWeight: 700, color: tip.severity === 'high' ? P.danger : tip.severity === 'med' ? P.accent : P.text }}>
+                              {tip.issue}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 9, color: P.muted, marginBottom: tip.changes.length ? 6 : 0, paddingLeft: 12 }}>{tip.reason}</div>
+                          {tip.changes.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 12 }}>
+                              {tip.changes.map((c, j) => (
+                                <span key={j} style={{
+                                  fontSize: 9, padding: '2px 6px', borderRadius: 2, fontFamily: P.mono,
+                                  background: c.dir === '↑' ? 'rgba(205,255,19,0.08)' : 'rgba(255,82,92,0.08)',
+                                  border: `1px solid ${c.dir === '↑' ? 'rgba(205,255,19,0.2)' : 'rgba(255,82,92,0.2)'}`,
+                                  color: c.dir === '↑' ? '#cdff13' : '#ff525c',
+                                }}>
+                                  {c.param} {c.dir} {c.val || ''}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
+                );
+              })()}
+
+              {/* AI Analysis (after recording, optional) */}
               {!recOn && recSnaps.length >= 2 && (
                 <Panel title="AI ANALYSIS">
                   <div style={{ minHeight: 120, maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
