@@ -356,11 +356,7 @@ const Icons = {
 function getTabs() {
   return [
     { id: "main", label: "SETUP", icon: Icons.wrench },
-    { id: "teams", label: "TEAMS", icon: Icons.flag },
-    { id: "compare", label: "COMPARE", icon: Icons.chartBar },
-    { id: "mysetup", label: "MY SETUP", icon: Icons.sliders },
     { id: "telemetry", label: "TELEMETRY", icon: Icons.activity },
-    { id: "ask", label: "ASK", icon: Icons.msgCircle },
     { id: "settings", label: "SETTINGS", icon: Icons.gear },
   ];
 }
@@ -659,7 +655,7 @@ export function F1SetupManager() {
   // Redirect to settings if current tab is gated
   useEffect(() => {
     if (!hasPitwall && tab !== 'settings') setTab('settings');
-    else if (!hasSetupSupport && ['main', 'teams', 'compare', 'mysetup', 'ask'].includes(tab)) setTab('settings');
+    else if (!hasSetupSupport && tab === 'main') setTab('settings');
     else if (!hasOverlay && tab === 'telemetry') setTab('settings');
   }, [hasPitwall, hasOverlay, hasSetupSupport, tab]);
 
@@ -674,27 +670,15 @@ export function F1SetupManager() {
   const [expanded, setExpanded] = useState({});
   const [fg, setFg] = useState("all");
   const [chat, setChat] = useState([]); const [input, setInput] = useState(""); const [loading, setLoading] = useState(false); const [chatHist, setChatHist] = useState([]);
-  // Teams tab
-  const [te, setTe] = useState(null);
-  // Compare tab
-  const [cmpT, setCmpT] = useState(null); const [cmpA, setCmpA] = useState(null); const [cmpB, setCmpB] = useState(null); const [cmpW, setCmpW] = useState("dry");
-  // Ask tab
-  const [askQ, setAskQ] = useState(""); const [askChat, setAskChat] = useState([]); const [askLoad, setAskLoad] = useState(false); const [askHist, setAskHist] = useState([]);
-  // MySetup tab
-  const [myTrack, setMyTrack] = useState(null);
-  const [myVals, setMyVals] = useState(() => { const iv = {}; FIELDS.forEach(f => { const d = DEFS[f.k]; iv[f.k] = Math.round(((d.min + d.max) / 2) * 10) / 10; }); return iv; });
-  const [myChat, setMyChat] = useState([]); const [myInput, setMyInput] = useState(""); const [myLoad, setMyLoad] = useState(false); const [myHist, setMyHist] = useState([]);
   // Telemetry tab
   const [recOn, setRecOn] = useState(false);
   const [recSnaps, setRecSnaps] = useState<any[]>([]);
   const [recStart, setRecStart] = useState<number | null>(null);
   const [recChat, setRecChat] = useState([]); const [recInput, setRecInput] = useState(""); const [recLoad, setRecLoad] = useState(false); const [recHist, setRecHist] = useState([]);
-  const chatEnd = useRef(null); const askRef = useRef(null); const myEnd = useRef(null); const recEnd = useRef(null);
+  const chatEnd = useRef(null); const recEnd = useRef(null);
 
   const useAutoScroll = (ref, dep) => useEffect(() => { ref.current?.scrollIntoView({ behavior: "smooth" }); }, [dep]);
   useAutoScroll(chatEnd, chat);
-  useAutoScroll(askRef, askChat);
-  useAutoScroll(myEnd, myChat);
   useAutoScroll(recEnd, recChat);
 
   // Record telemetry snapshots while recording
@@ -734,18 +718,6 @@ export function F1SetupManager() {
   };
 
   const send = () => chatSend(input, loading, bSys(), setInput, setChat, setChatHist, chatHist, setLoading);
-  const askSend = () => chatSend(askQ, askLoad, `F1 25 셋업 전문가. 한국어 3~8줄 답변.\n\n${KNOWLEDGE_BASE}`, setAskQ, setAskChat, setAskHist, askHist, setAskLoad);
-  const mySend = () => {
-    if (!myTrack) return;
-    const sw = FIELDS.map(f => `${DEFS[f.k].name}:${myVals[f.k]}`).join("\n");
-    const myTi = null;
-    const myDD = DB[myTrack];
-    const ti2 = myDD?.track ? `\n[트랙]${myTrack}|${myDD.track.notes}` : "";
-    const tw = myTi ? `\n[차량]${myTi.name} 장점:${myTi.pros} 단점:${myTi.cons}` : "";
-    const sys = `F1 25 셋업 엔지니어. 사용자 커스텀 셋업 분석.\n\n${KNOWLEDGE_BASE}\n\n[환경]${myTrack}${ti2}${tw}\n[사용자 셋업]\n${sw}\n[규칙]한국어3~5줄, 2~3개변경 추천`;
-    chatSend(myInput, myLoad, sys, setMyInput, setMyChat, setMyHist, myHist, setMyLoad);
-  };
-
   // Telemetry recording helpers
   const startRec = () => { setRecSnaps([]); setRecChat([]); setRecHist([]); setRecStart(Date.now()); setRecOn(true); };
   const stopRec = () => setRecOn(false);
@@ -800,7 +772,6 @@ export function F1SetupManager() {
 
   const fM = SM.filter(m => { const wO = weather === "rain" ? m.rain : !m.rain; const gO = fg === "all" || m.group === fg; return wO && gO; });
   const sortM = useMemo(() => isNE && ti ? [...fM].sort((a, b) => { const sa = dd?.[getDbKey(a)]; const sb = dd?.[getDbKey(b)]; if (!sa || !sb) return 0; return (gCS(sb, ti) || 0) - (gCS(sa, ti) || 0); }) : fM, [fM, dd, ti, isNE]);
-  const cD = cmpT ? DB[cmpT] : null; const cSA = cmpA && cD ? cD[getDbKey(SM.find(m => m.key === cmpA) || { key: cmpA })] : null; const cSB = cmpB && cD ? cD[getDbKey(SM.find(m => m.key === cmpB) || { key: cmpB })] : null; const cMA = SM.find(m => m.key === cmpA); const cMB = SM.find(m => m.key === cmpB);
 
   const qQ = weather === "rain" ? ["비에서 스핀", "비에서 안꺾임", "웻 브레이킹 불안"] : ["리어 미끄러움", "언더스티어", "탑스피드 낮음", "앞바퀴 잠김", "타이어 과열", "코너 탈출 느림"];
 
@@ -829,7 +800,7 @@ export function F1SetupManager() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
           {getTabs().filter(t => {
             if (!hasPitwall && t.id !== 'settings') return false;
-            if (!hasSetupSupport && ['main', 'teams', 'compare', 'mysetup', 'ask'].includes(t.id)) return false;
+            if (!hasSetupSupport && t.id === 'main') return false;
             if (!hasOverlay && t.id === 'telemetry') return false;
             return true;
           }).map(t => {
@@ -1190,248 +1161,6 @@ export function F1SetupManager() {
             </div>
           )}
 
-          {/* ═══════ TEAMS TAB ═══════ */}
-          {tab === "teams" && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {SORTED_TEAMS.map((t, i) => {
-                const isOpen = te === t.name;
-                const pct = (t.total / 55) * 100;
-                const stats = [
-                  { l: "MASS", v: t.mass, min: 798, max: 813 },
-                  { l: "DRAG", v: t.drag, min: 0.01276, max: 0.01497 },
-                  { l: "AERO F", v: t.aeroF, min: 2.566, max: 3.368 },
-                  { l: "AERO R", v: t.aeroR, min: 1.6412, max: 2.0278 },
-                  { l: "GEAR", v: t.gear, min: 1.5133, max: 1.7081 },
-                  { l: "W.DIST", v: t.wDist, min: 0.158, max: 0.225 },
-                ];
-                return (
-                  <div key={t.name} onClick={() => setTe(isOpen ? null : t.name)} style={{
-                    background: P.surface, borderRadius: 3, border: `1px solid ${isOpen ? P.borderHi : P.border}`,
-                    cursor: 'pointer', overflow: 'hidden', transition: 'border-color 0.2s',
-                  }}>
-                    <div style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                        <span style={{ fontSize: 18, fontFamily: P.mono, fontWeight: 800, color: i === 0 ? P.accent2 : i < 3 ? P.accent : P.dim, minWidth: 28, textAlign: 'right' }}>{i + 1}</span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: P.text, flex: 1 }}>{t.name}</span>
-                        <span style={{ fontSize: 14, fontFamily: P.mono, fontWeight: 800, color: P.accent }}>{t.total}</span>
-                      </div>
-                      <div style={{ marginLeft: 38 }}>
-                        <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 2, height: 3, overflow: 'hidden' }}>
-                          <div style={{ width: `${pct}%`, height: '100%', background: `linear-gradient(to right, ${P.accent}, ${P.accent2})`, borderRadius: 2, transition: 'width 0.4s' }} />
-                        </div>
-                      </div>
-                    </div>
-                    {isOpen && (
-                      <div style={{ borderTop: `1px solid ${P.border}`, padding: '10px 12px' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 10px', marginBottom: 10 }}>
-                          {stats.map(st => {
-                            const norm = Math.max(0, Math.min(100, ((st.v - st.min) / (st.max - st.min)) * 100));
-                            return (
-                              <div key={st.l}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                                  <span style={{ fontSize: 7, fontFamily: P.mono, color: P.dim, letterSpacing: 0.5 }}>{st.l}</span>
-                                  <span style={{ fontSize: 8, fontFamily: P.mono, fontWeight: 700, color: P.accent }}>{st.v}</span>
-                                </div>
-                                <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 2, height: 3, overflow: 'hidden' }}>
-                                  <div style={{ width: `${norm}%`, height: '100%', background: P.accent, borderRadius: 2, opacity: 0.7 }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                          <div style={{ background: 'rgba(0,229,255,0.04)', borderRadius: 3, padding: '8px 10px', border: `1px solid rgba(0,229,255,0.06)` }}>
-                            <div style={{ fontSize: 8, fontFamily: P.mono, fontWeight: 600, color: P.accent, letterSpacing: 1, marginBottom: 4 }}>PROS</div>
-                            <p style={{ fontSize: 10, color: P.text, margin: 0, lineHeight: 1.5 }}>{t.pros}</p>
-                          </div>
-                          <div style={{ background: 'rgba(255,82,92,0.04)', borderRadius: 3, padding: '8px 10px', border: `1px solid rgba(255,82,92,0.06)` }}>
-                            <div style={{ fontSize: 8, fontFamily: P.mono, fontWeight: 600, color: P.danger, letterSpacing: 1, marginBottom: 4 }}>CONS</div>
-                            <p style={{ fontSize: 10, color: P.text, margin: 0, lineHeight: 1.5 }}>{t.cons}</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ═══════ COMPARE TAB ═══════ */}
-          {tab === "compare" && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Panel title="SETUP COMPARE">
-                {/* Track selector */}
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 9, fontFamily: P.mono, color: P.dim, letterSpacing: 1, marginBottom: 6 }}>CIRCUIT</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 3 }}>
-                    {TD.map(t => (
-                      <button key={t.name} onClick={() => { setCmpT(t.name); setCmpA(null); setCmpB(null); }} style={{
-                        padding: '5px 4px', borderRadius: 2, fontSize: 9, fontFamily: P.sans, cursor: 'pointer',
-                        border: `1px solid ${cmpT === t.name ? P.accent : 'transparent'}`,
-                        background: cmpT === t.name ? 'rgba(0,229,255,0.06)' : P.surface2,
-                        color: cmpT === t.name ? P.accent : P.text, transition: 'all 0.15s',
-                      }}>{t.name}</button>
-                    ))}
-                  </div>
-                </div>
-                {cmpT && cD && (
-                  <>
-                    {/* Weather */}
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                      {[["dry", "DRY"], ["rain", "WET"]].map(([k, l]) => (
-                        <button key={k} onClick={() => { setCmpW(k); setCmpA(null); setCmpB(null); }} style={{
-                          padding: '4px 14px', borderRadius: 2, fontFamily: P.mono, fontSize: 9, fontWeight: 600, letterSpacing: 1,
-                          border: `1px solid ${cmpW === k ? P.accent : P.border}`,
-                          background: cmpW === k ? P.accent : 'transparent',
-                          color: cmpW === k ? P.bg : P.muted, cursor: 'pointer',
-                        }}>{l}</button>
-                      ))}
-                    </div>
-                    {/* A / B selectors */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      {[["A", cmpA, setCmpA, P.accent], ["B", cmpB, setCmpB, P.accent2]].map(([label, val, setVal, col]) => (
-                        <div key={label}>
-                          <div style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 700, color: col, marginBottom: 6, letterSpacing: 2 }}>SETUP {label}</div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {SM.filter(m => cmpW === "rain" ? m.rain : !m.rain).map(m => {
-                              if (!cD[getDbKey(m)]) return null;
-                              return (
-                                <button key={m.key} onClick={() => setVal(m.key)} style={{
-                                  padding: '4px 8px', borderRadius: 2, textAlign: 'left', fontSize: 9, cursor: 'pointer',
-                                  border: `1px solid ${val === m.key ? col : 'transparent'}`,
-                                  background: val === m.key ? `${col}10` : 'transparent',
-                                  color: val === m.key ? col : P.muted, fontFamily: P.sans, transition: 'all 0.15s',
-                                }}>{m.label}</button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </Panel>
-              {cSA && cSB && (
-                <>
-                  {/* Radar chart */}
-                  <Panel title="RADAR">
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', gap: 16, marginBottom: 6, fontSize: 10, fontFamily: P.mono }}>
-                        <span style={{ color: cMA?.color }}>{'\u25cf'} {cMA?.label}</span>
-                        <span style={{ color: cMB?.color }}>{'\u25c6'} {cMB?.label}</span>
-                      </div>
-                      <RC s1={cSA} s2={cSB} m1={cMA} m2={cMB} />
-                    </div>
-                  </Panel>
-                  {/* Comparison table */}
-                  <Panel title="DETAIL COMPARE">
-                    {FIELDS.map(f => {
-                      const va = cSA[f.k], vb = cSB[f.k], diff = vb - va;
-                      const dc = Math.abs(diff) < 0.5 ? P.dim : diff > 0 ? P.accent2 : P.danger;
-                      return (
-                        <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: `1px solid ${P.border}` }}>
-                          <span style={{ fontSize: 9, fontFamily: P.mono, color: P.dim, minWidth: 80, letterSpacing: 0.5 }}>{f.l}</span>
-                          <span style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 700, color: cMA?.color, minWidth: 36, textAlign: 'right' }}>{va}</span>
-                          <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.03)', borderRadius: 1, position: 'relative' }}>
-                            <div style={{
-                              position: 'absolute', top: -1, height: 4, borderRadius: 2,
-                              background: dc, opacity: 0.6,
-                              left: diff >= 0 ? '50%' : `${50 + (diff / (DEFS[f.k].max - DEFS[f.k].min)) * 50}%`,
-                              width: `${Math.abs(diff / (DEFS[f.k].max - DEFS[f.k].min)) * 50}%`,
-                            }} />
-                          </div>
-                          <span style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 700, color: cMB?.color, minWidth: 36, textAlign: 'right' }}>{vb}</span>
-                          <span style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 700, color: dc, minWidth: 36, textAlign: 'right' }}>{diff > 0 ? "+" : ""}{diff !== 0 ? diff.toFixed(1) : "-"}</span>
-                        </div>
-                      );
-                    })}
-                  </Panel>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ═══════ MY SETUP TAB ═══════ */}
-          {tab === "mysetup" && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Panel title="CIRCUIT">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 3 }}>
-                  {TD.map(t => (
-                    <button key={t.name} onClick={() => { setMyTrack(t.name); setMyChat([]); setMyHist([]); }} style={{
-                      padding: '5px 4px', borderRadius: 2, fontSize: 9, cursor: 'pointer',
-                      border: `1px solid ${myTrack === t.name ? P.accent : 'transparent'}`,
-                      background: myTrack === t.name ? 'rgba(0,229,255,0.06)' : P.surface2,
-                      color: myTrack === t.name ? P.accent : P.text, fontFamily: P.sans, transition: 'all 0.15s',
-                    }}>{t.name}</button>
-                  ))}
-                </div>
-              </Panel>
-
-              <Panel title="PARAMETERS">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px' }}>
-                  {FIELDS.map(f => {
-                    const d = DEFS[f.k];
-                    const v = myVals[f.k];
-                    const sc = d.min % 1 !== 0 || d.max % 1 !== 0 ? 0.5 : 1;
-                    return (
-                      <div key={f.k}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ fontSize: 9, fontFamily: P.mono, color: P.muted, letterSpacing: 0.5 }}>{f.l}</span>
-                          <span style={{ fontSize: 11, fontFamily: P.mono, fontWeight: 700, color: P.accent }}>{v}</span>
-                        </div>
-                        <input type="range" min={d.min} max={d.max} step={sc} value={v}
-                          onChange={e => setMyVals(pv => ({ ...pv, [f.k]: parseFloat(e.target.value) }))}
-                          style={{ width: '100%', height: 3 }} />
-                      </div>
-                    );
-                  })}
-                </div>
-              </Panel>
-
-              {myTrack && (
-                <Panel title="AI ANALYSIS">
-                  <div style={{ minHeight: 140, maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-                    {myChat.length === 0 && <div style={{ textAlign: 'center', color: P.dim, paddingTop: 30, fontSize: 10, fontFamily: P.mono }}>-- 아래 예시를 누르거나 질문하세요 --</div>}
-                    {myChat.map((m, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
-                        <div style={{
-                          maxWidth: '85%', padding: '7px 10px', fontSize: 11, lineHeight: 1.6, borderRadius: 3,
-                          background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
-                          border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
-                          color: P.text, whiteSpace: 'pre-wrap',
-                        }}>{m.t}</div>
-                      </div>
-                    ))}
-                    {myLoad && <div style={{ display: 'flex', justifyContent: 'flex-start' }}><div style={{ padding: '7px 12px', borderRadius: 3, fontSize: 10, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>ANALYZING...</div></div>}
-                    <div ref={myEnd} />
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-                    {["이 셋업 어때?", "언더스티어 생길까?", "직선 속도는?", "타이어 마모 어떨까?"].map(q => (
-                      <button key={q} onClick={() => setMyInput(q)} style={{
-                        fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
-                        border: `1px solid ${P.border}`, background: 'transparent',
-                        color: P.muted, fontFamily: P.sans,
-                      }}>{q}</button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input value={myInput} onChange={e => setMyInput(e.target.value)} onKeyDown={e => e.key === "Enter" && mySend()} placeholder="셋업에 대해 질문하세요..." style={{
-                      flex: 1, padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
-                      background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.sans, outline: 'none',
-                    }} />
-                    <button onClick={mySend} disabled={myLoad} style={{
-                      padding: '8px 16px', borderRadius: 3, border: 'none',
-                      background: myLoad ? P.dim : P.accent, color: P.bg,
-                      fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
-                      cursor: myLoad ? 'not-allowed' : 'pointer',
-                    }}>ANALYZE</button>
-                  </div>
-                </Panel>
-              )}
-            </div>
-          )}
-
           {/* ═══════ TELEMETRY TAB ═══════ */}
           {tab === "telemetry" && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1667,56 +1396,6 @@ export function F1SetupManager() {
                   </div>
                 </Panel>
               )}
-            </div>
-          )}
-
-          {/* ═══════ ASK TAB ═══════ */}
-          {tab === "ask" && (
-            <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
-              {/* Suggested chips */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
-                {["프론트 윙 올리면?", "오프스로틀 디프가 뭔가요?", "브레이크 바이어스?", "타이어 압력 높으면?", "리어 안티롤바 역할?"].map(q => (
-                  <button key={q} onClick={() => setAskQ(q)} style={{
-                    fontSize: 9, padding: '4px 10px', borderRadius: 2, cursor: 'pointer',
-                    border: `1px solid ${P.border}`, background: 'transparent', color: P.muted,
-                    fontFamily: P.sans, transition: 'border-color 0.15s',
-                  }}>{q}</button>
-                ))}
-              </div>
-              {/* Messages */}
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12, minHeight: 0 }}>
-                {askChat.length === 0 && (
-                  <div style={{ textAlign: 'center', color: P.dim, paddingTop: 60, fontFamily: P.mono, fontSize: 10 }}>
-                    <div style={{ fontSize: 11, marginBottom: 6, letterSpacing: 2 }}>SETUP Q&A</div>
-                    <div>SimRacingSetups + Traxion 기반 답변</div>
-                  </div>
-                )}
-                {askChat.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
-                    <div style={{
-                      maxWidth: '85%', padding: '8px 11px', fontSize: 11, lineHeight: 1.7, borderRadius: 3,
-                      background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface,
-                      border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
-                      color: P.text, whiteSpace: 'pre-wrap',
-                    }}>{m.t}</div>
-                  </div>
-                ))}
-                {askLoad && <div style={{ display: 'flex', justifyContent: 'flex-start' }}><div style={{ padding: '7px 12px', borderRadius: 3, fontSize: 10, fontFamily: P.mono, color: P.accent, background: P.surface, border: `1px solid ${P.border}` }}>GENERATING...</div></div>}
-                <div ref={askRef} />
-              </div>
-              {/* Input bar */}
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <input value={askQ} onChange={e => setAskQ(e.target.value)} onKeyDown={e => e.key === "Enter" && askSend()} placeholder="셋업에 대해 질문하세요..." style={{
-                  flex: 1, padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
-                  background: P.surface, color: P.text, fontSize: 11, fontFamily: P.sans, outline: 'none',
-                }} />
-                <button onClick={askSend} disabled={askLoad} style={{
-                  padding: '8px 16px', borderRadius: 3, border: 'none',
-                  background: askLoad ? P.dim : P.accent, color: P.bg,
-                  fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
-                  cursor: askLoad ? 'not-allowed' : 'pointer',
-                }}>ASK</button>
-              </div>
             </div>
           )}
 
