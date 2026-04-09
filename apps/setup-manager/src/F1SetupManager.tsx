@@ -633,11 +633,41 @@ function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, li
 // ============================================================
 export function F1SetupManager() {
   const [tab, setTab] = useState("main");
-  const [apiKey, setApiKey] = useState(() => { try { return localStorage.getItem('frc_api_key') || ENV_KEY || ''; } catch { return ''; } });
+  const [apiKey, setApiKey] = useState(ENV_KEY || '');
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [keyInput, setKeyInput] = useState('');
   // Sender telemetry connection
-  const [senderUrl] = useState(() => { try { return localStorage.getItem('frc_sender_url') || DEFAULT_SENDER_URL; } catch { return DEFAULT_SENDER_URL; } });
+  const [senderUrl, setSenderUrl] = useState(DEFAULT_SENDER_URL);
+
+  // Load persisted settings from main process (survives app updates)
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (api?.getAllSettings) {
+      api.getAllSettings().then((s) => {
+        if (s?.frc_api_key) {
+          setApiKey(s.frc_api_key);
+        } else {
+          // Migrate from localStorage (one-time, for existing users)
+          try {
+            const legacy = localStorage.getItem('frc_api_key');
+            if (legacy) {
+              setApiKey(legacy);
+              api.setSetting('frc_api_key', legacy);
+            }
+          } catch {}
+        }
+        if (s?.frc_sender_url) setSenderUrl(s.frc_sender_url);
+      });
+    } else {
+      // Dev fallback: no Electron IPC available
+      try {
+        const k = localStorage.getItem('frc_api_key');
+        if (k) setApiKey(k);
+        const u = localStorage.getItem('frc_sender_url');
+        if (u) setSenderUrl(u);
+      } catch {}
+    }
+  }, []);
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack } = useSenderConnection(senderUrl);
   const teleDiags = useMemo(() => diagnoseFromTelemetry(livePlayer, liveSession), [livePlayer, liveSession]);
 
@@ -777,8 +807,13 @@ export function F1SetupManager() {
   // ─── API Key modal ───
   const handleKeySubmit = () => {
     if (keyInput.trim()) {
-      setApiKey(keyInput.trim());
-      localStorage.setItem('frc_api_key', keyInput.trim());
+      const val = keyInput.trim();
+      setApiKey(val);
+      if (window.electronAPI?.setSetting) {
+        window.electronAPI.setSetting('frc_api_key', val);
+      } else {
+        try { localStorage.setItem('frc_api_key', val); } catch {}
+      }
     }
     setShowKeyModal(false);
     setKeyInput('');

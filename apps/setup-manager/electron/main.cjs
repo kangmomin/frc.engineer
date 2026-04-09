@@ -8,6 +8,35 @@ const distIndex = path.join(__dirname, '..', 'dist', 'index.html');
 const isDev = !app.isPackaged && !fs.existsSync(distIndex);
 const isWin = process.platform === 'win32';
 
+// ─── Persistent settings (survives app updates) ───
+const settingsPath = path.join(app.getPath('userData'), 'user-settings.json');
+
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(data) {
+  fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+ipcMain.handle('get-setting', (_event, key) => {
+  return readSettings()[key] ?? null;
+});
+
+ipcMain.handle('set-setting', (_event, key, value) => {
+  const data = readSettings();
+  data[key] = value;
+  writeSettings(data);
+});
+
+ipcMain.handle('get-all-settings', () => {
+  return readSettings();
+});
+
 // ─── Sender process management ───
 let senderProcess = null;
 
