@@ -577,11 +577,6 @@ function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, li
               <input type="password" value={draft.roomPassword || ''} onChange={e => setDraft(d => ({ ...d, roomPassword: e.target.value }))} style={inp} placeholder="Optional" />
             </div>
             <div>
-              <div style={lbl}>Default Permissions Code</div>
-              <input value={draft.defaultPermissionsCode || ''} onChange={e => setDraft(d => ({ ...d, defaultPermissionsCode: e.target.value }))} style={inp} placeholder="Permission code for engineers" disabled={!!draft.frcAccountKey} />
-              {draft.frcAccountKey && <div style={{ fontSize: 9, fontFamily: P.mono, color: P.muted, marginTop: 3 }}>FRC Account Key가 설정되어 있으면 자동으로 사용됩니다.</div>}
-            </div>
-            <div>
               <div style={lbl}>FRC Account Key</div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input value={draft.frcAccountKey || ''} onChange={e => setDraft(d => ({ ...d, frcAccountKey: e.target.value }))} style={{ ...inp, flex: 1 }} placeholder="F1RC-XXXXXXXX" />

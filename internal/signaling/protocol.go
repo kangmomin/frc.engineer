@@ -36,12 +36,6 @@ type Permissions struct {
 	SetupSupport         bool `json:"setupSupport"`
 }
 
-type PermissionCode struct {
-	Code        string      `json:"code"`
-	Label       string      `json:"label,omitempty"`
-	Permissions Permissions `json:"permissions"`
-}
-
 // Message is the JSON envelope for all signaling communication.
 type Message struct {
 	Type            string          `json:"type"`
@@ -49,7 +43,6 @@ type Message struct {
 	RoomCode        string          `json:"roomCode,omitempty"`
 	RoomName        string          `json:"roomName,omitempty"`
 	Password               string          `json:"password,omitempty"`
-	PermissionsCode        string          `json:"permissionsCode,omitempty"`
 	DefaultPermissionsCode string          `json:"defaultPermissionsCode,omitempty"`
 	Permissions            Permissions     `json:"permissions,omitempty"`
 	PeerID          string          `json:"peerId,omitempty"`

@@ -38,7 +38,6 @@ interface RemoteRTCOptions {
   signalingUrl: string;
   roomId: string;
   password: string;
-  permissionsCode: string;
 }
 
 function readRemoteQuery(): Partial<RemoteRTCOptions> {
@@ -57,7 +56,6 @@ function buildInitialRemoteOptions(): RemoteRTCOptions | null {
       signalingUrl: query.signalingUrl,
       roomId: query.roomId,
       password: '',
-      permissionsCode: '',
     };
   }
 
@@ -142,9 +140,8 @@ export function Layout() {
     signalingUrl: string,
     roomId: string,
     password: string,
-    permissionsCode: string,
   ) => {
-    const nextOptions = { signalingUrl, roomId, password, permissionsCode };
+    const nextOptions = { signalingUrl, roomId, password };
     persistRemoteSession(nextOptions);
     setRtcOptions(nextOptions);
     setConnectAttempted(true);
@@ -175,20 +172,6 @@ export function Layout() {
     clearRaceResult();
   }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
 
-  const changePermissionCode = useCallback(() => {
-    const code = prompt('Permission Code 변경 (빈 값이면 제거):', rtcOptions?.permissionsCode || '');
-    if (code === null) return;
-    localStorage.setItem('frc_permission_code', code);
-    if (rtcOptions) {
-      const nextOptions = { ...rtcOptions, permissionsCode: code };
-      persistRemoteSession(nextOptions);
-      setRtcOptions(nextOptions);
-      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-      setConnectionState('disconnected');
-      setPitwallState(null);
-    }
-  }, [rtcOptions, setConnectionState, setFeaturePermissions, setPitwallState]);
-
   // Setup manager runs independently — no .shell wrapper (it has overflow:hidden)
   if (dashboardView === 'setup') {
     if (!setupSupport) {
@@ -208,7 +191,6 @@ export function Layout() {
         initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
         initialRoomId={readRemoteQuery().roomId || ''}
         initialPassword=""
-        initialPermissionsCode={localStorage.getItem('frc_permission_code') || ''}
       />
     );
   }
@@ -229,7 +211,6 @@ export function Layout() {
         initialSignalingUrl={rtcOptions.signalingUrl}
         initialRoomId={rtcOptions.roomId}
         initialPassword={rtcOptions.password}
-        initialPermissionsCode={rtcOptions.permissionsCode}
       />
     );
   }
@@ -266,7 +247,6 @@ export function Layout() {
           onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
           onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
           onSwitchToCombat={viewCombat ? () => switchView('combat') : undefined}
-          onChangePermissionCode={changePermissionCode}
           onGoHome={goToMainScreen}
         />
       )}

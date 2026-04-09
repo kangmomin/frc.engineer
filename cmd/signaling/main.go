@@ -1,14 +1,12 @@
 package main
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -38,36 +36,6 @@ func main() {
 	if port == "" {
 		port = "9090"
 	}
-	settingsPassword := strings.TrimSpace(os.Getenv("SIGNALING_SETTINGS_PASSWORD"))
-	permissionCodesDatabaseURL := strings.TrimSpace(os.Getenv("SIGNALING_PERMISSION_CODES_DATABASE_URL"))
-	if permissionCodesDatabaseURL == "" {
-		permissionCodesDatabaseURL = strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	}
-
-	permissionCodesPath := os.Getenv("SIGNALING_PERMISSION_CODES_FILE")
-	if permissionCodesPath == "" {
-		permissionCodesPath = filepath.Join("data", "signaling", "permission-codes.json")
-	}
-	permissionStore, err := signaling.OpenPermissionCodeStore(permissionCodesDatabaseURL, permissionCodesPath, logger)
-	if err != nil {
-		logger.Error("failed to load permission codes", "error", err, "backend", permissionStoreBackend(permissionCodesDatabaseURL), "location", permissionStoreLocation(permissionCodesDatabaseURL, permissionCodesPath))
-		os.Exit(1)
-	}
-	defer func() {
-		if err := permissionStore.Close(); err != nil {
-			logger.Warn("failed to close permission code store", "error", err)
-		}
-	}()
-	permissionCodes, err := permissionStore.List()
-	if err != nil {
-		logger.Error("failed to list permission codes", "error", err, "backend", permissionStore.Backend(), "location", permissionStore.Location())
-		os.Exit(1)
-	}
-	logger.Info("permission codes loaded", "backend", permissionStore.Backend(), "location", permissionStore.Location(), "count", len(permissionCodes))
-	if settingsPassword == "" {
-		logger.Warn("SIGNALING_SETTINGS_PASSWORD not set; permission code admin endpoints accept any provided password")
-	}
-
 	frcAPIURL := strings.TrimSpace(os.Getenv("FRC_API_URL"))
 	if frcAPIURL == "" {
 		frcAPIURL = "https://f1-rivals-cup-production.up.railway.app"
@@ -75,7 +43,7 @@ func main() {
 	frcAPI := frcapi.NewClient(frcAPIURL)
 	logger.Info("FRC API client configured", "url", frcAPIURL)
 
-	roomManager := signaling.NewRoomManager(logger, permissionStore, frcAPI)
+	roomManager := signaling.NewRoomManager(logger, frcAPI)
 	defer roomManager.Stop()
 
 	upgrader := websocket.Upgrader{
@@ -86,27 +54,9 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	writeCORS := func(w http.ResponseWriter, methods string) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", methods)
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Settings-Password")
-	}
-
-	authorizePermissionAdmin := func(w http.ResponseWriter, r *http.Request) bool {
-		provided := strings.TrimSpace(r.Header.Get("X-Settings-Password"))
-		if provided == "" {
-			http.Error(w, "settings password required", http.StatusUnauthorized)
-			return false
-		}
-		if settingsPassword != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(settingsPassword)) != 1 {
-			http.Error(w, "invalid settings password", http.StatusUnauthorized)
-			return false
-		}
-		return true
-	}
-
 	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
-		writeCORS(w, "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -117,79 +67,6 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(roomManager.ListRooms())
-	})
-
-	mux.HandleFunc("/api/permission-codes", func(w http.ResponseWriter, r *http.Request) {
-		writeCORS(w, "GET, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if !authorizePermissionAdmin(w, r) {
-			return
-		}
-		codes, err := permissionStore.List()
-		if err != nil {
-			http.Error(w, "failed to load permission codes", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(codes)
-	})
-
-	mux.HandleFunc("/api/permission-codes/", func(w http.ResponseWriter, r *http.Request) {
-		writeCORS(w, "PUT, DELETE, OPTIONS")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		code := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/permission-codes/"))
-		if code == "" || strings.Contains(code, "/") {
-			http.Error(w, "permission code is required", http.StatusBadRequest)
-			return
-		}
-		if !authorizePermissionAdmin(w, r) {
-			return
-		}
-
-		switch r.Method {
-		case http.MethodPut:
-			var body struct {
-				Label       string                `json:"label"`
-				Permissions signaling.Permissions `json:"permissions"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				http.Error(w, "invalid JSON", http.StatusBadRequest)
-				return
-			}
-			entry, err := permissionStore.Upsert(code, body.Label, body.Permissions)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(entry)
-
-		case http.MethodDelete:
-			deleted, err := permissionStore.Delete(code)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if !deleted {
-				http.Error(w, "permission code not found", http.StatusNotFound)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
-
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		}
 	})
 
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -269,18 +146,4 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 	logger.Info("shutting down signaling server")
-}
-
-func permissionStoreBackend(databaseURL string) string {
-	if strings.TrimSpace(databaseURL) != "" {
-		return "postgres"
-	}
-	return "file"
-}
-
-func permissionStoreLocation(databaseURL, path string) string {
-	if strings.TrimSpace(databaseURL) != "" {
-		return "signaling_permission_codes"
-	}
-	return path
 }

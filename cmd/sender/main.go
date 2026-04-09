@@ -41,7 +41,6 @@ type senderConfig struct {
 	UDPPort                int                      `json:"udpPort"`
 	RoomName               string                   `json:"roomName,omitempty"`
 	RoomPassword           string                   `json:"roomPassword,omitempty"`
-	DefaultPermissionsCode string                   `json:"defaultPermissionsCode,omitempty"`
 	FRCAccountKey          string                   `json:"frcAccountKey,omitempty"`
 	SaveFiles              bool                     `json:"saveFiles"`
 	TrackRecording         bool                     `json:"trackRecording"`
@@ -119,11 +118,7 @@ func main() {
 		}
 	}
 	roomPassword := os.Getenv("SENDER_ROOM_PASSWORD")
-	defaultPermissionsCode := os.Getenv("DEFAULT_PERMISSIONS_CODE")
 	frcAccountKey := os.Getenv("FRC_ACCOUNT_KEY")
-	if frcAccountKey != "" {
-		defaultPermissionsCode = frcAccountKey
-	}
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &udpPort)
@@ -142,9 +137,6 @@ func main() {
 		roomPassword = saved.RoomPassword
 		if saved.FRCAccountKey != "" {
 			frcAccountKey = saved.FRCAccountKey
-			defaultPermissionsCode = frcAccountKey
-		} else if saved.DefaultPermissionsCode != "" {
-			defaultPermissionsCode = saved.DefaultPermissionsCode
 		}
 		saveFiles = saved.SaveFiles
 		trackRecording = saved.TrackRecording
@@ -169,7 +161,7 @@ func main() {
 	// Create peer manager
 	peerManager := rtc.NewPeerManager(signalingURL, logger)
 	peerManager.SetRoomMetadata(roomName, roomPassword)
-	peerManager.SetDefaultPermissionsCode(defaultPermissionsCode)
+	peerManager.SetDefaultPermissionsCode(frcAccountKey)
 
 	// Create DataChannel broadcaster
 	broadcaster := rtc.NewDataChannelBroadcaster(peerManager)
@@ -195,7 +187,7 @@ func main() {
 	cfgTrackRecording := trackRecording
 	cfgRoomName := roomName
 	cfgRoomPassword := roomPassword
-	cfgDefaultPermissionsCode := defaultPermissionsCode
+	cfgDefaultPermissionsCode := frcAccountKey
 	cfgFRCAccountKey := frcAccountKey
 	var cachedDriverPerms *signaling.DriverPermissions
 	var cfgForwardTargets []rtconfig.ForwardTarget
@@ -479,7 +471,6 @@ func main() {
 		tr := cfgTrackRecording
 		rn := cfgRoomName
 		rp := cfgRoomPassword
-		dpc := cfgDefaultPermissionsCode
 		fak := cfgFRCAccountKey
 		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
 		copy(ft, cfgForwardTargets)
@@ -487,14 +478,13 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":                port,
-			"saveFiles":              sf,
-			"trackRecording":         tr,
-			"roomName":               rn,
-			"roomPassword":           rp,
-			"defaultPermissionsCode": dpc,
-			"frcAccountKey":          fak,
-			"forwardTargets":         ft,
+			"udpPort":        port,
+			"saveFiles":      sf,
+			"trackRecording": tr,
+			"roomName":       rn,
+			"roomPassword":   rp,
+			"frcAccountKey":  fak,
+			"forwardTargets": ft,
 		})
 	})
 
@@ -506,7 +496,6 @@ func main() {
 			TrackRecordingOverwriteApprovedFor string                   `json:"trackRecordingOverwriteApprovedFor"`
 			RoomName                           string                   `json:"roomName"`
 			RoomPassword                       string                   `json:"roomPassword"`
-			DefaultPermissionsCode             string                   `json:"defaultPermissionsCode"`
 			FRCAccountKey                      string                   `json:"frcAccountKey"`
 			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
 		}
@@ -599,17 +588,13 @@ func main() {
 
 		prevFRCKey := cfgFRCAccountKey
 		cfgFRCAccountKey = strings.TrimSpace(body.FRCAccountKey)
-		nextDefaultCode := strings.TrimSpace(body.DefaultPermissionsCode)
-		if cfgFRCAccountKey != "" {
-			nextDefaultCode = cfgFRCAccountKey
-		}
-		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword || nextDefaultCode != cfgDefaultPermissionsCode {
+		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword || cfgFRCAccountKey != cfgDefaultPermissionsCode {
 			cfgRoomName = nextRoomName
 			cfgRoomPassword = nextRoomPassword
-			cfgDefaultPermissionsCode = nextDefaultCode
+			cfgDefaultPermissionsCode = cfgFRCAccountKey
 			peerManager.SetDefaultPermissionsCode(cfgDefaultPermissionsCode)
 			peerManager.UpdateRoomMetadata(cfgRoomName, cfgRoomPassword)
-			logger.Info("room metadata changed", "roomName", cfgRoomName, "protected", cfgRoomPassword != "", "defaultPermissionsCode", cfgDefaultPermissionsCode)
+			logger.Info("room metadata changed", "roomName", cfgRoomName, "protected", cfgRoomPassword != "")
 		}
 
 		// Re-check driver permissions when FRC key changes
@@ -640,28 +625,26 @@ func main() {
 
 		// Persist config to disk
 		if err := saveSenderConfig(senderConfig{
-			UDPPort:                cfgUDPPort,
-			RoomName:               cfgRoomName,
-			RoomPassword:           cfgRoomPassword,
-			DefaultPermissionsCode: cfgDefaultPermissionsCode,
-			FRCAccountKey:          cfgFRCAccountKey,
-			SaveFiles:              cfgSaveFiles,
-			TrackRecording:         cfgTrackRecording,
-			ForwardTargets:         cfgForwardTargets,
+			UDPPort:        cfgUDPPort,
+			RoomName:       cfgRoomName,
+			RoomPassword:   cfgRoomPassword,
+			FRCAccountKey:  cfgFRCAccountKey,
+			SaveFiles:      cfgSaveFiles,
+			TrackRecording: cfgTrackRecording,
+			ForwardTargets: cfgForwardTargets,
 		}); err != nil {
 			logger.Warn("failed to save sender config", "error", err)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":                cfgUDPPort,
-			"saveFiles":              cfgSaveFiles,
-			"trackRecording":         cfgTrackRecording,
-			"roomName":               cfgRoomName,
-			"roomPassword":           cfgRoomPassword,
-			"defaultPermissionsCode": cfgDefaultPermissionsCode,
-			"frcAccountKey":          cfgFRCAccountKey,
-			"forwardTargets":         cfgForwardTargets,
+			"udpPort":        cfgUDPPort,
+			"saveFiles":      cfgSaveFiles,
+			"trackRecording": cfgTrackRecording,
+			"roomName":       cfgRoomName,
+			"roomPassword":   cfgRoomPassword,
+			"frcAccountKey":  cfgFRCAccountKey,
+			"forwardTargets": cfgForwardTargets,
 		})
 	})
 

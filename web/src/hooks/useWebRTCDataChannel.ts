@@ -7,7 +7,6 @@ interface UseWebRTCOptions {
   signalingUrl: string;
   roomId: string;
   password: string;
-  permissionsCode: string;
 }
 
 interface UseWebRTCReturn {
@@ -86,7 +85,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   useEffect(() => {
     if (!options) return;
 
-    const { signalingUrl, roomId, password, permissionsCode } = options;
+    const { signalingUrl, roomId, password } = options;
     if (!signalingUrl || !roomId) return;
 
     isMountedRef.current = true;
@@ -203,7 +202,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     ws.onopen = () => {
       if (!isMountedRef.current) { ws.close(); return; }
-      ws.send(JSON.stringify({ type: 'room_join', roomId, password, permissionsCode }));
+      ws.send(JSON.stringify({ type: 'room_join', roomId, password }));
     };
 
     ws.onclose = () => {
@@ -250,7 +249,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           setFeaturePermissions(NO_FEATURE_PERMISSIONS);
           // Clear invalid permission code from localStorage to prevent retry loops
           if (msg.error && (msg.error as string).includes('permissions code')) {
-            localStorage.removeItem('frc_permission_code');
+
           }
           cleanup();
           break;
@@ -263,7 +262,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     };
     // Re-run when connection params change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options?.signalingUrl, options?.roomId, options?.password, options?.permissionsCode]);
+  }, [options?.signalingUrl, options?.roomId, options?.password]);
 
   return { disconnect, sendView, connectionState: rtcState, lastError };
 }

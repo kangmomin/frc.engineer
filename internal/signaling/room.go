@@ -78,7 +78,6 @@ type RoomSummary struct {
 type RoomManager struct {
 	roomsByCode     map[string]*Room // roomCode → Room
 	roomsByID       map[string]*Room // roomId → Room
-	permissionCodes *PermissionCodeStore
 	frcAPI          *frcapi.Client
 	mu              sync.RWMutex
 	logger          *slog.Logger
@@ -86,11 +85,10 @@ type RoomManager struct {
 }
 
 // NewRoomManager creates a new RoomManager and starts a background cleanup goroutine.
-func NewRoomManager(logger *slog.Logger, permissionCodes *PermissionCodeStore, frcAPI *frcapi.Client) *RoomManager {
+func NewRoomManager(logger *slog.Logger, frcAPI *frcapi.Client) *RoomManager {
 	rm := &RoomManager{
 		roomsByCode:     make(map[string]*Room),
 		roomsByID:       make(map[string]*Room),
-		permissionCodes: permissionCodes,
 		frcAPI:          frcAPI,
 		logger:          logger,
 		done:            make(chan struct{}),
@@ -155,7 +153,7 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 }
 
 // JoinRoom adds an engineer to an existing room.
-func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, conn *websocket.Conn, writeMu *sync.Mutex) (string, string, Permissions, error) {
+func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.Conn, writeMu *sync.Mutex) (string, string, Permissions, error) {
 	rm.mu.RLock()
 	room, ok := rm.lookupRoomLocked(roomID, code)
 	rm.mu.RUnlock()
@@ -177,37 +175,16 @@ func (rm *RoomManager) JoinRoom(roomID, code, password, permissionsCode string, 
 	}
 
 	grantedPermissions := Permissions{Pitwall: true, Overlay: true, SetupSupport: true}
-	codeToResolve := strings.TrimSpace(permissionsCode)
-	if codeToResolve == "" {
-		codeToResolve = strings.TrimSpace(room.DefaultPermissionsCode)
-	}
-	if codeToResolve != "" {
-		if frcapi.IsAccountKey(codeToResolve) && rm.frcAPI != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			result, err := rm.frcAPI.CheckPermissions(ctx, codeToResolve, FRCPermissionKeys())
-			if err != nil {
-				rm.logger.Warn("FRC API error, granting no permissions", "error", err)
-			}
-			if result != nil {
-				grantedPermissions = MapFRCPermissions(result)
-			} else if strings.TrimSpace(permissionsCode) != "" {
-				return "", "", Permissions{}, fmt.Errorf("invalid account key")
-			}
-		} else {
-			var ok bool
-			var err error
-			grantedPermissions, ok, err = rm.permissionCodes.Resolve(codeToResolve)
-			if err != nil {
-				return "", "", Permissions{}, fmt.Errorf("resolve permissions code: %w", err)
-			}
-			if !ok && strings.TrimSpace(permissionsCode) != "" {
-				return "", "", Permissions{}, fmt.Errorf("invalid permissions code")
-			}
-			// Non-FRC codes don't gate app-level access
-			grantedPermissions.Pitwall = true
-			grantedPermissions.Overlay = true
-			grantedPermissions.SetupSupport = true
+	frcKey := strings.TrimSpace(room.DefaultPermissionsCode)
+	if frcKey != "" && frcapi.IsAccountKey(frcKey) && rm.frcAPI != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		result, err := rm.frcAPI.CheckPermissions(ctx, frcKey, FRCPermissionKeys())
+		if err != nil {
+			rm.logger.Warn("FRC API error, granting no permissions", "error", err)
+		}
+		if result != nil {
+			grantedPermissions = MapFRCPermissions(result)
 		}
 	}
 
@@ -620,7 +597,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			sendErrorRaw(conn, "roomId or roomCode required", writeMu)
 			return currentPeer
 		}
-		peerID, roomCode, permissions, err := rm.JoinRoom(msg.RoomID, msg.RoomCode, msg.Password, msg.PermissionsCode, conn, writeMu)
+		peerID, roomCode, permissions, err := rm.JoinRoom(msg.RoomID, msg.RoomCode, msg.Password, conn, writeMu)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
