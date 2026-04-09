@@ -72,9 +72,9 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewCommentary: false,
       viewQualifying: false,
       viewCombat: false,
-      pitwall: true,
-      overlay: true,
-      setupSupport: true,
+      pitwall: false,
+      overlay: false,
+      setupSupport: false,
     },
   };
 }
@@ -88,6 +88,8 @@ export function SettingsView() {
     (v) => (v === 'absolute' || v === 'relative' ? v : null),
   );
   const [signalingUrl, setSignalingUrl] = useState(getDefaultSignalingUrl);
+  const [settingsPassword, setSettingsPassword] = useState('');
+  const [settingsUnlocked, setSettingsUnlocked] = useState(false);
   const [permissionCodes, setPermissionCodes] = useState<PermissionCodeEntry[]>([]);
   const [permissionDraft, setPermissionDraft] = useState<PermissionCodeEntry>(createEmptyPermissionCode);
   const [selectedPermissionCode, setSelectedPermissionCode] = useState('');
@@ -108,10 +110,19 @@ export function SettingsView() {
     }
   }, [config, draft]);
 
+  const getSettingsHeaders = useCallback((contentType = false): HeadersInit => ({
+    ...(contentType ? { 'Content-Type': 'application/json' } : {}),
+    'X-Settings-Password': settingsPassword.trim(),
+  }), [settingsPassword]);
+
   const loadPermissionCodes = useCallback(async () => {
     if (!signalingUrl.trim()) {
       setPermissionCodes([]);
       setPermissionError('');
+      return;
+    }
+    if (!settingsPassword.trim()) {
+      setPermissionError('Settings password required.');
       return;
     }
 
@@ -127,23 +138,24 @@ export function SettingsView() {
     setPermissionLoading(true);
     setPermissionError('');
     try {
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, { headers: getSettingsHeaders() });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid settings password.');
+        }
         throw new Error(`HTTP ${response.status}`);
       }
       const payload = await response.json();
       setPermissionCodes(Array.isArray(payload) ? payload as PermissionCodeEntry[] : []);
-    } catch {
+      setSettingsUnlocked(true);
+    } catch (error) {
       setPermissionCodes([]);
-      setPermissionError('Failed to load permission codes from signaling server.');
+      setSettingsUnlocked(false);
+      setPermissionError(error instanceof Error && error.message ? error.message : 'Failed to load permission codes from signaling server.');
     } finally {
       setPermissionLoading(false);
     }
-  }, [signalingUrl]);
-
-  useEffect(() => {
-    void loadPermissionCodes();
-  }, [loadPermissionCodes]);
+  }, [getSettingsHeaders, settingsPassword, signalingUrl]);
 
   if (loading || !draft) {
     return <div className={styles.loading}>Loading settings...</div>;
@@ -262,6 +274,10 @@ export function SettingsView() {
 
   async function savePermissionCode() {
     const code = permissionDraft.code.trim();
+    if (!settingsUnlocked || !settingsPassword.trim()) {
+      setPermissionError('Unlock settings before editing permission codes.');
+      return;
+    }
     if (!code || !signalingUrl.trim()) {
       setPermissionError('Signaling URL and permission code are required.');
       return;
@@ -281,13 +297,16 @@ export function SettingsView() {
     try {
       const response = await fetch(endpoint, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getSettingsHeaders(true),
         body: JSON.stringify({
           label: permissionDraft.label.trim(),
           permissions: permissionDraft.permissions,
         }),
       });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid settings password.');
+        }
         throw new Error(await response.text());
       }
 
@@ -309,6 +328,10 @@ export function SettingsView() {
   }
 
   async function deletePermissionCode() {
+    if (!settingsUnlocked || !settingsPassword.trim()) {
+      setPermissionError('Unlock settings before editing permission codes.');
+      return;
+    }
     const code = selectedPermissionCode || permissionDraft.code.trim();
     if (!code || !signalingUrl.trim()) {
       setPermissionError('Select a permission code to delete.');
@@ -327,8 +350,14 @@ export function SettingsView() {
     setPermissionError('');
     setPermissionStatus('');
     try {
-      const response = await fetch(endpoint, { method: 'DELETE' });
+      const response = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: getSettingsHeaders(),
+      });
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid settings password.');
+        }
         throw new Error(await response.text());
       }
       setPermissionCodes((prev) => prev.filter((entry) => entry.code !== code));
@@ -569,16 +598,40 @@ export function SettingsView() {
               setSignalingUrl(event.target.value);
               setPermissionError('');
               setPermissionStatus('');
+              setSettingsUnlocked(false);
             }}
           />
-          <button type="button" className={styles.btn} onClick={() => void loadPermissionCodes()}>
-            Refresh
+        </div>
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Settings Password</span>
+          <input
+            className={styles.input}
+            type="password"
+            value={settingsPassword}
+            placeholder="Enter settings password"
+            onChange={(event) => {
+              setSettingsPassword(event.target.value);
+              setPermissionError('');
+              setPermissionStatus('');
+              if (settingsUnlocked) {
+                setSettingsUnlocked(false);
+              }
+            }}
+          />
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => void loadPermissionCodes()}
+            disabled={permissionLoading || permissionSaving}
+          >
+            {permissionLoading ? '...' : settingsUnlocked ? 'Reload' : 'Unlock'}
           </button>
         </div>
         <span className={styles.hint}>
           Manage permission bundles on the signaling server. Engineers can enter one code at join time to unlock these features.
         </span>
 
+        {settingsUnlocked && (
         <div className={styles.permissionLayout}>
           <div className={styles.permissionList}>
             {(permissionCodes.length === 0 && !permissionLoading) ? (
@@ -764,6 +817,8 @@ export function SettingsView() {
             </div>
           )}
         </div>
+        )}
+        {!settingsUnlocked && permissionError && <span className={styles.restartWarning}>{permissionError}</span>}
       </div>
 
       {dirty && (

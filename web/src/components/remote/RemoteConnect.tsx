@@ -65,9 +65,9 @@ function createEmptyPermissionCode(): PermissionCodeEntry {
       viewCommentary: false,
       viewQualifying: false,
       viewCombat: false,
-      pitwall: true,
-      overlay: true,
-      setupSupport: true,
+      pitwall: false,
+      overlay: false,
+      setupSupport: false,
     },
   };
 }
