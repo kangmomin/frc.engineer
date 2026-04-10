@@ -3,6 +3,7 @@ module frc.engineer
 go 1.24.0
 
 require (
+	frc.pitwall.parser/telemetry-go v0.0.0
 	github.com/energye/systray v1.0.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.12.0
@@ -35,3 +36,5 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 )
+
+replace frc.pitwall.parser/telemetry-go => ./third_party/f1-25-parser-go
