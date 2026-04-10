@@ -24,6 +24,7 @@ import (
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
+	"github.com/pion/webrtc/v4"
 )
 
 var appVersion = "v4.15.0"
@@ -38,16 +39,45 @@ var defaultStrategyConfig = trackStrategyConfig{PitTimeLossMs: 22000, UndercutDi
 
 // senderConfig is the persistent config saved to disk.
 type senderConfig struct {
-	UDPPort                int                      `json:"udpPort"`
-	RoomName               string                   `json:"roomName,omitempty"`
-	RoomPassword           string                   `json:"roomPassword,omitempty"`
-	FRCAccountKey          string                   `json:"frcAccountKey,omitempty"`
-	SaveFiles              bool                     `json:"saveFiles"`
-	TrackRecording         bool                     `json:"trackRecording"`
-	ForwardTargets         []rtconfig.ForwardTarget `json:"forwardTargets"`
+	UDPPort        int                      `json:"udpPort"`
+	RoomName       string                   `json:"roomName,omitempty"`
+	RoomPassword   string                   `json:"roomPassword,omitempty"`
+	FRCAccountKey  string                   `json:"frcAccountKey,omitempty"`
+	SaveFiles      bool                     `json:"saveFiles"`
+	TrackRecording bool                     `json:"trackRecording"`
+	ForwardTargets []rtconfig.ForwardTarget `json:"forwardTargets"`
 }
 
 const senderConfigPath = "data/sender-config.json"
+
+func loadICEServers(raw string) ([]webrtc.ICEServer, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	var servers []webrtc.ICEServer
+	if err := json.Unmarshal([]byte(trimmed), &servers); err != nil {
+		return nil, fmt.Errorf("parse WEBRTC_ICE_SERVERS: %w", err)
+	}
+
+	filtered := make([]webrtc.ICEServer, 0, len(servers))
+	for _, server := range servers {
+		urls := make([]string, 0, len(server.URLs))
+		for _, url := range server.URLs {
+			if strings.TrimSpace(url) != "" {
+				urls = append(urls, strings.TrimSpace(url))
+			}
+		}
+		if len(urls) == 0 {
+			continue
+		}
+		server.URLs = urls
+		filtered = append(filtered, server)
+	}
+
+	return filtered, nil
+}
 
 func loadSenderConfig() *senderConfig {
 	data, err := os.ReadFile(senderConfigPath)
@@ -160,6 +190,12 @@ func main() {
 
 	// Create peer manager
 	peerManager := rtc.NewPeerManager(signalingURL, logger)
+	if iceServers, err := loadICEServers(os.Getenv("WEBRTC_ICE_SERVERS")); err != nil {
+		logger.Warn("invalid WEBRTC_ICE_SERVERS config, falling back to default STUN servers", "error", err)
+	} else if len(iceServers) > 0 {
+		peerManager.SetICEServers(iceServers)
+		logger.Info("configured custom WebRTC ICE servers", "count", len(iceServers))
+	}
 	peerManager.SetRoomMetadata(roomName, roomPassword)
 	peerManager.SetDefaultPermissionsCode(frcAccountKey)
 
@@ -648,7 +684,6 @@ func main() {
 		})
 	})
 
-
 	mux.HandleFunc("GET /api/frc-verify", func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
 		if key == "" {
@@ -674,13 +709,13 @@ func main() {
 		dp := resolveDriverPerms(key)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"valid":      info.Valid,
-			"accountKey": info.AccountKey,
-			"id":         info.ID,
-			"nickname":   info.Nickname,
-			"avatarUrl":  info.AvatarURL,
-			"role":       info.Role,
-			"createdAt":  info.CreatedAt,
+			"valid":             info.Valid,
+			"accountKey":        info.AccountKey,
+			"id":                info.ID,
+			"nickname":          info.Nickname,
+			"avatarUrl":         info.AvatarURL,
+			"role":              info.Role,
+			"createdAt":         info.CreatedAt,
 			"driverPermissions": dp,
 		})
 	})

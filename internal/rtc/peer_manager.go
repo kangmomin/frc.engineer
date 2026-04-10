@@ -23,6 +23,10 @@ const (
 	reconnectMaxDelay  = 30 * time.Second
 )
 
+var defaultICEServers = []webrtc.ICEServer{
+	{URLs: []string{"stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"}},
+}
+
 // RequestHandler is called when an engineer sends a request over DataChannel.
 // The returned bytes are sent back as a unicast response.
 type RequestHandler func(peerID string, msg []byte) []byte
@@ -47,12 +51,13 @@ type PeerManager struct {
 	roomName               string
 	roomPassword           string
 	defaultPermissionsCode string
-	onRequest     RequestHandler
-	onCountChange func(int) // called when engineer count changes
-	logger        *slog.Logger
-	done          chan struct{}
-	reconnecting  bool
-	writeDone     chan struct{}
+	iceServers             []webrtc.ICEServer
+	onRequest              RequestHandler
+	onCountChange          func(int) // called when engineer count changes
+	logger                 *slog.Logger
+	done                   chan struct{}
+	reconnecting           bool
+	writeDone              chan struct{}
 }
 
 // NewPeerManager creates a PeerManager. Call Connect() to start.
@@ -64,6 +69,7 @@ func NewPeerManager(signalingURL string, logger *slog.Logger) *PeerManager {
 		fastChannels: make(map[string]*webrtc.DataChannel),
 		permits:      make(map[string]signaling.Permissions),
 		peerViews:    make(map[string]string),
+		iceServers:   cloneICEServers(defaultICEServers),
 		logger:       logger,
 		done:         make(chan struct{}),
 	}
@@ -92,6 +98,17 @@ func (pm *PeerManager) SetDefaultPermissionsCode(code string) {
 	pm.sigMu.Lock()
 	pm.defaultPermissionsCode = code
 	pm.sigMu.Unlock()
+}
+
+// SetICEServers overrides the default STUN-only ICE server list.
+func (pm *PeerManager) SetICEServers(servers []webrtc.ICEServer) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if len(servers) == 0 {
+		pm.iceServers = cloneICEServers(defaultICEServers)
+		return
+	}
+	pm.iceServers = cloneICEServers(servers)
 }
 
 // UpdateRoomMetadata updates the active signaling room metadata if connected.
@@ -567,10 +584,12 @@ func (pm *PeerManager) reconnectLoop() {
 func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permissions) {
 	pm.logger.Info("engineer joined, creating peer connection", "peerId", peerID)
 
+	pm.mu.RLock()
+	iceServers := cloneICEServers(pm.iceServers)
+	pm.mu.RUnlock()
+
 	config := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{"stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"}},
-		},
+		ICEServers: iceServers,
 	}
 
 	se := webrtc.SettingEngine{}
@@ -779,3 +798,15 @@ func (pm *PeerManager) sendSignaling(msg signaling.Message) {
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+func cloneICEServers(servers []webrtc.ICEServer) []webrtc.ICEServer {
+	cloned := make([]webrtc.ICEServer, 0, len(servers))
+	for _, server := range servers {
+		copyServer := server
+		if len(server.URLs) > 0 {
+			copyServer.URLs = append([]string(nil), server.URLs...)
+		}
+		cloned = append(cloned, copyServer)
+	}
+	return cloned
+}
