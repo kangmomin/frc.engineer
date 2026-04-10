@@ -59,9 +59,22 @@ function writePitSettingsToQuery(settings: PitSettings) {
   window.history.replaceState(null, '', `${window.location.pathname}?${nextQuery}`);
 }
 
-type SectorBestTimes = [number, number, number];
+type SectorTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
 type StrategyWindowStatus = 'open' | 'soon' | 'complete';
+
+interface PrevSectorSnapshot {
+  currentLapNum: number;
+  lastLapTime: number;
+  sector1TimeMs: number;
+  sector2TimeMs: number;
+}
+
+interface DriverSectorHistory {
+  latestLapNum: number;
+  latestSectorTimes: SectorTimes;
+  previousSectorTimes: SectorTimes;
+}
 
 type StrategyPanelData = {
   guideActive: boolean;
@@ -151,7 +164,7 @@ export function CockpitDashboard({
     () => drivers.find((driver) => driver.index === playerIndex) ?? null,
     [drivers, playerIndex],
   );
-  const sectorBestTimes = useMemo(() => getSectorBestTimes(drivers), [drivers]);
+  const sectorHistoryMap = useCompletedSectorHistory(drivers, session);
 
   const carAhead = useMemo(() => {
     if (!player) return null;
@@ -400,7 +413,7 @@ export function CockpitDashboard({
               <span>{featurePermissions.viewAdvancedStrategy ? 'Tyre / Life' : 'Tyre Age'}</span>
               <span>{pitStatusVisible ? 'Pit' : ''}</span>
               <span>{topSpeedVisible ? 'Vmax' : ''}</span>
-              <span>Sector Δ</span>
+              <span>Sector</span>
             </div>
 
             <div className={styles.tableBody}>
@@ -479,7 +492,7 @@ export function CockpitDashboard({
                         {formatTopSpeed(driver, topSpeedVisible)}
                       </span>
                     </span>
-                    <SectorDeltaCell driver={driver} sectorBestTimes={sectorBestTimes} />
+                    <SectorDeltaCell sectorHistory={sectorHistoryMap.get(driver.index)} />
                   </div>
                 );
               })}
@@ -1136,21 +1149,24 @@ function PenaltyCell({ driver }: { driver: DriverInfo }) {
 }
 
 function SectorDeltaCell({
-  driver,
-  sectorBestTimes,
+  sectorHistory,
 }: {
-  driver: DriverInfo;
-  sectorBestTimes: SectorBestTimes;
+  sectorHistory?: DriverSectorHistory;
 }) {
-  const sectorTimes = getDriverSectorTimes(driver);
+  const sectorTimes = sectorHistory?.latestSectorTimes ?? [0, 0, 0];
+  const previousSectorTimes = sectorHistory?.previousSectorTimes ?? [0, 0, 0];
 
   return (
     <span className={styles.sectorCell}>
       {SECTOR_LABELS.map((label, index) => {
         const sectorTime = sectorTimes[index];
-        const bestTime = sectorBestTimes[index];
-        const delta = sectorTime > 0 && bestTime > 0 ? sectorTime - bestTime : null;
-        const title = sectorTime > 0 ? `${label} ${formatLapTime(sectorTime)}` : `${label} pending`;
+        const previousSectorTime = previousSectorTimes[index];
+        const delta = sectorTime > 0 && previousSectorTime > 0 ? sectorTime - previousSectorTime : null;
+        const title = sectorTime > 0
+          ? `${label} ${formatLapTime(sectorTime)}${
+            previousSectorTime > 0 ? ` (prev ${formatLapTime(previousSectorTime)})` : ''
+          }`
+          : `${label} pending`;
 
         return (
           <span
@@ -1159,7 +1175,7 @@ function SectorDeltaCell({
             title={title}
           >
             <span className={styles.sectorChipLabel}>{label}</span>
-            <span className={styles.sectorChipValue}>{formatSectorDelta(delta)}</span>
+            <span className={styles.sectorChipValue}>{formatSectorTime(sectorTime)}</span>
           </span>
         );
       })}
@@ -1227,62 +1243,114 @@ function formatCombatWindow(alert: { gapSeconds: number; closingRatePerLap: numb
   return laps.toFixed(1);
 }
 
-function formatSectorDelta(deltaMs: number | null): string {
-  if (deltaMs == null) return '--';
-  return formatDelta(deltaMs);
-}
-
 function getSectorDeltaTone(deltaMs: number | null): SectorDeltaTone {
   if (deltaMs == null) return 'sectorPending';
-  if (deltaMs <= 0) return 'sectorBest';
-  if (deltaMs <= 250) return 'sectorGood';
+  if (deltaMs < -50) return 'sectorBest';
+  if (deltaMs <= 50) return 'sectorGood';
   return 'sectorSlow';
-}
-
-function getSectorBestTimes(drivers: DriverInfo[]): SectorBestTimes {
-  const bestTimes: SectorBestTimes = [0, 0, 0];
-
-  drivers.forEach((driver) => {
-    const sectorTimes = getDriverSectorTimes(driver);
-    sectorTimes.forEach((sectorTime, index) => {
-      if (sectorTime <= 0) return;
-      if (bestTimes[index] === 0 || sectorTime < bestTimes[index]) {
-        bestTimes[index] = sectorTime;
-      }
-    });
-  });
-
-  return bestTimes;
-}
-
-function getDriverSectorTimes(driver: DriverInfo): SectorBestTimes {
-  return [
-    normalizeSectorTime(driver.sector1TimeMs),
-    normalizeSectorTime(driver.sector2TimeMs),
-    getDriverSector3TimeMs(driver),
-  ];
-}
-
-function getDriverSector3TimeMs(driver: DriverInfo): number {
-  const lapTime = Math.round(driver.lastLapTime ?? 0);
-  const sector1 = normalizeSectorTime(driver.sector1TimeMs);
-  const sector2 = normalizeSectorTime(driver.sector2TimeMs);
-
-  if (lapTime <= 0 || sector1 <= 0 || sector2 <= 0) {
-    return 0;
-  }
-
-  const sector3 = lapTime - sector1 - sector2;
-  if (sector3 <= 0 || sector3 >= lapTime) {
-    return 0;
-  }
-
-  return sector3;
 }
 
 function normalizeSectorTime(value: number | undefined): number {
   if (!value || value <= 0) return 0;
   return Math.round(value);
+}
+
+function formatSectorTime(ms: number): string {
+  if (ms <= 0) return '--';
+  return (ms / 1000).toFixed(3);
+}
+
+function buildCompletedSectorTimes(lastLapTime: number, sector1TimeMs: number, sector2TimeMs: number): SectorTimes | null {
+  const lapTime = normalizeSectorTime(lastLapTime);
+  const sector1 = normalizeSectorTime(sector1TimeMs);
+  const sector2 = normalizeSectorTime(sector2TimeMs);
+  if (lapTime <= 0 || sector1 <= 0 || sector2 <= 0) return null;
+
+  const sector3 = lapTime - sector1 - sector2;
+  if (sector3 <= 0 || sector3 >= lapTime) return null;
+
+  return [sector1, sector2, sector3];
+}
+
+function useCompletedSectorHistory(drivers: DriverInfo[], session: SessionInfo | null) {
+  const [historyMap, setHistoryMap] = useState<Map<number, DriverSectorHistory>>(() => new Map());
+  const prevRef = useRef<Map<number, PrevSectorSnapshot>>(new Map());
+  const sessionKeyRef = useRef('');
+  const sessionKey = `${session?.trackId ?? ''}|${session?.sessionType ?? ''}`;
+
+  useEffect(() => {
+    if (sessionKeyRef.current && sessionKeyRef.current !== sessionKey) {
+      setHistoryMap(new Map());
+      prevRef.current = new Map();
+    }
+    sessionKeyRef.current = sessionKey;
+  }, [sessionKey]);
+
+  useEffect(() => {
+    if (drivers.length === 0) return;
+
+    const capturedPrev = prevRef.current;
+    let changed = false;
+
+    setHistoryMap((prev) => {
+      const next = new Map(prev);
+
+      for (const driver of drivers) {
+        const current = next.get(driver.index) ?? {
+          latestLapNum: 0,
+          latestSectorTimes: [0, 0, 0] as SectorTimes,
+          previousSectorTimes: [0, 0, 0] as SectorTimes,
+        };
+        const snap = capturedPrev.get(driver.index);
+
+        if (!snap || driver.currentLapNum <= snap.currentLapNum) {
+          if (!next.has(driver.index)) {
+            next.set(driver.index, current);
+            changed = true;
+          }
+          continue;
+        }
+
+        const latestSectorTimes = buildCompletedSectorTimes(
+          snap.lastLapTime,
+          snap.sector1TimeMs,
+          snap.sector2TimeMs,
+        );
+        if (!latestSectorTimes) {
+          if (!next.has(driver.index)) {
+            next.set(driver.index, current);
+            changed = true;
+          }
+          continue;
+        }
+
+        const previousSectorTimes = current.latestLapNum > 0
+          ? current.latestSectorTimes
+          : current.previousSectorTimes;
+        next.set(driver.index, {
+          latestLapNum: snap.currentLapNum,
+          latestSectorTimes,
+          previousSectorTimes,
+        });
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+
+    const nextPrev = new Map<number, PrevSectorSnapshot>();
+    for (const driver of drivers) {
+      nextPrev.set(driver.index, {
+        currentLapNum: driver.currentLapNum,
+        lastLapTime: driver.lastLapTime,
+        sector1TimeMs: driver.sector1TimeMs,
+        sector2TimeMs: driver.sector2TimeMs,
+      });
+    }
+    prevRef.current = nextPrev;
+  }, [drivers]);
+
+  return historyMap;
 }
 
 function driverHasDrs(driver: DriverInfo): boolean {

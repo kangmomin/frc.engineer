@@ -446,8 +446,10 @@
   gap: 4px;
   min-width: 0;
   padding: 3px 6px;
+  color: var(--text-primary);
   border: 1px solid rgba(59, 73, 76, 0.3);
   background: rgba(14, 14, 15, 0.52);
+  transition: border-color 0.18s ease, background-color 0.18s ease;
 }
 
 .sectorChipLabel {
@@ -472,18 +474,18 @@
 }
 
 .sectorBest {
-  color: var(--sector-purple);
-  border-color: rgba(156, 240, 255, 0.36);
+  border-color: rgba(156, 240, 255, 0.72);
+  background: rgba(156, 240, 255, 0.08);
 }
 
 .sectorGood {
-  color: var(--sector-green);
-  border-color: rgba(205, 255, 19, 0.28);
+  border-color: rgba(205, 255, 19, 0.6);
+  background: rgba(205, 255, 19, 0.06);
 }
 
 .sectorSlow {
-  color: var(--sector-yellow);
-  border-color: rgba(255, 179, 178, 0.28);
+  border-color: rgba(255, 82, 92, 0.72);
+  background: rgba(255, 82, 92, 0.08);
 }
 
 .drsActive,
