@@ -8,6 +8,7 @@ import { useTrackGaps } from '../../hooks/useTrackGaps';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo } from '../../types/telemetry';
 import { formatLapTime } from '../../utils/formatters';
+import { sortQualifyingDrivers } from './leaderboardOrder';
 import styles from './QualifyingDashboard.module.css';
 
 // ── Props ──
@@ -174,15 +175,8 @@ export function QualifyingDashboard({
 
   // Sort by best lap time for qualifying leaderboard
   const sortedDrivers = useMemo(() => {
-    const copy = [...allDrivers];
-    copy.sort((a, b) => {
-      if (a.bestLapTime <= 0 && b.bestLapTime <= 0) return a.position - b.position;
-      if (a.bestLapTime <= 0) return 1;
-      if (b.bestLapTime <= 0) return -1;
-      return a.bestLapTime - b.bestLapTime;
-    });
-    return copy;
-  }, [allDrivers]);
+    return sortQualifyingDrivers(allDrivers, session?.sessionType);
+  }, [allDrivers, session?.sessionType]);
 
   const player = allDrivers.find((d) => d.index === playerIndex) ?? null;
   const leaderBest = sortedDrivers.length > 0 && sortedDrivers[0].bestLapTime > 0 ? sortedDrivers[0].bestLapTime : 0;
