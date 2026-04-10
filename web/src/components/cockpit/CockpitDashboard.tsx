@@ -414,6 +414,7 @@ export function CockpitDashboard({
               <span>{pitStatusVisible ? 'Pit' : ''}</span>
               <span>{topSpeedVisible ? 'Vmax' : ''}</span>
               <span>Sector</span>
+              <span>DMG</span>
             </div>
 
             <div className={styles.tableBody}>
@@ -493,6 +494,7 @@ export function CockpitDashboard({
                       </span>
                     </span>
                     <SectorDeltaCell sectorHistory={sectorHistoryMap.get(driver.index)} />
+                    <DamageSummaryCell driver={driver} />
                   </div>
                 );
               })}
@@ -1099,6 +1101,37 @@ function DamageMetric({ label, value }: { label: string; value: number }) {
     <div className={styles.damageMetric}>
       <span>{label}</span>
       <strong className={styles[getDamageTone(value)]}>{`${Math.round(value)}%`}</strong>
+    </div>
+  );
+}
+
+function DamageSummaryCell({ driver }: { driver: DriverInfo }) {
+  const damageItems = [
+    { label: 'FL', value: driver.damage?.frontLeftWing ?? 0 },
+    { label: 'FR', value: driver.damage?.frontRightWing ?? 0 },
+    { label: 'RW', value: driver.damage?.rearWing ?? 0 },
+    {
+      label: 'OTH',
+      value: Math.max(
+        driver.damage?.floor ?? 0,
+        driver.damage?.diffuser ?? 0,
+        driver.damage?.sidepod ?? 0,
+      ),
+    },
+  ];
+
+  return (
+    <div className={styles.damageSummaryCell}>
+      {damageItems.map((item) => (
+        <span
+          key={item.label}
+          className={styles.damageSummaryPill}
+          style={getDamageSeverityStyle(item.value)}
+        >
+          <span className={styles.damageSummaryLabel}>{item.label}</span>
+          <strong>{Math.round(item.value)}%</strong>
+        </span>
+      ))}
     </div>
   );
 }
@@ -1812,4 +1845,15 @@ function getDamageTone(value: number): 'tertiary' | 'primary' | 'secondary' {
   if (value >= 20) return 'secondary';
   if (value >= 5) return 'primary';
   return 'tertiary';
+}
+
+function getDamageSeverityStyle(value: number) {
+  const severity = clamp(value, 0, 100) / 100;
+  const hue = 120 - severity * 120;
+
+  return {
+    color: `hsl(${hue} 82% 58%)`,
+    borderColor: `hsla(${hue} 82% 58% / 0.36)`,
+    backgroundColor: `hsla(${hue} 82% 58% / 0.12)`,
+  };
 }

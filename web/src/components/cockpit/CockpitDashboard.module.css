@@ -290,7 +290,7 @@
 .tableHeader,
 .tableRow {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1.1fr) 56px 46px minmax(72px, 0.95fr) 72px 88px auto 90px 56px 60px minmax(190px, 1.28fr);
+  grid-template-columns: 52px minmax(0, 1.1fr) 56px 46px minmax(72px, 0.95fr) 72px 88px auto 90px 56px 60px minmax(190px, 1.28fr) 128px;
   gap: 8px;
   align-items: center;
   padding: 10px 14px;
@@ -1162,6 +1162,40 @@
   line-height: 1;
 }
 
+.damageSummaryCell {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.damageSummaryPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 3px 5px;
+  border: 1px solid rgba(59, 73, 76, 0.3);
+  background: rgba(14, 14, 15, 0.52);
+}
+
+.damageSummaryLabel {
+  flex: 0 0 auto;
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.damageSummaryCell strong {
+  min-width: 0;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .primary {
   color: var(--accent);
 }
@@ -1305,9 +1339,14 @@
   .tableHeader span:nth-child(10),
   .tableHeader span:nth-child(11),
   .tableHeader span:nth-child(12),
+  .tableHeader span:nth-child(13),
   .tableRow span:nth-child(10),
   .tableRow span:nth-child(11),
   .tableRow span:nth-child(12) {
+    display: none;
+  }
+
+  .damageSummaryCell {
     display: none;
   }
 }
@@ -1496,6 +1535,10 @@
   .tableRow span:nth-child(10),
   .tableRow span:nth-child(11),
   .tableRow span:nth-child(12) {
+    display: none;
+  }
+
+  .damageSummaryCell {
     display: none;
   }
 
