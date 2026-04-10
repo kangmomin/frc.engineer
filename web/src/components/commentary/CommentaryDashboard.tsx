@@ -8,7 +8,6 @@ import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionS
 import { formatDelta, formatLapTime } from '../../utils/formatters';
 import styles from './CommentaryDashboard.module.css';
 
-const MAX_ERS_ENERGY = 4_000_000;
 const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
 type SectorBestTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
@@ -376,7 +375,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
             <tbody>
               {drivers.map((driver) => {
                 const acc = accMap.get(driver.index);
-                const ersPct = driver.ersActualReady ? driver.ersActualPct : Math.round((driver.ersStoreEnergy / MAX_ERS_ENERGY) * 100);
+                const ersPct = driver.ersActualReady ? `${driver.ersActualPct}%` : '--';
                 const intervalMs = driver.deltaToCarInFront ?? 0;
                 const isBattle = intervalMs !== 0 && Math.abs(intervalMs) <= 1000;
                 const penTotal = driver.penalties + (driver.numUnservedDriveThroughs * 5) + (driver.numUnservedStopGoPenalties * 10);
@@ -423,7 +422,7 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
                         ? `${driver.tyreLifeSpan}/${driver.tyreUsableLife}`
                         : '--'}
                     </td>
-                    <td className={styles.ersCell}>{ersPct}%</td>
+                    <td className={styles.ersCell}>{ersPct}</td>
                     <td className={styles.gapCell}>
                       {driver.position === 1 ? 'LEADER' : formatGap(driver.deltaToRaceLeader)}
                     </td>

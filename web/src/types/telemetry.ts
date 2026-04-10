@@ -322,6 +322,7 @@ export interface DriverInfo {
   index: number;
   name: string;
   teamId: number;
+  aiControlled: boolean;
   position: number;
   currentLapNum: number;
   speed: number;
@@ -330,6 +331,7 @@ export interface DriverInfo {
   brake: number;
   gear: number;
   steering: number;
+  drsActivated: boolean;
   lastLapTime: number;
   bestLapTime: number;
   tireCompound: string;

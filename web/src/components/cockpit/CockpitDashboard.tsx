@@ -18,7 +18,6 @@ import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionS
 import { clamp, formatDelta, formatLapTime } from '../../utils/formatters';
 import styles from './CockpitDashboard.module.css';
 
-const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEFAULT_PREDICTION_LAPS = 10;
 const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
@@ -151,8 +150,9 @@ export function CockpitDashboard({
 
   const session = pitwallState?.session ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
+  const ersVisible = featurePermissions.viewERSActual;
   const ersEstimateVisible = pitwallState?.ersEstimateEnabled ?? false;
-  const ersComparisonEnabled = ersEstimateVisible && (pitwallState?.ersComparisonEnabled ?? false) && featurePermissions.viewERSActual;
+  const ersComparisonEnabled = ersVisible && ersEstimateVisible && (pitwallState?.ersComparisonEnabled ?? false);
   const pitStatusVisible = featurePermissions.viewPitStatus;
   const topSpeedVisible = featurePermissions.viewTopSpeed;
   const playerDeltaVisible = featurePermissions.viewPlayerDelta;
@@ -185,7 +185,8 @@ export function CockpitDashboard({
   const raceStatus = getRaceStatus(session, recentNotifications);
   const sessionTrackId = session?.trackId ?? null;
   const sessionTrackName = session?.trackName ?? '';
-  const ersPct = clamp(player ? (player.ersStoreEnergy / MAX_ERS_ENERGY) * 100 : 0, 0, 100);
+  const ersActualReady = player?.ersActualReady ?? false;
+  const ersPct = clamp(player?.ersActualPct ?? 0, 0, 100);
   const deploySplit = getErsSplit(player);
   const fuelMargin = getFuelMargin(player, session);
   const wheelCoreTemp = normalizeWheelData(player?.tireInnerTemp);
@@ -407,7 +408,7 @@ export function CockpitDashboard({
               <span>Pos</span>
               <span>Driver</span>
               <span>DRS</span>
-              <span>{ersEstimateVisible ? 'ERS' : ''}</span>
+              <span>{ersVisible ? 'ERS' : ''}</span>
               <span>{playerDeltaVisible ? 'To You' : 'Gap'}</span>
               <span>Interval</span>
               <span>Last Lap</span>
@@ -439,6 +440,7 @@ export function CockpitDashboard({
                     <span className={styles.driverCell}>
                       <span className={styles.teamBar} style={{ background: getTeamColor(driver.teamId) }} />
                       {driver.name.slice(0, 6)}
+                      {driver.aiControlled && <span className={styles.driverBadge}>AI</span>}
                     </span>
                     <span className={styles.drsCell}>
                       <span className={driverHasDrs(driver) ? styles.drsActive : styles.drsInactive}>
@@ -446,9 +448,9 @@ export function CockpitDashboard({
                       </span>
                     </span>
                     <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
-                      {ersEstimateVisible && (
+                      {ersVisible && (
                         <>
-                          <span className={styles[getErsEstimateTone(driver)]}>{formatErsEstimate(driver)}</span>
+                          <span className={styles[getErsActualTone(driver)]}>{formatErsActual(driver)}</span>
                           {ersComparisonEnabled && (
                             <span className={styles.ersCompareMeta}>
                               {formatErsCompare(driver)}
@@ -519,7 +521,7 @@ export function CockpitDashboard({
             <div className={styles.progressHeader}>
               <span>DRS Status</span>
               <span className={styles.progressStatus}>
-                {player && player.deltaToCarInFront != null && player.deltaToCarInFront <= 1000 ? 'ARMED' : 'LOCKED'}
+                {getDrsStatusLabel(player)}
               </span>
             </div>
             <div className={styles.progressTrack}>
@@ -722,8 +724,8 @@ export function CockpitDashboard({
                 style={{ ['--ring-fill' as string]: `${ersPct}%` }}
               />
               <div className={styles.ersDialCenter}>
-                <strong>{Math.round(ersPct)}%</strong>
-                <span>{getErsModeLabel(player)}</span>
+                <strong>{ersActualReady ? `${Math.round(ersPct)}%` : '--'}</strong>
+                <span>{ersActualReady ? getErsModeLabel(player) : '--'}</span>
               </div>
             </div>
 
@@ -746,11 +748,11 @@ export function CockpitDashboard({
               <div className={styles.splitPills}>
                 <div className={styles.splitPill}>
                   <span>Deploy</span>
-                  <strong>{deploySplit.deploy}%</strong>
+                  <strong>{ersActualReady ? `${deploySplit.deploy}%` : '--'}</strong>
                 </div>
                 <div className={styles.splitPill}>
                   <span>Harvest</span>
-                  <strong>{deploySplit.harvest}%</strong>
+                  <strong>{ersActualReady ? `${deploySplit.harvest}%` : '--'}</strong>
                 </div>
               </div>
 
@@ -1388,8 +1390,22 @@ function useCompletedSectorHistory(drivers: DriverInfo[], session: SessionInfo |
   return historyMap;
 }
 
+function driverCanArmDrs(driver: DriverInfo | null): boolean {
+  return (driver?.deltaToCarInFront ?? 0) > 0 && (driver?.deltaToCarInFront ?? 0) <= 1000;
+}
+
 function driverHasDrs(driver: DriverInfo): boolean {
-  return (driver.deltaToCarInFront ?? 0) > 0 && (driver.deltaToCarInFront ?? 0) <= 1000;
+  if (driver.drsActivated !== undefined) {
+    return driver.drsActivated;
+  }
+  return driverCanArmDrs(driver);
+}
+
+function getDrsStatusLabel(driver: DriverInfo | null): string {
+  if (!driver) return 'LOCKED';
+  if (driverHasDrs(driver)) return 'ACTIVE';
+  if (driverCanArmDrs(driver)) return 'ARMED';
+  return 'LOCKED';
 }
 
 function formatPitStatus(driver: DriverInfo, visible: boolean): string {
@@ -1508,9 +1524,9 @@ function getErsModeLabel(player: DriverInfo | null): string {
   return 'Standby';
 }
 
-function formatErsEstimate(driver: DriverInfo): string {
-  if (!driver.ersEstimateReady) return '--';
-  return `${driver.ersEstimatePct}%`;
+function formatErsActual(driver: DriverInfo): string {
+  if (!driver.ersActualReady) return '--';
+  return `${driver.ersActualPct}%`;
 }
 
 function formatErsCompare(driver: DriverInfo): string {
@@ -1521,10 +1537,10 @@ function formatErsCompare(driver: DriverInfo): string {
   return `A${driver.ersActualPct}% Δ${sign}${delta}`;
 }
 
-function getErsEstimateTone(driver: DriverInfo): 'ersHigh' | 'ersMedium' | 'ersLow' | 'ersPending' {
-  if (!driver.ersEstimateReady) return 'ersPending';
-  if (driver.ersEstimatePct >= 65) return 'ersHigh';
-  if (driver.ersEstimatePct >= 35) return 'ersMedium';
+function getErsActualTone(driver: DriverInfo): 'ersHigh' | 'ersMedium' | 'ersLow' | 'ersPending' {
+  if (!driver.ersActualReady) return 'ersPending';
+  if (driver.ersActualPct >= 65) return 'ersHigh';
+  if (driver.ersActualPct >= 35) return 'ersMedium';
   return 'ersLow';
 }
 
@@ -1825,6 +1841,7 @@ function getTrainStatus(
 }
 
 function getDrsProgress(player: DriverInfo | null): number {
+  if (player && driverHasDrs(player)) return 100;
   if (!player?.deltaToCarInFront || player.deltaToCarInFront <= 0) return 0;
   return clamp(100 - (player.deltaToCarInFront / 1000) * 100, 0, 100);
 }

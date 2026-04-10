@@ -176,6 +176,19 @@
   font-weight: 600;
 }
 
+.driverBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border: 1px solid rgba(205, 255, 19, 0.28);
+  color: var(--accent-lime);
+  font-family: var(--font-racing);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .teamStripe {
   width: 3px;
   height: 18px;

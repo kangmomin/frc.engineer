@@ -371,6 +371,18 @@
   color: var(--text-muted);
 }
 
+.driverBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 5px;
+  border: 1px solid rgba(126, 220, 189, 0.35);
+  color: #7edcbd;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .pitCell {
   font-size: 0.74rem;
   font-weight: 800;

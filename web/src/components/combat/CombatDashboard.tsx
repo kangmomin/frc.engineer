@@ -5,7 +5,6 @@ import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../const
 import type { DriverInfo } from '../../types/telemetry';
 import styles from './CombatDashboard.module.css';
 
-const MAX_ERS_ENERGY = 4_000_000;
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'];
 
 interface CombatDashboardProps {
@@ -151,7 +150,7 @@ function CombatCard({
     );
   }
 
-  const ersPct = Math.min(Math.max((driver.ersStoreEnergy / MAX_ERS_ENERGY) * 100, 0), 100);
+  const ersPct = driver.ersActualReady ? Math.min(Math.max(driver.ersActualPct, 0), 100) : null;
   const ersEstPct = driver.ersEstimateReady ? driver.ersEstimatePct : null;
   const wear = driver.tireWear ?? [0, 0, 0, 0];
 
@@ -205,9 +204,9 @@ function CombatCard({
       <div className={styles.ersRow}>
         <span className={styles.ersLabel}>ERS</span>
         <div className={styles.ersTrack}>
-          <div className={styles.ersFill} style={{ width: `${ersPct}%` }} />
+          <div className={styles.ersFill} style={{ width: `${ersPct ?? 0}%` }} />
         </div>
-        <span className={styles.ersPct}>{Math.round(ersPct)}%</span>
+        <span className={styles.ersPct}>{ersPct != null ? `${Math.round(ersPct)}%` : '--'}</span>
       </div>
       {ersEstPct != null && (
         <div className={styles.ersRow}>

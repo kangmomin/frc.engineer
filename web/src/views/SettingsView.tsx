@@ -295,12 +295,12 @@ export function SettingsView() {
                 <span>Pit lane status. Shows "IN" when the car is in the pit lane, "PIT" when actively pitting, and the pit stop duration in seconds. Requires Pit Status permission.</span>
               </div>
               <div className={styles.guideEntry}>
-                <strong>ERS Est.</strong>
-                <span>Estimated ERS (Energy Recovery System) battery level as a percentage. Uses a predictive model based on track position and driving style. Requires ERS Estimate permission.</span>
+                <strong>ERS</strong>
+                <span>Actual ERS (Energy Recovery System) battery level as a percentage. Requires ERS permission.</span>
               </div>
               <div className={styles.guideEntry}>
-                <strong>ERS Est/Act</strong>
-                <span>When ERS comparison is enabled, shows both the estimated and actual ERS percentage with delta. "A38%" = actual 38%, delta shows estimate vs actual difference.</span>
+                <strong>ERS Compare</strong>
+                <span>When comparison is enabled, shows the actual ERS percentage with the estimate delta. "A38% Δ+7" means actual 38% and estimate 7 points higher. Requires ERS and ERS Estimate permissions.</span>
               </div>
               <div className={styles.guideEntry}>
                 <strong>Vmax</strong>

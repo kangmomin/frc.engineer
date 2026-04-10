@@ -67,7 +67,6 @@ func (b *DataChannelBroadcaster) Broadcast(message []byte) {
 	b.peerManager.BroadcastAll(message)
 }
 
-
 type pitwallBroadcastVariants struct {
 	cache map[string][]byte
 	state dto.PitwallState
@@ -126,7 +125,7 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 		sessionCopy := *state.Session
 		state.Session = &sessionCopy
 	}
-	state.ERSComparisonEnabled = permissions.ViewERSActual && hasERSActualData(state.Drivers)
+	state.ERSComparisonEnabled = permissions.ViewERSEstimate && permissions.ViewERSActual && hasERSActualData(state.Drivers)
 	state.ERSEstimateEnabled = permissions.ViewERSEstimate || view == "combat"
 
 	// Pre-compute combat car positions (player + ahead + behind)
@@ -146,6 +145,10 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 			state.Drivers[i].ERSEstimateReady = false
 		}
 		if !permissions.ViewERSActual {
+			state.Drivers[i].ERSStoreEnergy = 0
+			state.Drivers[i].ERSDeployMode = 0
+			state.Drivers[i].ERSDeployedThisLap = 0
+			state.Drivers[i].ERSHarvestedThisLap = 0
 			state.Drivers[i].ERSActualPct = 0
 			state.Drivers[i].ERSActualReady = false
 		}

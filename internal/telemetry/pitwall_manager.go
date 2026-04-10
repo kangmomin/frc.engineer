@@ -40,11 +40,11 @@ type PitwallManager struct {
 	recorder          *TrackRecorder
 	dynamicsAnalyzer  *DynamicsAnalyzer
 	ersEstimator      *ERSEstimator
-	ersActualEnabled   bool
-	ersCompareEnabled  bool
-	trackMapSendCount  int  // remaining broadcasts to include trackMap
-	lastTrackID        int8 // last track ID for change detection
-	peakActiveCars     int  // high-water mark for NumActiveCars
+	ersActualEnabled  bool
+	ersCompareEnabled bool
+	trackMapSendCount int  // remaining broadcasts to include trackMap
+	lastTrackID       int8 // last track ID for change detection
+	peakActiveCars    int  // high-water mark for NumActiveCars
 }
 
 // NewPitwallManager creates a new PitwallManager
@@ -394,6 +394,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				p := &pm.participants.Participants[i]
 				d.Name = p.GetName()
 				d.TeamID = int(p.TeamID)
+				d.AIControlled = p.AIControlled == 1
 			}
 
 			if pm.lapData != nil {
@@ -467,6 +468,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 
 			if pm.telemetry != nil {
 				ct := &pm.telemetry.CarTelemetryData[i]
+				d.DRSActivated = ct.DRS != 0
 				// Speed, Throttle, Brake, Gear, Steering – omitted from broadcast DTO
 				for w := range 4 {
 					g := g2d[w]

@@ -289,6 +289,7 @@ export function QualifyingDashboard({
                     <div className={styles.driverCell}>
                       <span className={styles.teamStripe} style={{ background: getTeamColor(d.teamId) }} />
                       {d.name || `Driver ${d.index}`}
+                      {d.aiControlled && <span className={styles.driverBadge}>AI</span>}
                     </div>
                   </td>
                   <td className={d.bestLapTime === leaderBest && leaderBest > 0 ? styles.fastestCell : undefined}>

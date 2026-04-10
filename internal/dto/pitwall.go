@@ -88,6 +88,7 @@ type DriverInfo struct {
 	Index           int     `json:"index"`
 	Name            string  `json:"name"`
 	TeamID          int     `json:"teamId"`
+	AIControlled    bool    `json:"aiControlled"`
 	Position        int     `json:"position"`
 	CurrentLapNum   int     `json:"currentLapNum"`
 	Speed           uint16  `json:"speed,omitempty"`
@@ -96,6 +97,7 @@ type DriverInfo struct {
 	Brake           float32 `json:"brake,omitempty"`
 	Gear            int8    `json:"gear,omitempty"`
 	Steering        float32 `json:"steering,omitempty"`
+	DRSActivated    bool    `json:"drsActivated"`
 	LastLapTime     float32 `json:"lastLapTime"`
 	BestLapTime     float32 `json:"bestLapTime"`
 	TireCompound    string  `json:"tireCompound"`
@@ -232,11 +234,11 @@ type RadarCarData struct {
 
 // StrategyOverlayData is a lightweight payload for the strategy overlay SSE stream.
 type StrategyOverlayData struct {
-	PlayerPosition    int    `json:"playerPosition"`
-	PlayerLap         int    `json:"playerLap"`
-	TotalLaps         int    `json:"totalLaps"`
-	TrackID           int8   `json:"trackId"`
-	PitRejoinPosition int    `json:"pitRejoinPosition"`
+	PlayerPosition    int  `json:"playerPosition"`
+	PlayerLap         int  `json:"playerLap"`
+	TotalLaps         int  `json:"totalLaps"`
+	TrackID           int8 `json:"trackId"`
+	PitRejoinPosition int  `json:"pitRejoinPosition"`
 
 	CarAhead  *StrategyCar `json:"carAhead,omitempty"`
 	CarBehind *StrategyCar `json:"carBehind,omitempty"`
@@ -264,9 +266,9 @@ type StrategyCar struct {
 
 // WeatherOverlayData is a lightweight payload for the weather forecast overlay SSE stream.
 type WeatherOverlayData struct {
-	CurrentWeather string                `json:"currentWeather"`
-	TrackTemp      float32               `json:"trackTemp"`
-	AirTemp        float32               `json:"airTemp"`
-	SessionType    string                `json:"sessionType"`
-	Forecasts      []WeatherForecastDTO  `json:"forecasts"`
+	CurrentWeather string               `json:"currentWeather"`
+	TrackTemp      float32              `json:"trackTemp"`
+	AirTemp        float32              `json:"airTemp"`
+	SessionType    string               `json:"sessionType"`
+	Forecasts      []WeatherForecastDTO `json:"forecasts"`
 }

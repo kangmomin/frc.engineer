@@ -13,16 +13,20 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 		ERSComparisonEnabled: true,
 		Drivers: []dto.DriverInfo{
 			{
-				Index:            1,
-				ERSEstimatePct:   45,
-				ERSEstimateReady: true,
-				ERSActualPct:     38,
-				ERSActualReady:   true,
-				PitStatus:        2,
-				PitStopTimer:     4.2,
-				PitLaneTime:      18234,
-				TopSpeed:         334,
-				DeltaToPlayer:    -842,
+				Index:               1,
+				ERSStoreEnergy:      1520000,
+				ERSDeployMode:       3,
+				ERSDeployedThisLap:  640000,
+				ERSHarvestedThisLap: 320000,
+				ERSEstimatePct:      45,
+				ERSEstimateReady:    true,
+				ERSActualPct:        38,
+				ERSActualReady:      true,
+				PitStatus:           2,
+				PitStopTimer:        4.2,
+				PitLaneTime:         18234,
+				TopSpeed:            334,
+				DeltaToPlayer:       -842,
 			},
 		},
 	}
@@ -47,6 +51,9 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	if !privileged.ERSComparisonEnabled {
 		t.Fatal("expected ERS comparison to remain enabled")
 	}
+	if privileged.Drivers[0].ERSStoreEnergy != 1520000 || privileged.Drivers[0].ERSDeployMode != 3 {
+		t.Fatalf("expected ERS telemetry to remain visible, got %#v", privileged.Drivers[0])
+	}
 	if privileged.Drivers[0].ERSActualPct != 38 || !privileged.Drivers[0].ERSActualReady {
 		t.Fatalf("expected ERS actual data to remain visible, got %#v", privileged.Drivers[0])
 	}
@@ -69,6 +76,9 @@ func TestPitwallBroadcastVariantsRespectPeerPermissions(t *testing.T) {
 	}
 	if restricted.Drivers[0].ERSActualPct != 0 || restricted.Drivers[0].ERSActualReady {
 		t.Fatalf("expected ERS actual data to be masked, got %#v", restricted.Drivers[0])
+	}
+	if restricted.Drivers[0].ERSStoreEnergy != 0 || restricted.Drivers[0].ERSDeployMode != 0 || restricted.Drivers[0].ERSDeployedThisLap != 0 || restricted.Drivers[0].ERSHarvestedThisLap != 0 {
+		t.Fatalf("expected ERS telemetry to be masked, got %#v", restricted.Drivers[0])
 	}
 	if restricted.Drivers[0].PitStatus != 0 || restricted.Drivers[0].PitStopTimer != 0 || restricted.Drivers[0].PitLaneTime != 0 {
 		t.Fatalf("expected pit fields to be masked, got %#v", restricted.Drivers[0])

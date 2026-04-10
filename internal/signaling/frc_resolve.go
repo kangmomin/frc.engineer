@@ -4,9 +4,10 @@ import "strings"
 
 const frcProductPrefix = "product.c6da03fd-4b88-48ac-87af-592776ef8dbf."
 
-// FRCPermissionKeys returns the full FRC permission key list for all 9 feature flags.
+// FRCPermissionKeys returns the full FRC permission key list for all supported feature flags.
 func FRCPermissionKeys() []string {
 	features := []string{
+		"ers",
 		"ers_estimate",
 		"ers_actual",
 		"advanced_strategy",
@@ -30,6 +31,10 @@ func FRCPermissionKeys() []string {
 // MapFRCPermissions converts FRC API permission results to a Permissions struct.
 func MapFRCPermissions(m map[string]bool) Permissions {
 	var p Permissions
+	if granted, ok := m[frcProductPrefix+"ers"]; ok {
+		p.ViewERSEstimate = granted
+		p.ViewERSActual = granted
+	}
 	for key, granted := range m {
 		feature := strings.TrimPrefix(key, frcProductPrefix)
 		switch feature {
