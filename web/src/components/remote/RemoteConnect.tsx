@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { ConnectionState } from '../../types/telemetry';
+import { isConnectionFailure, isConnectionPending } from '../../utils/connectionStatus';
 import styles from './RemoteConnect.module.css';
 
 interface RemoteConnectProps {
   onConnect: (signalingUrl: string, roomId: string, password: string) => void;
-  connectionState: string;
+  connectionState: ConnectionState;
   onCancel?: () => void;
   cancelLabel?: string;
   title?: string;
@@ -130,7 +132,7 @@ export function RemoteConnect({
   // The periodic fetchRooms was causing forced focus shift to the room password input.
 
   const selectedRoom = rooms.find((room) => room.roomId === selectedRoomId) ?? null;
-  const isConnecting = connectionState === 'connecting';
+  const isConnecting = isConnectionPending(connectionState);
   const isReady = !!selectedRoom && (!selectedRoom.requiresPassword || password.length > 0) && signalingUrl.length > 0;
 
   const handleSubmit = useCallback(() => {
@@ -247,7 +249,7 @@ export function RemoteConnect({
           </button>
         </div>
 
-        {(roomsError || connectionState === 'error') && (
+        {(roomsError || isConnectionFailure(connectionState)) && (
           <p className={styles.error}>{roomsError || 'Connection failed. Check the room password and signaling server.'}</p>
         )}
       </div>

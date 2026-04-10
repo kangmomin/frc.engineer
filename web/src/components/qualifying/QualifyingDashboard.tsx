@@ -7,6 +7,7 @@ import type { QualifyingPhase } from '../../hooks/useQualifyingState';
 import { useTrackGaps } from '../../hooks/useTrackGaps';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo } from '../../types/telemetry';
+import { getConnectionBadgeLabel } from '../../utils/connectionStatus';
 import { formatLapTime } from '../../utils/formatters';
 import { sortQualifyingDrivers } from './leaderboardOrder';
 import styles from './QualifyingDashboard.module.css';
@@ -256,7 +257,7 @@ export function QualifyingDashboard({
         </div>
         <div className={`${styles.stripCard} ${styles.secondary}`}>
           <span className={styles.stripLabel}>Connection</span>
-          <strong>{connectionState === 'connected' ? 'LIVE' : connectionState.toUpperCase()}</strong>
+          <strong>{getConnectionBadgeLabel(connectionState)}</strong>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../const
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type {
+  ConnectionState,
   DriverInfo,
   RaceControlNotification,
   SessionInfo,
@@ -13,6 +14,7 @@ import type {
   TireWearDisplayMode,
   WeatherForecast,
 } from '../../types/telemetry';
+import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { clamp, formatDelta, formatLapTime } from '../../utils/formatters';
 import styles from './CockpitDashboard.module.css';
 
@@ -777,7 +779,7 @@ export function CockpitDashboard({
             <div className={`${styles.connectionDot} ${styles[raceStatus.tone]}`} />
             <div>
               <strong>{getConnectionLabel(connectionState)}</strong>
-              <span>Telemetry feed will populate this cockpit automatically.</span>
+              <span>{getConnectionDetail(connectionState)}</span>
             </div>
             {onGoHome && (
               <button type="button" className={styles.homeButton} onClick={onGoHome}>
@@ -1446,7 +1448,7 @@ function formatSafetyCarShort(sc: string | undefined): string {
 
 function TrackStatusRibbon({ session, connectionState }: {
   session: SessionInfo | null;
-  connectionState: string;
+  connectionState: ConnectionState;
 }) {
   const s1Flag = getSectorFlag(session?.marshalZones, 1);
   const s2Flag = getSectorFlag(session?.marshalZones, 2);
@@ -1485,13 +1487,6 @@ function getRaceStatus(
   if (recent?.severity === 'warning') return { label: 'WARNING', tone: 'secondary' };
   if (recent?.category === 'info') return { label: 'INFO', tone: 'primary' };
   return { label: 'GREEN', tone: 'tertiary' };
-}
-
-function getConnectionLabel(state: 'connecting' | 'connected' | 'disconnected' | 'error'): string {
-  if (state === 'connected') return 'Live feed connected';
-  if (state === 'connecting') return 'Connecting telemetry';
-  if (state === 'error') return 'Telemetry error';
-  return 'Feed offline';
 }
 
 function getErsSplit(player: DriverInfo | null): { deploy: number; harvest: number } {

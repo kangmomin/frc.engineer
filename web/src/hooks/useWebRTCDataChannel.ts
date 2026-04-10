@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import type { FeaturePermissions, PitwallState } from '../types/telemetry';
+import type { ConnectionState, FeaturePermissions, PitwallState } from '../types/telemetry';
 import { NO_FEATURE_PERMISSIONS, useTelemetryStore } from '../store/telemetryStore';
 import { routeMessage } from './useMessageRouter';
 
@@ -15,6 +15,62 @@ interface UseWebRTCReturn {
   connectionState: RTCPeerConnectionState | 'new';
   lastError: string;
 }
+
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+];
+
+const SIGNALING_RESPONSE_TIMEOUT_MS = 6_000;
+const OFFER_TIMEOUT_MS = 8_000;
+const PEER_CONNECTION_TIMEOUT_MS = 12_000;
+
+function normalizeIceServer(server: RTCIceServer): RTCIceServer | null {
+  const urls = Array.isArray(server.urls)
+    ? server.urls.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : typeof server.urls === 'string' && server.urls.trim().length > 0
+      ? server.urls
+      : null;
+
+  if (!urls || (Array.isArray(urls) && urls.length === 0)) {
+    return null;
+  }
+
+  const normalized: RTCIceServer = { urls };
+  if (typeof server.username === 'string' && server.username.trim().length > 0) {
+    normalized.username = server.username;
+  }
+  if (typeof server.credential === 'string' && server.credential.length > 0) {
+    normalized.credential = server.credential;
+  }
+  return normalized;
+}
+
+function getConfiguredIceServers(): RTCIceServer[] {
+  const raw = import.meta.env.VITE_WEBRTC_ICE_SERVERS;
+  if (!raw) return DEFAULT_ICE_SERVERS;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error('ice server config must be an array');
+    }
+
+    const servers = parsed
+      .map((entry) => normalizeIceServer(entry as RTCIceServer))
+      .filter((entry): entry is RTCIceServer => entry !== null);
+
+    if (servers.length === 0) {
+      throw new Error('no valid ice servers');
+    }
+
+    return servers;
+  } catch (error) {
+    console.warn('Invalid VITE_WEBRTC_ICE_SERVERS config, falling back to default STUN servers.', error);
+    return DEFAULT_ICE_SERVERS;
+  }
+}
+
+const CONFIGURED_ICE_SERVERS = getConfiguredIceServers();
 
 export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRTCReturn {
   const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
@@ -32,6 +88,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const isMountedRef = useRef(true);
+  const stageTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const terminalFailureRef = useRef<ConnectionState | null>(null);
 
   // Refs for routeMessage batching
   const pendingPitwallRef = useRef<PitwallState | null>(null);
@@ -45,7 +103,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const actionsRef = useRef({ setPitwallState, updatePositions, addRaceControlNotification, addBattleAlert, setRaceResult });
   actionsRef.current = { setPitwallState, updatePositions, addRaceControlNotification, addBattleAlert, setRaceResult };
 
+  const clearStageTimeout = useCallback(() => {
+    if (stageTimeoutRef.current) {
+      clearTimeout(stageTimeoutRef.current);
+      stageTimeoutRef.current = null;
+    }
+  }, []);
+
   const cleanup = useCallback(() => {
+    clearStageTimeout();
     if (dcRef.current) {
       dcRef.current.close();
       dcRef.current = null;
@@ -66,9 +132,33 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       cancelAnimationFrame(positionsRafRef.current);
       positionsRafRef.current = 0;
     }
-  }, []);
+  }, [clearStageTimeout]);
+
+  const failConnection = useCallback((
+    state: Extract<ConnectionState, 'timeout' | 'ice-failed' | 'error'>,
+    message: string,
+  ) => {
+    if (!isMountedRef.current) return;
+    terminalFailureRef.current = state;
+    clearStageTimeout();
+    setLastError(message);
+    setConnectionState(state);
+    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+    setRtcState('disconnected');
+    cleanup();
+  }, [cleanup, clearStageTimeout, setConnectionState, setFeaturePermissions]);
+
+  const armStageTimeout = useCallback((message: string, ms: number) => {
+    clearStageTimeout();
+    stageTimeoutRef.current = window.setTimeout(() => {
+      failConnection('timeout', message);
+    }, ms);
+  }, [clearStageTimeout, failConnection]);
 
   const disconnect = useCallback(() => {
+    terminalFailureRef.current = null;
+    clearStageTimeout();
+    setLastError('');
     cleanup();
     setConnectionState('disconnected');
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
@@ -89,18 +179,21 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     if (!signalingUrl || !roomId) return;
 
     isMountedRef.current = true;
+    terminalFailureRef.current = null;
 
     // Clean previous connections
     cleanup();
     setLastError('');
+    setRtcState('new');
     setConnectionState('connecting');
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+    armStageTimeout('Timed out waiting for the signaling server to acknowledge the room join.', SIGNALING_RESPONSE_TIMEOUT_MS);
 
     let ws: WebSocket;
     try {
       ws = new WebSocket(signalingUrl);
     } catch {
-      setConnectionState('error');
+      failConnection('error', 'Failed to open the signaling connection.');
       return;
     }
     wsRef.current = ws;
@@ -116,6 +209,9 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     const handleOffer = (offerPayload: unknown) => {
       const offer = offerPayload as RTCSessionDescriptionInit;
+      clearStageTimeout();
+      setConnectionState('negotiating');
+      armStageTimeout('Timed out while establishing the peer connection.', PEER_CONNECTION_TIMEOUT_MS);
 
       // Close previous PeerConnection if it exists
       if (pcRef.current) {
@@ -127,21 +223,31 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       }
 
       const pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-        ],
+        iceServers: CONFIGURED_ICE_SERVERS,
       });
       pcRef.current = pc;
 
       pc.onconnectionstatechange = () => {
         if (!isMountedRef.current) return;
+        if (terminalFailureRef.current) return;
         const state = pc.connectionState;
         setRtcState(state);
 
         if (state === 'connected') {
+          clearStageTimeout();
           setConnectionState('connected');
-        } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+          setLastError('');
+        } else if (state === 'disconnected' || state === 'closed') {
           setConnectionState('disconnected');
+          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (!isMountedRef.current) return;
+        if (terminalFailureRef.current) return;
+        if (pc.iceConnectionState === 'failed') {
+          failConnection('ice-failed', 'ICE negotiation failed. A TURN relay is likely required on one side of this connection.');
         }
       };
 
@@ -180,8 +286,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           dcRef.current = dc;
           dc.onclose = () => {
             if (!isMountedRef.current) return;
+            if (terminalFailureRef.current) return;
             setConnectionState('disconnected');
             setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+            setRtcState('disconnected');
           };
         }
       };
@@ -189,14 +297,16 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       pc.setRemoteDescription(new RTCSessionDescription(offer))
         .then(() => pc.createAnswer())
         .then((answer) => {
-          pc.setLocalDescription(answer);
+          return pc.setLocalDescription(answer).then(() => answer);
+        })
+        .then((answer) => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'answer', payload: answer }));
           }
         })
         .catch((err) => {
           console.error('WebRTC offer/answer failed:', err);
-          setConnectionState('error');
+          failConnection('error', 'WebRTC offer/answer negotiation failed.');
         });
     };
 
@@ -207,14 +317,16 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     ws.onclose = () => {
       if (!isMountedRef.current) return;
+      if (terminalFailureRef.current) return;
       setConnectionState('disconnected');
       setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+      setRtcState('disconnected');
     };
 
     ws.onerror = () => {
       if (!isMountedRef.current) return;
-      setConnectionState('error');
-      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+      if (terminalFailureRef.current) return;
+      failConnection('error', 'Signaling server connection failed.');
     };
 
     ws.onmessage = (event) => {
@@ -229,7 +341,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
       switch (msg.type) {
         case 'room_joined':
+          clearStageTimeout();
           setFeaturePermissions(msg.permissions ?? NO_FEATURE_PERMISSIONS);
+          setConnectionState('waiting-offer');
+          armStageTimeout('Timed out waiting for the sender to publish a WebRTC offer.', OFFER_TIMEOUT_MS);
           break;
         case 'offer':
           handleOffer(msg.payload);
@@ -238,20 +353,11 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           handleICECandidate(msg.payload);
           break;
         case 'room_closed':
-          setConnectionState('disconnected');
-          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-          cleanup();
+          failConnection('error', 'The sender room was closed.');
           break;
         case 'error':
           console.error('Signaling error:', msg.error);
-          setLastError(msg.error ?? 'Unknown error');
-          setConnectionState('error');
-          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-          // Clear invalid permission code from localStorage to prevent retry loops
-          if (msg.error && (msg.error as string).includes('permissions code')) {
-
-          }
-          cleanup();
+          failConnection('error', msg.error ?? 'Unknown signaling error.');
           break;
       }
     };

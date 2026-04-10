@@ -35,7 +35,15 @@ export interface TelemetryData {
 /**
  * WebSocket connection state
  */
-export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
+export type ConnectionState =
+  | 'connecting'
+  | 'waiting-offer'
+  | 'negotiating'
+  | 'connected'
+  | 'disconnected'
+  | 'timeout'
+  | 'ice-failed'
+  | 'error';
 
 export interface FeaturePermissions {
   viewERSEstimate: boolean;

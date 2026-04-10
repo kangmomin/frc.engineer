@@ -4,6 +4,7 @@ import { getTeamColor } from '../../constants/teamColors';
 import { getTyreColor, getWearStatusColor } from '../../constants/tyreCompounds';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo, WeatherForecast } from '../../types/telemetry';
+import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { formatDelta, formatLapTime } from '../../utils/formatters';
 import styles from './CommentaryDashboard.module.css';
 
@@ -516,7 +517,10 @@ export function CommentaryDashboard({ onSwitchToCockpit, onSwitchToQualifying, o
       {/* Connection overlay */}
       {connectionState !== 'connected' && !playbackActive && (
         <div className={styles.emptyState} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', zIndex: 10 }}>
-          <strong style={{ color: 'var(--accent)' }}>Waiting for telemetry connection...</strong>
+          <div style={{ display: 'grid', gap: 6, textAlign: 'center' }}>
+            <strong style={{ color: 'var(--accent)' }}>{getConnectionLabel(connectionState)}</strong>
+            <span>{getConnectionDetail(connectionState)}</span>
+          </div>
         </div>
       )}
     </div>

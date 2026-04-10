@@ -6,6 +6,7 @@ import {
   NO_FEATURE_PERMISSIONS,
   useTelemetryStore,
 } from '../../store/telemetryStore';
+import { getConnectionDetail, isConnectionFailure } from '../../utils/connectionStatus';
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { CombatDashboard } from '../combat/CombatDashboard';
 import { CommentaryDashboard } from '../commentary/CommentaryDashboard';
@@ -197,17 +198,17 @@ export function Layout() {
 
   if (
     rtcConnectionState === 'failed' ||
-    connectionState === 'error' ||
+    isConnectionFailure(connectionState) ||
     (connectAttempted && connectionState === 'disconnected' && rtcConnectionState !== 'new')
   ) {
     return (
       <RemoteConnect
         onConnect={handleRemoteConnect}
-        connectionState="error"
+        connectionState={connectionState}
         onCancel={goToMainScreen}
         cancelLabel="Main Screen"
         title="P2P Telemetry Link"
-        subtitle={rtcLastError || 'Connection dropped. Pick the room again and retry.'}
+        subtitle={rtcLastError || getConnectionDetail(connectionState)}
         initialSignalingUrl={rtcOptions.signalingUrl}
         initialRoomId={rtcOptions.roomId}
         initialPassword={rtcOptions.password}
