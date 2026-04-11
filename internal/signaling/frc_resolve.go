@@ -14,9 +14,7 @@ func FRCPermissionKeys() []string {
 		"pit",
 		"top_speed",
 		"player_delta",
-		"commentary",
 		"quali",
-		"combat",
 		"pitwall",
 		"overlay",
 		"setup_support",
@@ -50,12 +48,8 @@ func MapFRCPermissions(m map[string]bool) Permissions {
 			p.ViewTopSpeed = granted
 		case "player_delta":
 			p.ViewPlayerDelta = granted
-		case "commentary":
-			p.ViewCommentary = granted
 		case "quali":
 			p.ViewQualifying = granted
-		case "combat":
-			p.ViewCombat = granted
 		case "pitwall":
 			p.Pitwall = granted
 		case "overlay":
