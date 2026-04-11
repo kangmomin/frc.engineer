@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/races"
 	"frc.engineer/internal/signaling"
 )
 
@@ -24,7 +25,7 @@ func (b *DataChannelBroadcaster) DroppedCount() int {
 	return int(b.lastDrops.Load())
 }
 
-// DropRatio returns the fraction of peers that had messages dropped (0.0–1.0).
+// DropRatio returns the fraction of peers that had messages dropped (0.0..1.0).
 func (b *DataChannelBroadcaster) DropRatio() float64 {
 	total := b.lastTotal.Load()
 	if total == 0 {
@@ -33,7 +34,7 @@ func (b *DataChannelBroadcaster) DropRatio() float64 {
 	return float64(b.lastDrops.Load()) / float64(total)
 }
 
-// Binary returns true — DataChannel uses msgpack binary frames.
+// Binary returns true because DataChannel uses msgpack binary frames.
 func (b *DataChannelBroadcaster) Binary() bool { return true }
 
 // BroadcastFast sends a message over the fast (unreliable) DataChannel to all peers.
@@ -62,14 +63,37 @@ func (b *DataChannelBroadcaster) BroadcastPitwallState(state interface{}) {
 }
 
 // Broadcast sends the message to all connected peers via DataChannel.
-// For non-pitwallState messages only (raceControl, battleAlert, etc.).
+// For non-pitwallState messages only (raceControl, raceResult, etc.).
 func (b *DataChannelBroadcaster) Broadcast(message []byte) {
 	b.peerManager.BroadcastAll(message)
+}
+
+// BroadcastRaceResult sends a filtered race summary to each connected peer.
+func (b *DataChannelBroadcaster) BroadcastRaceResult(summary *races.RaceSummary) {
+	if summary == nil {
+		return
+	}
+
+	variants := &raceResultBroadcastVariants{
+		cache:   make(map[string][]byte),
+		summary: summary,
+	}
+
+	dropped, total := b.peerManager.BroadcastPerPeer(func(_ string, permissions signaling.Permissions, _ string) []byte {
+		return variants.resolve(permissions)
+	})
+	b.lastDrops.Store(int32(dropped))
+	b.lastTotal.Store(int32(total))
 }
 
 type pitwallBroadcastVariants struct {
 	cache map[string][]byte
 	state dto.PitwallState
+}
+
+type raceResultBroadcastVariants struct {
+	cache   map[string][]byte
+	summary *races.RaceSummary
 }
 
 func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, view string) []byte {
@@ -100,47 +124,26 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 	if permissions.ViewAdvancedStrategy {
 		key += "|adv-strategy"
 	}
-	if permissions.ViewCommentary {
-		key += "|commentary"
-	}
-	if permissions.ViewQualifying {
-		key += "|qualifying"
-	}
-	if permissions.ViewCombat {
-		key += "|combat"
-	}
 	if cached, ok := v.cache[key]; ok {
 		return cached
 	}
 
 	state := v.state
-	// Deep copy Drivers slice to avoid mutating the shared original
 	if len(state.Drivers) > 0 {
 		copied := make([]dto.DriverInfo, len(state.Drivers))
 		copy(copied, state.Drivers)
 		state.Drivers = copied
 	}
-	// Deep copy Session to avoid pointer aliasing across variants
 	if state.Session != nil {
 		sessionCopy := *state.Session
 		state.Session = &sessionCopy
 	}
-	state.ERSComparisonEnabled = permissions.ViewERSEstimate && permissions.ViewERSActual && hasERSActualData(state.Drivers)
-	state.ERSEstimateEnabled = permissions.ViewERSEstimate || view == "combat"
 
-	// Pre-compute combat car positions (player + ahead + behind)
-	var combatPos [3]int // [player, ahead, behind]
-	if view == "combat" && state.PlayerIndex >= 0 && state.PlayerIndex < len(state.Drivers) {
-		pp := state.Drivers[state.PlayerIndex].Position
-		combatPos = [3]int{pp, pp - 1, pp + 1}
-	}
+	state.ERSComparisonEnabled = permissions.ViewERSEstimate && permissions.ViewERSActual && hasERSActualData(state.Drivers)
+	state.ERSEstimateEnabled = permissions.ViewERSEstimate
 
 	for i := range state.Drivers {
-		isCombatCar := view == "combat" && (state.Drivers[i].Position == combatPos[0] ||
-			state.Drivers[i].Position == combatPos[1] ||
-			state.Drivers[i].Position == combatPos[2])
-
-		if !permissions.ViewERSEstimate && !isCombatCar {
+		if !permissions.ViewERSEstimate {
 			state.Drivers[i].ERSEstimatePct = 0
 			state.Drivers[i].ERSEstimateReady = false
 		}
@@ -163,7 +166,7 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 		if !permissions.ViewPlayerDelta {
 			state.Drivers[i].DeltaToPlayer = 0
 		}
-		if !permissions.ViewCommentary && !permissions.ViewAdvancedStrategy {
+		if !permissions.ViewAdvancedStrategy {
 			state.Drivers[i].TyreSetWear = nil
 			state.Drivers[i].TyreLifeSpan = nil
 			state.Drivers[i].TyreUsableLife = nil
@@ -171,51 +174,11 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 			state.Drivers[i].BestSector1Ms = nil
 			state.Drivers[i].BestSector2Ms = nil
 			state.Drivers[i].BestSector3Ms = nil
-			// Qualifying view needs DriverStatus for try/phase detection
-			if view != "qualifying" {
-				state.Drivers[i].DriverStatus = 0
-			}
 		}
-
-		// View-based filtering: strip data not needed for current tab
-		if view == "combat" {
-			state.Drivers[i].StintHistory = nil
-			state.Drivers[i].Dynamics = nil
-			state.Drivers[i].ResultStatus = 0
-			if !isCombatCar {
-				// Non-combat cars: strip heavy fields, keep position basics
-				state.Drivers[i].Speed = 0
-				state.Drivers[i].Throttle = 0
-				state.Drivers[i].Brake = 0
-				state.Drivers[i].Steering = 0
-				state.Drivers[i].BrakeTemp = [4]int{}
-				state.Drivers[i].TireSurfaceTemp = [4]int{}
-				state.Drivers[i].TireInnerTemp = [4]int{}
-				state.Drivers[i].FuelInTank = 0
-				state.Drivers[i].FuelRemainingLaps = 0
-				state.Drivers[i].ERSDeployedThisLap = 0
-				state.Drivers[i].ERSHarvestedThisLap = 0
-				state.Drivers[i].Damage = nil
-			}
+		if view != "qualifying" {
+			state.Drivers[i].DriverStatus = 0
 		}
-		if view != "commentary" {
-			state.Drivers[i].ResultStatus = 0
-		}
-	}
-
-	// MarshalZones only needed for commentary (flags) and qualifying
-	if (view == "cockpit" || view == "combat") && state.Session != nil {
-		state.Session.MarshalZones = nil
-	}
-	// Combat view: strip heavy session data not needed
-	if view == "combat" && state.Session != nil {
-		state.Session.WeatherForecast = nil
-		state.Session.CrossoverPrediction = nil
-	}
-	// Combat view: no track map or positions needed
-	if view == "combat" {
-		state.TrackMap = nil
-		state.Positions = nil
+		state.Drivers[i].ResultStatus = 0
 	}
 
 	payload, err := dto.MsgpackMarshal(dto.WSResponse{
@@ -227,6 +190,57 @@ func (v *pitwallBroadcastVariants) resolve(permissions signaling.Permissions, vi
 	}
 	v.cache[key] = payload
 	return payload
+}
+
+func (v *raceResultBroadcastVariants) resolve(permissions signaling.Permissions) []byte {
+	if v == nil || v.summary == nil {
+		return nil
+	}
+
+	key := "basic"
+	if permissions.ViewAdvancedStrategy {
+		key = "advanced-strategy"
+	}
+	if cached, ok := v.cache[key]; ok {
+		return cached
+	}
+
+	filtered := cloneRaceSummary(v.summary)
+	if filtered == nil {
+		return nil
+	}
+	if !permissions.ViewAdvancedStrategy && filtered.Debrief != nil {
+		filtered.Debrief.Tyres.FinalSetWearPct = 0
+		filtered.Debrief.Tyres.LifeSpan = 0
+		filtered.Debrief.Tyres.UsableLife = 0
+		filtered.Debrief.Tyres.LifeRemainingPct = 0
+	}
+
+	payload, err := dto.MsgpackMarshal(dto.WSResponse{
+		Type: dto.MessageTypeRaceResult,
+		Data: filtered,
+	})
+	if err != nil {
+		return nil
+	}
+	v.cache[key] = payload
+	return payload
+}
+
+func cloneRaceSummary(summary *races.RaceSummary) *races.RaceSummary {
+	if summary == nil {
+		return nil
+	}
+
+	cloned := *summary
+	if summary.Debrief != nil {
+		debriefCopy := *summary.Debrief
+		if len(summary.Debrief.Timeline) > 0 {
+			debriefCopy.Timeline = append([]dto.RaceControlNotification(nil), summary.Debrief.Timeline...)
+		}
+		cloned.Debrief = &debriefCopy
+	}
+	return &cloned
 }
 
 func hasERSActualData(drivers []dto.DriverInfo) bool {

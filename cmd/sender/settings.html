@@ -18,7 +18,7 @@
     align-items: flex-start;
     padding: 40px 16px;
   }
-  .container { width: 100%; max-width: 420px; }
+  .container { width: 100%; max-width: 680px; }
 
   h1 {
     font-family: 'Orbitron', sans-serif;
@@ -450,6 +450,268 @@
   }
   .toast.ok { border-color: #00d2ff; color: #00d2ff; }
   .toast.err { border-color: #e74c3c; color: #e74c3c; }
+
+  .split-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .subtle {
+    color: #777;
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+  .overlay-state-row,
+  .preset-save-row,
+  .invite-copy-row,
+  .invite-actions,
+  .hotkey-row,
+  .engineer-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .overlay-state-row,
+  .engineer-head {
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .overlay-pills,
+  .permission-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .overlay-pill,
+  .permission-badge,
+  .preset-chip,
+  .invite-chip {
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    border: 1px solid #2e2e2e;
+    background: #151515;
+    color: #a6a6a6;
+  }
+  .overlay-pill.active,
+  .permission-badge.active,
+  .preset-chip.active,
+  .invite-chip.active {
+    border-color: #00d2ff66;
+    background: #00d2ff18;
+    color: #bff5ff;
+  }
+  .permission-badge.empty {
+    border-color: #4a2727;
+    background: #341818;
+    color: #ff8f8f;
+  }
+  .preset-save-row,
+  .invite-copy-row,
+  .invite-actions {
+    margin-bottom: 12px;
+  }
+  .preset-save-row input,
+  .invite-copy-row input,
+  .hotkey-readout,
+  .invite-field input {
+    flex: 1;
+    min-width: 0;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 8px 12px;
+    outline: none;
+  }
+  .invite-copy-row input[readonly],
+  .hotkey-readout {
+    color: #d9f8ff;
+  }
+  .hotkey-grid,
+  .preset-list,
+  .engineer-list {
+    display: grid;
+    gap: 10px;
+  }
+  .hotkey-row {
+    align-items: stretch;
+  }
+  .hotkey-label {
+    width: 88px;
+    flex-shrink: 0;
+    color: #8ec7d4;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    display: flex;
+    align-items: center;
+  }
+  .mini-btn {
+    background: transparent;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #c6c6c6;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.84rem;
+    font-weight: 700;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .mini-btn:hover {
+    border-color: #00d2ff;
+    color: #00d2ff;
+    background: #00d2ff10;
+  }
+  .mini-btn.warn:hover {
+    border-color: #e74c3c;
+    color: #ff9a9a;
+    background: #e74c3c12;
+  }
+  .mini-btn.capture {
+    min-width: 96px;
+  }
+  .mini-btn.capture.active {
+    border-color: #00d2ff;
+    background: #00d2ff18;
+    color: #bff5ff;
+  }
+  .preset-card,
+  .engineer-card,
+  .invite-shell {
+    border: 1px solid #232323;
+    border-radius: 8px;
+    background: #0f0f0f;
+    padding: 14px;
+  }
+  .preset-card-head,
+  .engineer-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .preset-name,
+  .engineer-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #e6f9ff;
+  }
+  .preset-time,
+  .engineer-meta,
+  .invite-note,
+  .hotkey-note {
+    color: #7a7a7a;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .preset-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .empty-state {
+    border: 1px dashed #2c2c2c;
+    border-radius: 6px;
+    padding: 12px;
+    color: #6d6d6d;
+    font-size: 0.86rem;
+    text-align: center;
+  }
+  .invite-shell {
+    display: grid;
+    gap: 12px;
+  }
+  .invite-field label {
+    display: block;
+    font-size: 0.85rem;
+    color: #888;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .invite-qr-wrap {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .invite-qr {
+    width: 168px;
+    height: 168px;
+    border-radius: 10px;
+    border: 1px solid #2b2b2b;
+    background: #fff;
+    object-fit: contain;
+    padding: 10px;
+  }
+  .invite-qr.hidden {
+    display: none;
+  }
+  .invite-qr-empty {
+    flex: 1;
+    min-height: 168px;
+    border: 1px dashed #2a2a2a;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    color: #666;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .invite-qr-empty.hidden {
+    display: none;
+  }
+  .engineer-card {
+    display: grid;
+    gap: 10px;
+  }
+  .engineer-state {
+    color: #00d2ff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  @media (max-width: 760px) {
+    .container {
+      max-width: 100%;
+    }
+    .split-grid {
+      grid-template-columns: 1fr;
+    }
+    .invite-qr-wrap,
+    .preset-save-row,
+    .invite-copy-row,
+    .invite-actions,
+    .hotkey-row,
+    .preset-card-head,
+    .engineer-card-head,
+    .overlay-state-row,
+    .engineer-head {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .hotkey-label {
+      width: auto;
+    }
+    .invite-qr {
+      width: 100%;
+      max-width: 220px;
+      height: auto;
+      aspect-ratio: 1 / 1;
+    }
+  }
 </style>
 </head>
 <body>
@@ -504,6 +766,76 @@
         Strategy Overlay
       </button>
     </div>
+  </div>
+
+  <div class="split-grid">
+    <div class="section">
+      <div class="section-title">Overlay Control</div>
+      <div class="overlay-state-row">
+        <span class="stat-label">Current Layout</span>
+        <div class="overlay-pills" id="overlayStatePills"></div>
+      </div>
+      <div class="preset-save-row">
+        <input type="text" id="presetName" maxlength="36" placeholder="Preset name">
+        <button class="secondary-btn" id="savePresetBtn" type="button">Save Current Preset</button>
+      </div>
+      <div class="hotkey-note">Hotkeys work while this sender settings page is focused.</div>
+      <div class="hotkey-grid" style="margin-top:12px;">
+        <div class="hotkey-row">
+          <span class="hotkey-label">Radar</span>
+          <input class="hotkey-readout" id="radarHotkey" type="text" readonly>
+          <button class="mini-btn capture" id="captureRadarHotkey" type="button">Capture</button>
+          <button class="mini-btn warn" id="clearRadarHotkey" type="button">Clear</button>
+        </div>
+        <div class="hotkey-row">
+          <span class="hotkey-label">Weather</span>
+          <input class="hotkey-readout" id="weatherHotkey" type="text" readonly>
+          <button class="mini-btn capture" id="captureWeatherHotkey" type="button">Capture</button>
+          <button class="mini-btn warn" id="clearWeatherHotkey" type="button">Clear</button>
+        </div>
+        <div class="hotkey-row">
+          <span class="hotkey-label">Strategy</span>
+          <input class="hotkey-readout" id="strategyHotkey" type="text" readonly>
+          <button class="mini-btn capture" id="captureStrategyHotkey" type="button">Capture</button>
+          <button class="mini-btn warn" id="clearStrategyHotkey" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="preset-list" id="presetList" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Room Invite</div>
+      <div class="invite-shell">
+        <div class="invite-field">
+          <label for="engineerDashboardUrl">Engineer Dashboard URL</label>
+          <input type="text" id="engineerDashboardUrl" placeholder="https://dashboard.example.com">
+        </div>
+        <div class="invite-copy-row">
+          <input type="text" id="inviteLink" readonly placeholder="Invite link will appear after the room is online">
+          <button class="secondary-btn" id="copyInviteBtn" type="button">Copy Link</button>
+        </div>
+        <div class="invite-actions">
+          <button class="mini-btn" id="saveInviteSettingsBtn" type="button">Save Sharing Settings</button>
+          <button class="mini-btn" id="copyRoomIdBtn" type="button">Copy Room ID</button>
+          <button class="mini-btn" id="copyPasswordBtn" type="button">Copy Password</button>
+        </div>
+        <div class="overlay-pills" id="inviteMetaChips"></div>
+        <div class="invite-note" id="inviteNote">The invite link uses the current room ID and signaling server. Passwords are shared separately.</div>
+        <div class="invite-qr-wrap">
+          <img class="invite-qr hidden" id="inviteQr" alt="Invite QR code">
+          <div class="invite-qr-empty" id="inviteQrEmpty">Invite QR will appear once the sender room is online.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Connected Engineers</div>
+    <div class="engineer-head">
+      <span class="stat-label">Permission Preview</span>
+      <span class="subtle">Live view of connected engineers and their granted feature flags.</span>
+    </div>
+    <div class="engineer-list" id="engineerList"></div>
   </div>
 
   <!-- Settings -->
@@ -628,14 +960,53 @@
   const $trackPreviewMessage = document.getElementById('trackPreviewMessage');
   const $approveOverwriteBtn = document.getElementById('approveOverwriteBtn');
   const $keepExistingTrackBtn = document.getElementById('keepExistingTrackBtn');
+  const $overlayStatePills = document.getElementById('overlayStatePills');
+  const $presetName = document.getElementById('presetName');
+  const $savePresetBtn = document.getElementById('savePresetBtn');
+  const $presetList = document.getElementById('presetList');
+  const $radarHotkey = document.getElementById('radarHotkey');
+  const $weatherHotkey = document.getElementById('weatherHotkey');
+  const $strategyHotkey = document.getElementById('strategyHotkey');
+  const $captureRadarHotkey = document.getElementById('captureRadarHotkey');
+  const $captureWeatherHotkey = document.getElementById('captureWeatherHotkey');
+  const $captureStrategyHotkey = document.getElementById('captureStrategyHotkey');
+  const $clearRadarHotkey = document.getElementById('clearRadarHotkey');
+  const $clearWeatherHotkey = document.getElementById('clearWeatherHotkey');
+  const $clearStrategyHotkey = document.getElementById('clearStrategyHotkey');
+  const $engineerDashboardUrl = document.getElementById('engineerDashboardUrl');
+  const $saveInviteSettingsBtn = document.getElementById('saveInviteSettingsBtn');
+  const $inviteLink = document.getElementById('inviteLink');
+  const $copyInviteBtn = document.getElementById('copyInviteBtn');
+  const $copyRoomIdBtn = document.getElementById('copyRoomIdBtn');
+  const $copyPasswordBtn = document.getElementById('copyPasswordBtn');
+  const $inviteMetaChips = document.getElementById('inviteMetaChips');
+  const $inviteNote = document.getElementById('inviteNote');
+  const $inviteQr = document.getElementById('inviteQr');
+  const $inviteQrEmpty = document.getElementById('inviteQrEmpty');
+  const $engineerList = document.getElementById('engineerList');
 
   let forwardTargets = [];
+  let overlayPresets = [];
+  let overlayHotkeys = {
+    radar: 'Alt+Shift+1',
+    weather: 'Alt+Shift+2',
+    strategy: 'Alt+Shift+3',
+  };
+  let currentOverlayState = {
+    radar: false,
+    weather: false,
+    strategy: false,
+  };
   let currentTrack = null;
   let currentTrackPreview = null;
   let currentTrackKey = '';
+  let currentRoomId = '';
+  let currentInviteLink = '';
+  let currentInvitePasswordRequired = false;
   let approvedOverwriteFilename = '';
   let overwriteReviewRequired = false;
   let savedTrackRecording = false;
+  let recordingHotkeyKind = '';
 
   let toastTimer;
   function showToast(msg, ok) {
@@ -643,6 +1014,355 @@
     $toast.textContent = msg;
     $toast.className = 'toast ' + (ok ? 'ok' : 'err') + ' show';
     toastTimer = setTimeout(() => { $toast.className = 'toast'; }, 2500);
+  }
+
+  async function copyText(value, label) {
+    if (!value) {
+      showToast(`${label} unavailable`, false);
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = value;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+      }
+      showToast(`${label} copied`, true);
+    } catch {
+      showToast(`Failed to copy ${label.toLowerCase()}`, false);
+    }
+  }
+
+  function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char]));
+  }
+
+  function slugifyPresetId(name) {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return slug || `preset-${Date.now()}`;
+  }
+
+  function normalizeHotkeyValue(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return '';
+    const parts = value.split('+').map((part) => part.trim()).filter(Boolean);
+    const modifiers = [];
+    let key = '';
+    for (const part of parts) {
+      const lower = part.toLowerCase();
+      if (lower === 'ctrl' || lower === 'control') {
+        if (!modifiers.includes('Ctrl')) modifiers.push('Ctrl');
+        continue;
+      }
+      if (lower === 'alt' || lower === 'option') {
+        if (!modifiers.includes('Alt')) modifiers.push('Alt');
+        continue;
+      }
+      if (lower === 'shift') {
+        if (!modifiers.includes('Shift')) modifiers.push('Shift');
+        continue;
+      }
+      if (lower === 'meta' || lower === 'cmd' || lower === 'command') {
+        if (!modifiers.includes('Meta')) modifiers.push('Meta');
+        continue;
+      }
+      if (!key) {
+        if (/^f\d{1,2}$/i.test(part)) key = part.toUpperCase();
+        else if (lower === 'space') key = 'Space';
+        else if (lower.startsWith('arrow')) key = 'Arrow' + lower.slice(5, 6).toUpperCase() + lower.slice(6);
+        else if (part.length === 1) key = part.toUpperCase();
+        else key = part.charAt(0).toUpperCase() + part.slice(1);
+      }
+    }
+    return [...modifiers, key].filter(Boolean).join('+');
+  }
+
+  function hasOwnValue(source, key) {
+    return !!source && Object.prototype.hasOwnProperty.call(source, key);
+  }
+
+  function readOverlayHotkeys(source, fallback = overlayHotkeys) {
+    const next = {
+      radar: normalizeHotkeyValue(fallback?.radar || ''),
+      weather: normalizeHotkeyValue(fallback?.weather || ''),
+      strategy: normalizeHotkeyValue(fallback?.strategy || ''),
+    };
+    if (!source || typeof source !== 'object') {
+      return next;
+    }
+    if (hasOwnValue(source, 'radar')) {
+      next.radar = normalizeHotkeyValue(source.radar);
+    }
+    if (hasOwnValue(source, 'weather')) {
+      next.weather = normalizeHotkeyValue(source.weather);
+    }
+    if (hasOwnValue(source, 'strategy')) {
+      next.strategy = normalizeHotkeyValue(source.strategy);
+    }
+    return next;
+  }
+
+  function applyLocalOpsResponse(data, fallbackHotkeys = overlayHotkeys) {
+    overlayPresets = Array.isArray(data?.overlayPresets) ? data.overlayPresets : [];
+    overlayHotkeys = readOverlayHotkeys(data?.overlayHotkeys, fallbackHotkeys);
+    if (hasOwnValue(data, 'engineerDashboardUrl')) {
+      $engineerDashboardUrl.value = data.engineerDashboardUrl || '';
+    }
+    renderPresets();
+    renderHotkeys();
+  }
+
+  function eventToHotkeyCombo(event) {
+    const ignoredKeys = ['Control', 'Shift', 'Alt', 'Meta'];
+    if (ignoredKeys.includes(event.key)) return '';
+    const parts = [];
+    if (event.ctrlKey) parts.push('Ctrl');
+    if (event.altKey) parts.push('Alt');
+    if (event.shiftKey) parts.push('Shift');
+    if (event.metaKey) parts.push('Meta');
+
+    let key = event.key;
+    if (key === ' ') key = 'Space';
+    else if (/^[a-z]$/i.test(key)) key = key.toUpperCase();
+    else if (/^\d$/.test(key)) key = key;
+    else if (/^f\d{1,2}$/i.test(key)) key = key.toUpperCase();
+    else if (key.startsWith('Arrow')) key = key;
+    else if (key.length === 1) key = key.toUpperCase();
+    else key = key.charAt(0).toUpperCase() + key.slice(1);
+
+    return normalizeHotkeyValue([...parts, key].join('+'));
+  }
+
+  function isTextInputTarget(target) {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || !!target.closest('input, textarea, select');
+  }
+
+  function setOverlayState(state) {
+    currentOverlayState = {
+      radar: !!state.radar,
+      weather: !!state.weather,
+      strategy: !!state.strategy,
+    };
+    updateRadarBtn(currentOverlayState.radar);
+    updateWeatherBtn(currentOverlayState.weather);
+    updateStrategyBtn(currentOverlayState.strategy);
+    renderOverlayStatePills();
+  }
+
+  function renderOverlayStatePills() {
+    const items = [
+      ['Radar', currentOverlayState.radar],
+      ['Weather', currentOverlayState.weather],
+      ['Strategy', currentOverlayState.strategy],
+    ];
+    $overlayStatePills.innerHTML = items.map(([label, active]) => (
+      `<span class="overlay-pill ${active ? 'active' : ''}">${label} ${active ? 'On' : 'Off'}</span>`
+    )).join('');
+  }
+
+  function renderHotkeys() {
+    $radarHotkey.value = overlayHotkeys.radar || 'Unassigned';
+    $weatherHotkey.value = overlayHotkeys.weather || 'Unassigned';
+    $strategyHotkey.value = overlayHotkeys.strategy || 'Unassigned';
+
+    const captureButtons = {
+      radar: $captureRadarHotkey,
+      weather: $captureWeatherHotkey,
+      strategy: $captureStrategyHotkey,
+    };
+    Object.entries(captureButtons).forEach(([kind, button]) => {
+      button.classList.toggle('active', recordingHotkeyKind === kind);
+      button.textContent = recordingHotkeyKind === kind ? 'Press Keys' : 'Capture';
+    });
+  }
+
+  function renderPresets() {
+    if (!overlayPresets.length) {
+      $presetList.innerHTML = '<div class="empty-state">No presets saved yet. Save the current overlay layout to recall it instantly.</div>';
+      return;
+    }
+
+    $presetList.innerHTML = overlayPresets.map((preset) => `
+      <div class="preset-card">
+        <div class="preset-card-head">
+          <div>
+            <div class="preset-name">${escapeHTML(preset.name)}</div>
+            <div class="preset-time">${escapeHTML(preset.savedAtLocal || 'Saved just now')}</div>
+          </div>
+          <div class="overlay-pills">
+            <span class="preset-chip ${preset.radar ? 'active' : ''}">Radar</span>
+            <span class="preset-chip ${preset.weather ? 'active' : ''}">Weather</span>
+            <span class="preset-chip ${preset.strategy ? 'active' : ''}">Strategy</span>
+          </div>
+        </div>
+        <div class="preset-actions">
+          <button class="mini-btn" type="button" data-action="apply-preset" data-preset-id="${escapeHTML(preset.id)}">Apply</button>
+          <button class="mini-btn warn" type="button" data-action="delete-preset" data-preset-id="${escapeHTML(preset.id)}">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderInvite(invite) {
+    currentInviteLink = invite?.link || '';
+    currentRoomId = invite?.roomId || '';
+    currentInvitePasswordRequired = !!invite?.passwordRequired;
+    $inviteLink.value = currentInviteLink;
+    $inviteMetaChips.innerHTML = `
+      <span class="invite-chip ${invite?.roomCode ? 'active' : ''}">Code ${escapeHTML(invite?.roomCode || '----')}</span>
+      <span class="invite-chip ${invite?.roomId ? 'active' : ''}">Room ID ${escapeHTML(invite?.roomId || '--')}</span>
+      <span class="invite-chip ${invite?.passwordRequired ? 'active' : ''}">${invite?.passwordRequired ? 'Password Required' : 'Open Room'}</span>
+    `;
+    $inviteNote.textContent = invite?.passwordRequired
+      ? 'The QR and invite link do not embed the room password. Share the password separately.'
+      : 'This room is open, so the invite link and QR can be shared directly.';
+
+    if (currentInviteLink) {
+      $inviteQr.classList.remove('hidden');
+      $inviteQrEmpty.classList.add('hidden');
+      const qrSrc = `/api/invite/qr?cache=${encodeURIComponent(currentInviteLink)}`;
+      if ($inviteQr.dataset.src !== qrSrc) {
+        $inviteQr.dataset.src = qrSrc;
+        $inviteQr.src = qrSrc;
+      }
+    } else {
+      $inviteQr.classList.add('hidden');
+      $inviteQrEmpty.classList.remove('hidden');
+      $inviteQr.removeAttribute('src');
+      delete $inviteQr.dataset.src;
+    }
+  }
+
+  const permissionLabels = {
+    pitwall: 'Pitwall',
+    overlay: 'Overlay',
+    setupSupport: 'Setup',
+    viewERSEstimate: 'ERS Est',
+    viewERSActual: 'ERS',
+    viewAdvancedStrategy: 'Adv Strat',
+    viewPitStatus: 'Pit Status',
+    viewTopSpeed: 'Top Speed',
+    viewPlayerDelta: 'Player Δ',
+    viewQualifying: 'Qualifying',
+  };
+
+  function renderPeers(peers) {
+    if (!Array.isArray(peers) || peers.length === 0) {
+      $engineerList.innerHTML = '<div class="empty-state">No engineers connected yet. Permission previews will appear here after they join the room.</div>';
+      return;
+    }
+
+    $engineerList.innerHTML = peers.map((peer) => {
+      const granted = Object.entries(peer.permissions || {})
+        .filter(([, enabled]) => !!enabled)
+        .map(([key]) => permissionLabels[key] || key);
+
+      return `
+        <div class="engineer-card">
+          <div class="engineer-card-head">
+            <div>
+              <div class="engineer-name">${escapeHTML(peer.peerId)}</div>
+              <div class="engineer-meta">View ${escapeHTML(peer.view || 'cockpit')}</div>
+            </div>
+            <span class="engineer-state">${escapeHTML(peer.state || 'unknown')}</span>
+          </div>
+          <div class="permission-badges">
+            ${granted.length > 0
+              ? granted.map((label) => `<span class="permission-badge active">${escapeHTML(label)}</span>`).join('')
+              : '<span class="permission-badge empty">No feature permissions</span>'}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function saveLocalOpsSettings(showSuccess = true) {
+    const payload = {
+      engineerDashboardUrl: $engineerDashboardUrl.value.trim(),
+      overlayPresets,
+      overlayHotkeys,
+    };
+    const response = await fetch('/api/local-ops', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showToast(data.error || 'Failed to save local ops settings', false);
+      return false;
+    }
+
+    applyLocalOpsResponse(data, overlayHotkeys);
+    if (showSuccess) {
+      showToast('Sharing settings saved', true);
+    }
+    return true;
+  }
+
+  async function loadLocalOpsSettings() {
+    try {
+      const response = await fetch('/api/local-ops');
+      if (!response.ok) return;
+      const data = await response.json();
+      applyLocalOpsResponse(data, overlayHotkeys);
+    } catch {}
+  }
+
+  async function applyPreset(preset) {
+    try {
+      const response = await fetch('/api/overlay/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          radar: !!preset.radar,
+          weather: !!preset.weather,
+          strategy: !!preset.strategy,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        showToast(data.error || 'Failed to apply preset', false);
+        return;
+      }
+      setOverlayState(data);
+      showToast(`Applied preset ${preset.name}`, true);
+    } catch {
+      showToast('Failed to apply preset', false);
+    }
+  }
+
+  function startHotkeyCapture(kind) {
+    recordingHotkeyKind = recordingHotkeyKind === kind ? '' : kind;
+    renderHotkeys();
+  }
+
+  function assignHotkey(kind, combo) {
+    const normalized = normalizeHotkeyValue(combo);
+    if (!normalized) {
+      overlayHotkeys[kind] = '';
+      return true;
+    }
+    const duplicate = Object.entries(overlayHotkeys).find(([otherKind, otherValue]) => otherKind !== kind && normalizeHotkeyValue(otherValue) === normalized);
+    if (duplicate) {
+      showToast(`Hotkey already used by ${duplicate[0]}`, false);
+      return false;
+    }
+    overlayHotkeys[kind] = normalized;
+    return true;
   }
 
   function formatSignedPP(value, digits = 0) {
@@ -940,7 +1660,21 @@
     renderForwardTargets();
   });
 
-  // Poll status every 2 seconds
+  async function toggleOverlay(path, key, label) {
+    try {
+      const response = await fetch(path, { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        showToast(data.error || `Failed to toggle ${label.toLowerCase()}`, false);
+        return;
+      }
+      setOverlayState({ ...currentOverlayState, [key]: !!data.active });
+      showToast(data.active ? `${label} overlay opened` : `${label} overlay closed`, true);
+    } catch {
+      showToast(`Failed to toggle ${label.toLowerCase()}`, false);
+    }
+  }
+
   async function pollStatus() {
     try {
       const r = await fetch('/api/status');
@@ -950,6 +1684,13 @@
       $roomNameStatus.textContent = d.roomName || '--';
       $roomProtectedStatus.textContent = d.roomProtected ? 'LOCKED' : 'OPEN';
       $eng.textContent = d.connectedEngineers;
+      renderInvite(d.invite || {});
+      renderPeers(d.peers || []);
+      setOverlayState({
+        radar: !!d.radarActive,
+        weather: !!d.weatherActive,
+        strategy: !!d.strategyActive,
+      });
 
       const nextTrack = d.currentTrack || null;
       const nextTrackKey = nextTrack ? `${nextTrack.id}:${nextTrack.name}:${nextTrack.filename || ''}:${nextTrack.hasRecordedPreview ? 1 : 0}` : '';
@@ -965,14 +1706,9 @@
           renderTrackPreview();
         }
       }
-
-      updateRadarBtn(!!d.radarActive);
-      updateWeatherBtn(!!d.weatherActive);
-      updateStrategyBtn(!!d.strategyActive);
     } catch {}
   }
 
-  // Load config once on page load
   async function loadConfig() {
     try {
       const r = await fetch('/api/config');
@@ -985,11 +1721,11 @@
       $trackRec.checked = d.trackRecording;
       savedTrackRecording = !!d.trackRecording;
       forwardTargets = Array.isArray(d.forwardTargets) ? d.forwardTargets : [];
+      applyLocalOpsResponse(d, overlayHotkeys);
       renderForwardTargets();
     } catch {}
   }
 
-  // Save
   $btn.addEventListener('click', async () => {
     if ($trackRec.checked && !savedTrackRecording && currentTrackPreview?.available && currentTrackPreview.preview && approvedOverwriteFilename !== currentTrackPreview.preview.filename) {
       overwriteReviewRequired = true;
@@ -1009,12 +1745,16 @@
           saveFiles: $save.checked,
           trackRecording: $trackRec.checked,
           trackRecordingOverwriteApprovedFor: approvedOverwriteFilename,
+          engineerDashboardUrl: $engineerDashboardUrl.value.trim(),
+          overlayPresets,
+          overlayHotkeys,
           forwardTargets: forwardTargets,
         }),
       });
       if (r.ok) {
         const d = await r.json();
         forwardTargets = Array.isArray(d.forwardTargets) ? d.forwardTargets : [];
+        applyLocalOpsResponse(d, overlayHotkeys);
         savedTrackRecording = !!d.trackRecording;
         renderForwardTargets();
         if (!$trackRec.checked) {
@@ -1037,7 +1777,7 @@
         }
         showToast(d.error || 'Save failed', false);
       }
-    } catch (e) {
+    } catch {
       showToast('Network error', false);
     } finally {
       $btn.disabled = false;
@@ -1099,14 +1839,121 @@
     showToast('Existing track data kept.', true);
   });
 
-  // Radar overlay toggle
+  $saveInviteSettingsBtn.addEventListener('click', async () => {
+    const saved = await saveLocalOpsSettings(true);
+    if (saved) {
+      pollStatus();
+    }
+  });
+
+  $copyInviteBtn.addEventListener('click', () => copyText(currentInviteLink, 'Invite link'));
+  $copyRoomIdBtn.addEventListener('click', () => copyText(currentRoomId, 'Room ID'));
+  $copyPasswordBtn.addEventListener('click', () => copyText($roomPassword.value, currentInvitePasswordRequired ? 'Password' : 'Room password'));
+
+  $savePresetBtn.addEventListener('click', async () => {
+    const name = $presetName.value.trim();
+    if (!name) {
+      showToast('Enter a preset name first', false);
+      return;
+    }
+    const existingIndex = overlayPresets.findIndex((preset) => preset.name.toLowerCase() === name.toLowerCase());
+    const nextPreset = {
+      id: existingIndex >= 0 ? overlayPresets[existingIndex].id : slugifyPresetId(name),
+      name,
+      savedAtLocal: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      radar: currentOverlayState.radar,
+      weather: currentOverlayState.weather,
+      strategy: currentOverlayState.strategy,
+    };
+    if (existingIndex >= 0) {
+      overlayPresets.splice(existingIndex, 1);
+    }
+    overlayPresets = [nextPreset, ...overlayPresets].slice(0, 12);
+    if (await saveLocalOpsSettings(false)) {
+      $presetName.value = '';
+      showToast(`Preset ${name} saved`, true);
+    }
+  });
+
+  $presetList.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const preset = overlayPresets.find((entry) => entry.id === button.dataset.presetId);
+    if (!preset) return;
+    if (button.dataset.action === 'apply-preset') {
+      await applyPreset(preset);
+      return;
+    }
+    if (button.dataset.action === 'delete-preset') {
+      overlayPresets = overlayPresets.filter((entry) => entry.id !== preset.id);
+      if (await saveLocalOpsSettings(false)) {
+        showToast(`Preset ${preset.name} removed`, true);
+      }
+    }
+  });
+
+  $captureRadarHotkey.addEventListener('click', () => startHotkeyCapture('radar'));
+  $captureWeatherHotkey.addEventListener('click', () => startHotkeyCapture('weather'));
+  $captureStrategyHotkey.addEventListener('click', () => startHotkeyCapture('strategy'));
+
+  async function clearHotkey(kind, label) {
+    overlayHotkeys[kind] = '';
+    recordingHotkeyKind = '';
+    renderHotkeys();
+    if (await saveLocalOpsSettings(false)) {
+      showToast(`${label} hotkey cleared`, true);
+    }
+  }
+
+  $clearRadarHotkey.addEventListener('click', () => clearHotkey('radar', 'Radar'));
+  $clearWeatherHotkey.addEventListener('click', () => clearHotkey('weather', 'Weather'));
+  $clearStrategyHotkey.addEventListener('click', () => clearHotkey('strategy', 'Strategy'));
+
+  window.addEventListener('keydown', async (event) => {
+    if (event.repeat) return;
+
+    if (recordingHotkeyKind) {
+      event.preventDefault();
+      if (event.key === 'Escape') {
+        recordingHotkeyKind = '';
+        renderHotkeys();
+        showToast('Hotkey capture cancelled', false);
+        return;
+      }
+      const combo = eventToHotkeyCombo(event);
+      if (!combo) return;
+      if (!assignHotkey(recordingHotkeyKind, combo)) return;
+      const saved = await saveLocalOpsSettings(false);
+      if (saved) {
+        const capturedKind = recordingHotkeyKind;
+        recordingHotkeyKind = '';
+        renderHotkeys();
+        showToast(`${capturedKind} hotkey set to ${combo}`, true);
+      }
+      return;
+    }
+
+    if (isTextInputTarget(event.target)) return;
+    const combo = eventToHotkeyCombo(event);
+    if (!combo) return;
+    if (combo === normalizeHotkeyValue(overlayHotkeys.radar)) {
+      event.preventDefault();
+      toggleRadar();
+      return;
+    }
+    if (combo === normalizeHotkeyValue(overlayHotkeys.weather)) {
+      event.preventDefault();
+      toggleWeather();
+      return;
+    }
+    if (combo === normalizeHotkeyValue(overlayHotkeys.strategy)) {
+      event.preventDefault();
+      toggleStrategy();
+    }
+  });
+
   async function toggleRadar() {
-    try {
-      const res = await fetch('/api/radar/toggle', { method: 'POST' });
-      const data = await res.json();
-      updateRadarBtn(data.active);
-      showToast(data.active ? 'Radar overlay opened' : 'Radar overlay closed', true);
-    } catch { showToast('Failed to toggle radar', false); }
+    await toggleOverlay('/api/radar/toggle', 'radar', 'Radar');
   }
   function updateRadarBtn(active) {
     const btn = document.getElementById('radarBtn');
@@ -1123,12 +1970,7 @@
 
   // Weather overlay toggle
   async function toggleWeather() {
-    try {
-      const res = await fetch('/api/weather/toggle', { method: 'POST' });
-      const data = await res.json();
-      updateWeatherBtn(data.active);
-      showToast(data.active ? 'Weather overlay opened' : 'Weather overlay closed', true);
-    } catch { showToast('Failed to toggle weather', false); }
+    await toggleOverlay('/api/weather/toggle', 'weather', 'Weather');
   }
   function updateWeatherBtn(active) {
     const btn = document.getElementById('weatherBtn');
@@ -1144,12 +1986,7 @@
   }
   // Strategy overlay toggle
   async function toggleStrategy() {
-    try {
-      const res = await fetch('/api/strategy/toggle', { method: 'POST' });
-      const data = await res.json();
-      updateStrategyBtn(data.active);
-      showToast(data.active ? 'Strategy overlay opened' : 'Strategy overlay closed', true);
-    } catch { showToast('Failed to toggle strategy', false); }
+    await toggleOverlay('/api/strategy/toggle', 'strategy', 'Strategy');
   }
   function updateStrategyBtn(active) {
     const btn = document.getElementById('strategyBtn');
@@ -1163,7 +2000,12 @@
       btn.textContent = 'Strategy Overlay';
     }
   }
+  renderOverlayStatePills();
+  renderPresets();
+  renderHotkeys();
+  renderPeers([]);
   loadConfig();
+  loadLocalOpsSettings();
   loadTracks();
   pollStatus();
   setInterval(pollStatus, 2000);

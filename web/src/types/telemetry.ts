@@ -52,9 +52,7 @@ export interface FeaturePermissions {
   viewPitStatus: boolean;
   viewTopSpeed: boolean;
   viewPlayerDelta: boolean;
-  viewCommentary: boolean;
   viewQualifying: boolean;
-  viewCombat: boolean;
   pitwall: boolean;
   overlay: boolean;
   setupSupport: boolean;
@@ -147,6 +145,42 @@ export interface RaceDriverSummary {
   stints?: RaceStint[];
 }
 
+export interface RacePenaltySummary {
+  timePenaltySeconds?: number;
+  warnings?: number;
+  cornerCutWarnings?: number;
+  unservedDriveThrough?: number;
+  unservedStopGo?: number;
+}
+
+export interface RacePitSummary {
+  stops: number;
+  pitLaneTimeMs?: number;
+  estimatedTimeLostMs?: number;
+}
+
+export interface RaceTyreSummary {
+  finalCompound?: string;
+  finalAge?: number;
+  averageWearPct?: number;
+  peakWearPct?: number;
+  finalSetWearPct?: number;
+  lifeSpan?: number;
+  usableLife?: number;
+  lifeRemainingPct?: number;
+}
+
+export interface RaceDebrief {
+  classifiedDrivers: number;
+  winnerName?: string;
+  gapToWinnerMs?: number;
+  fastestLapDeltaMs?: number;
+  penalties: RacePenaltySummary;
+  pit: RacePitSummary;
+  tyres: RaceTyreSummary;
+  timeline?: RaceControlNotification[];
+}
+
 export interface RaceSummary {
   id: string;
   savedAtLocal: string;
@@ -175,6 +209,7 @@ export interface RaceSummary {
       info: number;
     };
   };
+  debrief?: RaceDebrief;
   replay?: {
     frameIntervalMs: number;
     trackMap?: TrackMapData;
@@ -183,7 +218,6 @@ export interface RaceSummary {
       timestamp: number;
       pitwall: PitwallState;
       raceControl?: RaceControlNotification[];
-      battleAlerts?: BattleAlert[];
     }[];
   };
 }
@@ -539,20 +573,6 @@ export interface RaceControlNotification {
   message: string;
   severity: 'critical' | 'warning' | 'info';
   driverName?: string;
-  timestamp: number;
-}
-
-/**
- * Battle prediction alert from backend
- */
-export interface BattleAlert {
-  id: string;
-  driverAhead: string;
-  driverBehind: string;
-  gapSeconds: number;
-  closingRatePerLap: number;
-  estOvertakeLap: number;
-  side: 'ahead' | 'behind';
   timestamp: number;
 }
 

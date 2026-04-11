@@ -28,9 +28,7 @@ type Permissions struct {
 	ViewPitStatus        bool `json:"viewPitStatus"`
 	ViewTopSpeed         bool `json:"viewTopSpeed"`
 	ViewPlayerDelta      bool `json:"viewPlayerDelta"`
-	ViewCommentary       bool `json:"viewCommentary"`
 	ViewQualifying       bool `json:"viewQualifying"`
-	ViewCombat           bool `json:"viewCombat"`
 	Pitwall              bool `json:"pitwall"`
 	Overlay              bool `json:"overlay"`
 	SetupSupport         bool `json:"setupSupport"`
@@ -38,14 +36,14 @@ type Permissions struct {
 
 // Message is the JSON envelope for all signaling communication.
 type Message struct {
-	Type            string          `json:"type"`
-	RoomID          string          `json:"roomId,omitempty"`
-	RoomCode        string          `json:"roomCode,omitempty"`
-	RoomName        string          `json:"roomName,omitempty"`
+	Type                   string          `json:"type"`
+	RoomID                 string          `json:"roomId,omitempty"`
+	RoomCode               string          `json:"roomCode,omitempty"`
+	RoomName               string          `json:"roomName,omitempty"`
 	Password               string          `json:"password,omitempty"`
 	DefaultPermissionsCode string          `json:"defaultPermissionsCode,omitempty"`
 	Permissions            Permissions     `json:"permissions,omitempty"`
-	PeerID          string          `json:"peerId,omitempty"`
-	Payload         json.RawMessage `json:"payload,omitempty"`
-	Error           string          `json:"error,omitempty"`
+	PeerID                 string          `json:"peerId,omitempty"`
+	Payload                json.RawMessage `json:"payload,omitempty"`
+	Error                  string          `json:"error,omitempty"`
 }

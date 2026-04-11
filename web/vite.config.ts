@@ -1,5 +1,8 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
@@ -8,9 +11,15 @@ export default defineConfig(({ mode }) => ({
   server: mode === 'remote' ? {
     port: 3000,
     host: true,
+    fs: {
+      allow: [repoRoot],
+    },
   } : {
     port: 3000,
     host: true,
+    fs: {
+      allow: [repoRoot],
+    },
     allowedHosts: ['api.local.mathsecr.com'],
     proxy: {
       '/ws': {

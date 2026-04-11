@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"log/slog"
 	"math"
 	"math/rand"
 	"net"
@@ -21,8 +20,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"frc.engineer/internal/updater"
 )
 
 //go:embed all:recordings
@@ -56,19 +53,6 @@ func main() {
 	loopFlag := flag.Bool("loop", false, "Loop replay continuously")
 	record := flag.String("record", "", "Record simulation to raw.bin file")
 	flag.Parse()
-
-	// Auto-update
-	logger := slog.Default()
-	updater.CleanOldBinary(logger)
-	if err := updater.AutoUpdate(logger, mockudpVersion, func(status string, pct int) {
-		if pct >= 0 {
-			fmt.Printf("\r[Update] %s (%d%%)   ", status, pct)
-		} else {
-			fmt.Printf("\r[Update] %s   \n", status)
-		}
-	}); err != nil {
-		logger.Warn("auto-update failed", "error", err)
-	}
 
 	conn, err := net.Dial("udp", *addr)
 	if err != nil {
@@ -577,8 +561,8 @@ type Simulator struct {
 
 // aiCarState tracks per-AI-car simulation state for consistent data
 type aiCarState struct {
-	lapDistance    float32
-	totalDistance  float32
+	lapDistance   float32
+	totalDistance float32
 	speed         uint16
 	lapNum        uint8
 	position      uint8
@@ -592,10 +576,10 @@ type aiCarState struct {
 
 // penaltyEntry defines a scheduled penalty trigger
 type penaltyEntry struct {
-	distance        float32
-	penaltyType     uint8
+	distance         float32
+	penaltyType      uint8
 	infringementType uint8
-	timePenalty     uint8 // seconds (for time penalty)
+	timePenalty      uint8 // seconds (for time penalty)
 }
 
 // penaltyEventData holds data for a PENA event packet
@@ -620,7 +604,7 @@ type aiCarPenaltyState struct {
 type aiPenaltyTrigger struct {
 	triggerTick      int
 	carIdx           uint8
-	isWarning        bool  // true = warning, false = penalty
+	isWarning        bool // true = warning, false = penalty
 	penaltyType      uint8
 	infringementType uint8
 	timePenalty      uint8 // seconds, only for penalties
@@ -633,15 +617,15 @@ func NewSimulator(laps int, hz int) *Simulator {
 	aiTriggers := buildAIPenaltySchedule(totalTicks, hz)
 
 	sim := &Simulator{
-		SessionUID:   rand.Uint64(),
-		PlayerCarIdx: 0,
-		TotalLaps:    laps,
-		CurrentLap:   1,
-		TrackLength:  5800,
-		TrackID:      10, // Monza
-		TickRate:     hz,
-		Position:     1,
-		lapStartTime: time.Now(),
+		SessionUID:      rand.Uint64(),
+		PlayerCarIdx:    0,
+		TotalLaps:       laps,
+		CurrentLap:      1,
+		TrackLength:     5800,
+		TrackID:         10, // Monza
+		TickRate:        hz,
+		Position:        1,
+		lapStartTime:    time.Now(),
 		warningSchedule: []float32{3000, 7500, 10000},
 		penaltySchedule: []penaltyEntry{
 			{distance: 10050, penaltyType: 4, infringementType: 7, timePenalty: 5},
@@ -653,9 +637,9 @@ func NewSimulator(laps int, hz int) *Simulator {
 	// Initialize AI cars with staggered positions and varied pace
 	for i := 1; i < MaxCars; i++ {
 		sim.aiCars[i] = aiCarState{
-			lapNum:    1,
-			position:  uint8(i + 1),
-			basePace:  0.96 + rand.Float32()*0.08, // 0.96-1.04x pace variation
+			lapNum:   1,
+			position: uint8(i + 1),
+			basePace: 0.96 + rand.Float32()*0.08, // 0.96-1.04x pace variation
 		}
 	}
 
@@ -1379,17 +1363,17 @@ var f1Grid = [MaxCars]struct {
 	teamID uint8
 	number uint8
 }{
-	{"Hamilton", 1, 44}, {"Leclerc", 1, 16},       // Ferrari
-	{"Verstappen", 2, 1}, {"Tsunoda", 2, 22},      // Red Bull
-	{"Norris", 8, 4}, {"Piastri", 8, 81},           // McLaren
-	{"Russell", 0, 63}, {"Antonelli", 0, 12},       // Mercedes
-	{"Alonso", 4, 14}, {"Stroll", 4, 18},           // Aston Martin
-	{"Gasly", 5, 10}, {"Doohan", 5, 7},             // Alpine
-	{"Lawson", 6, 30}, {"Hadjar", 6, 20},           // RB
-	{"Ocon", 7, 31}, {"Bearman", 7, 87},            // Haas
-	{"Sainz", 3, 55}, {"Albon", 3, 23},             // Williams
-	{"Hulkenberg", 9, 27}, {"Bortoleto", 9, 5},    // Sauber
-	{"AI 21", 255, 98}, {"AI 22", 255, 99},         // Reserve
+	{"Hamilton", 1, 44}, {"Leclerc", 1, 16}, // Ferrari
+	{"Verstappen", 2, 1}, {"Tsunoda", 2, 22}, // Red Bull
+	{"Norris", 8, 4}, {"Piastri", 8, 81}, // McLaren
+	{"Russell", 0, 63}, {"Antonelli", 0, 12}, // Mercedes
+	{"Alonso", 4, 14}, {"Stroll", 4, 18}, // Aston Martin
+	{"Gasly", 5, 10}, {"Doohan", 5, 7}, // Alpine
+	{"Lawson", 6, 30}, {"Hadjar", 6, 20}, // RB
+	{"Ocon", 7, 31}, {"Bearman", 7, 87}, // Haas
+	{"Sainz", 3, 55}, {"Albon", 3, 23}, // Williams
+	{"Hulkenberg", 9, 27}, {"Bortoleto", 9, 5}, // Sauber
+	{"AI 21", 255, 98}, {"AI 22", 255, 99}, // Reserve
 }
 
 func (s *Simulator) writeParticipantData(buf []byte, carIdx int) {

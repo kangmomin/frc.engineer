@@ -43,7 +43,7 @@ type PeerManager struct {
 	channels     map[string]*webrtc.DataChannel
 	fastChannels map[string]*webrtc.DataChannel
 	permits      map[string]signaling.Permissions
-	peerViews    map[string]string // per-peer active view: "cockpit", "commentary", "qualifying"
+	peerViews    map[string]string // per-peer active view: "cockpit" or "qualifying"
 	mu           sync.RWMutex
 
 	roomID                 string
@@ -319,6 +319,7 @@ func (pm *PeerManager) ConnectedCount() int {
 type PeerDebugInfo struct {
 	PeerID      string                `json:"peerId"`
 	State       string                `json:"state"`
+	View        string                `json:"view,omitempty"`
 	Permissions signaling.Permissions `json:"permissions"`
 }
 
@@ -331,6 +332,7 @@ func (pm *PeerManager) DebugPeers() []PeerDebugInfo {
 		out = append(out, PeerDebugInfo{
 			PeerID:      peerID,
 			State:       ch.ReadyState().String(),
+			View:        pm.peerViews[peerID],
 			Permissions: pm.permits[peerID],
 		})
 	}
@@ -655,7 +657,7 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 			}
 			if json.Unmarshal(msg.Data, &viewMsg) == nil && viewMsg.Type == "setView" {
 				switch viewMsg.View {
-				case "cockpit", "commentary", "qualifying", "combat":
+				case "cockpit", "qualifying":
 					pm.mu.Lock()
 					pm.peerViews[peerID] = viewMsg.View
 					pm.mu.Unlock()

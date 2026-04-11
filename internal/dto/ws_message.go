@@ -2,34 +2,21 @@ package dto
 
 // WebSocket message types
 const (
-	MessageTypeTelemetry      = "telemetry"      // Server → Client: Real-time telemetry (existing Dashboard)
-	MessageTypeLapData        = "lapData"        // Server → Client: Response to getLapData request
-	MessageTypeGetBestLap     = "getBestLap"     // Client → Server: Request best lap data
-	MessageTypePitwallState   = "pitwallState"   // Server → Client: Comprehensive pitwall state
-	MessageTypeRaceControl    = "raceControl"    // Server → Client: Race control notifications
-	MessageTypeBattleAlert    = "battleAlert"    // Server → Client: Battle prediction alert
-	MessageTypeRaceResult     = "raceResult"     // Server → Client: Race result summary
-	MessageTypePositionUpdate = "positionUpdate" // Server → Client: High-frequency car positions (fast channel)
+	MessageTypeTelemetry      = "telemetry"
+	MessageTypeLapData        = "lapData"
+	MessageTypeGetBestLap     = "getBestLap"
+	MessageTypePitwallState   = "pitwallState"
+	MessageTypeRaceControl    = "raceControl"
+	MessageTypeRaceResult     = "raceResult"
+	MessageTypePositionUpdate = "positionUpdate"
 )
-
-// BattleAlertDTO is sent when an overtake is predicted within a few laps
-type BattleAlertDTO struct {
-	ID            string  `json:"id,omitempty"`
-	DriverAhead    string  `json:"driverAhead"`
-	DriverBehind   string  `json:"driverBehind"`
-	GapSeconds     float64 `json:"gapSeconds"`
-	ClosingRate    float64 `json:"closingRatePerLap"` // seconds per lap
-	EstOvertakeLap int     `json:"estOvertakeLap"`
-	Side           string  `json:"side"` // "ahead" | "behind"
-	Timestamp      int64   `json:"timestamp,omitempty"`
-}
 
 // RaceControlNotification represents a race control event sent to clients
 type RaceControlNotification struct {
 	ID         string `json:"id,omitempty"`
-	Category   string `json:"category"`             // "penalty", "warning", "info"
+	Category   string `json:"category"` // "penalty", "warning", "info"
 	Message    string `json:"message"`
-	Severity   string `json:"severity"`             // "critical", "warning", "info"
+	Severity   string `json:"severity"` // "critical", "warning", "info"
 	DriverName string `json:"driverName,omitempty"`
 	Timestamp  int64  `json:"timestamp,omitempty"`
 }

@@ -78,7 +78,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const setPitwallState = useTelemetryStore((s) => s.setPitwallState);
   const updatePositions = useTelemetryStore((s) => s.updatePositions);
   const addRaceControlNotification = useTelemetryStore((s) => s.addRaceControlNotification);
-  const addBattleAlert = useTelemetryStore((s) => s.addBattleAlert);
   const setRaceResult = useTelemetryStore((s) => s.setRaceResult);
 
   const [rtcState, setRtcState] = useState<RTCPeerConnectionState | 'new'>('new');
@@ -97,11 +96,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const pendingPositionsRef = useRef<import('../types/telemetry').CarPosition[] | null>(null);
   const positionsRafRef = useRef(0);
   const rcSeqRef = useRef(0);
-  const battleSeqRef = useRef(0);
 
   // Store actions in a ref so callbacks never go stale
-  const actionsRef = useRef({ setPitwallState, updatePositions, addRaceControlNotification, addBattleAlert, setRaceResult });
-  actionsRef.current = { setPitwallState, updatePositions, addRaceControlNotification, addBattleAlert, setRaceResult };
+  const actionsRef = useRef({ setPitwallState, updatePositions, addRaceControlNotification, setRaceResult });
+  actionsRef.current = { setPitwallState, updatePositions, addRaceControlNotification, setRaceResult };
 
   const clearStageTimeout = useCallback(() => {
     if (stageTimeoutRef.current) {
@@ -276,7 +274,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
               pendingPositions: pendingPositionsRef,
               positionsRaf: positionsRafRef,
               rcSeq: rcSeqRef,
-              battleSeq: battleSeqRef,
             },
           );
         };

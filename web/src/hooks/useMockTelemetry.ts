@@ -8,7 +8,6 @@ export function useMockTelemetry(enabled: boolean) {
   const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
   const addRaceControlNotification = useTelemetryStore((state) => state.addRaceControlNotification);
-  const addBattleAlert = useTelemetryStore((state) => state.addBattleAlert);
   const setRaceResult = useTelemetryStore((state) => state.setRaceResult);
 
   const pendingPitwallRef = useRef<PitwallState | null>(null);
@@ -16,7 +15,6 @@ export function useMockTelemetry(enabled: boolean) {
   const pendingPositionsRef = useRef<import('../types/telemetry').CarPosition[] | null>(null);
   const positionsRafRef = useRef(0);
   const raceControlSeqRef = useRef(0);
-  const battleSeqRef = useRef(0);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -30,14 +28,13 @@ export function useMockTelemetry(enabled: boolean) {
       for (const message of messages) {
         routeMessage(
           message,
-          { setPitwallState, updatePositions: () => {}, addRaceControlNotification, addBattleAlert, setRaceResult },
+          { setPitwallState, updatePositions: () => {}, addRaceControlNotification, setRaceResult },
           {
             pendingPitwall: pendingPitwallRef,
             pitwallRaf: pitwallRafRef,
             pendingPositions: pendingPositionsRef,
             positionsRaf: positionsRafRef,
             rcSeq: raceControlSeqRef,
-            battleSeq: battleSeqRef,
           },
         );
       }
@@ -54,5 +51,5 @@ export function useMockTelemetry(enabled: boolean) {
         pitwallRafRef.current = 0;
       }
     };
-  }, [addBattleAlert, addRaceControlNotification, enabled, setConnectionState, setPitwallState, setRaceResult]);
+  }, [addRaceControlNotification, enabled, setConnectionState, setPitwallState, setRaceResult]);
 }

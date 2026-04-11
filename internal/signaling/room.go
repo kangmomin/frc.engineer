@@ -59,7 +59,7 @@ type Room struct {
 	Password               string
 	DefaultPermissionsCode string
 	Driver                 *peer
-	Engineers              map[string]*peer // peerId → peer
+	Engineers              map[string]*peer // peerId ??peer
 	DriverLostAt           *time.Time       // set when driver disconnects; nil when connected
 	UpdatedAt              time.Time
 	mu                     sync.Mutex
@@ -76,22 +76,22 @@ type RoomSummary struct {
 
 // RoomManager manages all active rooms.
 type RoomManager struct {
-	roomsByCode     map[string]*Room // roomCode → Room
-	roomsByID       map[string]*Room // roomId → Room
-	frcAPI          *frcapi.Client
-	mu              sync.RWMutex
-	logger          *slog.Logger
-	done            chan struct{}
+	roomsByCode map[string]*Room // roomCode ??Room
+	roomsByID   map[string]*Room // roomId ??Room
+	frcAPI      *frcapi.Client
+	mu          sync.RWMutex
+	logger      *slog.Logger
+	done        chan struct{}
 }
 
 // NewRoomManager creates a new RoomManager and starts a background cleanup goroutine.
 func NewRoomManager(logger *slog.Logger, frcAPI *frcapi.Client) *RoomManager {
 	rm := &RoomManager{
-		roomsByCode:     make(map[string]*Room),
-		roomsByID:       make(map[string]*Room),
-		frcAPI:          frcAPI,
-		logger:          logger,
-		done:            make(chan struct{}),
+		roomsByCode: make(map[string]*Room),
+		roomsByID:   make(map[string]*Room),
+		frcAPI:      frcAPI,
+		logger:      logger,
+		done:        make(chan struct{}),
 	}
 	go rm.cleanupLoop()
 	return rm
@@ -161,21 +161,24 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 		return "", "", Permissions{}, fmt.Errorf("room not found")
 	}
 
-	room.mu.Lock()
-	defer room.mu.Unlock()
+	grantedPermissions := Permissions{Pitwall: true, Overlay: true, SetupSupport: true}
+	var frcKey string
 
+	room.mu.Lock()
 	if room.DriverLostAt != nil {
+		room.mu.Unlock()
 		return "", "", Permissions{}, fmt.Errorf("room %s is offline", room.Name)
 	}
 	if room.Password != "" && subtle.ConstantTimeCompare([]byte(room.Password), []byte(password)) != 1 {
+		room.mu.Unlock()
 		return "", "", Permissions{}, fmt.Errorf("invalid room password")
 	}
 	if len(room.Engineers) >= maxEngineersPerRoom {
+		room.mu.Unlock()
 		return "", "", Permissions{}, fmt.Errorf("room %s is full (max %d)", room.Name, maxEngineersPerRoom)
 	}
-
-	grantedPermissions := Permissions{Pitwall: true, Overlay: true, SetupSupport: true}
-	frcKey := strings.TrimSpace(room.DefaultPermissionsCode)
+	frcKey = strings.TrimSpace(room.DefaultPermissionsCode)
+	room.mu.Unlock()
 	if frcKey != "" && frcapi.IsAccountKey(frcKey) && rm.frcAPI != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -198,12 +201,35 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 		id:          peerID,
 		writeMu:     writeMu,
 	}
+
+	var driverToNotify *peer
+	var roomCode string
+	var engineerCount int
+
+	room.mu.Lock()
+	if room.DriverLostAt != nil {
+		room.mu.Unlock()
+		return "", "", Permissions{}, fmt.Errorf("room %s is offline", room.Name)
+	}
+	if room.Password != "" && subtle.ConstantTimeCompare([]byte(room.Password), []byte(password)) != 1 {
+		room.mu.Unlock()
+		return "", "", Permissions{}, fmt.Errorf("invalid room password")
+	}
+	if len(room.Engineers) >= maxEngineersPerRoom {
+		room.mu.Unlock()
+		return "", "", Permissions{}, fmt.Errorf("room %s is full (max %d)", room.Name, maxEngineersPerRoom)
+	}
 	room.Engineers[peerID] = engineerPeer
 	room.UpdatedAt = time.Now()
-
-	// Notify the driver only if connected.
 	if room.DriverLostAt == nil {
-		_ = room.Driver.sendJSON(Message{
+		driverToNotify = room.Driver
+	}
+	roomCode = room.Code
+	engineerCount = len(room.Engineers)
+	room.mu.Unlock()
+
+	if driverToNotify != nil {
+		_ = driverToNotify.sendJSON(Message{
 			Type:        TypePeerJoined,
 			PeerID:      peerID,
 			Permissions: grantedPermissions,
@@ -211,8 +237,8 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 	}
 
 	rm.logger.Info("engineer joined room", "roomId", room.ID, "code", room.Code, "peerId", peerID,
-		"engineerCount", len(room.Engineers))
-	return peerID, room.Code, grantedPermissions, nil
+		"engineerCount", engineerCount)
+	return peerID, roomCode, grantedPermissions, nil
 }
 
 // RejoinRoom reconnects a driver to an existing room after a transient disconnect.
@@ -224,12 +250,11 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 		return "", fmt.Errorf("room %s not found", roomID)
 	}
 
-	room.mu.Lock()
-	defer room.mu.Unlock()
+	var oldConn *websocket.Conn
 
-	// Close old driver connection if still open.
+	room.mu.Lock()
 	if room.Driver != nil && room.Driver.conn != nil {
-		room.Driver.conn.Close()
+		oldConn = room.Driver.conn
 	}
 
 	room.Driver = &peer{
@@ -244,9 +269,15 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 	room.Password = password
 	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.UpdatedAt = time.Now()
+	roomCode := room.Code
+	room.mu.Unlock()
 
-	rm.logger.Info("driver rejoined room", "roomId", room.ID, "code", room.Code)
-	return room.Code, nil
+	if oldConn != nil {
+		_ = oldConn.Close()
+	}
+
+	rm.logger.Info("driver rejoined room", "roomId", room.ID, "code", roomCode)
+	return roomCode, nil
 }
 
 // UpdateRoomMetadata updates room list metadata for a connected sender.
@@ -312,23 +343,29 @@ func (rm *RoomManager) Relay(senderPeer *peer, msg Message) {
 		return
 	}
 
-	room.mu.Lock()
-	defer room.mu.Unlock()
+	var target *peer
 
+	room.mu.Lock()
 	switch senderPeer.role {
 	case roleDriver:
-		// Driver → specific engineer
+		// Driver forwards to a specific engineer.
 		if eng, ok := room.Engineers[msg.PeerID]; ok {
-			_ = eng.sendJSON(msg)
+			target = eng
 		}
 	case roleEngineer:
 		// Drop if driver is temporarily disconnected.
 		if room.DriverLostAt != nil {
+			room.mu.Unlock()
 			return
 		}
-		// Engineer → driver
+		// Engineer forwards to driver.
 		msg.PeerID = senderPeer.id
-		_ = room.Driver.sendJSON(msg)
+		target = room.Driver
+	}
+	room.mu.Unlock()
+
+	if target != nil {
+		_ = target.sendJSON(msg)
 	}
 }
 
@@ -419,7 +456,7 @@ func (rm *RoomManager) cleanupLoop() {
 
 func (rm *RoomManager) cleanupExpired() {
 	// Collect expired rooms under lock, then close connections outside lock
-	// to avoid deadlock (conn.Close triggers ReadMessage error → RemovePeer → rm.mu).
+	// to avoid deadlock (conn.Close triggers ReadMessage error -> RemovePeer -> rm.mu).
 	rm.mu.Lock()
 	var expired []*Room
 	for roomID, room := range rm.roomsByID {
@@ -436,20 +473,28 @@ func (rm *RoomManager) cleanupExpired() {
 	rm.mu.Unlock()
 
 	for _, room := range expired {
+		var driver *peer
+		engineers := make([]*peer, 0, len(room.Engineers))
+
 		room.mu.Lock()
-		if room.Driver != nil {
-			_ = room.Driver.sendJSON(Message{Type: TypeRoomClosed, Error: "room expired"})
-			if room.Driver.conn != nil {
-				room.Driver.conn.Close()
-			}
-		}
+		driver = room.Driver
 		for _, eng := range room.Engineers {
-			_ = eng.sendJSON(Message{Type: TypeRoomClosed, Error: "room expired"})
-			if eng.conn != nil {
-				eng.conn.Close()
-			}
+			engineers = append(engineers, eng)
 		}
 		room.mu.Unlock()
+
+		if driver != nil {
+			_ = driver.sendJSON(Message{Type: TypeRoomClosed, Error: "room expired"})
+			if driver.conn != nil {
+				_ = driver.conn.Close()
+			}
+		}
+		for _, eng := range engineers {
+			_ = eng.sendJSON(Message{Type: TypeRoomClosed, Error: "room expired"})
+			if eng.conn != nil {
+				_ = eng.conn.Close()
+			}
+		}
 		rm.logger.Info("room expired", "roomId", room.ID, "code", room.Code)
 	}
 }

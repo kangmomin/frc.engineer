@@ -1,224 +1,448 @@
-/* eslint-disable */
-// @ts-nocheck
-/**
- * F1 25 Setup Manager — Integrated into frc.engineer co-driver
- * Based on Istvan Puki + Brendon Leigh setup databases
- * AI feedback powered by Claude API (Anthropic)
- *
- * Access: ?view=setup
- */
+import { useMemo, useState, type CSSProperties } from "react";
 
-import { useState, useRef, useEffect } from 'react';
+import {
+  SETUP_FIELDS,
+  SETUP_FIELD_DEFS,
+  SETUP_META,
+  TRACKS,
+  type SetupKey,
+  getDbKey,
+  getSetupFeel,
+  getSetupTags,
+  getTrackCatalog,
+} from "../../../../shared/setup-manager/catalog";
 
-// ============================================================
-// API — VITE_ANTHROPIC_API_KEY from .env
-// ============================================================
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
-const API_URL = "https://api.anthropic.com/v1/messages";
-
-const TD=[{name:"Australia",flag:"\ud83c\udde6\ud83c\uddfa",round:1},{name:"China",flag:"\ud83c\udde8\ud83c\uddf3",round:2,sprint:true},{name:"Japan",flag:"\ud83c\uddef\ud83c\uddf5",round:3},{name:"Bahrain",flag:"\ud83c\udde7\ud83c\udded",round:4},{name:"Jeddah",flag:"\ud83c\uddf8\ud83c\udde6",round:5},{name:"Miami",flag:"\ud83c\uddfa\ud83c\uddf8",round:6,sprint:true},{name:"Imola",flag:"\ud83c\uddee\ud83c\uddf9",round:7},{name:"Monaco",flag:"\ud83c\uddf2\ud83c\udde8",round:8},{name:"Spain",flag:"\ud83c\uddea\ud83c\uddf8",round:9},{name:"Canada",flag:"\ud83c\udde8\ud83c\udde6",round:10},{name:"Austria",flag:"\ud83c\udde6\ud83c\uddf9",round:11},{name:"Silverstone",flag:"\ud83c\uddec\ud83c\udde7",round:12},{name:"Spa",flag:"\ud83c\udde7\ud83c\uddea",round:13,sprint:true},{name:"Hungary",flag:"\ud83c\udded\ud83c\uddfa",round:14},{name:"Zandvoort",flag:"\ud83c\uddf3\ud83c\uddf1",round:15},{name:"Monza",flag:"\ud83c\uddee\ud83c\uddf9",round:16},{name:"Baku",flag:"\ud83c\udde6\ud83c\uddff",round:17},{name:"Singapore",flag:"\ud83c\uddf8\ud83c\uddec",round:18},{name:"COTA",flag:"\ud83c\uddfa\ud83c\uddf8",round:19,sprint:true},{name:"Mexico",flag:"\ud83c\uddf2\ud83c\uddfd",round:20},{name:"Brazil",flag:"\ud83c\udde7\ud83c\uddf7",round:21,sprint:true},{name:"Vegas",flag:"\ud83c\uddfa\ud83c\uddf8",round:22},{name:"Qatar",flag:"\ud83c\uddf6\ud83c\udde6",round:23,sprint:true},{name:"Abu Dhabi",flag:"\ud83c\udde6\ud83c\uddea",round:24}];
-function FI({flag,size=20}){return(<span style={{fontSize:size,lineHeight:1,display:"inline-block",flexShrink:0}}>{flag}</span>);}
-const TEAMS=[{name:"Red Bull",total:55,pros:"\ucd5c\uace0 \ud504\ub860\ud2b8 \uc5d0\uc5b4\ub85c(3.368), \ub192\uc740 \uc804\uccb4 \uc5d0\uc5b4\ub85c(5.365)",cons:"\uac00\uc7a5 \ub192\uc740 \uc9c8\ub7c9(803kg), \ubb34\uac8c\ubc30\ubd84 \ubd88\uade0\ud615(0.204), \uae30\uc5b4\ubc15\uc2a4 \ube44\ud6a8\uc728(1.642)",mass:803,drag:0.01303,aeroF:3.368,aeroR:1.9974,gear:1.6417,wDist:0.204},{name:"McLaren",total:54,pros:"\uac00\uc7a5 \uac00\ubcbc\uc6b4 \ucc28(798kg), \ucd5c\uace0 \ub9ac\uc5b4 \uc5d0\uc5b4\ub85c(2.028), \ub192\uc740 \ub4dc\ub798\uadf8(0.01287)",cons:"\ud504\ub860\ud2b8 \uc5d0\uc5b4\ub85c \uc911\uac04(3.240), \uae30\uc5b4\ubc15\uc2a4 \uc911\uac04(1.676)",mass:798,drag:0.01287,aeroF:3.240,aeroR:2.0278,gear:1.6756,wDist:0.180},{name:"Mercedes",total:49,pros:"\ub192\uc740 \ub4dc\ub798\uadf8(0.01290), \ub0ae\uc740 \ubb34\uac8c\ubc30\ubd84(0.160), \uc88b\uc740 \ub9ac\uc5b4 \uc5d0\uc5b4\ub85c(1.985)",cons:"\uc804\uccb4 \uc5d0\uc5b4\ub85c \uc911\uac04(5.111), \ud504\ub860\ud2b8 \uc5d0\uc5b4\ub85c \uc911\uac04(3.126)",mass:804,drag:0.01290,aeroF:3.126,aeroR:1.9854,gear:1.6806,wDist:0.160},{name:"Ferrari",total:48,pros:"\uac00\ubcbc\uc6b4 \uc9c8\ub7c9(801kg), \ub0ae\uc740 \ubb34\uac8c\ubc30\ubd84(0.165)",cons:"\ub0ae\uc740 \ub4dc\ub798\uadf8(0.01369), \uc5d0\uc5b4\ub85c \uc911\ud558\uc704(5.005), \uae30\uc5b4\ubc15\uc2a4 \ube44\ud6a8\uc728(1.685)",mass:801,drag:0.01369,aeroF:3.067,aeroR:1.9378,gear:1.6853,wDist:0.165},{name:"Aston Martin",total:44,pros:"\ub192\uc740 \ud504\ub860\ud2b8 \uc5d0\uc5b4\ub85c(3.207), \ub192\uc740 \ub4dc\ub798\uadf8(0.01294)",cons:"\ubb34\uac70\uc6b4 \uc9c8\ub7c9(809kg), \ub9ac\uc5b4 \uc5d0\uc5b4\ub85c \uc57d\uc138(1.930), \uae30\uc5b4\ubc15\uc2a4 \uc911\uac04(1.681)",mass:809,drag:0.01294,aeroF:3.207,aeroR:1.9304,gear:1.6806,wDist:0.175},{name:"Alpine",total:38,pros:"\ucd5c\uace0 \ub4dc\ub798\uadf8(0.01276), \ucd5c\uc800 \uae30\uc5b4\ubc15\uc2a4(1.708), \ucd5c\uc800 \ubb34\uac8c\ubc30\ubd84(0.158)",cons:"\ub192\uc740 \uc9c8\ub7c9(807kg), \uc804\uccb4 \uc5d0\uc5b4\ub85c \uc57d\uc138(5.004), \ub9ac\uc5b4 \uc5d0\uc5b4\ub85c \uc57d\uc138(1.926)",mass:807,drag:0.01276,aeroF:3.078,aeroR:1.9264,gear:1.7081,wDist:0.158},{name:"Williams",total:36,pros:"\ud504\ub860\ud2b8 \uc5d0\uc5b4\ub85c \uc911\uac04(3.091)",cons:"\ubb34\uac70\uc6b4 \uc9c8\ub7c9(810kg), \ub0ae\uc740 \ub4dc\ub798\uadf8(0.01377), \ucd5c\uc57d \ub9ac\uc5b4 \uc5d0\uc5b4\ub85c(1.841), \uae30\uc5b4\ubc15\uc2a4 \uc911\uac04(1.681)",mass:810,drag:0.01377,aeroF:3.091,aeroR:1.8405,gear:1.6806,wDist:0.187},{name:"Vcarb",total:32,pros:"\ub4dc\ub798\uadf8 \uc911\uac04(0.01301), \ub9ac\uc5b4 \uc5d0\uc5b4\ub85c \uc911\uac04(1.910)",cons:"\ucd5c\uc57d \ud504\ub860\ud2b8 \uc5d0\uc5b4\ub85c(2.806), \ucd5c\uc545 \uae30\uc5b4\ubc15\uc2a4(1.513), \ub192\uc740 \ubb34\uac8c\ubc30\ubd84(0.200)",mass:808,drag:0.01301,aeroF:2.806,aeroR:1.9100,gear:1.5133,wDist:0.200},{name:"Haas",total:30,pros:"\ubb34\uac8c\ubc30\ubd84 \uc591\ud638(0.165), \uae30\uc5b4\ubc15\uc2a4 \uc911\uac04(1.685)",cons:"\ucd5c\uace0 \uc9c8\ub7c9\uae09(812kg), \ub9ac\uc5b4 \uc5d0\uc5b4\ub85c \uc57d\uc138(1.810), \uc804\uccb4 \uc5d0\uc5b4\ub85c \uc57d\uc138(4.823)",mass:812,drag:0.01301,aeroF:3.013,aeroR:1.8098,gear:1.6853,wDist:0.165},{name:"Sauber",total:21,pros:"\uc5c6\uc74c",cons:"\ucd5c\uace0 \uc9c8\ub7c9(813kg), \ucd5c\uc800 \ub4dc\ub798\uadf8(0.01497), \ucd5c\uc800 \uc5d0\uc5b4\ub85c(4.207), \ucd5c\uc545 \ubb34\uac8c\ubc30\ubd84(0.225)",mass:813,drag:0.01497,aeroF:2.566,aeroR:1.6412,gear:1.6853,wDist:0.225}];
-const DEFS={fw:{name:"\ud504\ub860\ud2b8 \uc719",min:0,max:50},rw:{name:"\ub9ac\uc5b4 \uc719",min:0,max:50},don:{name:"\ub514\ud504 \uc628\uc2a4\ub85c\ud2c0",min:10,max:100},doff:{name:"\ub514\ud504 \uc624\ud504\uc2a4\ub85c\ud2c0",min:10,max:100},fs:{name:"\ud504\ub860\ud2b8 \uc11c\uc2a4",min:1,max:41},rs:{name:"\ub9ac\uc5b4 \uc11c\uc2a4",min:1,max:41},fa:{name:"\ud504\ub860\ud2b8 \uc548\ud2f0\ub864\ubc14",min:1,max:21},ra:{name:"\ub9ac\uc5b4 \uc548\ud2f0\ub864\ubc14",min:1,max:21},frh:{name:"\ud504\ub860\ud2b8 RH",min:15,max:35},rrh:{name:"\ub9ac\uc5b4 RH",min:40,max:60},bb:{name:"\ube0c\ub808\uc774\ud06c \ubc14\uc774\uc5b4\uc2a4",min:50,max:70},bp:{name:"\ube0c\ub808\uc774\ud06c \uc555\ub825",min:80,max:100},fl:{name:"FL \uc555\ub825",min:22.5,max:29.5},fr:{name:"FR \uc555\ub825",min:22.5,max:29.5},rl:{name:"RL \uc555\ub825",min:20.5,max:26.5},rr:{name:"RR \uc555\ub825",min:20.5,max:26.5}};
-const FIELDS=[{k:"fw",l:"\ud504\ub860\ud2b8 \uc719"},{k:"rw",l:"\ub9ac\uc5b4 \uc719"},{k:"don",l:"\uc628\uc2a4\ub85c\ud2c0 \ub514\ud504"},{k:"doff",l:"\uc624\ud504\uc2a4\ub85c\ud2c0 \ub514\ud504"},{k:"fs",l:"\ud504\ub860\ud2b8 \uc11c\uc2a4"},{k:"rs",l:"\ub9ac\uc5b4 \uc11c\uc2a4"},{k:"fa",l:"\ud504\ub860\ud2b8 \uc548\ud2f0\ub864\ubc14"},{k:"ra",l:"\ub9ac\uc5b4 \uc548\ud2f0\ub864\ubc14"},{k:"frh",l:"\ud504\ub860\ud2b8 RH"},{k:"rrh",l:"\ub9ac\uc5b4 RH"},{k:"bb",l:"\ube0c\ub808\uc774\ud06c \ubc14\uc774\uc5b4\uc2a4"},{k:"bp",l:"\ube0c\ub808\uc774\ud06c \uc555\ub825"},{k:"fl",l:"FL \uc555\ub825"},{k:"fr",l:"FR \uc555\ub825"},{k:"rl",l:"RL \uc555\ub825"},{k:"rr",l:"RR \uc555\ub825"}];
-const RK=[{k:"fw",l:"FW"},{k:"rw",l:"RW"},{k:"don",l:"DON"},{k:"doff",l:"DOFF"},{k:"fs",l:"FS"},{k:"rs",l:"RS"},{k:"fa",l:"FA"},{k:"ra",l:"RA"},{k:"frh",l:"FRH"},{k:"rrh",l:"RRH"},{k:"bb",l:"BB"},{k:"bp",l:"BP"}];
-
-// Knowledge base (truncated reference — full base embedded in system prompt)
-const KNOWLEDGE_BASE = `
-[F1 25 Setup Knowledge Base - SimRacingSetups.com + Traxion.GG]
-=== Aero === High wing = more downforce, less top speed. Low wing = drag reduction. Front > Rear = oversteer tendency.
-=== Transmission === On-throttle diff: high=sync wheels, Off-throttle: low=sharper turn-in.
-=== Suspension === F1 25 favors stiff front + soft rear. ARB compensates.
-=== Brakes === Optimal bias ~53%. Pressure 100% unless lockups.
-=== Tyres === Higher pressure = better in F1 25. Target 85-105C.
-=== Formula Kai === On-throttle always 100. Front sus 41, Rear sus 1. Front ARB 1, adjust Rear ARB only.
-`;
-
-function mk(fw,rw,don,doff,fs,rs,fa,ra,frh,rrh,bb,bp,fl,fr,rl,rr,note=""){return{fw,rw,don,doff,fs,rs,fa,ra,frh,rrh,bb,bp,fl,fr,rl,rr,note};}
-const SM=[{key:"ip_r",label:"Puki Race",color:"#a855f7",group:"Istvan Puki",rain:false,desc:"Pro league long run",who:"Advanced"},{key:"ip_q",label:"Puki Quali",color:"#c084fc",group:"Istvan Puki",rain:false,desc:"Pro league short run",who:"Advanced"},{key:"ip_i",label:"Puki Inter",color:"#22c55e",group:"Istvan Puki",rain:true,desc:"Intermediate",who:"Rain"},{key:"ip_w",label:"Puki Wet",color:"#3b82f6",group:"Istvan Puki",rain:true,desc:"Full wet",who:"Heavy rain"},{key:"es_r",label:"Esports Race",color:"#ec4899",group:"Istvan Puki",rain:false,desc:"Mid-level race",who:"Intermediate"},{key:"es_q",label:"Esports Quali",color:"#f472b6",group:"Istvan Puki",rain:false,desc:"Mid-level quali",who:"Intermediate"},{key:"sf_r",label:"Safe Race",color:"#f97316",group:"Istvan Puki",rain:false,desc:"Beginner stable",who:"Beginner"},{key:"sf_q",label:"Safe Quali",color:"#fb923c",group:"Istvan Puki",rain:false,desc:"Beginner quali",who:"Beginner"},{key:"bl_r",label:"BL Race",color:"#eab308",group:"Brendon Leigh",rain:false,desc:"BL tyre management",who:"General"},{key:"bl_q",label:"BL Quali",color:"#facc15",group:"Brendon Leigh",rain:false,desc:"BL quali",who:"General"},{key:"bl_i",label:"BL Inter",color:"#34d399",group:"Brendon Leigh",rain:true,desc:"BL inter",who:"Rain"},{key:"bl_w",label:"BL Wet",color:"#60a5fa",group:"Brendon Leigh",rain:true,desc:"BL wet",who:"Heavy rain"},{key:"gn_i",label:"Inter Setup",color:"#10b981",group:"General",rain:true,desc:"General intermediate",who:"All",dbKey:"ip_i"},{key:"gn_w",label:"Wet Setup",color:"#6366f1",group:"General",rain:true,desc:"General full wet",who:"All",dbKey:"ip_w"}];
-const getDbKey=(meta)=>meta.dbKey||meta.key;
-
-// Full setup database (all 24 tracks)
-const DB={"Australia":{ip_r:mk(20,8,100,20,41,1,4,16,22,40,55,100,29.5,29.5,22,22),ip_q:mk(20,4,100,20,41,2,6,21,22,40,53,100,29.5,29.5,25,25),ip_i:mk(30,28,90,30,41,10,8,19,20,50,54,100,29.5,29.5,26.5,26.5),ip_w:mk(38,23,100,20,41,1,5,20,21,40,54,100,27.5,27.5,23,23),es_r:mk(15,9,100,30,41,1,1,16,21,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(18,8,100,25,41,1,1,21,20,40,53,100,29.5,29.5,21,21),sf_r:mk(10,5,90,30,41,1,1,1,22,42,54,100,29.5,29.5,26.5,26.5),sf_q:mk(13,7,90,30,41,1,1,15,21,41,54,100,29.5,29.5,26.5,26.5),bl_r:mk(10,0,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),bl_q:mk(13,0,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(25,15,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(33,23,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"DRS 4 zones. Undercut strong.",softLife:"11 laps",medLife:"16 laps",hardLife:"23 laps",pitWindow50:"Lap 9-11",strategy:"1-stop undercut. Pit 21s",ersEnable:"Before T13",qualiFuel:"5kg",startingTyre:"85C"}},"China":{ip_r:mk(29,17,100,25,40,1,1,8,20,40,54,100,28.2,28.2,20.5,20.5),ip_q:mk(41,23,100,15,41,1,1,20,20,40,53,100,29.5,29.2,20.5,20.5),ip_i:mk(31,28,90,30,41,5,7,21,20,47,53,100,26,26,20.5,20.5),ip_w:mk(50,40,100,10,41,1,1,21,21,40,54,100,27,27,20.5,20.5),es_r:mk(26,20,100,30,41,1,1,8,20,40,55,100,29.5,29.5,26.5,26.5),es_q:mk(32,28,100,25,41,1,1,12,20,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(25,24,90,25,41,1,1,1,21,44,54,100,29.5,29.5,26.5,26.5),sf_q:mk(28,26,90,30,41,1,1,4,21,44,54,100,29.5,29.5,20.5,20.5),bl_r:mk(30,25,100,30,41,1,1,20,20,44,55,100,29.5,29.5,23,23),bl_q:mk(35,30,100,30,41,1,1,20,20,44,54,100,29.5,29.5,24,24),bl_i:mk(45,40,100,30,41,1,1,20,20,44,54,100,29.5,29.5,23,23),bl_w:mk(50,45,100,30,41,1,1,20,20,44,54,100,29.5,29.5,23,23),track:{notes:"S1-S2 temp management key.",softLife:"8 laps",medLife:"11 laps",hardLife:"15 laps",pitWindow50:"Lap 10-12",strategy:"1-stop. Pit 17s"}},"Japan":{ip_r:mk(24,8,100,35,41,1,5,20,21,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(30,10,100,25,41,1,1,21,23,40,53,100,29.3,29.5,20.5,20.5),ip_i:mk(40,42,90,30,41,15,5,21,22,46,55,100,26.1,26.1,20.5,20.5),ip_w:mk(43,27,100,25,41,1,1,20,22,40,54,100,28.5,28.5,20.5,20.5),es_r:mk(19,13,100,30,41,1,1,21,21,42,53,100,29.5,29.5,26.5,26.5),es_q:mk(28,18,100,25,41,1,1,21,21,42,52,100,29.5,29.5,26.5,26.5),sf_r:mk(15,13,90,35,41,1,1,5,22,41,54,100,29.5,29.5,23.6,23.6),sf_q:mk(15,10,90,30,41,1,1,15,22,41,54,100,29.5,29.5,20.5,20.5),bl_r:mk(31,22,100,30,41,1,5,21,21,42,55,100,29.5,29.5,22,22),bl_q:mk(31,22,100,30,41,1,5,21,21,42,54,100,29.5,29.5,22,22),bl_i:mk(34,24,100,20,41,1,5,21,21,42,54,100,29.5,29.5,22,22),bl_w:mk(38,28,100,20,41,1,5,21,21,42,54,100,29.5,29.5,22,22),track:{notes:"Flow and momentum key.",softLife:"10 laps",medLife:"16 laps",hardLife:"20 laps",pitWindow50:"Lap 8-10",strategy:"Undercut. Pit 17.65s"}},"Bahrain":{ip_r:mk(27,21,100,30,40,1,1,16,20,40,55,100,29,29,20.5,20.5),ip_q:mk(33,23,100,20,41,1,1,20,20,40,53,100,28.5,28.5,20.5,20.5),ip_i:mk(50,50,90,25,41,13,9,21,22,46,55,100,26.1,26.1,20.5,20.5),ip_w:mk(50,44,100,20,38,1,1,20,20,40,53,100,28,28,20.5,20.5),es_r:mk(25,20,100,30,41,1,1,7,20,40,54,100,29.5,29.5,24,24),es_q:mk(25,15,100,30,41,1,1,15,20,40,53,100,29.5,29.5,23,23),sf_r:mk(25,22,90,30,41,1,1,1,20,42,55,100,29.5,29.5,23.6,23.6),sf_q:mk(25,20,90,25,41,1,1,7,20,42,54,100,29.5,29.5,23,23),bl_r:mk(30,28,100,35,41,1,5,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(32,28,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(46,41,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(50,45,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"High downforce. Tyre wear critical.",softLife:"11 laps",medLife:"12 laps",hardLife:"18 laps",pitWindow50:"Lap 11-13",strategy:"1 or 2-stop. Pit 18.9s"}},"Jeddah":{ip_r:mk(16,0,100,30,41,1,1,13,20,40,55,100,29.5,29.5,21,21),ip_q:mk(15,0,100,20,41,1,1,21,19,40,53,100,29.5,29.5,22,22),ip_i:mk(15,10,90,20,41,5,9,21,20,45,52,100,26,26,20.5,20.5),ip_w:mk(37,23,100,20,41,1,1,21,19,40,53,100,28.5,28.5,20.5,20.5),es_r:mk(8,2,100,20,41,1,1,5,19,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(10,2,100,10,41,1,1,21,19,40,52,100,29.5,29.5,20.5,20.5),sf_r:mk(8,4,90,20,41,1,1,10,21,42,53,100,29.5,29.5,26.5,26.5),sf_q:mk(10,4,90,20,41,1,1,10,21,42,53,100,29.5,29.5,26.5,26.5),bl_r:mk(10,2,100,30,41,1,5,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(14,6,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(30,25,100,25,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(40,35,100,25,41,1,5,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"Rear wear critical. No sliding.",softLife:"11 laps",medLife:"16 laps",hardLife:"20 laps",pitWindow50:"Lap 10-12",strategy:"No soft. 1-stop. Pit 23s"}},"Miami":{ip_r:mk(8,1,100,30,41,1,1,15,20,40,55,100,29,29,21.5,21.5),ip_q:mk(16,5,100,20,41,1,1,21,21,40,54,100,29,29,21,21),ip_i:mk(18,14,90,30,41,1,1,15,20,42,54,100,26,26,20.5,20.5),ip_w:mk(40,32,100,20,41,1,1,20,20,40,54,100,28,28,20.5,20.5),es_r:mk(10,4,100,30,41,1,1,10,21,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(13,3,100,30,41,1,1,15,20,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(10,7,90,30,41,1,1,1,21,43,55,100,29.5,29.5,26.5,26.5),sf_q:mk(13,10,90,30,41,1,1,5,21,43,55,100,29.5,29.5,20.5,20.5),bl_r:mk(12,6,100,30,41,1,4,21,21,40,55,100,29.5,29.5,22,22),bl_q:mk(14,8,100,30,41,1,4,21,21,40,54,100,29.5,29.5,22,22),bl_i:mk(24,18,100,25,41,1,4,21,21,40,54,100,29.5,29.5,22,22),bl_w:mk(30,24,100,25,41,1,4,21,21,40,54,100,29.5,29.5,22,22),track:{notes:"Low wing high-speed.",softLife:"8 laps",medLife:"13 laps",hardLife:"20 laps",pitWindow50:"Lap 11-12",strategy:"1-stop M-H. Pit 21.9s"}},"Monaco":{ip_r:mk(50,50,100,30,39,1,1,15,17,40,54,100,28.5,28.5,20.5,20.5),ip_q:mk(50,45,100,20,38,1,1,21,18,40,52,100,28,28,21,21),ip_i:mk(50,50,90,30,41,1,5,21,20,49,53,100,22.5,22.5,20.5,20.5),ip_w:mk(50,50,100,15,36,1,1,21,17,40,52,100,27,27,20.5,20.5),es_r:mk(50,50,100,20,41,1,1,1,20,40,54,100,22.5,22.5,20.5,20.5),es_q:mk(50,50,100,20,41,1,1,10,20,40,53,100,22.5,22.5,20.5,20.5),sf_r:mk(50,50,90,35,39,1,4,1,20,41,54,100,22.5,22.5,20.5,20.5),sf_q:mk(50,50,90,35,41,1,1,1,20,41,54,100,22.5,22.5,20.5,20.5),bl_r:mk(50,50,100,30,40,1,4,17,21,44,55,100,29.5,29.5,22,22),bl_q:mk(50,50,100,30,40,1,4,17,21,44,54,100,29.5,29.5,20.5,20.5),bl_i:mk(50,50,100,15,40,1,4,17,21,44,54,100,29.5,29.5,20.5,20.5),bl_w:mk(50,50,100,10,40,1,4,17,21,44,54,100,29.5,29.5,20.5,20.5),track:{notes:"Mandatory 2-stop. Overcut effective.",softLife:"13 laps",medLife:"19 laps",hardLife:"25 laps",pitWindow50:"Lap 9&20-23",strategy:"Mandatory 2-stop. Pit 18.4s"}},"Spain":{ip_r:mk(34,25,100,30,41,1,1,14,20,40,54,100,29.5,29.3,20.5,20.5),ip_q:mk(42,30,100,20,41,1,1,20,20,40,53,100,29,29,20.5,20.5),ip_i:mk(42,37,90,25,41,1,1,8,21,40,53,100,26.1,26.1,20.5,20.5),ip_w:mk(50,43,100,15,41,1,1,21,19,40,53,100,29.5,29.5,20.5,20.5),es_r:mk(34,24,100,25,41,1,1,10,20,40,53,100,29.5,29.5,23.6,23.6),es_q:mk(37,27,100,20,41,5,1,21,19,40,52,100,29.5,29.5,20.5,20.5),sf_r:mk(34,33,90,30,41,1,1,6,20,42,55,100,29.5,29.5,23.6,23.6),sf_q:mk(37,34,90,25,41,1,1,21,20,42,52,100,29.5,29.5,20.5,20.5),bl_r:mk(30,25,100,30,41,1,4,19,20,41,53,100,29.5,29.5,22,22),bl_q:mk(33,28,100,30,41,1,4,19,20,41,54,100,29.5,29.5,22,22),bl_i:mk(44,39,100,25,41,1,4,19,20,41,54,100,29.5,29.5,22,22),bl_w:mk(50,45,100,20,41,1,4,19,20,41,54,100,29.5,29.5,22,22),track:{notes:"Hard to overtake.",softLife:"13 laps",medLife:"18 laps",hardLife:"27 laps",pitWindow50:"Lap 10-14",strategy:"1-stop M-H. Pit 21.6s"}},"Imola":{ip_r:mk(28,20,100,25,41,1,1,6,21,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(35,22,100,15,41,1,1,14,21,40,54,100,29.5,29.5,20.5,20.5),ip_i:mk(40,30,90,30,41,1,9,21,22,40,55,100,29.5,29.5,23.6,23.6),ip_w:mk(45,35,100,15,41,1,1,17,20,40,54,100,28,28,20.5,20.5),es_r:mk(30,24,100,30,41,1,1,8,22,40,58,100,29.5,29.5,26.5,26.5),es_q:mk(35,28,100,25,41,1,3,21,22,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(30,25,90,25,41,1,1,4,22,42,55,100,29.5,29.5,26.5,26.5),sf_q:mk(34,31,90,25,41,1,1,10,22,43,54,100,29.5,29.5,20.5,20.5),bl_r:mk(27,22,100,30,40,1,4,21,22,44,55,100,29.5,29.5,22,22),bl_q:mk(31,26,100,25,40,1,4,21,22,44,54,100,29.5,29.5,22,22),bl_i:mk(34,24,100,25,40,1,4,21,22,44,54,100,29.5,29.5,22,22),bl_w:mk(43,33,100,25,40,1,4,21,22,44,54,100,29.5,29.5,22,22),track:{notes:"Hard to overtake. No soft.",softLife:"10 laps",medLife:"15 laps",hardLife:"23 laps",pitWindow50:"Lap 12-14",strategy:"1-stop. Pit 25s"}},"Canada":{ip_r:mk(25,20,100,30,41,1,1,14,19,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(34,25,100,20,41,1,1,21,19,40,53,100,29,29,20.5,20.5),ip_i:mk(50,43,100,15,41,1,1,20,18,40,55,100,27,27,20.5,20.5),ip_w:mk(50,43,100,15,41,1,1,18,18,40,55,100,27,27,20.5,20.5),es_r:mk(31,27,100,30,41,1,3,11,20,40,54,100,29.5,29.5,25.8,25.8),es_q:mk(34,29,100,25,41,1,1,11,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(32,30,90,30,41,1,5,11,20,44,55,100,29.5,29.5,25.8,25.8),sf_q:mk(35,33,90,30,41,1,5,11,20,44,54,100,29.5,29.5,26.5,26.5),bl_r:mk(26,24,100,30,41,1,2,21,21,42,55,100,29.5,29.5,22,22),bl_q:mk(31,27,100,30,41,1,2,21,21,42,54,100,29.5,29.5,22,22),bl_i:mk(41,37,100,20,41,1,2,21,21,42,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,15,41,1,2,21,21,42,54,100,29.5,29.5,22,22),track:{notes:"Rear wear key. 2-stop recommended.",softLife:"13 laps",medLife:"27 laps",hardLife:"32 laps",pitWindow50:"Lap 13-14",strategy:"2-stop. Pit 23s"}},"Austria":{ip_r:mk(24,10,100,25,41,1,1,14,20,40,55,100,29.3,29.5,21.5,21.5),ip_q:mk(31,14,100,25,41,1,1,20,20,40,52,100,29.3,29.5,22,22),ip_i:mk(43,39,90,25,41,1,1,5,21,43,53,100,29.5,29.5,25.8,25.8),ip_w:mk(45,33,100,20,41,1,1,20,20,40,54,100,28,28,20.5,20.5),es_r:mk(14,7,100,25,41,1,1,10,19,40,54,100,29.5,29.5,23.6,23.6),es_q:mk(26,12,100,25,41,1,1,21,20,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(13,10,90,30,41,1,1,5,21,44,55,100,29.5,29.5,23.6,23.6),sf_q:mk(28,25,90,30,41,1,3,21,20,43,54,100,29.5,29.5,20.5,20.5),bl_r:mk(27,13,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),bl_q:mk(30,16,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),bl_i:mk(41,27,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),bl_w:mk(50,40,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),track:{notes:"1-stop tyre management.",softLife:"10 laps",medLife:"13 laps",hardLife:"23 laps",pitWindow50:"Lap 15-17",strategy:"Pit 18.1s"}},"Silverstone":{ip_r:mk(14,0,100,30,41,1,2,13,20,40,54,100,29,29,21,21),ip_q:mk(17,0,100,20,41,1,1,21,20,40,53,100,29.5,29.5,21.5,21.5),ip_i:mk(20,15,100,30,41,1,1,4,20,40,53,100,29.5,29.5,26.5,26.5),ip_w:mk(36,24,100,20,40,1,1,20,20,40,54,100,27,27,20.5,20.5),es_r:mk(9,3,100,30,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(8,0,100,25,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),sf_r:mk(10,5,90,35,41,1,5,18,20,40,54,100,29.5,29.5,26.5,26.5),sf_q:mk(9,2,90,30,41,1,5,18,20,40,53,100,29.5,29.5,26.5,26.5),bl_r:mk(18,5,100,35,41,1,3,20,21,40,54,100,29.5,29.5,22,22),bl_q:mk(18,5,100,30,41,1,3,20,21,40,54,100,29.5,29.5,22,22),bl_i:mk(30,22,100,30,41,1,3,20,21,40,54,100,29.5,29.5,22,22),bl_w:mk(40,32,100,30,41,1,3,20,21,40,54,100,29.5,29.5,22,22),track:{notes:"FL key. Undercut strong.",softLife:"10 laps",medLife:"13 laps",hardLife:"20 laps",pitWindow50:"Lap 9-11",strategy:"1-stop M-H. Pit 24s"}},"Spa":{ip_r:mk(2,0,100,20,41,1,1,19,21,40,55,100,29,29,24.5,24.5),ip_q:mk(6,0,100,15,41,1,2,21,21,40,53,100,28.8,28.8,26.5,26.5),ip_i:mk(11,5,90,25,41,1,1,21,21,42,53,100,29.5,29.5,23.6,23.6),ip_w:mk(9,6,100,20,41,1,1,19,21,40,53,100,26.5,26.5,25,25),es_r:mk(0,0,100,20,41,1,1,21,21,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(0,0,100,20,41,1,1,21,21,40,53,100,29.5,29.5,26.5,26.5),sf_r:mk(3,1,90,30,41,1,4,21,21,40,54,100,29.5,29.5,26.5,26.5),sf_q:mk(5,2,90,30,41,1,5,21,21,40,54,100,29.5,29.5,26.5,26.5),bl_r:mk(4,0,100,30,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),bl_q:mk(4,0,100,25,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),bl_i:mk(12,6,100,30,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),bl_w:mk(20,14,100,30,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),track:{notes:"Mid-sector flow.",softLife:"9 laps",medLife:"13 laps",hardLife:"23 laps",pitWindow50:"Lap 13-15",strategy:"1-stop. Pit 19.7s"}},"Hungary":{ip_r:mk(50,50,100,30,41,1,5,19,20,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(50,48,100,20,41,1,3,21,20,40,53,100,28,28,20.5,20.5),ip_i:mk(44,50,90,30,41,14,8,21,20,49,54,100,29.5,29.5,25.8,25.8),ip_w:mk(50,50,100,20,41,1,4,20,20,40,53,100,28,28,20.5,20.5),es_r:mk(50,50,100,30,41,1,1,5,19,40,54,100,29.5,29.5,25.8,25.8),es_q:mk(50,48,100,20,41,1,1,15,19,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(50,50,90,30,41,1,1,1,21,43,55,100,29.5,29.5,25.8,25.8),sf_q:mk(50,50,90,25,41,1,1,5,21,43,54,100,29.5,29.5,20.5,20.5),bl_r:mk(50,44,100,35,41,1,6,21,20,44,55,100,29.5,29.5,22,22),bl_q:mk(50,44,100,30,41,1,6,21,20,44,54,100,29.5,29.5,22,22),bl_i:mk(50,46,100,15,41,1,6,21,20,44,54,100,29.5,29.5,22,22),bl_w:mk(50,46,100,10,41,1,6,21,20,44,54,100,29.5,29.5,22,22),track:{notes:"Hard to overtake.",softLife:"8 laps",medLife:"18 laps",hardLife:"23 laps",pitWindow50:"Lap 14-16",strategy:"1-stop. Pit 21s"}},"Zandvoort":{ip_r:mk(42,33,100,25,41,1,5,7,20,40,54,100,28,28,20.5,20.5),ip_q:mk(50,41,100,25,41,10,1,14,20,40,52,100,29,29,24,24),ip_i:mk(50,49,90,25,41,6,9,21,19,48,54,100,29.5,29.5,25.8,25.8),ip_w:mk(50,48,100,20,41,21,1,21,20,40,53,100,27,27,20.5,20.5),es_r:mk(46,41,100,20,41,1,1,5,21,41,53,100,29.5,29.5,25.8,25.8),es_q:mk(46,36,100,25,41,1,1,15,21,41,52,100,29.5,29.5,26.5,26.5),sf_r:mk(46,43,90,30,41,1,1,1,21,42,54,100,29.5,29.5,23.6,23.6),sf_q:mk(46,40,90,30,41,1,1,5,21,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(38,33,100,30,41,1,4,20,20,43,54,100,29.5,29.5,22,22),bl_q:mk(42,37,100,30,41,1,4,20,20,43,54,100,29.5,29.5,22,22),bl_i:mk(50,44,100,20,41,1,4,20,20,43,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,20,41,1,4,20,20,43,54,100,29.5,29.5,22,22),track:{notes:"FL key. 2-stop recommended.",softLife:"13 laps",medLife:"20 laps",hardLife:"27 laps",pitWindow50:"Lap 10-11&22-23",strategy:"Pit 21.5s"}},"Monza":{ip_r:mk(0,0,100,30,41,1,1,16,20,40,54,100,29.5,29.5,26.5,26.5),ip_q:mk(0,0,100,20,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),ip_i:mk(6,3,90,25,41,1,1,21,21,47,54,100,29.5,29.5,25.8,25.8),ip_w:mk(14,8,90,30,41,1,1,20,21,49,54,100,29.5,29.5,25.8,25.8),es_r:mk(0,0,100,30,41,1,1,20,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(1,0,100,25,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),sf_r:mk(2,2,90,35,41,1,1,21,20,40,54,100,29.5,29.5,26.5,26.5),sf_q:mk(4,3,90,30,41,1,1,21,20,40,54,100,29.5,29.5,26.5,26.5),bl_r:mk(3,0,100,30,41,1,5,21,21,40,54,100,29.5,29.5,22,22),bl_q:mk(8,0,100,30,41,1,5,21,21,40,54,100,29.5,29.5,20.5,20.5),bl_i:mk(11,2,100,30,41,1,5,21,21,40,54,100,29.5,29.5,22,22),bl_w:mk(20,10,100,30,41,1,5,21,21,40,54,100,29.5,29.5,22,22),track:{notes:"Lowest downforce. No soft.",softLife:"9 laps",medLife:"13 laps",hardLife:"18 laps",pitWindow50:"Lap 9-11",strategy:"1-stop. Pit 21s"}},"Baku":{ip_r:mk(3,0,100,30,41,1,1,8,20,40,55,100,29.5,29.5,20.5,20.5),ip_q:mk(7,0,100,20,41,1,1,20,20,40,53,100,29,29,21,21),ip_i:mk(18,15,90,25,41,1,1,8,20,47,53,100,29.5,29.5,25.8,25.8),ip_w:mk(20,16,100,20,41,1,1,19,19,40,54,100,28,28,20.5,20.5),es_r:mk(5,0,100,25,41,1,1,1,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(7,0,100,20,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(5,4,90,30,41,1,1,1,22,42,55,100,29.5,29.5,23.6,23.6),sf_q:mk(8,7,90,30,41,1,1,1,22,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(0,0,100,50,41,1,6,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(4,0,100,40,41,1,6,21,20,40,55,100,29.5,29.5,22,22),bl_i:mk(12,5,100,40,41,1,6,21,20,40,55,100,29.5,29.5,22,22),bl_w:mk(22,14,100,40,41,1,6,21,20,40,55,100,29.5,29.5,22,22),track:{notes:"Rear wear critical.",softLife:"10 laps",medLife:"16 laps",hardLife:"27 laps",pitWindow50:"Lap 10-12",strategy:"2-stop. Pit 19.5s"}},"Singapore":{ip_r:mk(50,48,100,30,41,1,1,13,18,40,54,100,29,29,20.5,20.5),ip_q:mk(50,44,100,20,41,1,1,21,18,40,53,100,29,29,20.5,20.5),ip_i:mk(50,50,90,25,41,1,1,10,20,40,53,100,29.5,29.5,25.8,25.8),ip_w:mk(50,50,100,20,40,1,1,20,17,40,54,100,26,26,20.5,20.5),es_r:mk(50,45,100,30,41,1,1,5,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(50,45,100,25,41,1,1,10,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(45,50,90,30,41,1,1,1,21,43,55,100,29.5,29.5,26.5,26.5),sf_q:mk(45,50,90,30,41,1,1,5,21,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(42,42,100,35,40,1,6,21,22,44,54,100,29.5,29.5,22,22),bl_q:mk(44,42,100,30,40,1,6,21,22,44,54,100,29.5,29.5,22,22),bl_i:mk(50,50,100,20,40,1,6,21,22,44,54,100,29.5,29.5,22,22),bl_w:mk(50,50,100,15,40,1,6,21,22,44,54,100,29.5,29.5,22,22),track:{notes:"No soft. M-H.",softLife:"10 laps",medLife:"20 laps",hardLife:"27 laps",pitWindow50:"Lap 9-12",strategy:"No soft. Pit 21s"}},"COTA":{ip_r:mk(41,32,100,30,41,1,1,6,19,40,53,100,29.5,29.5,20.5,20.5),ip_q:mk(45,33,100,20,41,1,1,15,19,40,53,100,29.5,29.5,20.5,20.5),ip_i:mk(41,50,90,30,41,13,8,21,21,50,52,100,29.5,29.5,25.8,25.8),ip_w:mk(50,44,100,20,41,1,1,14,18,40,53,100,27,27,20.5,20.5),es_r:mk(35,32,100,30,41,1,1,18,20,40,54,100,29.5,29.5,23.6,23.6),es_q:mk(38,29,100,25,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(36,34,90,35,41,1,5,16,20,40,55,100,29.5,29.5,25.5,25.5),sf_q:mk(36,35,90,30,41,1,3,18,20,40,54,100,29.5,29.5,24,24),bl_r:mk(34,30,100,40,40,1,6,21,20,41,55,100,29.5,29.5,22.3,22.3),bl_q:mk(38,34,100,35,40,1,6,21,20,41,54,100,29.5,29.5,22.3,22.3),bl_i:mk(50,48,100,40,40,1,6,21,20,41,54,100,29.5,29.5,22.3,22.3),bl_w:mk(50,48,100,40,40,1,6,21,20,41,54,100,29.5,29.5,22.3,22.3),track:{notes:"S1 wear. Medium best.",softLife:"10 laps",medLife:"16 laps",hardLife:"23 laps",pitWindow50:"Lap 8-11",strategy:"Medium. Pit 19.6s"}},"Mexico":{ip_r:mk(14,9,100,35,41,1,1,14,19,40,55,100,29,29,20.5,20.5),ip_q:mk(40,28,100,25,41,1,1,20,19,40,53,100,29,29,20.5,20.5),ip_i:mk(44,41,90,20,41,7,7,21,20,47,53,100,29.5,29.5,25.8,25.8),ip_w:mk(50,45,100,20,41,1,1,18,18,40,53,100,27,27,20.5,20.5),es_r:mk(22,16,100,25,41,1,1,1,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(36,26,100,20,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(25,25,90,25,41,1,1,1,20,42,54,100,29.5,29.5,26.5,26.5),sf_q:mk(35,33,90,30,41,1,1,8,20,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(14,14,100,40,41,1,4,6,20,44,55,100,29.5,29.5,26.5,26.5),bl_q:mk(21,17,100,30,41,1,4,6,20,44,54,100,29.5,29.5,20.5,20.5),bl_i:mk(40,33,100,25,41,1,4,6,20,44,54,100,29.5,29.5,26.5,26.5),bl_w:mk(48,39,100,25,41,1,4,6,20,44,54,100,29.5,29.5,26.5,26.5),track:{notes:"Very high rear wear.",softLife:"10 laps",medLife:"16 laps",hardLife:"23 laps",pitWindow50:"Lap 13-15",strategy:"1-stop. Pit 16s"}},"Brazil":{ip_r:mk(23,17,100,35,41,1,1,13,20,40,54,100,28.5,28.5,22,22),ip_q:mk(32,15,100,20,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),ip_i:mk(41,37,90,25,41,1,8,19,20,47,52,100,29.5,29.5,26.5,26.5),ip_w:mk(48,38,100,20,40,1,1,19,19,40,53,100,28,28,20.5,20.5),es_r:mk(26,22,100,30,41,1,1,15,20,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(28,22,100,20,41,1,1,21,20,40,51,100,29.5,29.5,20.5,20.5),sf_r:mk(24,22,90,30,41,1,1,5,21,41,53,100,29.5,29.5,23.6,23.6),sf_q:mk(25,22,90,30,41,1,1,11,21,41,52,100,29.5,29.5,20.5,20.5),bl_r:mk(11,8,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),bl_q:mk(15,12,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),bl_i:mk(44,40,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),track:{notes:"Very low wing. Smooth S2.",softLife:"9 laps",medLife:"16 laps",hardLife:"20 laps",pitWindow50:"Lap 13-16",strategy:"1-stop. Pit 19.6s"}},"Vegas":{ip_r:mk(0,0,100,35,36,1,1,12,22,40,55,100,28.5,28.5,24.5,24.5),ip_q:mk(2,0,100,15,38,1,1,21,21,40,53,100,27,27,25.5,25.5),ip_i:mk(0,4,90,30,41,10,8,21,20,46,54,100,23.2,23.2,20.9,20.9),ip_w:mk(0,1,100,15,39,1,1,21,21,40,53,100,26,26,22,22),es_r:mk(0,0,100,30,41,1,1,21,21,41,54,100,29.5,29.5,26.5,26.5),es_q:mk(3,0,100,25,41,1,1,21,21,41,53,100,29.5,29.5,20.6,20.6),sf_r:mk(2,0,90,30,41,1,5,18,22,42,55,100,29.5,29.5,26.5,26.5),sf_q:mk(5,1,90,30,41,1,5,18,22,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(0,0,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),bl_q:mk(4,0,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),bl_i:mk(12,7,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),bl_w:mk(17,12,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),track:{notes:"DRS overtaking. No wheelspin.",softLife:"9 laps",medLife:"16 laps",hardLife:"20 laps",pitWindow50:"Lap 9-10",strategy:"Pit 21.5s"}},"Qatar":{ip_r:mk(33,23,100,30,41,1,1,15,20,40,54,100,29.5,29.5,21.5,21.5),ip_q:mk(44,26,100,20,41,1,1,18,20,40,52,100,29.5,29.5,21,21),ip_i:mk(45,42,90,20,41,7,8,20,20,48,53,100,29.5,29.5,25.8,25.8),ip_w:mk(50,38,100,20,41,1,1,20,20,40,52,100,29.5,29.5,21,21),es_r:mk(34,30,100,20,41,1,1,21,20,40,53,100,29.5,29.5,25,25),es_q:mk(36,28,100,20,41,1,1,21,20,40,52,100,29.5,29.5,25,25),sf_r:mk(34,30,100,30,41,1,1,21,20,43,54,100,29.5,29.5,25,25),sf_q:mk(36,30,90,25,41,1,1,21,20,42,53,100,29.5,29.5,25,25),bl_r:mk(44,38,100,30,41,41,6,21,20,40,54,100,29.5,29.5,22,22),bl_q:mk(45,39,100,25,41,41,6,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(50,44,100,20,41,41,6,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,20,41,41,6,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"Very hard to overtake.",softLife:"9 laps",medLife:"13 laps",hardLife:"20 laps",pitWindow50:"Lap 10-14",strategy:"1-stop. Pit 19.9s"}},"Abu Dhabi":{ip_r:mk(19,19,100,25,41,1,1,15,18,40,54,100,28.5,28.5,20.5,20.5),ip_q:mk(32,19,100,20,41,1,1,21,19,40,53,100,29,29,20.5,20.5),ip_i:mk(42,39,90,25,41,4,9,20,20,47,53,100,29.5,29.5,25.8,25.8),ip_w:mk(44,35,100,20,41,1,1,15,18,40,53,100,26.5,26.5,20.5,20.5),es_r:mk(25,18,100,30,41,1,1,10,20,40,54,100,29.5,29.5,25.8,25.8),es_q:mk(35,20,100,20,41,1,1,21,19,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(25,20,90,30,41,1,1,5,21,42,55,100,29.5,29.5,25.8,25.8),sf_q:mk(35,29,90,25,41,1,1,10,20,41,54,100,29.5,29.5,20.5,20.5),bl_r:mk(32,28,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(35,31,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),bl_i:mk(41,35,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),bl_w:mk(46,42,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),track:{notes:"High wear. M-H 1-stop.",softLife:"9 laps",medLife:"16 laps",hardLife:"20 laps",pitWindow50:"Lap 11-13",strategy:"M-H 1-stop. Pit 19.7s"}}};
-
-// ============================================================
-// NOTE: The rest of the component (UI rendering, chat, etc.)
-// is identical to the original artifact. Due to file size limits,
-// the full rendering logic is imported from the original source.
-// See the original component for: Bar, RC, TMC, track maps,
-// gTags, gCS, gCL, gFeel, callClaude, and the main JSX.
-// ============================================================
-
-// Utility functions (same as original)
-function gTags(s){const t=[];const aw=(s.fw+s.rw)/2;const at=(s.fl+s.fr+s.rl+s.rr)/4;if(aw>=35)t.push({label:"High DF",color:"#7c3aed"});else if(aw>=20)t.push({label:"Balanced",color:"#0891b2"});else t.push({label:"Low Drag",color:"#dc2626"});if(s.doff<=20)t.push({label:"Sharp Turn",color:"#ea580c"});else if(s.doff>=40)t.push({label:"Rear Stable",color:"#16a34a"});if(s.fs>=38)t.push({label:"Stiff Front",color:"#ca8a04"});if(s.rs<=3)t.push({label:"Soft Rear",color:"#0284c7"});if(at<=22)t.push({label:"Low Pressure",color:"#9333ea"});else if(at>=27)t.push({label:"High Pressure",color:"#15803d"});if(s.bb>=56)t.push({label:"Front Brake",color:"#b45309"});return t;}
-function gCS(s,ti){if(!ti)return null;let sc=70;const aw=(s.fw+s.rw)/2;const at=(s.fl+s.fr+s.rl+s.rr)/4;const ld=ti.drag<0.013;const hw=aw>=30;if(ld&&!hw)sc+=10;if(ld&&hw)sc-=8;if(!ld&&hw)sc+=5;if(ti.aeroF>=3.3&&s.fw<=15)sc+=8;if(ti.aeroF<2.9&&s.fw<=10)sc-=10;if(ti.aeroR>=2.0&&s.doff<=25)sc+=8;if(ti.aeroR<1.85&&s.doff<=20)sc-=8;if(ti.mass>=810&&s.fs>=38)sc+=5;if(ti.mass<=800&&s.fs<=30)sc+=5;if(ti.wDist>=0.2&&s.bb<=54)sc+=7;if(ti.wDist<=0.17&&s.bb>=56)sc+=5;if(ti.wDist>=0.2&&s.bb>=57)sc-=7;if(ti.gear>=1.67&&s.don>=100)sc+=5;if(ti.gear<1.55&&s.don>=100)sc-=5;if(ti.mass>=810&&at<=24)sc+=5;if(ti.mass<=800&&at>=28)sc+=3;return Math.max(0,Math.min(100,Math.round(sc)));}
-function gCL(sc){if(sc>=88)return{label:"Perfect",color:"#22c55e",icon:"\u2b50"};if(sc>=76)return{label:"Good",color:"#84cc16",icon:"\u2705"};if(sc>=63)return{label:"OK",color:"#eab308",icon:"\u26a0\ufe0f"};if(sc>=50)return{label:"Poor",color:"#f97316",icon:"\ud83d\udd36"};return{label:"Bad",color:"#ef4444",icon:"\u274c"};}
-function gFeel(s){const aw=(s.fw+s.rw)/2;const at=(s.fl+s.fr+s.rl+s.rr)/4;const f=[];if(aw>=40)f.push("Max DF");else if(aw>=25)f.push("Mid-High DF");else if(aw>=10)f.push("Low Wing");else f.push("Min DF");if(s.doff<=20)f.push("Sharp Entry");else if(s.doff>=40)f.push("Stable Rear");if(s.rs<=3)f.push("Max Traction");if(s.fs>=38)f.push("Fast Response");if(at<=22)f.push("Low PSI Grip");else if(at>=27)f.push("High PSI Save");return f.join(" \xb7 ");}
-
-async function callClaude(messages, systemPrompt, signal) {
-  if (!API_KEY) throw new Error("VITE_ANTHROPIC_API_KEY not set in .env");
-  const res = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": API_KEY,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: systemPrompt || undefined,
-      messages,
-    }),
-    signal,
-  });
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  const data = await res.json();
-  return data.content?.filter(b => b.type === "text").map(b => b.text).join("\n") || "";
-}
-
-// ============================================================
-// Main Component — Simplified for integration
-// Shows setup selection + AI chat for the selected track/setup
-// ============================================================
-const C={bg:"#0a0e1a",card:"#111827",card2:"#1a2235",border:"rgba(255,255,255,0.08)",border2:"rgba(255,255,255,0.15)",text:"#f1f5f9",muted:"#94a3b8",dim:"#475569",red:"#ef4444"};
-
-function Bar({v,min,max}){const p=Math.max(0,Math.min(100,((v-min)/(max-min))*100));const c=p<33?"#3b82f6":p<66?"#eab308":"#ef4444";return(<div style={{background:"rgba(255,255,255,0.07)",borderRadius:3,height:4,overflow:"hidden"}}><div style={{width:`${p}%`,height:"100%",background:c,borderRadius:3}}/></div>);}
+type WeatherMode = "dry" | "rain" | null;
 
 interface F1SetupManagerProps {
   onBack?: () => void;
 }
 
-export function F1SetupManager({ onBack }: F1SetupManagerProps) {
-  const [track,setTrack]=useState(null);
-  const [weather,setWeather]=useState(null);
-  const [fg,setFg]=useState("all");
-  const [selSetup,setSelSetup]=useState(null);
-  const [selMeta,setSelMeta]=useState(null);
-  const [expanded,setExpanded]=useState({});
-  const [chat,setChat]=useState([]);
-  const [input,setInput]=useState("");
-  const [loading,setLoading]=useState(false);
-  const [chatHist,setChatHist]=useState([]);
-  const chatEnd=useRef(null);
-
-  useEffect(()=>{chatEnd.current?.scrollIntoView({behavior:"smooth"});},[chat]);
-
-  const dd=track?DB[track]:null;
-
-  const sTrack=t=>{setTrack(t);setWeather(null);setSelSetup(null);setSelMeta(null);setChat([]);setChatHist([]);};
-  const sW=w=>{setWeather(w);setSelSetup(null);setSelMeta(null);setChat([]);setChatHist([]);setFg("all");};
-  const sSt=(m,s)=>{setSelMeta(m);setSelSetup(s);setChat([]);setChatHist([]);setLoading(false);};
-
-  const bSys=()=>{
-    if(!selSetup)return"";
-    const sw=FIELDS.map(f=>`${DEFS[f.k].name}:${selSetup[f.k]}(${DEFS[f.k].min}~${DEFS[f.k].max})`).join("\n");
-    const ti2=dd?.track?`\n[Track]${track}|${dd.track.notes}\nS:${dd.track.softLife} M:${dd.track.medLife} H:${dd.track.hardLife}\nStrategy:${dd.track.strategy}`:"";
-    return`F1 25 setup engineer. Feedback in Korean 3-5 lines. Suggest 2-3 changes with reasons.\n\n${KNOWLEDGE_BASE}\n\n[Env]${track}|${weather==="rain"?"Wet":"Dry"}|${selMeta?.label}${ti2}\n[Setup]\n${sw}`;
-  };
-
-  const send=async()=>{
-    if(!input.trim()||loading)return;
-    const m=input.trim();setInput("");
-    setChat(p=>[...p,{r:"u",t:m}]);
-    const nh=[...chatHist,{role:"user",content:m}];
-    setLoading(true);
-    try{
-      const ctrl=new AbortController();
-      const tid=setTimeout(()=>ctrl.abort(),30000);
-      const txt=await callClaude(nh,bSys(),ctrl.signal);
-      clearTimeout(tid);
-      setChat(p=>[...p,{r:"a",t:txt}]);
-      setChatHist([...nh,{role:"assistant",content:txt}]);
-    }catch(e){setChat(p=>[...p,{r:"a",t:e.name==="AbortError"?"Timeout":"Error: "+e.message}]);}
-    setLoading(false);
-  };
-
-  const fM=SM.filter(m=>{const wO=weather==="rain"?m.rain:!m.rain;const gO=fg==="all"||m.group===fg;return wO&&gO;});
-  const qQ=weather==="rain"?["Spinning in rain","Understeer in wet","Wet braking unstable"]:["Rear sliding","Understeer","Low top speed","Front lockup","Tyre overheating","Slow corner exit"];
-
-  // Override body overflow:hidden so this page can scroll
-  useEffect(() => {
-    document.body.style.overflow = 'auto';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
+function MetricBar({ value, min, max }: { value: number; min: number; max: number }) {
+  const percent = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+  const color = percent < 33 ? "#60a5fa" : percent < 66 ? "#f59e0b" : "#ef4444";
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"system-ui,sans-serif",fontSize:13}}>
-      <div style={{background:"#0d1220",borderBottom:"1px solid rgba(255,255,255,0.15)",padding:"13px 16px",display:"flex",alignItems:"center",gap:12}}>
-        {onBack && <button onClick={onBack} style={{background:"none",border:"1px solid rgba(255,255,255,0.15)",color:C.muted,padding:"6px 12px",borderRadius:6,cursor:"pointer",fontSize:11}}>Back</button>}
-        <span style={{fontSize:22}}>{"🏎️"}</span>
-        <div><div style={{fontSize:15,fontWeight:700}}>F1 25 Setup Manager</div><div style={{fontSize:10,color:C.dim}}>Puki / BL / AI / 2025</div></div>
-      </div>
-      <div style={{padding:"14px 14px 80px",display:"flex",flexDirection:"column",gap:12}}>
+    <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+      <div style={{ width: `${percent}%`, height: "100%", borderRadius: 999, background: color }} />
+    </div>
+  );
+}
 
-        {/* Track Selection */}
-        <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-          <div style={{background:C.card2,padding:"12px 14px",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{fontSize:13,fontWeight:700}}>1. Track</div>
-          </div>
-          <div style={{padding:"12px 14px"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-              {TD.map(t=>(<button key={t.name} onClick={()=>sTrack(t.name)} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 11px",borderRadius:8,cursor:"pointer",textAlign:"left",border:`1px solid ${track===t.name?C.red:C.border}`,background:track===t.name?"rgba(239,68,68,0.12)":C.card2}}>
-                <FI flag={t.flag} size={20}/>
-                <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:track===t.name?700:500,color:track===t.name?C.red:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}{t.sprint?" \u2605":""}</div><div style={{fontSize:9,color:C.dim}}>R{t.round}</div></div>
-              </button>))}
-            </div>
-          </div>
+function TrackBadge({ badge }: { badge: string }) {
+  return (
+    <span
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 999,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(0,229,255,0.08)",
+        color: "#00e5ff",
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: 0.4,
+        flexShrink: 0,
+      }}
+    >
+      {badge}
+    </span>
+  );
+}
+
+export function F1SetupManager({ onBack }: F1SetupManagerProps) {
+  const [track, setTrack] = useState<string | null>(null);
+  const [weather, setWeather] = useState<WeatherMode>(null);
+  const [group, setGroup] = useState("all");
+  const [selectedKey, setSelectedKey] = useState<SetupKey | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const catalog = useMemo(() => getTrackCatalog(track), [track]);
+  const selectedMeta = useMemo(
+    () => SETUP_META.find((meta) => meta.key === selectedKey) ?? null,
+    [selectedKey],
+  );
+  const selectedSetup = selectedMeta ? catalog?.[getDbKey(selectedMeta)] : null;
+
+  const visibleMeta = useMemo(() => {
+    if (!weather) {
+      return [];
+    }
+
+    return SETUP_META.filter((meta) => {
+      const matchesWeather = weather === "rain" ? meta.rain : !meta.rain;
+      const matchesGroup = group === "all" || meta.group === group;
+      return matchesWeather && matchesGroup;
+    });
+  }, [group, weather]);
+
+  const resetAfterTrack = (nextTrack: string) => {
+    setTrack(nextTrack);
+    setWeather(null);
+    setGroup("all");
+    setSelectedKey(null);
+    setExpanded({});
+  };
+
+  const resetAfterWeather = (nextWeather: Exclude<WeatherMode, null>) => {
+    setWeather(nextWeather);
+    setGroup("all");
+    setSelectedKey(null);
+    setExpanded({});
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#0b1020",
+        color: "#e2e8f0",
+        fontFamily: "'Inter', sans-serif",
+        paddingBottom: 48,
+      }}
+    >
+      <div
+        style={{
+          padding: "16px 18px",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(10, 15, 30, 0.92)",
+          backdropFilter: "blur(16px)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        {onBack ? (
+          <button
+            onClick={onBack}
+            style={{
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "transparent",
+              color: "#94a3b8",
+              borderRadius: 999,
+              padding: "6px 12px",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Back
+          </button>
+        ) : null}
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>F1 25 Setup Manager</div>
+          <div style={{ fontSize: 11, color: "#64748b" }}>Shared setup catalog / AI removed</div>
         </div>
+      </div>
 
-        {/* Weather */}
-        {track&&(<div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-          <div style={{background:C.card2,padding:"12px 14px",borderBottom:`1px solid ${C.border}`}}><div style={{fontSize:13,fontWeight:700}}>2. Weather</div></div>
-          <div style={{padding:"12px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            {[["dry","\u2600\ufe0f","Dry"],["rain","\ud83c\udf27\ufe0f","Wet"]].map(([k,ic,l])=>(<button key={k} onClick={()=>sW(k)} style={{padding:"14px 10px",borderRadius:10,cursor:"pointer",textAlign:"left",border:`1px solid ${weather===k?C.red:C.border}`,background:weather===k?"rgba(239,68,68,0.12)":C.card2}}><div style={{fontSize:22,marginBottom:4}}>{ic}</div><div style={{fontSize:13,fontWeight:600,color:weather===k?C.red:C.text}}>{l}</div></button>))}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 14 }}>
+        <section style={panelStyle}>
+          <div style={panelHeaderStyle}>1. Track</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {TRACKS.map((item) => {
+              const active = track === item.name;
+              return (
+                <button
+                  key={item.name}
+                  onClick={() => resetAfterTrack(item.name)}
+                  style={{
+                    ...cardButtonStyle,
+                    borderColor: active ? "#00e5ff" : "rgba(255,255,255,0.08)",
+                    background: active ? "rgba(0,229,255,0.08)" : "rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <TrackBadge badge={item.badge} />
+                  <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: active ? "#00e5ff" : "#e2e8f0" }}>
+                      {item.name}
+                      {item.sprint ? " S" : ""}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#64748b" }}>Round {item.round}</div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-        </div>)}
+        </section>
 
-        {/* Setup List */}
-        {weather&&dd&&(<div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-          <div style={{background:C.card2,padding:"12px 14px",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>3. Setup</div>
-            {dd.track&&(<div style={{background:"rgba(255,255,255,0.04)",borderRadius:8,padding:"8px 10px",marginBottom:10}}><p style={{fontSize:11,color:C.muted,margin:"0 0 6px"}}>{dd.track.notes}</p><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{[["S",dd.track.softLife,"#ef4444"],["M",dd.track.medLife,"#eab308"],["H",dd.track.hardLife,"#94a3b8"]].map(([l,v,c])=>(<span key={l} style={{fontSize:10,padding:"2px 7px",borderRadius:6,background:c+"18",color:c}}>{l} {v}</span>))}</div></div>)}
-            {weather==="dry"&&(<div style={{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}}>{[["all","All"],["Istvan Puki","Puki"],["Brendon Leigh","BL"]].map(([k,l])=>(<button key={k} onClick={()=>setFg(k)} style={{padding:"4px 11px",borderRadius:20,border:`1px solid ${fg===k?C.red:C.border}`,background:fg===k?C.red:"transparent",color:fg===k?"#fff":C.muted,fontSize:11,cursor:"pointer"}}>{l}</button>))}</div>)}
-          </div>
-          <div style={{padding:"12px 14px"}}>
-            {fM.map(meta=>{const s=dd?.[getDbKey(meta)];if(!s)return null;const isExp=!!expanded[meta.key];const isSel=selMeta?.key===meta.key;const tags=gTags(s);const feel=gFeel(s);
-            return(<div key={meta.key} style={{marginBottom:7,borderRadius:10,overflow:"hidden",border:`1px solid ${isSel?meta.color:C.border}`}}>
-              <div onClick={()=>setExpanded(p=>({...p,[meta.key]:!p[meta.key]}))} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"10px 12px",cursor:"pointer",background:C.card2}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:3}}><div style={{width:8,height:8,borderRadius:"50%",background:meta.color,flexShrink:0}}/><span style={{fontSize:12,fontWeight:700,color:isSel?meta.color:C.text}}>{meta.label}</span><span style={{fontSize:9,color:C.dim}}>{meta.who}</span></div>
-                  <p style={{fontSize:10,color:"#a78bfa",margin:"0 0 4px",fontStyle:"italic"}}>{feel}</p>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{tags.map(tg=><span key={tg.label} style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:tg.color+"18",color:tg.color}}>{tg.label}</span>)}</div>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,marginLeft:8,flexShrink:0}}><button onClick={e=>{e.stopPropagation();sSt(meta,s);}} style={{fontSize:10,padding:"5px 11px",borderRadius:6,border:"none",background:meta.color,color:"#fff",cursor:"pointer",fontWeight:700}}>Select</button><span style={{fontSize:10,color:C.dim}}>{isExp?"\u25b2":"\u25bc"}</span></div>
-              </div>
-              {isExp&&(<div style={{padding:"10px 12px",background:C.card,borderTop:`1px solid ${C.border}`}}><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px"}}>{FIELDS.map(f=>(<div key={f.k}><div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:9,color:C.dim}}>{f.l}</span><span style={{fontSize:10,fontWeight:600,color:C.text}}>{s[f.k]}</span></div><Bar v={s[f.k]} min={DEFS[f.k].min} max={DEFS[f.k].max}/></div>))}</div></div>)}
-            </div>);})}
-          </div>
-        </div>)}
-
-        {/* AI Chat */}
-        {selSetup&&(<div style={{background:C.card,borderRadius:12,border:`1px solid ${selMeta?.color||C.border}`,overflow:"hidden"}}>
-          <div style={{background:C.card2,padding:"12px 14px",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>4. AI Feedback</div>
-            <div style={{background:"rgba(255,255,255,0.04)",borderRadius:8,padding:"8px 10px"}}><p style={{fontSize:12,fontWeight:700,color:selMeta?.color,margin:0}}>{selMeta?.label}</p><p style={{fontSize:9,color:C.dim,margin:"2px 0 0"}}>{track} / {weather==="rain"?"Wet":"Dry"}</p></div>
-          </div>
-          <div style={{padding:"12px 14px"}}>
-            <div style={{minHeight:160,maxHeight:320,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,marginBottom:8}}>
-              {chat.length===0&&<div style={{textAlign:"center",color:C.dim,paddingTop:30,fontSize:11}}>Select a quick question or type your driving feedback</div>}
-              {chat.map((m,i)=>(<div key={i} style={{display:"flex",justifyContent:m.r==="u"?"flex-end":"flex-start"}}><div style={{maxWidth:"86%",padding:"8px 11px",fontSize:12,lineHeight:1.6,borderRadius:m.r==="u"?"12px 12px 3px 12px":"12px 12px 12px 3px",background:m.r==="u"?C.red:C.card2,border:m.r==="a"?`1px solid ${C.border}`:"none",color:C.text,whiteSpace:"pre-wrap"}}>{m.t}</div></div>))}
-              {loading&&<div style={{display:"flex",justifyContent:"flex-start"}}><div style={{padding:"8px 12px",borderRadius:"12px 12px 12px 3px",fontSize:12,color:C.muted,background:C.card2}}>Analyzing...</div></div>}
-              <div ref={chatEnd}/>
+        {track ? (
+          <section style={panelStyle}>
+            <div style={panelHeaderStyle}>2. Weather</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[
+                { key: "dry" as const, title: "Dry", detail: "Race and quali baselines" },
+                { key: "rain" as const, title: "Wet", detail: "Intermediate and full wet" },
+              ].map((item) => {
+                const active = weather === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => resetAfterWeather(item.key)}
+                    style={{
+                      ...cardButtonStyle,
+                      minHeight: 88,
+                      alignItems: "flex-start",
+                      flexDirection: "column",
+                      borderColor: active ? "#22c55e" : "rgba(255,255,255,0.08)",
+                      background: active ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)",
+                    }}
+                  >
+                    <div style={{ fontSize: 16, fontWeight: 700, color: active ? "#22c55e" : "#e2e8f0" }}>{item.title}</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>{item.detail}</div>
+                  </button>
+                );
+              })}
             </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>{qQ.map(q=>(<button key={q} onClick={()=>setInput(q)} style={{fontSize:10,padding:"4px 9px",borderRadius:12,cursor:"pointer",border:`1px solid ${C.border}`,background:C.card2,color:C.muted}}>{q}</button>))}</div>
-            <div style={{display:"flex",gap:7}}><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Describe your driving feel..." style={{flex:1,padding:"9px 12px",borderRadius:8,border:`1px solid ${C.border2}`,background:C.card2,color:C.text,fontSize:12,outline:"none"}}/><button onClick={send} disabled={loading} style={{padding:"9px 16px",borderRadius:8,border:"none",background:loading?"#374151":C.red,color:"#fff",fontSize:12,fontWeight:700,cursor:loading?"not-allowed":"pointer"}}>Send</button></div>
-            {!API_KEY && <div style={{marginTop:8,padding:"8px 10px",background:"rgba(239,68,68,0.1)",borderRadius:6,fontSize:10,color:"#f87171"}}>Set VITE_ANTHROPIC_API_KEY in .env for AI feedback</div>}
-          </div>
-        </div>)}
+          </section>
+        ) : null}
 
+        {weather && catalog ? (
+          <section style={panelStyle}>
+            <div style={panelHeaderStyle}>3. Setup</div>
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{catalog.track.notes}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {[
+                  `Soft ${catalog.track.softLife}`,
+                  `Medium ${catalog.track.medLife}`,
+                  `Hard ${catalog.track.hardLife}`,
+                  catalog.track.pitWindow50,
+                  catalog.track.strategy,
+                ].map((item) => (
+                  <span
+                    key={item}
+                    style={{
+                      fontSize: 10,
+                      padding: "3px 8px",
+                      borderRadius: 999,
+                      background: "rgba(0,229,255,0.08)",
+                      color: "#bae6fd",
+                    }}
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {weather === "dry" ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                {[
+                  { key: "all", label: "All" },
+                  { key: "Istvan Puki", label: "Puki" },
+                  { key: "Brendon Leigh", label: "BL" },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() => setGroup(item.key)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 999,
+                      border: `1px solid ${group === item.key ? "#00e5ff" : "rgba(255,255,255,0.1)"}`,
+                      background: group === item.key ? "#00e5ff" : "transparent",
+                      color: group === item.key ? "#08101f" : "#94a3b8",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {visibleMeta.map((meta) => {
+                const setup = catalog[getDbKey(meta)];
+                if (!setup) {
+                  return null;
+                }
+
+                const isSelected = selectedMeta?.key === meta.key;
+                const isExpanded = Boolean(expanded[meta.key]);
+                const tags = getSetupTags(setup);
+
+                return (
+                  <div
+                    key={meta.key}
+                    style={{
+                      borderRadius: 12,
+                      border: `1px solid ${isSelected ? meta.color : "rgba(255,255,255,0.08)"}`,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: 12,
+                        display: "flex",
+                        gap: 12,
+                        alignItems: "flex-start",
+                        background: "rgba(255,255,255,0.03)",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: meta.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? meta.color : "#e2e8f0" }}>{meta.label}</span>
+                          <span style={{ fontSize: 10, color: "#64748b" }}>{meta.who}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 6 }}>{getSetupFeel(setup)}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          {tags.map((tag) => (
+                            <span
+                              key={tag.label}
+                              style={{
+                                padding: "2px 7px",
+                                borderRadius: 999,
+                                background: `${tag.color}18`,
+                                color: tag.color,
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {tag.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <button
+                          onClick={() => setSelectedKey(meta.key)}
+                          style={{
+                            border: "none",
+                            borderRadius: 8,
+                            padding: "6px 12px",
+                            background: meta.color,
+                            color: "#08101f",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Select
+                        </button>
+                        <button
+                          onClick={() =>
+                            setExpanded((current) => ({
+                              ...current,
+                              [meta.key]: !current[meta.key],
+                            }))
+                          }
+                          style={{
+                            border: "1px solid rgba(255,255,255,0.1)",
+                            borderRadius: 8,
+                            padding: "6px 12px",
+                            background: "transparent",
+                            color: "#94a3b8",
+                            fontSize: 11,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {isExpanded ? "Hide" : "Open"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {isExpanded ? (
+                      <div style={{ padding: 12, background: "rgba(0,0,0,0.16)" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+                          {SETUP_FIELDS.map((field) => (
+                            <div key={field.k}>
+                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                                <span style={{ fontSize: 10, color: "#64748b" }}>{field.l}</span>
+                                <span style={{ fontSize: 10, fontWeight: 700 }}>{setup[field.k]}</span>
+                              </div>
+                              <MetricBar value={setup[field.k]} min={SETUP_FIELD_DEFS[field.k].min} max={SETUP_FIELD_DEFS[field.k].max} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        {selectedSetup && selectedMeta && catalog ? (
+          <section style={panelStyle}>
+            <div style={panelHeaderStyle}>4. Review</div>
+            <div
+              style={{
+                padding: 12,
+                borderRadius: 12,
+                background: "rgba(255,255,255,0.03)",
+                border: `1px solid ${selectedMeta.color}`,
+                marginBottom: 12,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: selectedMeta.color }}>{selectedMeta.label}</div>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                {track} / {weather === "rain" ? "Wet" : "Dry"} / {selectedMeta.group}
+              </div>
+              {selectedSetup.note ? (
+                <div style={{ fontSize: 11, color: "#cbd5e1", marginTop: 8 }}>{selectedSetup.note}</div>
+              ) : null}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+              {[
+                { label: "Pit Window", value: catalog.track.pitWindow50 },
+                { label: "Strategy", value: catalog.track.strategy },
+                { label: "Quali Fuel", value: catalog.track.qualiFuel || "N/A" },
+                { label: "ERS Trigger", value: catalog.track.ersEnable || "N/A" },
+              ].map((item) => (
+                <div key={item.label} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)" }}>
+                  <div style={{ fontSize: 10, color: "#64748b", marginBottom: 4 }}>{item.label}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+              {SETUP_FIELDS.map((field) => (
+                <div key={field.k}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                    <span style={{ fontSize: 10, color: "#64748b" }}>{field.l}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700 }}>{selectedSetup[field.k]}</span>
+                  </div>
+                  <MetricBar value={selectedSetup[field.k]} min={SETUP_FIELD_DEFS[field.k].min} max={SETUP_FIELD_DEFS[field.k].max} />
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   );
 }
+
+const panelStyle: CSSProperties = {
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(15, 23, 42, 0.78)",
+  overflow: "hidden",
+};
+
+const panelHeaderStyle: CSSProperties = {
+  padding: "12px 14px",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const cardButtonStyle: CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: 12,
+  borderRadius: 12,
+  borderWidth: 1,
+  borderStyle: "solid",
+  cursor: "pointer",
+  color: "#e2e8f0",
+};

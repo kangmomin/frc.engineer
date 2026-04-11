@@ -1,6 +1,5 @@
 import type {
   AppConfig,
-  BattleAlert,
   CarDamage,
   CarPosition,
   DriverInfo,
@@ -236,9 +235,6 @@ export function buildMockMessages(tick: number): string[] {
   for (const notification of frame.raceControl) {
     messages.push(encodeMessage('raceControl', notification));
   }
-  for (const alert of frame.battleAlerts) {
-    messages.push(encodeMessage('battleAlert', alert));
-  }
 
   return messages;
 }
@@ -247,7 +243,6 @@ export function buildMockFrame(tick: number): {
   pitwallState: PitwallState;
   dashboardTelemetry: TelemetryData;
   raceControl: RaceControlNotification[];
-  battleAlerts: BattleAlert[];
 } {
   const session = buildSession(tick);
   const leaderTotalLaps = BASE_TOTAL_PROGRESS + tick * (FRAME_INTERVAL_MS / AVERAGE_LAP_TIME_MS);
@@ -268,7 +263,6 @@ export function buildMockFrame(tick: number): {
     pitwallState,
     dashboardTelemetry: buildDashboardTelemetry(player, driverFrames, tick),
     raceControl: buildRaceControlEvents(tick, player),
-    battleAlerts: buildBattleAlerts(tick, pitwallState.drivers, player),
   };
 }
 
@@ -572,46 +566,6 @@ function buildRaceControlEvents(tick: number, player: DriverInfo): RaceControlNo
   return [];
 }
 
-function buildBattleAlerts(tick: number, drivers: DriverInfo[], player: DriverInfo): BattleAlert[] {
-  if (tick === 0 || tick % 8 !== 0) {
-    return [];
-  }
-
-  const ahead = drivers.find((driver) => driver.position === player.position - 1);
-  const behind = drivers.find((driver) => driver.position === player.position + 1);
-  const alerts: BattleAlert[] = [];
-  const timestamp = Date.now();
-
-  if (ahead && (player.deltaToCarInFront ?? 0) > 0) {
-    const closingRate = round2(clamp(0.08, 0.52, (ahead.lastLapTime - player.lastLapTime) / 1000 + 0.16));
-    alerts.push({
-      id: `mock-ahead-${tick}`,
-      driverAhead: ahead.name,
-      driverBehind: player.name,
-      gapSeconds: round2((player.deltaToCarInFront ?? 0) / 1000),
-      closingRatePerLap: closingRate,
-      estOvertakeLap: clampInt(Math.ceil(((player.deltaToCarInFront ?? 0) / 1000) / Math.max(closingRate, 0.1)), 1, 5),
-      side: 'ahead',
-      timestamp,
-    });
-  }
-
-  if (behind && (behind.deltaToCarInFront ?? 0) > 0) {
-    const closingRate = round2(clamp(-0.35, 0.38, (player.lastLapTime - behind.lastLapTime) / 1000 - 0.04));
-    alerts.push({
-      id: `mock-behind-${tick}`,
-      driverAhead: player.name,
-      driverBehind: behind.name,
-      gapSeconds: round2((behind.deltaToCarInFront ?? 0) / 1000),
-      closingRatePerLap: closingRate,
-      estOvertakeLap: clampInt(Math.ceil(((behind.deltaToCarInFront ?? 0) / 1000) / Math.max(Math.abs(closingRate), 0.1)), 1, 5),
-      side: 'behind',
-      timestamp,
-    });
-  }
-
-  return alerts;
-}
 
 function buildTrackMap(): TrackMapData {
   const points: TrackPoint[] = [];
