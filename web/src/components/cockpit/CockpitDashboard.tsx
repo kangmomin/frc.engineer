@@ -443,7 +443,7 @@ export function CockpitDashboard({
                       {driver.aiControlled && <span className={styles.driverBadge}>AI</span>}
                     </span>
                     <span className={styles.drsCell}>
-                      <span className={driverHasDrs(driver) ? styles.drsActive : styles.drsInactive}>
+                      <span className={styles[getDrsTone(driver)]}>
                         DRS
                       </span>
                     </span>
@@ -1399,6 +1399,12 @@ function driverHasDrs(driver: DriverInfo): boolean {
     return driver.drsActivated;
   }
   return driverCanArmDrs(driver);
+}
+
+function getDrsTone(driver: DriverInfo): 'drsActive' | 'drsArmed' | 'drsInactive' {
+  if (driverHasDrs(driver)) return 'drsActive';
+  if (driverCanArmDrs(driver)) return 'drsArmed';
+  return 'drsInactive';
 }
 
 function getDrsStatusLabel(driver: DriverInfo | null): string {

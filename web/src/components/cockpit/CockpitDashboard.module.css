@@ -501,6 +501,7 @@
 }
 
 .drsActive,
+.drsArmed,
 .drsInactive {
   padding: 3px 7px;
   border-radius: 2px;
@@ -514,6 +515,12 @@
   background: rgba(205, 255, 19, 0.95);
   color: #161e00;
   box-shadow: 0 0 14px rgba(205, 255, 19, 0.32);
+}
+
+.drsArmed {
+  color: #ffd65a;
+  border: 1px solid rgba(255, 214, 90, 0.9);
+  background: rgba(255, 214, 90, 0.08);
 }
 
 .drsInactive {

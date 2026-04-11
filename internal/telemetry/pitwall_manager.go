@@ -8,6 +8,7 @@ import (
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/packets"
+	"frc.engineer/internal/telemetryvisibility"
 	"frc.engineer/internal/tracks"
 )
 
@@ -576,9 +577,138 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				state.Drivers[i].DeltaToPlayer = state.Drivers[i].DeltaToRaceLeader - playerLeaderDelta
 			}
 		}
+
+		pm.applySourceVisibility(state)
 	}
 
 	return state
+}
+
+func (pm *PitwallManager) applySourceVisibility(state *dto.PitwallState) {
+	if state == nil || len(state.Drivers) == 0 {
+		return
+	}
+
+	sessionHistoryByCar := make(map[uint8]*packets.PacketSessionHistoryData)
+	for idx, sh := range pm.sessionHistory {
+		if sh != nil {
+			sessionHistoryByCar[uint8(idx)] = sh
+		}
+	}
+
+	tyreSetsByCar := make(map[uint8]*packets.PacketTyreSetsData)
+	for idx, ts := range pm.tyreSets {
+		if ts != nil {
+			tyreSetsByCar[uint8(idx)] = ts
+		}
+	}
+
+	snapshot := telemetryvisibility.Snapshot{
+		PlayerCarIndex:      &pm.playerIndex,
+		Session:             pm.session,
+		Participants:        pm.participants,
+		Motion:              pm.motion,
+		LapData:             pm.lapData,
+		CarSetups:           pm.carSetups,
+		CarTelemetry:        pm.telemetry,
+		CarStatus:           pm.carStatus,
+		CarDamage:           pm.carDamage,
+		SessionHistoryByCar: sessionHistoryByCar,
+		TyreSetsByCar:       tyreSetsByCar,
+		Drivers:             append([]dto.DriverInfo(nil), state.Drivers...),
+	}
+
+	parsed := telemetryvisibility.ParseSnapshot(snapshot, pm.sourceVisibilityMode())
+	limit := min(len(state.Drivers), len(parsed.Cars))
+	for i := range limit {
+		driver := &state.Drivers[i]
+		normalized := parsed.Cars[i].Normalized
+
+		driver.AIControlled = normalized.AiControlled
+		driver.DRSActivated = normalized.DRSActivated
+		driver.FuelInTank = normalized.FuelInTank
+		driver.FuelRemainingLaps = normalized.FuelRemainingLaps
+		driver.FuelMix = int(normalized.FuelMix)
+		driver.BrakeBias = int(normalized.BrakeBias)
+		driver.ERSStoreEnergy = normalized.ERSStoreEnergy
+		driver.ERSDeployMode = int(normalized.ERSDeployMode)
+		driver.ERSDeployedThisLap = normalized.ERSDeployedThisLap
+		driver.ERSHarvestedThisLap = normalized.ERSHarvestedMGUK + normalized.ERSHarvestedMGUH
+		driver.ERSActualPct = normalized.ERSActualPct
+		driver.ERSActualReady = normalized.ERSActualReady
+		driver.ERSEstimatePct = normalized.ERSEstimatePct
+		driver.ERSEstimateReady = normalized.ERSEstimateReady
+
+		setup := parsed.Cars[i].Setup
+		if setup == nil {
+			driver.DiffOnThrottle = 0
+			driver.DiffOffThrottle = 0
+		} else {
+			diffOn := setup.DiffOnThrottle
+			if diffOn == 0 {
+				diffOn = setup.OnThrottle
+			}
+			driver.DiffOnThrottle = int(diffOn)
+			driver.DiffOffThrottle = int(setup.OffThrottle)
+		}
+
+		if normalized.Damage == nil {
+			driver.Damage = nil
+			driver.TireWear = [4]int{}
+		} else {
+			nextDamage := &dto.CarDamage{
+				FrontLeftWing:  int(normalized.Damage.FrontLeftWing),
+				FrontRightWing: int(normalized.Damage.FrontRightWing),
+				RearWing:       int(normalized.Damage.RearWing),
+				Floor:          int(normalized.Damage.Floor),
+				Diffuser:       int(normalized.Damage.Diffuser),
+				Sidepod:        int(normalized.Damage.Sidepod),
+				Engine:         int(normalized.Damage.Engine),
+				Gearbox:        int(normalized.Damage.Gearbox),
+			}
+			if driver.Damage != nil {
+				nextDamage.DRSFault = driver.Damage.DRSFault
+				nextDamage.ERSFault = driver.Damage.ERSFault
+			}
+			driver.Damage = nextDamage
+			driver.TireWear = normalized.TireWear
+		}
+
+		if !ersActualAvailable(pm.participants, pm.playerIndex, i) {
+			driver.FuelInTank = 0
+			driver.FuelRemainingLaps = 0
+			driver.FuelMix = 0
+			driver.BrakeBias = 0
+			driver.ERSStoreEnergy = 0
+			driver.ERSDeployMode = 0
+			driver.ERSDeployedThisLap = 0
+			driver.ERSHarvestedThisLap = 0
+			driver.ERSActualPct = 0
+			driver.ERSActualReady = false
+			driver.Damage = nil
+			driver.TireWear = [4]int{}
+		}
+	}
+}
+
+func (pm *PitwallManager) sourceVisibilityMode() telemetryvisibility.Mode {
+	if pm.participants == nil {
+		return telemetryvisibility.ModeStrict
+	}
+
+	numCars := int(pm.participants.NumActiveCars)
+	if numCars <= 0 || numCars > packets.MaxCars {
+		numCars = packets.MaxCars
+	}
+	for i := 0; i < numCars; i++ {
+		if i == int(pm.playerIndex) {
+			continue
+		}
+		if pm.participants.Participants[i].YourTelemetry == 1 {
+			return telemetryvisibility.ModePublic
+		}
+	}
+	return telemetryvisibility.ModeStrict
 }
 
 // GetDriverName returns the name for a vehicle index, or empty string if unknown.

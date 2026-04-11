@@ -133,6 +133,117 @@ func TestPitwallManagerBuildStatePublishesERSEstimateReadiness(t *testing.T) {
 	}
 }
 
+func TestPitwallManagerBuildStateMasksStrictRivalVisibility(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	pm.playerIndex = 0
+	pm.ersActualEnabled = true
+
+	pm.participants = &packets.PacketParticipantsData{NumActiveCars: 2}
+	copy(pm.participants.Participants[0].Name[:], []byte("Player"))
+	copy(pm.participants.Participants[1].Name[:], []byte("Rival"))
+
+	pm.lapData = &packets.PacketLapData{}
+	pm.lapData.LapData[0] = packets.LapData{CarPosition: 1, CurrentLapNum: 10}
+	pm.lapData.LapData[1] = packets.LapData{CarPosition: 2, CurrentLapNum: 10, DeltaToRaceLeaderMSPart: 850}
+
+	pm.telemetry = &packets.PacketCarTelemetryData{}
+	pm.telemetry.CarTelemetryData[1].DRS = 1
+
+	pm.carStatus = &packets.PacketCarStatusData{}
+	pm.carStatus.CarStatusData[0] = packets.CarStatusData{
+		FuelRemainingLaps:  11.5,
+		FuelMix:            2,
+		FrontBrakeBias:     56,
+		ERSStoreEnergy:     2_200_000,
+		ERSDeployMode:      3,
+		ERSDeployedThisLap: 320_000,
+	}
+	pm.carStatus.CarStatusData[1] = packets.CarStatusData{
+		FuelRemainingLaps:  8.4,
+		FuelMix:            1,
+		FrontBrakeBias:     54,
+		ERSStoreEnergy:     1_400_000,
+		ERSDeployMode:      2,
+		ERSDeployedThisLap: 180_000,
+	}
+
+	pm.carSetups = &packets.PacketCarSetupData{}
+	pm.carSetups.CarSetupData[0].OnThrottle = 60
+	pm.carSetups.CarSetupData[1].OnThrottle = 55
+	pm.carSetups.CarSetupData[1].OffThrottle = 48
+
+	pm.carDamage = &packets.PacketCarDamageData{}
+	pm.carDamage.CarDamageData[1].FrontLeftWingDamage = 8
+	pm.carDamage.CarDamageData[1].TyresWear = [4]float32{21, 22, 19, 20}
+
+	state := pm.BuildState()
+	rival := state.Drivers[1]
+
+	if !rival.DRSActivated {
+		t.Fatal("expected rival DRS activation to remain visible")
+	}
+	if rival.FuelRemainingLaps != 0 || rival.FuelMix != 0 || rival.BrakeBias != 0 {
+		t.Fatalf("expected strict rival fuel/brake fields to be masked, got %+v", rival)
+	}
+	if rival.ERSStoreEnergy != 0 || rival.ERSDeployMode != 0 || rival.ERSActualReady {
+		t.Fatalf("expected strict rival ERS fields to be masked, got %+v", rival)
+	}
+	if rival.DiffOnThrottle != 0 || rival.DiffOffThrottle != 0 {
+		t.Fatalf("expected strict rival setup to be masked, got %+v", rival)
+	}
+	if rival.Damage != nil || rival.TireWear != [4]int{} {
+		t.Fatalf("expected strict rival damage to be masked, got %+v", rival)
+	}
+}
+
+func TestPitwallManagerBuildStateExposesPublicRivalVisibility(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	pm.playerIndex = 0
+	pm.ersActualEnabled = true
+
+	pm.participants = &packets.PacketParticipantsData{NumActiveCars: 2}
+	copy(pm.participants.Participants[0].Name[:], []byte("Player"))
+	copy(pm.participants.Participants[1].Name[:], []byte("Public Rival"))
+	pm.participants.Participants[1].YourTelemetry = 1
+
+	pm.lapData = &packets.PacketLapData{}
+	pm.lapData.LapData[0] = packets.LapData{CarPosition: 1, CurrentLapNum: 10}
+	pm.lapData.LapData[1] = packets.LapData{CarPosition: 2, CurrentLapNum: 10, DeltaToRaceLeaderMSPart: 920}
+
+	pm.telemetry = &packets.PacketCarTelemetryData{}
+	pm.telemetry.CarTelemetryData[1].DRS = 1
+
+	pm.carStatus = &packets.PacketCarStatusData{}
+	pm.carStatus.CarStatusData[1] = packets.CarStatusData{
+		FuelRemainingLaps:  8.4,
+		FuelMix:            1,
+		FrontBrakeBias:     54,
+		ERSStoreEnergy:     1_400_000,
+		ERSDeployMode:      2,
+		ERSDeployedThisLap: 180_000,
+	}
+
+	pm.carDamage = &packets.PacketCarDamageData{}
+	pm.carDamage.CarDamageData[1].FrontLeftWingDamage = 8
+	pm.carDamage.CarDamageData[1].TyresWear = [4]float32{21, 22, 19, 20}
+
+	state := pm.BuildState()
+	rival := state.Drivers[1]
+
+	if !rival.DRSActivated {
+		t.Fatal("expected rival DRS activation to remain visible")
+	}
+	if rival.FuelRemainingLaps == 0 || rival.FuelMix == 0 || rival.BrakeBias == 0 {
+		t.Fatalf("expected public rival fuel/brake fields to remain visible, got %+v", rival)
+	}
+	if rival.ERSStoreEnergy == 0 || rival.ERSDeployMode == 0 || !rival.ERSActualReady {
+		t.Fatalf("expected public rival ERS fields to remain visible, got %+v", rival)
+	}
+	if rival.Damage == nil || rival.TireWear == [4]int{} {
+		t.Fatalf("expected public rival damage to remain visible, got %+v", rival)
+	}
+}
+
 func makeERSTestPackets(
 	sessionUID uint64,
 	sessionTime float32,
