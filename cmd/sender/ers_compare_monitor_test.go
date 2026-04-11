@@ -112,6 +112,7 @@ func TestERSCompareMonitorAggregatesAndLogsSamples(t *testing.T) {
 
 func TestERSCompareMonitorResetsOnDisableAndNewSession(t *testing.T) {
 	monitor := newERSCompareMonitor(t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(monitor.Close)
 
 	monitor.Observe(101, time.Unix(0, 0).Add(2*time.Second), buildERSCompareState(8, 12))
 	first := monitor.Snapshot()
