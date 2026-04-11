@@ -1,1469 +1,554 @@
-// @ts-nocheck
-/**
- * F1 25 Setup Manager — Pitwall Command Terminal
- * Full version with all 5 tabs: Setup, Teams, Compare, MySetup, Ask
- */
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-const API_URL = "https://api.anthropic.com/v1/messages";
-const ENV_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+import {
+  SETUP_FIELDS,
+  SETUP_FIELD_DEFS,
+  SETUP_META,
+  SORTED_TEAMS,
+  SENDER_TRACK_MAP,
+  TRACKS,
+  type SetupMeta,
+  type SetupValues,
+  getCompatibilityLabel,
+  getCompatibilityScore,
+  getDbKey,
+  getSetupFeel,
+  getSetupTags,
+  getTrackCatalog,
+} from "../../../shared/setup-manager/catalog";
 
-const TD=[{name:"Australia",flag:"\u{1F1E6}\u{1F1FA}",round:1},{name:"China",flag:"\u{1F1E8}\u{1F1F3}",round:2,sprint:true},{name:"Japan",flag:"\u{1F1EF}\u{1F1F5}",round:3},{name:"Bahrain",flag:"\u{1F1E7}\u{1F1ED}",round:4},{name:"Jeddah",flag:"\u{1F1F8}\u{1F1E6}",round:5},{name:"Miami",flag:"\u{1F1FA}\u{1F1F8}",round:6,sprint:true},{name:"Imola",flag:"\u{1F1EE}\u{1F1F9}",round:7},{name:"Monaco",flag:"\u{1F1F2}\u{1F1E8}",round:8},{name:"Spain",flag:"\u{1F1EA}\u{1F1F8}",round:9},{name:"Canada",flag:"\u{1F1E8}\u{1F1E6}",round:10},{name:"Austria",flag:"\u{1F1E6}\u{1F1F9}",round:11},{name:"Silverstone",flag:"\u{1F1EC}\u{1F1E7}",round:12},{name:"Spa",flag:"\u{1F1E7}\u{1F1EA}",round:13,sprint:true},{name:"Hungary",flag:"\u{1F1ED}\u{1F1FA}",round:14},{name:"Zandvoort",flag:"\u{1F1F3}\u{1F1F1}",round:15},{name:"Monza",flag:"\u{1F1EE}\u{1F1F9}",round:16},{name:"Baku",flag:"\u{1F1E6}\u{1F1FF}",round:17},{name:"Singapore",flag:"\u{1F1F8}\u{1F1EC}",round:18},{name:"COTA",flag:"\u{1F1FA}\u{1F1F8}",round:19,sprint:true},{name:"Mexico",flag:"\u{1F1F2}\u{1F1FD}",round:20},{name:"Brazil",flag:"\u{1F1E7}\u{1F1F7}",round:21,sprint:true},{name:"Vegas",flag:"\u{1F1FA}\u{1F1F8}",round:22},{name:"Qatar",flag:"\u{1F1F6}\u{1F1E6}",round:23,sprint:true},{name:"Abu Dhabi",flag:"\u{1F1E6}\u{1F1EA}",round:24}];
-function FI({flag,size=20}){return <span style={{fontSize:size,lineHeight:1,display:"inline-block",flexShrink:0}}>{flag}</span>;}
-const TEAMS=[{name:"Red Bull",total:55,pros:"최고 프론트 에어로(3.368), 높은 전체 에어로(5.365)",cons:"가장 높은 질량(803kg), 무게배분 불균형(0.204), 기어박스 비효율(1.642)",mass:803,drag:0.01303,aeroF:3.368,aeroR:1.9974,gear:1.6417,wDist:0.204},{name:"McLaren",total:54,pros:"가장 가벼운 차(798kg), 최고 리어 에어로(2.028), 높은 드래그(0.01287)",cons:"프론트 에어로 중간(3.240), 기어박스 중간(1.676)",mass:798,drag:0.01287,aeroF:3.240,aeroR:2.0278,gear:1.6756,wDist:0.180},{name:"Mercedes",total:49,pros:"높은 드래그(0.01290), 낮은 무게배분(0.160), 좋은 리어 에어로(1.985)",cons:"전체 에어로 중간(5.111), 프론트 에어로 중간(3.126)",mass:804,drag:0.01290,aeroF:3.126,aeroR:1.9854,gear:1.6806,wDist:0.160},{name:"Ferrari",total:48,pros:"가벼운 질량(801kg), 낮은 무게배분(0.165)",cons:"낮은 드래그(0.01369), 에어로 중하위(5.005), 기어박스 비효율(1.685)",mass:801,drag:0.01369,aeroF:3.067,aeroR:1.9378,gear:1.6853,wDist:0.165},{name:"Aston Martin",total:44,pros:"높은 프론트 에어로(3.207), 높은 드래그(0.01294)",cons:"무거운 질량(809kg), 리어 에어로 약세(1.930), 기어박스 중간(1.681)",mass:809,drag:0.01294,aeroF:3.207,aeroR:1.9304,gear:1.6806,wDist:0.175},{name:"Alpine",total:38,pros:"최고 드래그(0.01276), 최저 기어박스(1.708), 최저 무게배분(0.158)",cons:"높은 질량(807kg), 전체 에어로 약세(5.004), 리어 에어로 약세(1.926)",mass:807,drag:0.01276,aeroF:3.078,aeroR:1.9264,gear:1.7081,wDist:0.158},{name:"Williams",total:36,pros:"프론트 에어로 중간(3.091)",cons:"무거운 질량(810kg), 낮은 드래그(0.01377), 최약 리어 에어로(1.841), 기어박스 중간(1.681)",mass:810,drag:0.01377,aeroF:3.091,aeroR:1.8405,gear:1.6806,wDist:0.187},{name:"Vcarb",total:32,pros:"드래그 중간(0.01301), 리어 에어로 중간(1.910)",cons:"최약 프론트 에어로(2.806), 최악 기어박스(1.513), 높은 무게배분(0.200)",mass:808,drag:0.01301,aeroF:2.806,aeroR:1.9100,gear:1.5133,wDist:0.200},{name:"Haas",total:30,pros:"무게배분 양호(0.165), 기어박스 중간(1.685)",cons:"최고 질량급(812kg), 리어 에어로 약세(1.810), 전체 에어로 약세(4.823)",mass:812,drag:0.01301,aeroF:3.013,aeroR:1.8098,gear:1.6853,wDist:0.165},{name:"Sauber",total:21,pros:"없음",cons:"최고 질량(813kg), 최저 드래그(0.01497), 최저 에어로(4.207), 최악 무게배분(0.225)",mass:813,drag:0.01497,aeroF:2.566,aeroR:1.6412,gear:1.6853,wDist:0.225}];
-const DEFS={fw:{name:"프론트 윙",min:0,max:50},rw:{name:"리어 윙",min:0,max:50},don:{name:"디프 온스로틀",min:10,max:100},doff:{name:"디프 오프스로틀",min:10,max:100},fs:{name:"프론트 서스",min:1,max:41},rs:{name:"리어 서스",min:1,max:41},fa:{name:"프론트 안티롤바",min:1,max:21},ra:{name:"리어 안티롤바",min:1,max:21},frh:{name:"프론트 RH",min:15,max:35},rrh:{name:"리어 RH",min:40,max:60},bb:{name:"브레이크 바이어스",min:50,max:70},bp:{name:"브레이크 압력",min:80,max:100},fl:{name:"FL 압력",min:22.5,max:29.5},fr:{name:"FR 압력",min:22.5,max:29.5},rl:{name:"RL 압력",min:20.5,max:26.5},rr:{name:"RR 압력",min:20.5,max:26.5}};
-const FIELDS=[{k:"fw",l:"프론트 윙"},{k:"rw",l:"리어 윙"},{k:"don",l:"온스로틀 디프"},{k:"doff",l:"오프스로틀 디프"},{k:"fs",l:"프론트 서스"},{k:"rs",l:"리어 서스"},{k:"fa",l:"프론트 안티롤바"},{k:"ra",l:"리어 안티롤바"},{k:"frh",l:"프론트 RH"},{k:"rrh",l:"리어 RH"},{k:"bb",l:"브레이크 바이어스"},{k:"bp",l:"브레이크 압력"},{k:"fl",l:"FL 압력"},{k:"fr",l:"FR 압력"},{k:"rl",l:"RL 압력"},{k:"rr",l:"RR 압력"}];
-const RK=[{k:"fw",l:"FW"},{k:"rw",l:"RW"},{k:"don",l:"DON"},{k:"doff",l:"DOFF"},{k:"fs",l:"FS"},{k:"rs",l:"RS"},{k:"fa",l:"FA"},{k:"ra",l:"RA"},{k:"frh",l:"FRH"},{k:"rrh",l:"RRH"},{k:"bb",l:"BB"},{k:"bp",l:"BP"}];
+type TabId = "setup" | "telemetry" | "settings";
+type Mode = "equal" | "nonequal" | null;
+type WeatherMode = "dry" | "rain" | null;
+type Severity = "high" | "med" | "low";
 
-const SM=[{key:"ip_r",label:"푸키 Race",color:"#a855f7",group:"Istvan Puki",rain:false,desc:"프로 리그 롱런",who:"고급자"},{key:"ip_q",label:"푸키 Quali",color:"#c084fc",group:"Istvan Puki",rain:false,desc:"프로 리그 숏런",who:"고급자"},{key:"ip_i",label:"푸키 Inter",color:"#22c55e",group:"Istvan Puki",rain:true,desc:"인터미디에이트",who:"비"},{key:"ip_w",label:"푸키 Wet",color:"#3b82f6",group:"Istvan Puki",rain:true,desc:"풀 웻",who:"폭우"},{key:"es_r",label:"Esports Race",color:"#ec4899",group:"Istvan Puki",rain:false,desc:"중급자 레이스",who:"중급자"},{key:"es_q",label:"Esports Quali",color:"#f472b6",group:"Istvan Puki",rain:false,desc:"중급자 퀄리",who:"중급자"},{key:"sf_r",label:"Safe Race",color:"#f97316",group:"Istvan Puki",rain:false,desc:"초보자 안정형",who:"초보자"},{key:"sf_q",label:"Safe Quali",color:"#fb923c",group:"Istvan Puki",rain:false,desc:"초보자 퀄리",who:"초보자"},{key:"bl_r",label:"BL Race",color:"#eab308",group:"Brendon Leigh",rain:false,desc:"BL 타이어 관리",who:"일반"},{key:"bl_q",label:"BL Quali",color:"#facc15",group:"Brendon Leigh",rain:false,desc:"BL 퀄리",who:"일반"},{key:"bl_i",label:"BL Inter",color:"#34d399",group:"Brendon Leigh",rain:true,desc:"BL 인터",who:"비"},{key:"bl_w",label:"BL Wet",color:"#60a5fa",group:"Brendon Leigh",rain:true,desc:"BL 웻",who:"폭우"},{key:"gn_i",label:"Inter Setup",color:"#10b981",group:"General",rain:true,desc:"일반 인터미디에이트",who:"전체",dbKey:"ip_i"},{key:"gn_w",label:"Wet Setup",color:"#6366f1",group:"General",rain:true,desc:"일반 풀 웻",who:"전체",dbKey:"ip_w"}];
-const getDbKey=(meta)=>meta.dbKey||meta.key;
-
-const DB={"Australia":{ip_r:mk(20,8,100,20,41,1,4,16,22,40,55,100,29.5,29.5,22,22),ip_q:mk(20,4,100,20,41,2,6,21,22,40,53,100,29.5,29.5,25,25),ip_i:mk(30,28,90,30,41,10,8,19,20,50,54,100,29.5,29.5,26.5,26.5),ip_w:mk(38,23,100,20,41,1,5,20,21,40,54,100,27.5,27.5,23,23),es_r:mk(15,9,100,30,41,1,1,16,21,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(18,8,100,25,41,1,1,21,20,40,53,100,29.5,29.5,21,21),sf_r:mk(10,5,90,30,41,1,1,1,22,42,54,100,29.5,29.5,26.5,26.5),sf_q:mk(13,7,90,30,41,1,1,15,21,41,54,100,29.5,29.5,26.5,26.5),bl_r:mk(10,0,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),bl_q:mk(13,0,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(25,15,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(33,23,100,30,41,1,3,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"DRS존 4개. 언더컷 강력.",softLife:"11랩",medLife:"16랩",hardLife:"23랩",pitWindow50:"랩 9-11",strategy:"1스톱 언더컷. 피트 21초"}},"China":{ip_r:mk(29,17,100,25,40,1,1,8,20,40,54,100,28.2,28.2,20.5,20.5),ip_q:mk(41,23,100,15,41,1,1,20,20,40,53,100,29.5,29.2,20.5,20.5),ip_i:mk(31,28,90,30,41,5,7,21,20,47,53,100,26,26,20.5,20.5),ip_w:mk(50,40,100,10,41,1,1,21,21,40,54,100,27,27,20.5,20.5),es_r:mk(26,20,100,30,41,1,1,8,20,40,55,100,29.5,29.5,26.5,26.5),es_q:mk(32,28,100,25,41,1,1,12,20,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(25,24,90,25,41,1,1,1,21,44,54,100,29.5,29.5,26.5,26.5),sf_q:mk(28,26,90,30,41,1,1,4,21,44,54,100,29.5,29.5,20.5,20.5),bl_r:mk(30,25,100,30,41,1,1,20,20,44,55,100,29.5,29.5,23,23),bl_q:mk(35,30,100,30,41,1,1,20,20,44,54,100,29.5,29.5,24,24),bl_i:mk(45,40,100,30,41,1,1,20,20,44,54,100,29.5,29.5,23,23),bl_w:mk(50,45,100,30,41,1,1,20,20,44,54,100,29.5,29.5,23,23),track:{notes:"섹터1-2 온도 관리 핵심.",softLife:"8랩",medLife:"11랩",hardLife:"15랩",pitWindow50:"랩 10-12",strategy:"1스톱. 피트 17초"}},"Japan":{ip_r:mk(24,8,100,35,41,1,5,20,21,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(30,10,100,25,41,1,1,21,23,40,53,100,29.3,29.5,20.5,20.5),ip_i:mk(40,42,90,30,41,15,5,21,22,46,55,100,26.1,26.1,20.5,20.5),ip_w:mk(43,27,100,25,41,1,1,20,22,40,54,100,28.5,28.5,20.5,20.5),es_r:mk(19,13,100,30,41,1,1,21,21,42,53,100,29.5,29.5,26.5,26.5),es_q:mk(28,18,100,25,41,1,1,21,21,42,52,100,29.5,29.5,26.5,26.5),sf_r:mk(15,13,90,35,41,1,1,5,22,41,54,100,29.5,29.5,23.6,23.6),sf_q:mk(15,10,90,30,41,1,1,15,22,41,54,100,29.5,29.5,20.5,20.5),bl_r:mk(31,22,100,30,41,1,5,21,21,42,55,100,29.5,29.5,22,22),bl_q:mk(31,22,100,30,41,1,5,21,21,42,54,100,29.5,29.5,22,22),bl_i:mk(34,24,100,20,41,1,5,21,21,42,54,100,29.5,29.5,22,22),bl_w:mk(38,28,100,20,41,1,5,21,21,42,54,100,29.5,29.5,22,22),track:{notes:"흐름과 모멘텀 핵심.",softLife:"10랩",medLife:"16랩",hardLife:"20랩",pitWindow50:"랩 8-10",strategy:"언더컷. 피트 17.65초"}},"Bahrain":{ip_r:mk(27,21,100,30,40,1,1,16,20,40,55,100,29,29,20.5,20.5),ip_q:mk(33,23,100,20,41,1,1,20,20,40,53,100,28.5,28.5,20.5,20.5),ip_i:mk(50,50,90,25,41,13,9,21,22,46,55,100,26.1,26.1,20.5,20.5),ip_w:mk(50,44,100,20,38,1,1,20,20,40,53,100,28,28,20.5,20.5),es_r:mk(25,20,100,30,41,1,1,7,20,40,54,100,29.5,29.5,24,24),es_q:mk(25,15,100,30,41,1,1,15,20,40,53,100,29.5,29.5,23,23),sf_r:mk(25,22,90,30,41,1,1,1,20,42,55,100,29.5,29.5,23.6,23.6),sf_q:mk(25,20,90,25,41,1,1,7,20,42,54,100,29.5,29.5,23,23),bl_r:mk(30,28,100,35,41,1,5,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(32,28,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(46,41,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(50,45,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"고다운포스. 타이어 마모 중요.",softLife:"11랩",medLife:"12랩",hardLife:"18랩",pitWindow50:"랩 11-13",strategy:"1스톱 or 2스톱. 피트 18.9초"}},"Jeddah":{ip_r:mk(16,0,100,30,41,1,1,13,20,40,55,100,29.5,29.5,21,21),ip_q:mk(15,0,100,20,41,1,1,21,19,40,53,100,29.5,29.5,22,22),ip_i:mk(15,10,90,20,41,5,9,21,20,45,52,100,26,26,20.5,20.5),ip_w:mk(37,23,100,20,41,1,1,21,19,40,53,100,28.5,28.5,20.5,20.5),es_r:mk(8,2,100,20,41,1,1,5,19,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(10,2,100,10,41,1,1,21,19,40,52,100,29.5,29.5,20.5,20.5),sf_r:mk(8,4,90,20,41,1,1,10,21,42,53,100,29.5,29.5,26.5,26.5),sf_q:mk(10,4,90,20,41,1,1,10,21,42,53,100,29.5,29.5,26.5,26.5),bl_r:mk(10,2,100,30,41,1,5,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(14,6,100,30,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(30,25,100,25,41,1,5,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(40,35,100,25,41,1,5,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"리어 마모 최중요.",softLife:"11랩",medLife:"16랩",hardLife:"20랩",pitWindow50:"랩 10-12",strategy:"소프트 금지. 1스톱. 피트 23초"}},"Miami":{ip_r:mk(8,1,100,30,41,1,1,15,20,40,55,100,29,29,21.5,21.5),ip_q:mk(16,5,100,20,41,1,1,21,21,40,54,100,29,29,21,21),ip_i:mk(18,14,90,30,41,1,1,15,20,42,54,100,26,26,20.5,20.5),ip_w:mk(40,32,100,20,41,1,1,20,20,40,54,100,28,28,20.5,20.5),es_r:mk(10,4,100,30,41,1,1,10,21,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(13,3,100,30,41,1,1,15,20,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(10,7,90,30,41,1,1,1,21,43,55,100,29.5,29.5,26.5,26.5),sf_q:mk(13,10,90,30,41,1,1,5,21,43,55,100,29.5,29.5,20.5,20.5),bl_r:mk(12,6,100,30,41,1,4,21,21,40,55,100,29.5,29.5,22,22),bl_q:mk(14,8,100,30,41,1,4,21,21,40,54,100,29.5,29.5,22,22),bl_i:mk(24,18,100,25,41,1,4,21,21,40,54,100,29.5,29.5,22,22),bl_w:mk(30,24,100,25,41,1,4,21,21,40,54,100,29.5,29.5,22,22),track:{notes:"낮은 윙 고속 서킷.",softLife:"8랩",medLife:"13랩",hardLife:"20랩",pitWindow50:"랩 11-12",strategy:"1스톱 M-H. 피트 21.9초"}},"Monaco":{ip_r:mk(50,50,100,30,39,1,1,15,17,40,54,100,28.5,28.5,20.5,20.5),ip_q:mk(50,45,100,20,38,1,1,21,18,40,52,100,28,28,21,21),ip_i:mk(50,50,90,30,41,1,5,21,20,49,53,100,22.5,22.5,20.5,20.5),ip_w:mk(50,50,100,15,36,1,1,21,17,40,52,100,27,27,20.5,20.5),es_r:mk(50,50,100,20,41,1,1,1,20,40,54,100,22.5,22.5,20.5,20.5),es_q:mk(50,50,100,20,41,1,1,10,20,40,53,100,22.5,22.5,20.5,20.5),sf_r:mk(50,50,90,35,39,1,4,1,20,41,54,100,22.5,22.5,20.5,20.5),sf_q:mk(50,50,90,35,41,1,1,1,20,41,54,100,22.5,22.5,20.5,20.5),bl_r:mk(50,50,100,30,40,1,4,17,21,44,55,100,29.5,29.5,22,22),bl_q:mk(50,50,100,30,40,1,4,17,21,44,54,100,29.5,29.5,20.5,20.5),bl_i:mk(50,50,100,15,40,1,4,17,21,44,54,100,29.5,29.5,20.5,20.5),bl_w:mk(50,50,100,10,40,1,4,17,21,44,54,100,29.5,29.5,20.5,20.5),track:{notes:"의무 2스톱. 오버컷 효과적.",softLife:"13랩",medLife:"19랩",hardLife:"25랩",pitWindow50:"랩 9&20-23",strategy:"의무 2스톱. 피트 18.4초"}},"Spain":{ip_r:mk(34,25,100,30,41,1,1,14,20,40,54,100,29.5,29.3,20.5,20.5),ip_q:mk(42,30,100,20,41,1,1,20,20,40,53,100,29,29,20.5,20.5),ip_i:mk(42,37,90,25,41,1,1,8,21,40,53,100,26.1,26.1,20.5,20.5),ip_w:mk(50,43,100,15,41,1,1,21,19,40,53,100,29.5,29.5,20.5,20.5),es_r:mk(34,24,100,25,41,1,1,10,20,40,53,100,29.5,29.5,23.6,23.6),es_q:mk(37,27,100,20,41,5,1,21,19,40,52,100,29.5,29.5,20.5,20.5),sf_r:mk(34,33,90,30,41,1,1,6,20,42,55,100,29.5,29.5,23.6,23.6),sf_q:mk(37,34,90,25,41,1,1,21,20,42,52,100,29.5,29.5,20.5,20.5),bl_r:mk(30,25,100,30,41,1,4,19,20,41,53,100,29.5,29.5,22,22),bl_q:mk(33,28,100,30,41,1,4,19,20,41,54,100,29.5,29.5,22,22),bl_i:mk(44,39,100,25,41,1,4,19,20,41,54,100,29.5,29.5,22,22),bl_w:mk(50,45,100,20,41,1,4,19,20,41,54,100,29.5,29.5,22,22),track:{notes:"오버테이킹 어려움.",softLife:"13랩",medLife:"18랩",hardLife:"27랩",pitWindow50:"랩 10-14",strategy:"1스톱 M-H. 피트 21.6초"}},"Imola":{ip_r:mk(28,20,100,25,41,1,1,6,21,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(35,22,100,15,41,1,1,14,21,40,54,100,29.5,29.5,20.5,20.5),ip_i:mk(40,30,90,30,41,1,9,21,22,40,55,100,29.5,29.5,23.6,23.6),ip_w:mk(45,35,100,15,41,1,1,17,20,40,54,100,28,28,20.5,20.5),es_r:mk(30,24,100,30,41,1,1,8,22,40,58,100,29.5,29.5,26.5,26.5),es_q:mk(35,28,100,25,41,1,3,21,22,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(30,25,90,25,41,1,1,4,22,42,55,100,29.5,29.5,26.5,26.5),sf_q:mk(34,31,90,25,41,1,1,10,22,43,54,100,29.5,29.5,20.5,20.5),bl_r:mk(27,22,100,30,40,1,4,21,22,44,55,100,29.5,29.5,22,22),bl_q:mk(31,26,100,25,40,1,4,21,22,44,54,100,29.5,29.5,22,22),bl_i:mk(34,24,100,25,40,1,4,21,22,44,54,100,29.5,29.5,22,22),bl_w:mk(43,33,100,25,40,1,4,21,22,44,54,100,29.5,29.5,22,22),track:{notes:"오버테이킹 어려움. 소프트 금지.",softLife:"10랩",medLife:"15랩",hardLife:"23랩",pitWindow50:"랩 12-14",strategy:"1스톱. 피트 25초"}},"Canada":{ip_r:mk(25,20,100,30,41,1,1,14,19,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(34,25,100,20,41,1,1,21,19,40,53,100,29,29,20.5,20.5),ip_i:mk(50,43,100,15,41,1,1,20,18,40,55,100,27,27,20.5,20.5),ip_w:mk(50,43,100,15,41,1,1,18,18,40,55,100,27,27,20.5,20.5),es_r:mk(31,27,100,30,41,1,3,11,20,40,54,100,29.5,29.5,25.8,25.8),es_q:mk(34,29,100,25,41,1,1,11,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(32,30,90,30,41,1,5,11,20,44,55,100,29.5,29.5,25.8,25.8),sf_q:mk(35,33,90,30,41,1,5,11,20,44,54,100,29.5,29.5,26.5,26.5),bl_r:mk(26,24,100,30,41,1,2,21,21,42,55,100,29.5,29.5,22,22),bl_q:mk(31,27,100,30,41,1,2,21,21,42,54,100,29.5,29.5,22,22),bl_i:mk(41,37,100,20,41,1,2,21,21,42,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,15,41,1,2,21,21,42,54,100,29.5,29.5,22,22),track:{notes:"리어 마모 핵심. 2스톱 추천.",softLife:"13랩",medLife:"27랩",hardLife:"32랩",pitWindow50:"랩 13-14",strategy:"2스톱. 피트 23초"}},"Austria":{ip_r:mk(24,10,100,25,41,1,1,14,20,40,55,100,29.3,29.5,21.5,21.5),ip_q:mk(31,14,100,25,41,1,1,20,20,40,52,100,29.3,29.5,22,22),ip_i:mk(43,39,90,25,41,1,1,5,21,43,53,100,29.5,29.5,25.8,25.8),ip_w:mk(45,33,100,20,41,1,1,20,20,40,54,100,28,28,20.5,20.5),es_r:mk(14,7,100,25,41,1,1,10,19,40,54,100,29.5,29.5,23.6,23.6),es_q:mk(26,12,100,25,41,1,1,21,20,40,54,100,29.5,29.5,20.5,20.5),sf_r:mk(13,10,90,30,41,1,1,5,21,44,55,100,29.5,29.5,23.6,23.6),sf_q:mk(28,25,90,30,41,1,3,21,20,43,54,100,29.5,29.5,20.5,20.5),bl_r:mk(27,13,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),bl_q:mk(30,16,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),bl_i:mk(41,27,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),bl_w:mk(50,40,100,40,41,1,4,21,22,40,54,100,29.5,29.5,22,22),track:{notes:"1스톱 타이어 관리.",softLife:"10랩",medLife:"13랩",hardLife:"23랩",pitWindow50:"랩 15-17",strategy:"피트 18.1초"}},"Silverstone":{ip_r:mk(14,0,100,30,41,1,2,13,20,40,54,100,29,29,21,21),ip_q:mk(17,0,100,20,41,1,1,21,20,40,53,100,29.5,29.5,21.5,21.5),ip_i:mk(20,15,100,30,41,1,1,4,20,40,53,100,29.5,29.5,26.5,26.5),ip_w:mk(36,24,100,20,40,1,1,20,20,40,54,100,27,27,20.5,20.5),es_r:mk(9,3,100,30,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(8,0,100,25,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),sf_r:mk(10,5,90,35,41,1,5,18,20,40,54,100,29.5,29.5,26.5,26.5),sf_q:mk(9,2,90,30,41,1,5,18,20,40,53,100,29.5,29.5,26.5,26.5),bl_r:mk(18,5,100,35,41,1,3,20,21,40,54,100,29.5,29.5,22,22),bl_q:mk(18,5,100,30,41,1,3,20,21,40,54,100,29.5,29.5,22,22),bl_i:mk(30,22,100,30,41,1,3,20,21,40,54,100,29.5,29.5,22,22),bl_w:mk(40,32,100,30,41,1,3,20,21,40,54,100,29.5,29.5,22,22),track:{notes:"FL 핵심. 언더컷 강력.",softLife:"10랩",medLife:"13랩",hardLife:"20랩",pitWindow50:"랩 9-11",strategy:"1스톱 M-H. 피트 24초"}},"Spa":{ip_r:mk(2,0,100,20,41,1,1,19,21,40,55,100,29,29,24.5,24.5),ip_q:mk(6,0,100,15,41,1,2,21,21,40,53,100,28.8,28.8,26.5,26.5),ip_i:mk(11,5,90,25,41,1,1,21,21,42,53,100,29.5,29.5,23.6,23.6),ip_w:mk(9,6,100,20,41,1,1,19,21,40,53,100,26.5,26.5,25,25),es_r:mk(0,0,100,20,41,1,1,21,21,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(0,0,100,20,41,1,1,21,21,40,53,100,29.5,29.5,26.5,26.5),sf_r:mk(3,1,90,30,41,1,4,21,21,40,54,100,29.5,29.5,26.5,26.5),sf_q:mk(5,2,90,30,41,1,5,21,21,40,54,100,29.5,29.5,26.5,26.5),bl_r:mk(4,0,100,30,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),bl_q:mk(4,0,100,25,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),bl_i:mk(12,6,100,30,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),bl_w:mk(20,14,100,30,41,1,4,21,20,40,55,100,29.5,29.5,22.5,22.5),track:{notes:"중간 섹터 흐름.",softLife:"9랩",medLife:"13랩",hardLife:"23랩",pitWindow50:"랩 13-15",strategy:"1스톱. 피트 19.7초"}},"Hungary":{ip_r:mk(50,50,100,30,41,1,5,19,20,40,54,100,29.5,29.5,20.5,20.5),ip_q:mk(50,48,100,20,41,1,3,21,20,40,53,100,28,28,20.5,20.5),ip_i:mk(44,50,90,30,41,14,8,21,20,49,54,100,29.5,29.5,25.8,25.8),ip_w:mk(50,50,100,20,41,1,4,20,20,40,53,100,28,28,20.5,20.5),es_r:mk(50,50,100,30,41,1,1,5,19,40,54,100,29.5,29.5,25.8,25.8),es_q:mk(50,48,100,20,41,1,1,15,19,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(50,50,90,30,41,1,1,1,21,43,55,100,29.5,29.5,25.8,25.8),sf_q:mk(50,50,90,25,41,1,1,5,21,43,54,100,29.5,29.5,20.5,20.5),bl_r:mk(50,44,100,35,41,1,6,21,20,44,55,100,29.5,29.5,22,22),bl_q:mk(50,44,100,30,41,1,6,21,20,44,54,100,29.5,29.5,22,22),bl_i:mk(50,46,100,15,41,1,6,21,20,44,54,100,29.5,29.5,22,22),bl_w:mk(50,46,100,10,41,1,6,21,20,44,54,100,29.5,29.5,22,22),track:{notes:"오버테이킹 어려움.",softLife:"8랩",medLife:"18랩",hardLife:"23랩",pitWindow50:"랩 14-16",strategy:"1스톱. 피트 21초"}},"Zandvoort":{ip_r:mk(42,33,100,25,41,1,5,7,20,40,54,100,28,28,20.5,20.5),ip_q:mk(50,41,100,25,41,10,1,14,20,40,52,100,29,29,24,24),ip_i:mk(50,49,90,25,41,6,9,21,19,48,54,100,29.5,29.5,25.8,25.8),ip_w:mk(50,48,100,20,41,21,1,21,20,40,53,100,27,27,20.5,20.5),es_r:mk(46,41,100,20,41,1,1,5,21,41,53,100,29.5,29.5,25.8,25.8),es_q:mk(46,36,100,25,41,1,1,15,21,41,52,100,29.5,29.5,26.5,26.5),sf_r:mk(46,43,90,30,41,1,1,1,21,42,54,100,29.5,29.5,23.6,23.6),sf_q:mk(46,40,90,30,41,1,1,5,21,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(38,33,100,30,41,1,4,20,20,43,54,100,29.5,29.5,22,22),bl_q:mk(42,37,100,30,41,1,4,20,20,43,54,100,29.5,29.5,22,22),bl_i:mk(50,44,100,20,41,1,4,20,20,43,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,20,41,1,4,20,20,43,54,100,29.5,29.5,22,22),track:{notes:"FL 핵심. 2스톱 추천.",softLife:"13랩",medLife:"20랩",hardLife:"27랩",pitWindow50:"랩 10-11&22-23",strategy:"피트 21.5초"}},"Monza":{ip_r:mk(0,0,100,30,41,1,1,16,20,40,54,100,29.5,29.5,26.5,26.5),ip_q:mk(0,0,100,20,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),ip_i:mk(6,3,90,25,41,1,1,21,21,47,54,100,29.5,29.5,25.8,25.8),ip_w:mk(14,8,90,30,41,1,1,20,21,49,54,100,29.5,29.5,25.8,25.8),es_r:mk(0,0,100,30,41,1,1,20,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(1,0,100,25,41,1,1,21,20,40,53,100,29.5,29.5,26.5,26.5),sf_r:mk(2,2,90,35,41,1,1,21,20,40,54,100,29.5,29.5,26.5,26.5),sf_q:mk(4,3,90,30,41,1,1,21,20,40,54,100,29.5,29.5,26.5,26.5),bl_r:mk(3,0,100,30,41,1,5,21,21,40,54,100,29.5,29.5,22,22),bl_q:mk(8,0,100,30,41,1,5,21,21,40,54,100,29.5,29.5,20.5,20.5),bl_i:mk(11,2,100,30,41,1,5,21,21,40,54,100,29.5,29.5,22,22),bl_w:mk(20,10,100,30,41,1,5,21,21,40,54,100,29.5,29.5,22,22),track:{notes:"최저 다운포스. 소프트 비추.",softLife:"9랩",medLife:"13랩",hardLife:"18랩",pitWindow50:"랩 9-11",strategy:"1스톱. 피트 21초"}},"Baku":{ip_r:mk(3,0,100,30,41,1,1,8,20,40,55,100,29.5,29.5,20.5,20.5),ip_q:mk(7,0,100,20,41,1,1,20,20,40,53,100,29,29,21,21),ip_i:mk(18,15,90,25,41,1,1,8,20,47,53,100,29.5,29.5,25.8,25.8),ip_w:mk(20,16,100,20,41,1,1,19,19,40,54,100,28,28,20.5,20.5),es_r:mk(5,0,100,25,41,1,1,1,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(7,0,100,20,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(5,4,90,30,41,1,1,1,22,42,55,100,29.5,29.5,23.6,23.6),sf_q:mk(8,7,90,30,41,1,1,1,22,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(0,0,100,50,41,1,6,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(4,0,100,40,41,1,6,21,20,40,55,100,29.5,29.5,22,22),bl_i:mk(12,5,100,40,41,1,6,21,20,40,55,100,29.5,29.5,22,22),bl_w:mk(22,14,100,40,41,1,6,21,20,40,55,100,29.5,29.5,22,22),track:{notes:"리어 마모 최중요.",softLife:"10랩",medLife:"16랩",hardLife:"27랩",pitWindow50:"랩 10-12",strategy:"2스톱. 피트 19.5초"}},"Singapore":{ip_r:mk(50,48,100,30,41,1,1,13,18,40,54,100,29,29,20.5,20.5),ip_q:mk(50,44,100,20,41,1,1,21,18,40,53,100,29,29,20.5,20.5),ip_i:mk(50,50,90,25,41,1,1,10,20,40,53,100,29.5,29.5,25.8,25.8),ip_w:mk(50,50,100,20,40,1,1,20,17,40,54,100,26,26,20.5,20.5),es_r:mk(50,45,100,30,41,1,1,5,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(50,45,100,25,41,1,1,10,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(45,50,90,30,41,1,1,1,21,43,55,100,29.5,29.5,26.5,26.5),sf_q:mk(45,50,90,30,41,1,1,5,21,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(42,42,100,35,40,1,6,21,22,44,54,100,29.5,29.5,22,22),bl_q:mk(44,42,100,30,40,1,6,21,22,44,54,100,29.5,29.5,22,22),bl_i:mk(50,50,100,20,40,1,6,21,22,44,54,100,29.5,29.5,22,22),bl_w:mk(50,50,100,15,40,1,6,21,22,44,54,100,29.5,29.5,22,22),track:{notes:"소프트 불가. M-H.",softLife:"10랩",medLife:"20랩",hardLife:"27랩",pitWindow50:"랩 9-12",strategy:"소프트 금지. 피트 21초"}},"COTA":{ip_r:mk(41,32,100,30,41,1,1,6,19,40,53,100,29.5,29.5,20.5,20.5),ip_q:mk(45,33,100,20,41,1,1,15,19,40,53,100,29.5,29.5,20.5,20.5),ip_i:mk(41,50,90,30,41,13,8,21,21,50,52,100,29.5,29.5,25.8,25.8),ip_w:mk(50,44,100,20,41,1,1,14,18,40,53,100,27,27,20.5,20.5),es_r:mk(35,32,100,30,41,1,1,18,20,40,54,100,29.5,29.5,23.6,23.6),es_q:mk(38,29,100,25,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(36,34,90,35,41,1,5,16,20,40,55,100,29.5,29.5,25.5,25.5),sf_q:mk(36,35,90,30,41,1,3,18,20,40,54,100,29.5,29.5,24,24),bl_r:mk(34,30,100,40,40,1,6,21,20,41,55,100,29.5,29.5,22.3,22.3),bl_q:mk(38,34,100,35,40,1,6,21,20,41,54,100,29.5,29.5,22.3,22.3),bl_i:mk(50,48,100,40,40,1,6,21,20,41,54,100,29.5,29.5,22.3,22.3),bl_w:mk(50,48,100,40,40,1,6,21,20,41,54,100,29.5,29.5,22.3,22.3),track:{notes:"섹터1 마모. 미디엄 최고.",softLife:"10랩",medLife:"16랩",hardLife:"23랩",pitWindow50:"랩 8-11",strategy:"미디엄. 피트 19.6초"}},"Mexico":{ip_r:mk(14,9,100,35,41,1,1,14,19,40,55,100,29,29,20.5,20.5),ip_q:mk(40,28,100,25,41,1,1,20,19,40,53,100,29,29,20.5,20.5),ip_i:mk(44,41,90,20,41,7,7,21,20,47,53,100,29.5,29.5,25.8,25.8),ip_w:mk(50,45,100,20,41,1,1,18,18,40,53,100,27,27,20.5,20.5),es_r:mk(22,16,100,25,41,1,1,1,20,40,54,100,29.5,29.5,26.5,26.5),es_q:mk(36,26,100,20,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(25,25,90,25,41,1,1,1,20,42,54,100,29.5,29.5,26.5,26.5),sf_q:mk(35,33,90,30,41,1,1,8,20,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(14,14,100,40,41,1,4,6,20,44,55,100,29.5,29.5,26.5,26.5),bl_q:mk(21,17,100,30,41,1,4,6,20,44,54,100,29.5,29.5,20.5,20.5),bl_i:mk(40,33,100,25,41,1,4,6,20,44,54,100,29.5,29.5,26.5,26.5),bl_w:mk(48,39,100,25,41,1,4,6,20,44,54,100,29.5,29.5,26.5,26.5),track:{notes:"리어 마모 매우 높음.",softLife:"10랩",medLife:"16랩",hardLife:"23랩",pitWindow50:"랩 13-15",strategy:"1스톱. 피트 16초"}},"Brazil":{ip_r:mk(23,17,100,35,41,1,1,13,20,40,54,100,28.5,28.5,22,22),ip_q:mk(32,15,100,20,41,1,1,21,20,40,53,100,29.5,29.5,20.5,20.5),ip_i:mk(41,37,90,25,41,1,8,19,20,47,52,100,29.5,29.5,26.5,26.5),ip_w:mk(48,38,100,20,40,1,1,19,19,40,53,100,28,28,20.5,20.5),es_r:mk(26,22,100,30,41,1,1,15,20,40,53,100,29.5,29.5,26.5,26.5),es_q:mk(28,22,100,20,41,1,1,21,20,40,51,100,29.5,29.5,20.5,20.5),sf_r:mk(24,22,90,30,41,1,1,5,21,41,53,100,29.5,29.5,23.6,23.6),sf_q:mk(25,22,90,30,41,1,1,11,21,41,52,100,29.5,29.5,20.5,20.5),bl_r:mk(11,8,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),bl_q:mk(15,12,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),bl_i:mk(44,40,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,30,41,1,5,21,20,44,54,100,29.5,29.5,22,22),track:{notes:"매우 낮은 윙.",softLife:"9랩",medLife:"16랩",hardLife:"20랩",pitWindow50:"랩 13-16",strategy:"1스톱. 피트 19.6초"}},"Vegas":{ip_r:mk(0,0,100,35,36,1,1,12,22,40,55,100,28.5,28.5,24.5,24.5),ip_q:mk(2,0,100,15,38,1,1,21,21,40,53,100,27,27,25.5,25.5),ip_i:mk(0,4,90,30,41,10,8,21,20,46,54,100,23.2,23.2,20.9,20.9),ip_w:mk(0,1,100,15,39,1,1,21,21,40,53,100,26,26,22,22),es_r:mk(0,0,100,30,41,1,1,21,21,41,54,100,29.5,29.5,26.5,26.5),es_q:mk(3,0,100,25,41,1,1,21,21,41,53,100,29.5,29.5,20.6,20.6),sf_r:mk(2,0,90,30,41,1,5,18,22,42,55,100,29.5,29.5,26.5,26.5),sf_q:mk(5,1,90,30,41,1,5,18,22,42,54,100,29.5,29.5,20.5,20.5),bl_r:mk(0,0,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),bl_q:mk(4,0,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),bl_i:mk(12,7,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),bl_w:mk(17,12,100,30,41,1,1,21,22,44,55,100,29.5,29.5,20.5,20.5),track:{notes:"DRS 오버테이킹.",softLife:"9랩",medLife:"16랩",hardLife:"20랩",pitWindow50:"랩 9-10",strategy:"피트 21.5초"}},"Qatar":{ip_r:mk(33,23,100,30,41,1,1,15,20,40,54,100,29.5,29.5,21.5,21.5),ip_q:mk(44,26,100,20,41,1,1,18,20,40,52,100,29.5,29.5,21,21),ip_i:mk(45,42,90,20,41,7,8,20,20,48,53,100,29.5,29.5,25.8,25.8),ip_w:mk(50,38,100,20,41,1,1,20,20,40,52,100,29.5,29.5,21,21),es_r:mk(34,30,100,20,41,1,1,21,20,40,53,100,29.5,29.5,25,25),es_q:mk(36,28,100,20,41,1,1,21,20,40,52,100,29.5,29.5,25,25),sf_r:mk(34,30,100,30,41,1,1,21,20,43,54,100,29.5,29.5,25,25),sf_q:mk(36,30,90,25,41,1,1,21,20,42,53,100,29.5,29.5,25,25),bl_r:mk(44,38,100,30,41,41,6,21,20,40,54,100,29.5,29.5,22,22),bl_q:mk(45,39,100,25,41,41,6,21,20,40,54,100,29.5,29.5,22,22),bl_i:mk(50,44,100,20,41,41,6,21,20,40,54,100,29.5,29.5,22,22),bl_w:mk(50,44,100,20,41,41,6,21,20,40,54,100,29.5,29.5,22,22),track:{notes:"오버테이킹 매우 어려움.",softLife:"9랩",medLife:"13랩",hardLife:"20랩",pitWindow50:"랩 10-14",strategy:"1스톱. 피트 19.9초"}},"Abu Dhabi":{ip_r:mk(19,19,100,25,41,1,1,15,18,40,54,100,28.5,28.5,20.5,20.5),ip_q:mk(32,19,100,20,41,1,1,21,19,40,53,100,29,29,20.5,20.5),ip_i:mk(42,39,90,25,41,4,9,20,20,47,53,100,29.5,29.5,25.8,25.8),ip_w:mk(44,35,100,20,41,1,1,15,18,40,53,100,26.5,26.5,20.5,20.5),es_r:mk(25,18,100,30,41,1,1,10,20,40,54,100,29.5,29.5,25.8,25.8),es_q:mk(35,20,100,20,41,1,1,21,19,40,53,100,29.5,29.5,20.5,20.5),sf_r:mk(25,20,90,30,41,1,1,5,21,42,55,100,29.5,29.5,25.8,25.8),sf_q:mk(35,29,90,25,41,1,1,10,20,41,54,100,29.5,29.5,20.5,20.5),bl_r:mk(32,28,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),bl_q:mk(35,31,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),bl_i:mk(41,35,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),bl_w:mk(46,42,100,30,40,1,3,21,20,40,55,100,29.5,29.5,22,22),track:{notes:"마모 높음. M-H 1스톱.",softLife:"9랩",medLife:"16랩",hardLife:"20랩",pitWindow50:"랩 11-13",strategy:"M-H 1스톱. 피트 19.7초"}}};
-// Utility
-function gTags(s){const t=[];const aw=(s.fw+s.rw)/2;const at=(s.fl+s.fr+s.rl+s.rr)/4;if(aw>=35)t.push({label:"고다운포스",color:"#7c3aed"});else if(aw>=20)t.push({label:"밸런스",color:"#0891b2"});else t.push({label:"저드래그",color:"#dc2626"});if(s.doff<=20)t.push({label:"날카로운 회전",color:"#ea580c"});else if(s.doff>=40)t.push({label:"리어 안정",color:"#16a34a"});if(s.fs>=38)t.push({label:"단단한 프론트",color:"#ca8a04"});if(s.rs<=3)t.push({label:"소프트 리어",color:"#0284c7"});if(at<=22)t.push({label:"저압 그립",color:"#9333ea"});else if(at>=27)t.push({label:"고압 절약",color:"#15803d"});if(s.bb>=56)t.push({label:"프론트 제동",color:"#b45309"});return t;}
-function gCS(s,ti){if(!ti)return null;let sc=70;const aw=(s.fw+s.rw)/2;const at=(s.fl+s.fr+s.rl+s.rr)/4;const ld=ti.drag<0.013;const hw=aw>=30;if(ld&&!hw)sc+=10;if(ld&&hw)sc-=8;if(!ld&&hw)sc+=5;if(ti.aeroF>=3.3&&s.fw<=15)sc+=8;if(ti.aeroF<2.9&&s.fw<=10)sc-=10;if(ti.aeroR>=2.0&&s.doff<=25)sc+=8;if(ti.aeroR<1.85&&s.doff<=20)sc-=8;if(ti.mass>=810&&s.fs>=38)sc+=5;if(ti.mass<=800&&s.fs<=30)sc+=5;if(ti.wDist>=0.2&&s.bb<=54)sc+=7;if(ti.wDist<=0.17&&s.bb>=56)sc+=5;if(ti.wDist>=0.2&&s.bb>=57)sc-=7;if(ti.gear>=1.67&&s.don>=100)sc+=5;if(ti.gear<1.55&&s.don>=100)sc-=5;if(ti.mass>=810&&at<=24)sc+=5;if(ti.mass<=800&&at>=28)sc+=3;return Math.max(0,Math.min(100,Math.round(sc)));}
-function gCL(sc){if(sc>=88)return{label:"완벽한 궁합",color:"#22c55e",icon:"*"};if(sc>=76)return{label:"좋은 궁합",color:"#84cc16",icon:"+"};if(sc>=63)return{label:"보통 궁합",color:"#eab308",icon:"~"};if(sc>=50)return{label:"아쉬운 궁합",color:"#f97316",icon:"!"};return{label:"낮은 궁합",color:"#ef4444",icon:"x"};}
-function gFeel(s){const aw=(s.fw+s.rw)/2;const at=(s.fl+s.fr+s.rl+s.rr)/4;const f=[];if(aw>=40)f.push("윙 최대");else if(aw>=25)f.push("윙 중상");else if(aw>=10)f.push("윙 낮음");else f.push("윙 최소");if(s.doff<=20)f.push("진입 날카로움");else if(s.doff>=40)f.push("리어 안정형");if(s.rs<=3)f.push("리어 트랙션+");if(s.fs>=38)f.push("프론트 반응+");if(at<=22)f.push("저압 그립+");else if(at>=27)f.push("고압 마모-");return f.join(" / ");}
-
-const KNOWLEDGE_BASE = `[F1 25 셋업 전문 지식 베이스]\n=== 에어로 === 높은 윙=다운포스\u2191 드래그\u2191. 프론트>리어=오버스티어. F1 25는 낮은 에어로+프론트>리어 최적.\n=== 트랜스미션 === 온스로틀 디프: 높음=가속그립\u2191. 오프스로틀: 낮음=회전\u2191.\n=== 서스 === F1 25: 단단한 프론트(41)+소프트 리어(1). ARB로 보상.\n=== 브레이크 === 최적 바이어스 53%. 압력 100%.\n=== 타이어 === 높은 압력이 유리. 이상 온도 85-105C.\n=== Formula Kai === 온스로틀 항상 100. 프론트 서스 41, 리어 1. 프론트 ARB 1.`;
-
-function mk(fw,rw,don,doff,fs,rs,fa,ra,frh,rrh,bb,bp,fl,fr,rl,rr,note=""){return{fw,rw,don,doff,fs,rs,fa,ra,frh,rrh,bb,bp,fl,fr,rl,rr,note};}
-
-async function callClaude(messages, systemPrompt, signal, key?) {
-  const k = key || ENV_KEY;
-  if (!k) throw new Error("API 키를 설정해주세요");
-  const res = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": k, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1024, system: systemPrompt || undefined, messages }), signal });
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  const data = await res.json();
-  return data.content?.filter(b => b.type === "text").map(b => b.text).join("\n") || "";
+interface SenderStatus {
+  currentTrack?: { name?: string };
+  driverPermissions?: { pitwall?: boolean; overlay?: boolean; setupSupport?: boolean };
 }
 
-// ─── Design tokens ───
-// Matched to frc.pitwall theme (web/src/styles/theme.css)
+interface SenderSession {
+  sessionType?: string;
+  weather?: string;
+  trackTemp?: number;
+  trackName?: string;
+}
+
+interface SenderDynamics {
+  understeerPct?: number;
+  oversteerPct?: number;
+  lockupCount?: number;
+}
+
+interface SenderPlayer {
+  tireWear?: number[];
+  tireInnerTemp?: number[];
+  fuelRemainingLaps?: number;
+  tireAge?: number;
+  tireCompound?: string;
+  topSpeed?: number;
+  bestLapTime?: number;
+  lastLapTime?: number;
+  brakeBias?: number;
+  currentLapNum?: number;
+  dynamics?: SenderDynamics[];
+}
+
+interface TelemetrySnapshot {
+  ts: number;
+  player: SenderPlayer;
+}
+
+interface SetupTip {
+  issue: string;
+  severity: Severity;
+  reason: string;
+  changes: string[];
+}
+
+const DEFAULT_SENDER_URL = "http://localhost:8099";
+
 const P = {
-  bg: '#131314',                              // --bg-primary
-  surface: 'rgba(32, 31, 32, 0.92)',          // --bg-panel
-  surface2: '#201f20',                        // --bg-surface
-  surfaceHover: 'rgba(42, 42, 43, 0.95)',     // --bg-panel-hover
-  elevated: '#2a2a2b',                        // --bg-surface-elevated
-  border: 'rgba(59, 73, 76, 0.15)',           // --bg-panel-border
-  borderHi: 'rgba(59, 73, 76, 0.22)',         // --border-color
-  accent: '#00e5ff',                          // --accent
-  accent2: '#cdff13',                         // --accent-lime
-  accentSoft: '#c3f5ff',                      // --accent-yellow (light cyan)
-  danger: '#ff525c',                          // --accent-red
-  dangerSoft: '#ffb3b2',                      // --accent-soft
-  text: '#e5e2e3',                            // --text-primary
-  textSec: '#bac9cc',                         // --text-secondary
-  muted: '#849396',                           // --text-muted
-  dim: '#3b494c',                             // --drs-inactive
-  mono: "'Space Grotesk', sans-serif",        // --font-racing
-  sans: "'Inter', sans-serif",                // --font-body
-  glow: '0 0 18px rgba(0, 229, 255, 0.18)',  // --shadow-glow
-  panelShadow: '0 20px 40px rgba(0, 229, 255, 0.08)', // --shadow-panel
+  bg: "#131314",
+  surface: "rgba(32, 31, 32, 0.92)",
+  surface2: "#201f20",
+  border: "rgba(59, 73, 76, 0.15)",
+  accent: "#00e5ff",
+  accent2: "#cdff13",
+  danger: "#ff525c",
+  text: "#e5e2e3",
+  muted: "#849396",
+  dim: "#3b494c",
+  mono: "'Space Grotesk', sans-serif",
+  sans: "'Inter', sans-serif",
 };
 
-// ─── Telemetry: sender track name → setup DB name mapping ───
-const TRACK_MAP: Record<string, string> = {
-  melbourne:"Australia",shanghai:"China",suzuka:"Japan",sakhir:"Bahrain",
-  jeddah:"Jeddah",miami:"Miami",imola:"Imola",monaco:"Monaco",
-  catalunya:"Spain",montreal:"Canada",austria:"Austria",silverstone:"Silverstone",
-  spa:"Spa",hungaroring:"Hungary",zandvoort:"Zandvoort",monza:"Monza",
-  baku:"Baku",singapore:"Singapore",texas:"COTA",mexico:"Mexico",
-  brazil:"Brazil",las_vegas:"Vegas",losail:"Qatar",abu_dhabi:"Abu Dhabi",
-};
+function normalizeSenderUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  return trimmed || DEFAULT_SENDER_URL;
+}
 
-const DEFAULT_SENDER_URL = 'http://localhost:8099';
+function severityColor(severity: Severity): string {
+  if (severity === "high") return P.danger;
+  if (severity === "med") return P.accent;
+  return P.dim;
+}
+
+function formatLapTime(value?: number): string {
+  return value && value > 0 ? `${(value / 1000).toFixed(3)}s` : "--";
+}
+
+function MetricBar({ value, min, max }: { value: number; min: number; max: number }) {
+  const percent = Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+  const color = percent < 33 ? P.accent : percent < 66 ? P.accent2 : P.danger;
+
+  return (
+    <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+      <div style={{ width: `${percent}%`, height: "100%", borderRadius: 999, background: color }} />
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section style={{ background: P.surface, border: `1px solid ${P.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${P.border}`, fontSize: 12, fontFamily: P.mono, fontWeight: 700, letterSpacing: 2, color: P.muted }}>
+        {title}
+      </div>
+      <div style={{ padding: "14px 16px" }}>{children}</div>
+    </section>
+  );
+}
 
 function useSenderConnection(senderUrl: string) {
-  const [status, setStatus] = useState<any>(null);
-  const [session, setSession] = useState<any>(null);
-  const [player, setPlayer] = useState<any>(null);
   const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState<SenderStatus | null>(null);
+  const [session, setSession] = useState<SenderSession | null>(null);
+  const [player, setPlayer] = useState<SenderPlayer | null>(null);
 
   useEffect(() => {
-    if (!senderUrl) return;
-    let cancelled = false;
+    const normalized = normalizeSenderUrl(senderUrl);
+    let active = true;
 
     const poll = async () => {
       try {
-        const res = await fetch(`${senderUrl}/api/status`, { signal: AbortSignal.timeout(3000) });
-        if (cancelled) return;
-        const data = await res.json();
-        setStatus(data);
+        const statusRes = await fetch(`${normalized}/api/status`);
+        const nextStatus = (await statusRes.json()) as SenderStatus;
+        if (!active) return;
+        setStatus(nextStatus);
         setConnected(true);
       } catch {
-        if (!cancelled) { setConnected(false); setStatus(null); }
+        if (!active) return;
+        setConnected(false);
+        setStatus(null);
       }
 
       try {
-        const res = await fetch(`${senderUrl}/api/debug`, { signal: AbortSignal.timeout(3000) });
-        if (cancelled) return;
-        const data = await res.json();
-        const pw = data.pitwallState;
-        setSession(pw?.session || null);
-        if (pw?.drivers && pw.playerIndex >= 0 && pw.playerIndex < pw.drivers.length) {
-          setPlayer(pw.drivers[pw.playerIndex]);
-        } else {
-          setPlayer(null);
-        }
+        const debugRes = await fetch(`${normalized}/api/debug`);
+        const debugData = (await debugRes.json()) as {
+          pitwallState?: { session?: SenderSession; drivers?: SenderPlayer[]; playerIndex?: number };
+        };
+        if (!active) return;
+        const drivers = debugData.pitwallState?.drivers ?? [];
+        const playerIndex = debugData.pitwallState?.playerIndex ?? -1;
+        setSession(debugData.pitwallState?.session ?? null);
+        setPlayer(playerIndex >= 0 && playerIndex < drivers.length ? drivers[playerIndex] ?? null : null);
       } catch {
-        if (!cancelled) { setSession(null); setPlayer(null); }
+        if (!active) return;
+        setSession(null);
+        setPlayer(null);
       }
     };
 
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(id); };
+    void poll();
+    const interval = window.setInterval(() => void poll(), 3000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, [senderUrl]);
 
-  const trackName = status?.currentTrack?.name;
-  const detectedTrack = trackName ? TRACK_MAP[trackName] || null : null;
-
+  const rawTrack = status?.currentTrack?.name;
+  const detectedTrack = rawTrack ? SENDER_TRACK_MAP[rawTrack] ?? null : null;
   return { connected, status, session, player, detectedTrack };
 }
 
-// ─── Telemetry-based diagnostic engine ───
-type Diagnostic = { label: string; severity: 'high' | 'med' | 'low'; prompt: string };
+function buildSetupTips(snaps: TelemetrySnapshot[]): SetupTip[] {
+  if (snaps.length < 2) return [];
 
-function diagnoseFromTelemetry(player: any, session: any): Diagnostic[] {
-  if (!player) return [];
-  const diags: Diagnostic[] = [];
-
-  const tw = player.tireWear; // [FL, FR, RL, RR]
-  const ti = player.tireInnerTemp; // [FL, FR, RL, RR]
-  const ts = player.tireSurfaceTemp;
-  const bt = player.brakeTemp;
-
-  if (tw && ti) {
-    const avgFrontWear = (tw[0] + tw[1]) / 2;
-    const avgRearWear = (tw[2] + tw[3]) / 2;
-    const avgFrontTemp = (ti[0] + ti[1]) / 2;
-    const avgRearTemp = (ti[2] + ti[3]) / 2;
-
-    // Understeer: front tires degrading faster
-    if (avgFrontWear > avgRearWear + 8) {
-      diags.push({ label: '언더스티어 감지', severity: avgFrontWear > avgRearWear + 15 ? 'high' : 'med',
-        prompt: `텔레메트리 분석: 프론트 타이어 마모 ${avgFrontWear.toFixed(0)}% > 리어 ${avgRearWear.toFixed(0)}%. 언더스티어 징후. 해결 방법은?` });
-    }
-
-    // Oversteer: rear tires degrading faster
-    if (avgRearWear > avgFrontWear + 8) {
-      diags.push({ label: '오버스티어 감지', severity: avgRearWear > avgFrontWear + 15 ? 'high' : 'med',
-        prompt: `텔레메트리 분석: 리어 타이어 마모 ${avgRearWear.toFixed(0)}% > 프론트 ${avgFrontWear.toFixed(0)}%. 오버스티어 징후. 해결 방법은?` });
-    }
-
-    // Front overheating
-    if (avgFrontTemp > 105) {
-      diags.push({ label: '프론트 과열', severity: avgFrontTemp > 115 ? 'high' : 'med',
-        prompt: `텔레메트리 분석: 프론트 타이어 코어 온도 ${avgFrontTemp.toFixed(0)}°C (이상: 85-105°C). 프론트 과열 해결 방법은?` });
-    }
-
-    // Rear overheating
-    if (avgRearTemp > 105) {
-      diags.push({ label: '리어 과열', severity: avgRearTemp > 115 ? 'high' : 'med',
-        prompt: `텔레메트리 분석: 리어 타이어 코어 온도 ${avgRearTemp.toFixed(0)}°C. 리어 과열 해결 방법은?` });
-    }
-
-    // Asymmetric wear (left vs right)
-    if (tw[0] && tw[1] && Math.abs(tw[0] - tw[1]) > 10) {
-      const side = tw[0] > tw[1] ? '좌측' : '우측';
-      diags.push({ label: `프론트 ${side} 편마모`, severity: 'med',
-        prompt: `텔레메트리 분석: FL ${tw[0]}% / FR ${tw[1]}%. 프론트 ${side} 편마모. 원인과 해결 방법은?` });
-    }
-    if (tw[2] && tw[3] && Math.abs(tw[2] - tw[3]) > 10) {
-      const side = tw[2] > tw[3] ? '좌측' : '우측';
-      diags.push({ label: `리어 ${side} 편마모`, severity: 'med',
-        prompt: `텔레메트리 분석: RL ${tw[2]}% / RR ${tw[3]}%. 리어 ${side} 편마모. 원인과 해결 방법은?` });
-    }
-
-    // Overall high wear
-    const maxWear = Math.max(...tw);
-    if (maxWear > 60) {
-      diags.push({ label: '타이어 수명 위험', severity: maxWear > 80 ? 'high' : 'med',
-        prompt: `텔레메트리 분석: 최대 타이어 마모 ${maxWear}% (FL:${tw[0]} FR:${tw[1]} RL:${tw[2]} RR:${tw[3]}). 타이어 관리 방법은?` });
-    }
-  }
-
-  // Brake lockup indicator: front brake temps much higher
-  if (bt && bt[0] > 0) {
-    const avgFBrake = (bt[0] + bt[1]) / 2;
-    const avgRBrake = (bt[2] + bt[3]) / 2;
-    if (avgFBrake > avgRBrake + 100 && avgFBrake > 600) {
-      diags.push({ label: '프론트 브레이크 과열', severity: 'med',
-        prompt: `텔레메트리 분석: 프론트 브레이크 ${avgFBrake.toFixed(0)}°C >> 리어 ${avgRBrake.toFixed(0)}°C. 앞바퀴 잠김 가능성. 브레이크 바이어스 조정은?` });
-    }
-  }
-
-  // Low fuel warning
-  if (player.fuelRemainingLaps > 0 && player.fuelRemainingLaps < 3) {
-    diags.push({ label: '연료 부족', severity: 'high',
-      prompt: `텔레메트리 분석: 잔여 연료 ${player.fuelRemainingLaps.toFixed(1)}랩. 연료 절약 팁은?` });
-  }
-
-  // Tire cold (just out of pits or early laps)
-  if (ti && player.tireAge <= 2) {
-    const avgTemp = (ti[0] + ti[1] + ti[2] + ti[3]) / 4;
-    if (avgTemp < 80) {
-      diags.push({ label: '타이어 미열', severity: 'low',
-        prompt: `텔레메트리 분석: 타이어 평균 코어 온도 ${avgTemp.toFixed(0)}°C, 나이 ${player.tireAge}랩. 타이어 웜업 팁은?` });
-    }
-  }
-
-  return diags;
-}
-
-// ─── Rule-based setup feedback engine (no AI needed) ───
-type SetupTip = { issue: string; severity: 'high' | 'med' | 'low'; changes: { param: string; dir: '↑' | '↓'; val?: string }[]; reason: string };
-
-function buildSetupTips(snaps: any[]): SetupTip[] {
-  if (!snaps || snaps.length < 2) return [];
+  const first = snaps[0].player;
+  const last = snaps[snaps.length - 1].player;
+  const wear = last.tireWear;
+  const firstWear = first.tireWear;
+  const temps = last.tireInnerTemp;
+  const dynamics = last.dynamics?.length ? last.dynamics[last.dynamics.length - 1] : undefined;
   const tips: SetupTip[] = [];
-  const last = snaps[snaps.length - 1];
-  const first = snaps[0];
-  const p = last.player;
-  if (!p) return tips;
 
-  const tw = p.tireWear, ti = p.tireInnerTemp, bt = p.brakeTemp;
-  if (!tw || !ti) return tips;
+  if (wear && wear.length >= 4 && temps && temps.length >= 4) {
+    const frontWear = (wear[0] + wear[1]) / 2;
+    const rearWear = (wear[2] + wear[3]) / 2;
+    const frontTemp = (temps[0] + temps[1]) / 2;
+    const rearTemp = (temps[2] + temps[3]) / 2;
 
-  const avgFW = (tw[0] + tw[1]) / 2, avgRW = (tw[2] + tw[3]) / 2;
-  const avgFT = (ti[0] + ti[1]) / 2, avgRT = (ti[2] + ti[3]) / 2;
-
-  // Wear rate from recording
-  const tw0 = first.player?.tireWear;
-  const wearRateF = tw0 ? ((tw[0] - tw0[0] + tw[1] - tw0[1]) / 2) : 0;
-  const wearRateR = tw0 ? ((tw[2] - tw0[2] + tw[3] - tw0[3]) / 2) : 0;
-
-  // Dynamics
-  const dyn = p.dynamics;
-  const lastDyn = dyn?.length ? dyn[dyn.length - 1] : null;
-  const usP = lastDyn?.understeerPct || 0;
-  const osP = lastDyn?.oversteerPct || 0;
-  const lockups = lastDyn?.lockupCount || 0;
-
-  // Understeer
-  if (avgFW > avgRW + 8 || usP > 10) {
-    const sev = (avgFW > avgRW + 15 || usP > 20) ? 'high' : 'med';
-    tips.push({ issue: '언더스티어', severity: sev, reason: `프론트 마모 ${avgFW.toFixed(0)}% vs 리어 ${avgRW.toFixed(0)}%${usP > 5 ? `, 언더스티어 ${usP.toFixed(0)}%` : ''}`, changes: [
-      { param: '프론트 윙', dir: '↑', val: '+2~4' },
-      { param: '프론트 안티롤바', dir: '↓', val: '-2~3' },
-      { param: '프론트 서스', dir: '↓', val: '-2~4' },
-      { param: '디프 오프스로틀', dir: '↑', val: '+5~10' },
-    ]});
-  }
-
-  // Oversteer
-  if (avgRW > avgFW + 8 || osP > 10) {
-    const sev = (avgRW > avgFW + 15 || osP > 20) ? 'high' : 'med';
-    tips.push({ issue: '오버스티어', severity: sev, reason: `리어 마모 ${avgRW.toFixed(0)}% vs 프론트 ${avgFW.toFixed(0)}%${osP > 5 ? `, 오버스티어 ${osP.toFixed(0)}%` : ''}`, changes: [
-      { param: '리어 윙', dir: '↑', val: '+2~4' },
-      { param: '리어 안티롤바', dir: '↓', val: '-2~3' },
-      { param: '리어 서스', dir: '↓', val: '-2~4' },
-      { param: '온스로틀 디프', dir: '↓', val: '-5~10' },
-    ]});
-  }
-
-  // Front overheat
-  if (avgFT > 105) {
-    tips.push({ issue: '프론트 과열', severity: avgFT > 115 ? 'high' : 'med', reason: `프론트 코어 온도 ${avgFT.toFixed(0)}°C (적정 85~105°C)`, changes: [
-      { param: 'FL/FR 압력', dir: '↑', val: '+0.5~1.0 psi' },
-      { param: '프론트 RH', dir: '↑', val: '+1~2' },
-      { param: '프론트 서스', dir: '↑', val: '+1~2' },
-    ]});
-  }
-
-  // Rear overheat
-  if (avgRT > 105) {
-    tips.push({ issue: '리어 과열', severity: avgRT > 115 ? 'high' : 'med', reason: `리어 코어 온도 ${avgRT.toFixed(0)}°C (적정 85~105°C)`, changes: [
-      { param: 'RL/RR 압력', dir: '↑', val: '+0.5~1.0 psi' },
-      { param: '리어 RH', dir: '↑', val: '+1~2' },
-      { param: '온스로틀 디프', dir: '↓', val: '-5~10' },
-    ]});
-  }
-
-  // Brake lockup / front brake overheat
-  if (bt && bt[0] > 0) {
-    const avgFB = (bt[0] + bt[1]) / 2, avgRB = (bt[2] + bt[3]) / 2;
-    if ((avgFB > avgRB + 100 && avgFB > 600) || lockups > 3) {
-      tips.push({ issue: '프론트 브레이크 과열 / 락업', severity: lockups > 5 ? 'high' : 'med', reason: `프론트 브레이크 ${avgFB.toFixed(0)}°C, 락업 ${lockups}회`, changes: [
-        { param: '브레이크 바이어스', dir: '↓', val: '-1~3%' },
-        { param: '브레이크 압력', dir: '↓', val: '-2~5%' },
-      ]});
+    if (frontWear > rearWear + 8 || (dynamics?.understeerPct ?? 0) > 10) {
+      tips.push({ issue: "Understeer", severity: frontWear > rearWear + 15 ? "high" : "med", reason: `Front wear ${frontWear.toFixed(0)}% vs rear ${rearWear.toFixed(0)}%.`, changes: ["Front Wing +2", "Front ARB -1", "Off Throttle Diff +5"] });
+    }
+    if (rearWear > frontWear + 8 || (dynamics?.oversteerPct ?? 0) > 10) {
+      tips.push({ issue: "Oversteer", severity: rearWear > frontWear + 15 ? "high" : "med", reason: `Rear wear ${rearWear.toFixed(0)}% vs front ${frontWear.toFixed(0)}%.`, changes: ["Rear Wing +2", "Rear Suspension -1", "Brake Bias -1"] });
+    }
+    if (frontTemp > 105) {
+      tips.push({ issue: "Front temps high", severity: frontTemp > 115 ? "high" : "med", reason: `Front inner temp ${frontTemp.toFixed(0)}C.`, changes: ["Front PSI -0.2", "Front Wing -1"] });
+    }
+    if (rearTemp > 105) {
+      tips.push({ issue: "Rear temps high", severity: rearTemp > 115 ? "high" : "med", reason: `Rear inner temp ${rearTemp.toFixed(0)}C.`, changes: ["Rear PSI -0.2", "On Throttle Diff -5"] });
     }
   }
 
-  // Asymmetric front wear
-  if (Math.abs(tw[0] - tw[1]) > 10) {
-    const side = tw[0] > tw[1] ? '좌측' : '우측';
-    const param = tw[0] > tw[1] ? 'FL 압력' : 'FR 압력';
-    tips.push({ issue: `프론트 ${side} 편마모`, severity: 'med', reason: `FL ${tw[0].toFixed(0)}% / FR ${tw[1].toFixed(0)}%`, changes: [
-      { param, dir: '↑', val: '+0.5 psi' },
-    ]});
+  if (dynamics?.lockupCount && dynamics.lockupCount > 2) {
+    tips.push({ issue: "Brake lockups", severity: dynamics.lockupCount > 4 ? "high" : "med", reason: `${dynamics.lockupCount} lockups in the latest lap sample.`, changes: ["Brake Pressure -2", "Brake Bias -1"] });
   }
 
-  // Asymmetric rear wear
-  if (Math.abs(tw[2] - tw[3]) > 10) {
-    const side = tw[2] > tw[3] ? '좌측' : '우측';
-    const param = tw[2] > tw[3] ? 'RL 압력' : 'RR 압력';
-    tips.push({ issue: `리어 ${side} 편마모`, severity: 'med', reason: `RL ${tw[2].toFixed(0)}% / RR ${tw[3].toFixed(0)}%`, changes: [
-      { param, dir: '↑', val: '+0.5 psi' },
-    ]});
+  if (firstWear && wear && firstWear.length >= 4 && wear.length >= 4) {
+    const deltas = wear.map((value, index) => value - (firstWear[index] ?? value));
+    const worst = Math.max(...deltas);
+    if (worst > 18) {
+      tips.push({ issue: "Tyre wear rate", severity: worst > 25 ? "high" : "med", reason: `Worst tyre delta ${worst.toFixed(1)}%.`, changes: ["PSI +0.2", "Wing -1"] });
+    }
   }
 
-  // High overall wear rate
-  if (wearRateF > 15 && wearRateR > 15) {
-    tips.push({ issue: '전체 마모 과다', severity: 'med', reason: `녹화 중 프론트 +${wearRateF.toFixed(0)}%, 리어 +${wearRateR.toFixed(0)}%`, changes: [
-      { param: '프론트/리어 서스', dir: '↑', val: '+2~4 (부드러운 승차감)' },
-      { param: '전체 타이어 압력', dir: '↑', val: '+0.5 psi' },
-    ]});
-  }
-
-  // Low top speed (from recording)
-  const maxSpeed = Math.max(...snaps.map(s => s.player?.topSpeed || 0));
-  const bestLap = p.bestLapTime;
-  if (maxSpeed > 0 && maxSpeed < 300 && bestLap > 0) {
-    // Only suggest if speed seems low (heuristic, can't know track without more data)
-    // Skip this heuristic unless user explicitly asks — too track-dependent
-  }
-
-  if (tips.length === 0) {
-    tips.push({ issue: '양호', severity: 'low', reason: '주요 이슈 감지되지 않음. 현재 셋업 유지 권장.', changes: [] });
-  }
-
-  return tips;
+  return tips.length ? tips : [{ issue: "Stable run", severity: "low", reason: "No major setup issue stood out in the recording.", changes: [] }];
 }
 
-function Bar({v,min,max}){const p=Math.max(0,Math.min(100,((v-min)/(max-min))*100));const c=p<33?P.accent:p<66?P.accent2:P.danger;return(<div style={{background:'rgba(255,255,255,0.04)',borderRadius:2,height:3,overflow:'hidden'}}><div style={{width:`${p}%`,height:'100%',background:c,borderRadius:2}}/></div>);}
-
-function RC({s1,s2,m1,m2,size=240}){const cx=size/2,cy=size/2,r=size/2-40,n=RK.length;const nm=(k,v)=>{const d=DEFS[k];return(v-d.min)/(d.max-d.min);};const pt=(i,v)=>{const a=(Math.PI*2*i/n)-Math.PI/2;return{x:cx+r*v*Math.cos(a),y:cy+r*v*Math.sin(a)};};const p1=RK.map((k,i)=>pt(i,nm(k.k,s1[k.k])));const p2=s2?RK.map((k,i)=>pt(i,nm(k.k,s2[k.k]))):null;const po=pts=>pts.map(p=>`${p.x},${p.y}`).join(" ");return(<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}><defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>{[0.25,0.5,0.75,1].map(lv=><polygon key={lv} points={po(RK.map((_,i)=>pt(i,lv)))} fill="none" stroke="rgba(0,229,255,0.06)" strokeWidth={1}/>)}{RK.map((_,i)=>{const p=pt(i,1);return<line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="rgba(0,229,255,0.04)" strokeWidth={1}/>;})}<polygon points={po(p1)} fill={`${m1?.color||P.accent}20`} stroke={m1?.color||P.accent} strokeWidth={1.5} filter="url(#glow)"/>{p1.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m1?.color||P.accent}/>)}{p2&&<><polygon points={po(p2)} fill={`${m2?.color||P.accent2}20`} stroke={m2?.color||P.accent2} strokeWidth={1.5} strokeDasharray="5,3" filter="url(#glow)"/>{p2.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={2.5} fill={m2?.color||P.accent2}/>)}</>}{RK.map((k,i)=>{const p=pt(i,1.18);return<text key={i} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="middle" fill={P.muted} fontSize={8} fontFamily={P.mono} fontWeight={600}>{k.l}</text>;})}</svg>);}
-
-const SORTED_TEAMS = [...TEAMS].sort((a, b) => b.total - a.total);
-const MAX_HISTORY = 20;
-
-// ─── SVG Icons ───
-const Icons = {
-  wrench: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
-  flag: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>,
-  chartBar: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
-  sliders: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>,
-  msgCircle: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>,
-  key: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
-  gear: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
-  activity: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
-};
-
-function getTabs() {
-  return [
-    { id: "main", label: "SETUP", icon: Icons.wrench },
-    { id: "telemetry", label: "TELEMETRY", icon: Icons.activity },
-    { id: "settings", label: "SETTINGS", icon: Icons.gear },
-  ];
-}
-
-function Stepper({ steps, current }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '6px 0 10px', overflowX: 'auto' }}>
-      {steps.map((s, i) => {
-        const done = current > s.n;
-        const active = Math.floor(current) === s.n || current === s.n;
-        return (
-          <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: i < steps.length - 1 ? 1 : 'none' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 36 }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontFamily: P.mono, fontWeight: 700,
-                background: done || active ? P.accent : 'transparent',
-                border: `1.5px solid ${done || active ? P.accent : P.dim}`,
-                color: done || active ? P.bg : P.dim,
-              }}>{done ? '\u2713' : s.n}</div>
-              <span style={{ fontSize: 8, fontFamily: P.mono, color: active ? P.accent : P.muted, marginTop: 3, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>{s.label}</span>
-            </div>
-            {i < steps.length - 1 && <div style={{ flex: 1, height: 1, background: done ? P.accent : P.dim, margin: '0 4px', marginBottom: 14, opacity: 0.5 }} />}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Chat UI helpers (eliminate 3x JSX repetition) ───
-function ChatMessages({ messages, endRef }) {
-  return (<>
-    {messages.map((m, i) => (
-      <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
-        <div style={{
-          maxWidth: '85%', padding: '8px 12px', fontSize: 12, lineHeight: 1.7, borderRadius: 4,
-          background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
-          border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
-          color: P.text, whiteSpace: 'pre-wrap', fontFamily: P.sans,
-        }}>{m.t}</div>
-      </div>
-    ))}
-    <div ref={endRef} />
-  </>);
-}
-
-function ChatLoading({ loading, label = "ANALYZING..." }) {
-  if (!loading) return null;
-  return (
-    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-      <div style={{ padding: '8px 14px', borderRadius: 4, fontSize: 11, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>{label}</div>
-    </div>
-  );
-}
-
-function ChatChips({ items, onSelect, mb = 8 }) {
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: mb }}>
-      {items.map(q => (
-        <button key={q} onClick={() => onSelect(q)} style={{
-          fontSize: 11, padding: '4px 10px', borderRadius: 3, cursor: 'pointer',
-          border: `1px solid ${P.border}`, background: 'transparent', color: P.muted, fontFamily: P.sans,
-        }}>{q}</button>
-      ))}
-    </div>
-  );
-}
-
-function ChatInput({ value, onChange, onSend, loading, placeholder, buttonLabel = "SEND" }) {
-  return (
-    <div style={{ display: 'flex', gap: 8 }}>
-      <input value={value} onChange={e => onChange(e.target.value)} onKeyDown={e => e.key === "Enter" && onSend()}
-        placeholder={placeholder} style={{
-          flex: 1, padding: '10px 14px', borderRadius: 4, border: `1px solid ${P.border}`,
-          background: P.surface2, color: P.text, fontSize: 13, fontFamily: P.sans, outline: 'none',
-        }} />
-      <button onClick={onSend} disabled={loading} style={{
-        padding: '10px 20px', borderRadius: 4, border: 'none',
-        background: loading ? P.dim : P.accent, color: P.bg,
-        fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
-        cursor: loading ? 'not-allowed' : 'pointer',
-      }}>{buttonLabel}</button>
-    </div>
-  );
-}
-
-// ─── Panel component ───
-function Panel({ title, children, style: s = {} }) {
-  return (
-    <div style={{ background: P.surface, border: `1px solid ${P.border}`, borderRadius: 4, ...s }}>
-      {title && (
-        <div style={{ padding: '12px 16px 10px', borderBottom: `1px solid ${P.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 2, height: 14, background: P.accent, borderRadius: 1, flexShrink: 0 }} />
-          <span style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', color: P.muted }}>{title}</span>
-        </div>
-      )}
-      <div style={{ padding: '14px 16px' }}>{children}</div>
-    </div>
-  );
-}
-
-// ─── Settings Tab (integrated sender control) ───
-function SettingsTab({ senderUrl, senderConnected, senderStatus, liveSession, livePlayer, hasOverlay = true }) {
-  const [config, setConfig] = useState<any>(null);
-  const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<any>({});
-
-  // Fetch sender config
-  useEffect(() => {
-    if (!senderConnected) return;
-    fetch(`${senderUrl}/api/config`).then(r => r.json()).then(d => { setConfig(d); setDraft(d); }).catch(() => {});
-  }, [senderUrl, senderConnected]);
-
-  const saveConfig = async () => {
-    setSaving(true);
-    try {
-      await fetch(`${senderUrl}/api/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
-      setConfig(draft);
-    } catch {}
-    setSaving(false);
-  };
-
-  const toggleOverlay = async (endpoint: string) => {
-    try { await fetch(`${senderUrl}${endpoint}`, { method: 'POST' }); } catch {}
-  };
-
-  const lbl = { fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase' as const, marginBottom: 4 };
-  const inp = { width: '100%', padding: '7px 10px', borderRadius: 3, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.mono, outline: 'none' };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Connection Status */}
-      <Panel title="CONNECTION">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: senderConnected ? P.accent : P.danger, boxShadow: senderConnected ? `0 0 8px ${P.accent}` : 'none' }} />
-          <span style={{ fontFamily: P.mono, fontSize: 12, fontWeight: 700, color: senderConnected ? P.accent : P.danger }}>
-            {senderConnected ? 'SENDER ONLINE' : 'SENDER OFFLINE'}
-          </span>
-        </div>
-        {senderConnected && senderStatus && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {[
-              ['Room', senderStatus.roomName],
-              ['Code', senderStatus.roomCode],
-              ['Engineers', senderStatus.connectedEngineers],
-              ['UDP Port', senderStatus.udpPort],
-            ].map(([k, v]) => (
-              <div key={k} style={{ background: P.surface2, borderRadius: 2, padding: '6px 8px' }}>
-                <div style={lbl}>{k}</div>
-                <div style={{ fontFamily: P.mono, fontSize: 12, fontWeight: 700, color: P.text }}>{v}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {senderConnected && liveSession && (
-          <div style={{ marginTop: 10, background: 'rgba(0,229,255,0.04)', borderRadius: 2, padding: '8px 10px', border: `1px solid rgba(0,229,255,0.1)` }}>
-            <div style={lbl}>LIVE SESSION</div>
-            <div style={{ fontFamily: P.mono, fontSize: 11, color: P.text }}>
-              {liveSession.trackName} — {liveSession.sessionType} — {liveSession.weather}
-              {liveSession.trackTemp && ` — Track ${liveSession.trackTemp.toFixed(0)}°C`}
-            </div>
-          </div>
-        )}
-        {senderConnected && livePlayer && (
-          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-            {[
-              ['Compound', livePlayer.tireCompound?.toUpperCase()],
-              ['Tire Age', `${livePlayer.tireAge}L`],
-              ['Fuel', `${livePlayer.fuelRemainingLaps?.toFixed(1)}L`],
-            ].map(([k, v]) => (
-              <div key={k} style={{ background: P.surface2, borderRadius: 2, padding: '4px 6px', textAlign: 'center' }}>
-                <div style={{ ...lbl, fontSize: 7 }}>{k}</div>
-                <div style={{ fontFamily: P.mono, fontSize: 11, fontWeight: 700, color: P.accent }}>{v || '--'}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
-
-      {/* Overlay Toggles */}
-      {senderConnected && hasOverlay && (
-        <Panel title="OVERLAYS">
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {[
-              ['Radar', '/api/radar/toggle', senderStatus?.radarActive],
-              ['Weather', '/api/weather/toggle', senderStatus?.weatherActive],
-              ['Strategy', '/api/strategy/toggle', senderStatus?.strategyActive],
-            ].map(([name, endpoint, active]) => (
-              <button key={name} onClick={() => toggleOverlay(endpoint as string)} style={{
-                padding: '8px 16px', borderRadius: 3, cursor: 'pointer', fontFamily: P.mono, fontSize: 10,
-                fontWeight: 700, letterSpacing: 1,
-                border: `1px solid ${active ? P.accent : P.border}`,
-                background: active ? 'rgba(0,229,255,0.1)' : 'transparent',
-                color: active ? P.accent : P.muted,
-              }}>
-                {active ? '■' : '▶'} {name}
-              </button>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {/* Sender Config */}
-      {senderConnected && config && (
-        <Panel title="SENDER CONFIG">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div>
-              <div style={lbl}>UDP Port</div>
-              <input type="number" value={draft.udpPort || ''} onChange={e => setDraft(d => ({ ...d, udpPort: parseInt(e.target.value) || 20777 }))} style={inp} />
-            </div>
-            <div>
-              <div style={lbl}>Room Name</div>
-              <input value={draft.roomName || ''} onChange={e => setDraft(d => ({ ...d, roomName: e.target.value }))} style={inp} />
-            </div>
-            <div>
-              <div style={lbl}>Room Password</div>
-              <input type="password" value={draft.roomPassword || ''} onChange={e => setDraft(d => ({ ...d, roomPassword: e.target.value }))} style={inp} placeholder="Optional" />
-            </div>
-            <div>
-              <div style={lbl}>FRC Account Key</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input value={draft.frcAccountKey || ''} onChange={e => setDraft(d => ({ ...d, frcAccountKey: e.target.value }))} style={{ ...inp, flex: 1 }} placeholder="F1RC-XXXXXXXX" />
-                <button type="button" disabled={!draft.frcAccountKey} onClick={async () => {
-                  try {
-                    const res = await fetch(`${senderUrl}/api/frc-verify?key=${encodeURIComponent(draft.frcAccountKey)}`);
-                    if (res.ok) { const d = await res.json(); alert(`Verified: ${d.nickname} (${d.role})`); }
-                    else { const d = await res.json().catch(() => null); alert(d?.error || 'Verification failed'); }
-                  } catch { alert('Cannot reach sender'); }
-                }} style={{
-                  padding: '0 12px', borderRadius: 3, border: `1px solid ${P.accent}`,
-                  background: 'transparent', color: P.accent,
-                  fontFamily: P.mono, fontSize: 9, fontWeight: 700, letterSpacing: 1,
-                  cursor: draft.frcAccountKey ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap',
-                }}>VERIFY</button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input type="checkbox" checked={draft.saveFiles || false} onChange={e => setDraft(d => ({ ...d, saveFiles: e.target.checked }))} />
-                <span style={{ fontSize: 10, fontFamily: P.sans, color: P.text }}>Save Files</span>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input type="checkbox" checked={draft.trackRecording || false} onChange={e => setDraft(d => ({ ...d, trackRecording: e.target.checked }))} />
-                <span style={{ fontSize: 10, fontFamily: P.sans, color: P.text }}>Track Recording</span>
-              </label>
-            </div>
-            <button onClick={saveConfig} disabled={saving} style={{
-              padding: '8px 20px', borderRadius: 3, border: 'none',
-              background: saving ? P.dim : P.accent, color: P.bg,
-              fontFamily: P.mono, fontSize: 10, fontWeight: 700, letterSpacing: 1,
-              cursor: saving ? 'not-allowed' : 'pointer', alignSelf: 'flex-end',
-            }}>APPLY</button>
-          </div>
-        </Panel>
-      )}
-
-      {!senderConnected && (
-        <Panel title="INFO">
-          <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.8 }}>
-            Sender binary not detected. Place <span style={{ fontFamily: P.mono, color: P.accent }}>frc-pitwall-sender.exe</span> in:
-            <br />• <span style={{ fontFamily: P.mono, fontSize: 10 }}>build/artifacts/</span>
-            <br />• or same directory as this app
-            <br /><br />The app will auto-start the sender on next launch.
-          </div>
-        </Panel>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
 export function F1SetupManager() {
-  const [tab, setTab] = useState("main");
-  const [apiKey, setApiKey] = useState(ENV_KEY || '');
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [keyInput, setKeyInput] = useState('');
-  // Sender telemetry connection
+  const [tab, setTab] = useState<TabId>("setup");
   const [senderUrl, setSenderUrl] = useState(DEFAULT_SENDER_URL);
+  const [draftSenderUrl, setDraftSenderUrl] = useState(DEFAULT_SENDER_URL);
 
-  // Load persisted settings from main process (survives app updates)
+  const [track, setTrack] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>(null);
+  const [team, setTeam] = useState<string | null>(null);
+  const [weather, setWeather] = useState<WeatherMode>(null);
+  const [selectedMeta, setSelectedMeta] = useState<SetupMeta | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [group, setGroup] = useState("all");
+
+  const [recording, setRecording] = useState(false);
+  const [recordedSnaps, setRecordedSnaps] = useState<TelemetrySnapshot[]>([]);
+
   useEffect(() => {
-    const api = window.electronAPI;
-    if (api?.getAllSettings) {
-      api.getAllSettings().then((s) => {
-        if (s?.frc_api_key) {
-          setApiKey(s.frc_api_key);
-        } else {
-          // Migrate from localStorage (one-time, for existing users)
-          try {
-            const legacy = localStorage.getItem('frc_api_key');
-            if (legacy) {
-              setApiKey(legacy);
-              api.setSetting('frc_api_key', legacy);
-            }
-          } catch {}
-        }
-        if (s?.frc_sender_url) setSenderUrl(s.frc_sender_url);
-      });
-    } else {
-      // Dev fallback: no Electron IPC available
-      try {
-        const k = localStorage.getItem('frc_api_key');
-        if (k) setApiKey(k);
-        const u = localStorage.getItem('frc_sender_url');
-        if (u) setSenderUrl(u);
-      } catch {}
+    const saved = window.electronAPI?.getAllSettings
+      ? undefined
+      : localStorage.getItem("frc_sender_url");
+
+    if (saved) {
+      const normalized = normalizeSenderUrl(saved);
+      setSenderUrl(normalized);
+      setDraftSenderUrl(normalized);
+      return;
     }
+
+    window.electronAPI?.getAllSettings?.().then((settings) => {
+      const normalized = normalizeSenderUrl(settings?.frc_sender_url ?? DEFAULT_SENDER_URL);
+      setSenderUrl(normalized);
+      setDraftSenderUrl(normalized);
+    });
   }, []);
+
+  const saveSenderUrl = async () => {
+    const normalized = normalizeSenderUrl(draftSenderUrl);
+    setSenderUrl(normalized);
+    setDraftSenderUrl(normalized);
+    if (window.electronAPI?.setSetting) await window.electronAPI.setSetting("frc_sender_url", normalized);
+    else localStorage.setItem("frc_sender_url", normalized);
+  };
+
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack } = useSenderConnection(senderUrl);
-  const teleDiags = useMemo(() => diagnoseFromTelemetry(livePlayer, liveSession), [livePlayer, liveSession]);
+  const permissionsKnown = Boolean(senderStatus?.driverPermissions);
+  const canUseSetup = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.setupSupport) : true;
+  const canUseTelemetry = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true;
 
-  // Driver permissions from FRC (null = unrestricted / no FRC key)
-  const dp = senderStatus?.driverPermissions;
-  const hasPitwall = dp?.pitwall ?? false;
-  const hasOverlay = dp?.overlay ?? false;
-  const hasSetupSupport = dp?.setupSupport ?? false;
-
-  // Redirect to settings if current tab is gated
   useEffect(() => {
-    if (!hasPitwall && tab !== 'settings') setTab('settings');
-    else if (!hasSetupSupport && tab === 'main') setTab('settings');
-    else if (!hasOverlay && tab === 'telemetry') setTab('settings');
-  }, [hasPitwall, hasOverlay, hasSetupSupport, tab]);
+    if (tab === "setup" && !canUseSetup) setTab("settings");
+    if (tab === "telemetry" && !canUseTelemetry) setTab("settings");
+  }, [canUseSetup, canUseTelemetry, tab]);
 
-  // Main tab
-  const [track, setTrack] = useState(null);
-  const [mode, setMode] = useState(null);
-  const [weather, setWeather] = useState(null);
-  const [team, setTeam] = useState(null);
-  const [selSetup, setSelSetup] = useState(null);
-  const [selMeta, setSelMeta] = useState(null);
-  const step = selSetup ? 5 : weather ? 4 : (team || (mode && mode !== "nonequal")) ? 3 : mode === "nonequal" ? 2.5 : track ? 2 : 1;
-  const [expanded, setExpanded] = useState({});
-  const [fg, setFg] = useState("all");
-  const [chat, setChat] = useState([]); const [input, setInput] = useState(""); const [loading, setLoading] = useState(false); const [chatHist, setChatHist] = useState([]);
-  // Telemetry tab
-  const [recOn, setRecOn] = useState(false);
-  const [recSnaps, setRecSnaps] = useState<any[]>([]);
-  const [recStart, setRecStart] = useState<number | null>(null);
-  const [recChat, setRecChat] = useState([]); const [recInput, setRecInput] = useState(""); const [recLoad, setRecLoad] = useState(false); const [recHist, setRecHist] = useState([]);
-  const chatEnd = useRef(null); const recEnd = useRef(null);
-
-  const useAutoScroll = (ref, dep) => useEffect(() => { ref.current?.scrollIntoView({ behavior: "smooth" }); }, [dep]);
-  useAutoScroll(chatEnd, chat);
-  useAutoScroll(recEnd, recChat);
-
-  // Record telemetry snapshots while recording
   useEffect(() => {
-    if (!recOn || !livePlayer) return;
-    setRecSnaps(prev => [...prev, { ts: Date.now(), player: { ...livePlayer }, session: liveSession ? { ...liveSession } : null, diags: [...teleDiags] }]);
-  }, [recOn, livePlayer]);
+    if (!recording || !livePlayer) return;
+    setRecordedSnaps((current) => [...current, { ts: Date.now(), player: { ...livePlayer, tireWear: livePlayer.tireWear ? [...livePlayer.tireWear] : undefined, tireInnerTemp: livePlayer.tireInnerTemp ? [...livePlayer.tireInnerTemp] : undefined, dynamics: livePlayer.dynamics?.map((item) => ({ ...item })) } }]);
+  }, [livePlayer, recording]);
 
-  const dd = track ? DB[track] : null;
-  const ti = TEAMS.find(t => t.name === team);
-  const isNE = mode === "nonequal";
+  const catalog = useMemo(() => getTrackCatalog(track), [track]);
+  const selectedTeam = useMemo(() => SORTED_TEAMS.find((item) => item.name === team) ?? null, [team]);
+  const selectedSetup = selectedMeta && catalog ? (catalog[getDbKey(selectedMeta)] as SetupValues | undefined) : undefined;
+  const isNonEqual = mode === "nonequal";
 
-  const sTrack = t => { setTrack(t); setMode(null); setWeather(null); setTeam(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); };
-  const sMode = m => { setMode(m); setWeather(null); setTeam(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); };
-  const sTeam = t => { setTeam(t); setWeather(null); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); };
-  const sW = w => { setWeather(w); setSelSetup(null); setSelMeta(null); setChat([]); setChatHist([]); setFg("all"); };
-  const sSt = (m, s) => { setSelMeta(m); setSelSetup(s); setChat([]); setChatHist([]); setLoading(false); };
+  const visibleMeta = useMemo(() => {
+    if (!catalog || !weather) return [];
+    const filtered = SETUP_META.filter((meta) => {
+      const matchesWeather = weather === "rain" ? meta.rain : !meta.rain;
+      const matchesGroup = group === "all" || meta.group === group;
+      return matchesWeather && matchesGroup && Boolean(catalog[getDbKey(meta)]);
+    });
+    if (!isNonEqual || !selectedTeam) return filtered;
+    return [...filtered].sort((left, right) => {
+      const leftSetup = catalog[getDbKey(left)] as SetupValues;
+      const rightSetup = catalog[getDbKey(right)] as SetupValues;
+      return (getCompatibilityScore(rightSetup, selectedTeam) ?? 0) - (getCompatibilityScore(leftSetup, selectedTeam) ?? 0);
+    });
+  }, [catalog, group, isNonEqual, selectedTeam, weather]);
 
-  const bSys = () => { if (!selSetup) return ""; const sw = FIELDS.map(f => `${DEFS[f.k].name}:${selSetup[f.k]}(${DEFS[f.k].min}~${DEFS[f.k].max})`).join("\n"); const ti2 = dd?.track ? `\n[트랙]${track}|${dd.track.notes}\nS:${dd.track.softLife} M:${dd.track.medLife} H:${dd.track.hardLife}\n전략:${dd.track.strategy}` : ""; const tw = ti ? `\n[차량]${ti.name} 장점:${ti.pros} 단점:${ti.cons}` : ""; return `F1 25 셋업 엔지니어. 피드백\u2192셋업 변경.\n\n${KNOWLEDGE_BASE}\n\n[환경]${track}|${isNE ? "논이퀄" : "이퀄"}|${weather === "rain" ? "우천" : "건조"}|${selMeta?.label}${ti2}${tw}\n[셋업]\n${sw}\n[규칙]1.공감+해석 2."항목 현재\u2192추천" 3.이유1줄 4.한국어3~5줄 5.2~3개변경`; };
-
-  // Unified chat send helper
-  const chatSend = async (inputVal, guard, sys, setInp, setMsgs, setHist, hist, setLoad) => {
-    if (!inputVal.trim() || guard) return;
-    const m = inputVal.trim(); setInp("");
-    setMsgs(p => [...p, { r: "u", t: m }]);
-    const nh = [...hist.slice(-MAX_HISTORY), { role: "user", content: m }];
-    setLoad(true);
-    try {
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 30000);
-      const txt = await callClaude(nh, sys, ctrl.signal, apiKey);
-      clearTimeout(tid);
-      setMsgs(p => [...p, { r: "a", t: txt }]);
-      setHist([...nh, { role: "assistant", content: txt }]);
-    } catch (e) { setMsgs(p => [...p, { r: "a", t: e.name === "AbortError" ? "TIMEOUT" : "ERR: " + e.message }]); }
-    setLoad(false);
-  };
-
-  const send = () => chatSend(input, loading, bSys(), setInput, setChat, setChatHist, chatHist, setLoading);
-  // Telemetry recording helpers
-  const startRec = () => { setRecSnaps([]); setRecChat([]); setRecHist([]); setRecStart(Date.now()); setRecOn(true); };
-  const stopRec = () => setRecOn(false);
-  const buildRecSummary = () => {
-    if (recSnaps.length < 2) return '';
-    const first = recSnaps[0], last = recSnaps[recSnaps.length - 1];
-    const dur = ((last.ts - first.ts) / 1000).toFixed(0);
-    const laps = new Set(recSnaps.map(s => s.player?.currentLapNum).filter(Boolean));
-    const tw0 = first.player?.tireWear, tw1 = last.player?.tireWear;
-    const wearDelta = tw0 && tw1 ? `FL:${(tw1[0]-tw0[0]).toFixed(1)}% FR:${(tw1[1]-tw0[1]).toFixed(1)}% RL:${(tw1[2]-tw0[2]).toFixed(1)}% RR:${(tw1[3]-tw0[3]).toFixed(1)}%` : 'N/A';
-    const maxSpeed = Math.max(...recSnaps.map(s => s.player?.topSpeed || 0));
-    const avgFrontTemp = recSnaps.reduce((a, s) => a + ((s.player?.tireInnerTemp?.[0] || 0) + (s.player?.tireInnerTemp?.[1] || 0)) / 2, 0) / recSnaps.length;
-    const avgRearTemp = recSnaps.reduce((a, s) => a + ((s.player?.tireInnerTemp?.[2] || 0) + (s.player?.tireInnerTemp?.[3] || 0)) / 2, 0) / recSnaps.length;
-    const dynamics = last.player?.dynamics;
-    const lastDyn = dynamics?.length ? dynamics[dynamics.length - 1] : null;
-    const lapTimes = recSnaps.filter(s => s.player?.lastLapTime > 0).map(s => ({ lap: s.player.currentLapNum, time: s.player.lastLapTime }));
-    const uniqueLaps = [...new Map(lapTimes.map(l => [l.lap, l])).values()];
-    const bestLap = last.player?.bestLapTime;
-    const fuel0 = first.player?.fuelRemainingLaps, fuel1 = last.player?.fuelRemainingLaps;
-    const brakeBias = last.player?.brakeBias;
-    const compound = last.player?.tireCompound;
-    const tireAge = last.player?.tireAge;
-    // Aggregate diagnostics frequency
-    const diagCounts: Record<string, number> = {};
-    recSnaps.forEach(s => s.diags?.forEach(d => { diagCounts[d.label] = (diagCounts[d.label] || 0) + 1; }));
-    const diagSummary = Object.entries(diagCounts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}(${((v / recSnaps.length) * 100).toFixed(0)}%)`).join(', ');
-
-    const trackName = detectedTrack || liveSession?.trackName || '알 수 없음';
-    const sessionType = liveSession?.sessionType || '';
-    const weather = liveSession?.weather || '';
-
-    return [
-      `[녹화 데이터 ${dur}초 / ${laps.size}랩 / ${recSnaps.length}샘플]`,
-      `트랙:${trackName} 세션:${sessionType} 날씨:${weather}`,
-      `타이어:${compound || '?'} 에이지:${tireAge || '?'}랩`,
-      `마모변화: ${wearDelta}`,
-      `최종마모: FL:${tw1?.[0]?.toFixed(1)}% FR:${tw1?.[1]?.toFixed(1)}% RL:${tw1?.[2]?.toFixed(1)}% RR:${tw1?.[3]?.toFixed(1)}%`,
-      `평균타이어온도: 프론트${avgFrontTemp.toFixed(0)}°C 리어${avgRearTemp.toFixed(0)}°C`,
-      `최고속:${maxSpeed}km/h 베스트랩:${bestLap ? (bestLap / 1000).toFixed(3) + 's' : 'N/A'}`,
-      uniqueLaps.length ? `랩타임: ${uniqueLaps.slice(-5).map(l => `L${l.lap}:${(l.time / 1000).toFixed(3)}`).join(' ')}` : '',
-      lastDyn ? `다이나믹스(마지막랩): 언더스티어${lastDyn.understeerPct?.toFixed(1)}% 오버스티어${lastDyn.oversteerPct?.toFixed(1)}% 락업${lastDyn.lockupCount} 스핀${lastDyn.spinCount}` : '',
-      `연료잔여: ${fuel1?.toFixed(1) || '?'}랩 (변화:${fuel0 && fuel1 ? (fuel1 - fuel0).toFixed(1) : '?'})`,
-      `브레이크바이어스:${brakeBias || '?'}%`,
-      diagSummary ? `감지된 이슈: ${diagSummary}` : '감지된 이슈 없음',
-    ].filter(Boolean).join('\n');
-  };
-  const recSysBuild = () => {
-    const summary = buildRecSummary();
-    return `F1 25 셋업 엔지니어. 실시간 텔레메트리 녹화 데이터 기반 분석.\n\n${KNOWLEDGE_BASE}\n\n${summary}\n\n[규칙]1.데이터 기반 구체적 분석 2."항목 현재→추천" 형식 3.이유1줄 4.한국어5~8줄 5.마모/온도/다이나믹스 종합 판단`;
-  };
-  const recSend = () => chatSend(recInput, recLoad, recSysBuild(), setRecInput, setRecChat, setRecHist, recHist, setRecLoad);
-
-  const fM = SM.filter(m => { const wO = weather === "rain" ? m.rain : !m.rain; const gO = fg === "all" || m.group === fg; return wO && gO; });
-  const sortM = useMemo(() => isNE && ti ? [...fM].sort((a, b) => { const sa = dd?.[getDbKey(a)]; const sb = dd?.[getDbKey(b)]; if (!sa || !sb) return 0; return (gCS(sb, ti) || 0) - (gCS(sa, ti) || 0); }) : fM, [fM, dd, ti, isNE]);
-
-  const qQ = weather === "rain" ? ["비에서 스핀", "비에서 안꺾임", "웻 브레이킹 불안"] : ["리어 미끄러움", "언더스티어", "탑스피드 낮음", "앞바퀴 잠김", "타이어 과열", "코너 탈출 느림"];
-
-  const stepDefs = isNE
-    ? [{ n: 1, label: "TRACK" }, { n: 2, label: "MODE" }, { n: 2.5, label: "TEAM" }, { n: 3, label: "WTHR" }, { n: 4, label: "SETUP" }, { n: 5, label: "AI" }]
-    : [{ n: 1, label: "TRACK" }, { n: 2, label: "MODE" }, { n: 3, label: "WTHR" }, { n: 4, label: "SETUP" }, { n: 5, label: "AI" }];
-
-  // ─── API Key modal ───
-  const handleKeySubmit = () => {
-    if (keyInput.trim()) {
-      const val = keyInput.trim();
-      setApiKey(val);
-      if (window.electronAPI?.setSetting) {
-        window.electronAPI.setSetting('frc_api_key', val);
-      } else {
-        try { localStorage.setItem('frc_api_key', val); } catch {}
-      }
-    }
-    setShowKeyModal(false);
-    setKeyInput('');
-  };
+  const setupTips = useMemo(() => buildSetupTips(recordedSnaps), [recordedSnaps]);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: P.bg, fontFamily: P.sans, fontSize: 13 }}>
-      {/* ═══ Left Sidebar ═══ */}
-      <div style={{
-        width: 60, minHeight: '100vh', background: P.surface, borderRight: `1px solid ${P.border}`,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 40, flexShrink: 0,
-        zIndex: 10,
-      }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-          {getTabs().filter(t => {
-            if (!hasPitwall && t.id !== 'settings') return false;
-            if (!hasSetupSupport && t.id === 'main') return false;
-            if (!hasOverlay && t.id === 'telemetry') return false;
-            return true;
-          }).map(t => {
-            const active = tab === t.id;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)} title={t.label} style={{
-                width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'transparent', border: 'none', cursor: 'pointer', position: 'relative',
-                color: active ? P.accent : P.muted, borderRadius: 2,
-                transition: 'color 0.15s',
-              }}>
-                {active && <div style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 2, background: P.accent, borderRadius: '0 1px 1px 0' }} />}
-                {t.icon}
+    <div style={{ minHeight: "100vh", background: P.bg, color: P.text, fontFamily: P.sans }}>
+      <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: P.mono, letterSpacing: 2 }}>MINMO DRIVER PACK</div>
+          <div style={{ fontSize: 11, color: P.muted }}>{senderConnected ? `Sender online${liveSession?.weather ? ` / ${liveSession.weather}` : ""}` : "Sender offline"}</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[
+            { id: "setup" as const, label: "Setup", visible: canUseSetup },
+            { id: "telemetry" as const, label: "Telemetry", visible: canUseTelemetry },
+            { id: "settings" as const, label: "Settings", visible: true },
+          ]
+            .filter((item) => item.visible)
+            .map((item) => (
+              <button key={item.id} onClick={() => setTab(item.id)} style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${tab === item.id ? P.accent : P.border}`, background: tab === item.id ? P.accent : "transparent", color: tab === item.id ? P.bg : P.muted, cursor: "pointer", fontFamily: P.mono, fontSize: 10 }}>
+                {item.label}
               </button>
-            );
-          })}
+            ))}
         </div>
-        {/* Telemetry status */}
-        <div title={senderConnected ? `Sender: ${senderUrl}\n${detectedTrack ? `Track: ${detectedTrack}` : 'No session'}` : `Sender offline (${senderUrl})`}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginBottom: 8 }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: senderConnected ? (liveSession ? P.accent2 : P.accent) : P.danger,
-            boxShadow: senderConnected ? `0 0 8px ${liveSession ? P.accent2 : P.accent}` : 'none',
-          }} />
-          <span style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>
-            {senderConnected ? (liveSession ? 'LIVE' : 'IDLE') : 'OFF'}
-          </span>
-        </div>
-        {/* Auto-detect track from telemetry */}
-        {senderConnected && detectedTrack && detectedTrack !== track && (
-          <button onClick={() => sTrack(detectedTrack)} title={`Switch to ${detectedTrack}`} style={{
-            width: 50, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3,
-            background: 'rgba(0,229,255,0.08)', border: `1px solid ${P.accent}`, borderRadius: 3,
-            cursor: 'pointer', color: P.accent, fontSize: 7, fontFamily: P.mono, fontWeight: 700,
-            letterSpacing: 0.5, marginBottom: 8, animation: 'none',
-          }}>
-            SYNC
-          </button>
-        )}
-        {/* API Key */}
-        <button onClick={() => { setKeyInput(apiKey); setShowKeyModal(true); }} title="API Key" style={{
-          width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'transparent', border: 'none', cursor: 'pointer', marginBottom: 12,
-          color: apiKey ? P.muted : P.danger,
-        }}>
-          {Icons.key}
-        </button>
-      </div>
+      </header>
 
-      {/* ═══ Main area ═══ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100vh', overflow: 'hidden' }}>
-        {/* Header bar (32px drag region) */}
-        <div style={{
-          height: 38, background: P.surface, borderBottom: `1px solid ${P.border}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px',
-          WebkitAppRegion: 'drag', flexShrink: 0,
-        } as any}>
-          <span style={{ fontFamily: P.mono, fontSize: 13, fontWeight: 700, letterSpacing: 3, color: P.text, textTransform: 'uppercase' }}>MINMO DRIVER PACK</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {senderConnected && liveSession && (
-              <span style={{ fontFamily: P.mono, fontSize: 8, color: P.accent, letterSpacing: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: P.accent2, boxShadow: `0 0 6px ${P.accent2}` }} />
-                {liveSession.weather?.toUpperCase()} {liveSession.trackTemp?.toFixed(0)}{'\u00B0'}C
-              </span>
-            )}
-            <span style={{ fontFamily: P.mono, fontSize: 9, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase' }}>{getTabs().find(t => t.id === tab)?.label}</span>
-          </div>
-        </div>
-
-        {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '18px 20px 80px' }}>
-
-          {!hasPitwall && (
-            <div style={{
-              background: 'rgba(255,59,92,0.08)', border: '1px solid rgba(255,59,92,0.2)',
-              borderRadius: 3, padding: '12px 16px', marginBottom: 16,
-            }}>
-              <div style={{ fontFamily: P.mono, fontSize: 10, fontWeight: 700, letterSpacing: 1, color: '#ff3b5c', marginBottom: 4 }}>
-                PITWALL DISABLED
+      <main style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+        {tab === "setup" ? (
+          <>
+            <Panel title="TRACK">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                {TRACKS.map((item) => (
+                  <button key={item.name} onClick={() => { setTrack(item.name); setMode(null); setTeam(null); setWeather(null); setSelectedMeta(null); setExpanded({}); setGroup("all"); }} style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${track === item.name ? P.accent : P.border}`, background: track === item.name ? "rgba(0,229,255,0.08)" : P.surface2, color: track === item.name ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>{item.name}{item.sprint ? " S" : ""}</div>
+                    <div style={{ fontSize: 9, color: P.muted }}>R{item.round}{detectedTrack === item.name ? " / LIVE" : ""}</div>
+                  </button>
+                ))}
               </div>
-              <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
-                FRC 계정에 Pitwall 권한이 없습니다. Signaling 서버에 연결되지 않으며, 설정만 사용 가능합니다.
-              </div>
-            </div>
-          )}
+            </Panel>
 
-          {/* ═══════ SETUP TAB ═══════ */}
-          {tab === "main" && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Stepper */}
-              <Stepper steps={stepDefs} current={step} />
+            {track ? (
+              <Panel title="MODE">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[["equal", "Equal performance"], ["nonequal", "Non-equal performance"]].map(([value, label]) => (
+                    <button key={value} onClick={() => { setMode(value as Mode); setTeam(null); setWeather(null); setSelectedMeta(null); setExpanded({}); }} style={{ padding: "14px 12px", borderRadius: 4, border: `1px solid ${mode === value ? P.accent : P.border}`, background: mode === value ? "rgba(0,229,255,0.08)" : P.surface2, color: mode === value ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{label}</div>
+                    </button>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
 
-              {/* Step 1: Track */}
-              <Panel title="TRACK SELECT">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
-                  {TD.map(t => {
-                    const active = track === t.name;
-                    return (
-                      <button key={t.name} onClick={() => sTrack(t.name)} style={{
-                        display: 'flex', alignItems: 'center', gap: 6, padding: '7px 8px', borderRadius: 2,
-                        cursor: 'pointer', textAlign: 'left', border: `1px solid ${active ? P.accent : 'transparent'}`,
-                        background: active ? 'rgba(0,229,255,0.06)' : 'transparent', transition: 'all 0.15s',
-                      }}>
-                        <FI flag={t.flag} size={14} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 10, fontFamily: P.sans, fontWeight: active ? 700 : 500, color: active ? P.accent : P.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            {t.name}{t.sprint ? " S" : ""}
-                            {detectedTrack === t.name && <span style={{ fontSize: 7, fontFamily: P.mono, color: P.accent2, background: 'rgba(205,255,19,0.1)', padding: '1px 4px', borderRadius: 2, fontWeight: 700 }}>LIVE</span>}
-                          </div>
-                          <div style={{ fontSize: 8, fontFamily: P.mono, color: P.dim }}>R{t.round}</div>
-                        </div>
+            {mode === "nonequal" ? (
+              <Panel title="TEAM">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {SORTED_TEAMS.map((item) => (
+                    <button key={item.name} onClick={() => { setTeam(item.name); setWeather(null); setSelectedMeta(null); setExpanded({}); }} style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${team === item.name ? P.accent : P.border}`, background: team === item.name ? "rgba(0,229,255,0.08)" : P.surface2, color: team === item.name ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>{item.name}</div>
+                      <div style={{ fontSize: 9, color: P.muted }}>Score {item.total}</div>
+                    </button>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
+
+            {mode ? (
+              <Panel title="WEATHER">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[["dry", "Dry"], ["rain", "Wet"]].map(([value, label]) => (
+                    <button key={value} onClick={() => { setWeather(value as WeatherMode); setSelectedMeta(null); setExpanded({}); setGroup("all"); }} style={{ padding: "14px 12px", borderRadius: 4, border: `1px solid ${weather === value ? P.accent : P.border}`, background: weather === value ? "rgba(0,229,255,0.08)" : P.surface2, color: weather === value ? P.accent : P.text, cursor: "pointer" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
+
+            {weather && catalog ? (
+              <Panel title="SETUPS">
+                <div style={{ fontSize: 11, color: P.muted, marginBottom: 10, lineHeight: 1.6 }}>{catalog.track.notes}</div>
+                {weather === "dry" ? (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    {["all", "Istvan Puki", "Brendon Leigh"].map((item) => (
+                      <button key={item} onClick={() => setGroup(item)} style={{ padding: "5px 10px", borderRadius: 999, border: `1px solid ${group === item ? P.accent : P.border}`, background: group === item ? P.accent : "transparent", color: group === item ? P.bg : P.muted, cursor: "pointer", fontFamily: P.mono, fontSize: 10 }}>
+                        {item === "all" ? "ALL" : item === "Istvan Puki" ? "PUKI" : "BL"}
                       </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {visibleMeta.map((meta) => {
+                    const setup = catalog[getDbKey(meta)] as SetupValues;
+                    const isExpanded = Boolean(expanded[meta.key]);
+                    const isSelected = selectedMeta?.key === meta.key;
+                    const compatibility = isNonEqual ? getCompatibilityScore(setup, selectedTeam) : null;
+                    const compatibilityLabel = typeof compatibility === "number" ? getCompatibilityLabel(compatibility) : null;
+
+                    return (
+                      <div key={meta.key} style={{ borderRadius: 4, border: `1px solid ${isSelected ? meta.color : P.border}`, overflow: "hidden" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: P.surface2 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: meta.color, flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: isSelected ? meta.color : P.text }}>{meta.label}</div>
+                            <div style={{ fontSize: 10, color: P.muted }}>{getSetupFeel(setup)}</div>
+                          </div>
+                          <button onClick={() => setSelectedMeta(meta)} style={{ padding: "6px 10px", borderRadius: 4, border: "none", background: meta.color, color: P.bg, fontFamily: P.mono, fontSize: 10, cursor: "pointer" }}>SELECT</button>
+                          <button onClick={() => setExpanded((current) => ({ ...current, [meta.key]: !current[meta.key] }))} style={{ padding: "6px 10px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: P.muted, fontFamily: P.mono, fontSize: 10, cursor: "pointer" }}>{isExpanded ? "HIDE" : "OPEN"}</button>
+                        </div>
+                        {compatibilityLabel && typeof compatibility === "number" ? (
+                          <div style={{ padding: "6px 12px", background: `${compatibilityLabel.color}12`, color: compatibilityLabel.color, fontSize: 10, fontFamily: P.mono }}>
+                            {compatibilityLabel.icon} {selectedTeam?.name} {compatibilityLabel.label} / {compatibility}
+                          </div>
+                        ) : null}
+                        {isExpanded ? (
+                          <div style={{ padding: 12, borderTop: `1px solid ${P.border}`, background: P.surface }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                              {getSetupTags(setup).map((tag) => (
+                                <span key={tag.label} style={{ padding: "3px 7px", borderRadius: 999, background: `${tag.color}18`, color: tag.color, fontSize: 9, fontFamily: P.mono }}>{tag.label}</span>
+                              ))}
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+                              {SETUP_FIELDS.map((field) => (
+                                <div key={field.k}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                                    <span style={{ fontSize: 9, color: P.muted }}>{field.l}</span>
+                                    <span style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 700 }}>{setup[field.k]}</span>
+                                  </div>
+                                  <MetricBar value={setup[field.k]} min={SETUP_FIELD_DEFS[field.k].min} max={SETUP_FIELD_DEFS[field.k].max} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                     );
                   })}
                 </div>
               </Panel>
+            ) : null}
 
-              {/* Step 2: Mode */}
-              {step >= 2 && (
-                <Panel title="GAME MODE">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {[["equal", "EQUAL", "동일 성능"], ["nonequal", "NON-EQUAL", "팀별 차이"]].map(([k, l, d]) => {
-                      const active = mode === k;
-                      return (
-                        <button key={k} onClick={() => sMode(k)} style={{
-                          padding: '14px 12px', borderRadius: 3, cursor: 'pointer', textAlign: 'left',
-                          border: `1px solid ${active ? P.accent : P.border}`,
-                          background: active ? 'rgba(0,229,255,0.06)' : P.surface2, transition: 'all 0.15s',
-                        }}>
-                          <div style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 700, color: active ? P.accent : P.text, letterSpacing: 1 }}>{l}</div>
-                          <div style={{ fontSize: 10, color: P.muted, marginTop: 3 }}>{d}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Panel>
-              )}
-
-              {/* Step 2.5: Team (nonequal) */}
-              {step >= 2.5 && isNE && (
-                <Panel title="TEAM SELECT">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    {SORTED_TEAMS.map(t => {
-                      const active = team === t.name;
-                      const pct = (t.total / 55) * 100;
-                      return (
-                        <button key={t.name} onClick={() => sTeam(t.name)} style={{
-                          padding: '10px 12px', borderRadius: 3, cursor: 'pointer', textAlign: 'left',
-                          border: `1px solid ${active ? P.accent : P.border}`,
-                          background: active ? 'rgba(0,229,255,0.06)' : P.surface2, transition: 'all 0.15s',
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <span style={{ fontSize: 11, fontWeight: 600, color: active ? P.accent : P.text }}>{t.name}</span>
-                            <span style={{ fontSize: 11, fontFamily: P.mono, fontWeight: 700, color: P.accent2 }}>{t.total}</span>
-                          </div>
-                          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 2, height: 2, overflow: 'hidden' }}>
-                            <div style={{ width: `${pct}%`, height: '100%', background: active ? P.accent : P.muted, borderRadius: 2, transition: 'width 0.3s' }} />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Panel>
-              )}
-
-              {/* Step 3: Weather */}
-              {step >= 3 && (
-                <Panel title="WEATHER">
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {[["dry", "DRY", "슬릭 타이어"], ["rain", "WET", "인터/웻 타이어"]].map(([k, l, d]) => {
-                      const active = weather === k;
-                      return (
-                        <button key={k} onClick={() => sW(k)} style={{
-                          padding: '14px 12px', borderRadius: 3, cursor: 'pointer', textAlign: 'center',
-                          border: `1px solid ${active ? P.accent : P.border}`,
-                          background: active ? 'rgba(0,229,255,0.06)' : P.surface2, transition: 'all 0.15s',
-                        }}>
-                          <div style={{ fontSize: 20, marginBottom: 4 }}>{k === "dry" ? "\u2600\ufe0f" : "\u{1F327}\ufe0f"}</div>
-                          <div style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 700, color: active ? P.accent : P.text, letterSpacing: 1 }}>{l}</div>
-                          <div style={{ fontSize: 9, color: P.muted, marginTop: 2 }}>{d}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Panel>
-              )}
-
-              {/* Step 4: Setup list */}
-              {step >= 4 && (
-                <Panel title="SETUP SELECT">
-                  {dd?.track && (
-                    <div style={{ background: P.surface2, borderRadius: 3, padding: '8px 10px', marginBottom: 10, border: `1px solid ${P.border}` }}>
-                      <p style={{ fontSize: 10, color: P.muted, margin: '0 0 6px', fontFamily: P.sans }}>{dd.track.notes}</p>
-                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                        {[["S", dd.track.softLife, P.danger], ["M", dd.track.medLife, P.accent2], ["H", dd.track.hardLife, P.muted]].map(([l, v, c]) => (
-                          <span key={l} style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, padding: '2px 7px', borderRadius: 2, background: `${c}15`, color: c }}>{l} {v}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {weather === "dry" && (
-                    <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-                      {[["all", "ALL"], ["Istvan Puki", "PUKI"], ["Brendon Leigh", "BL"]].map(([k, l]) => (
-                        <button key={k} onClick={() => setFg(k)} style={{
-                          padding: '4px 10px', borderRadius: 2, fontFamily: P.mono, fontSize: 9, fontWeight: 600, letterSpacing: 1,
-                          border: `1px solid ${fg === k ? P.accent : P.border}`,
-                          background: fg === k ? P.accent : 'transparent',
-                          color: fg === k ? P.bg : P.muted, cursor: 'pointer', transition: 'all 0.15s',
-                        }}>{l}</button>
-                      ))}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {sortM.map(meta => {
-                      const s = dd?.[getDbKey(meta)]; if (!s) return null;
-                      const isExp = !!expanded[meta.key];
-                      const isSel = selMeta?.key === meta.key;
-                      const tags = gTags(s);
-                      const feel = gFeel(s);
-                      const cs = isNE && ti ? gCS(s, ti) : null;
-                      const cl = cs !== null ? gCL(cs) : null;
-                      const fwPct = ((s.fw) / 50) * 100;
-                      const rwPct = ((s.rw) / 50) * 100;
-                      return (
-                        <div key={meta.key} style={{ borderRadius: 3, overflow: 'hidden', border: `1px solid ${isSel ? meta.color : P.border}`, transition: 'border-color 0.2s' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', padding: '8px 10px', background: P.surface2, cursor: 'pointer', gap: 10 }} onClick={() => setExpanded(p => ({ ...p, [meta.key]: !p[meta.key] }))}>
-                            <div style={{ width: 6, height: 6, borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                                <span style={{ fontSize: 11, fontWeight: 700, color: isSel ? meta.color : P.text }}>{meta.label}</span>
-                                <span style={{ fontSize: 8, fontFamily: P.mono, color: P.dim }}>{meta.who}</span>
-                              </div>
-                              <div style={{ fontSize: 9, color: P.muted, marginTop: 2 }}>{meta.desc}</div>
-                            </div>
-                            {/* Mini FW/RW bar */}
-                            <div style={{ width: 50, flexShrink: 0 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                                <span style={{ fontSize: 7, fontFamily: P.mono, color: P.dim }}>FW</span>
-                                <span style={{ fontSize: 7, fontFamily: P.mono, color: P.dim }}>RW</span>
-                              </div>
-                              <div style={{ display: 'flex', gap: 2 }}>
-                                <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 1 }}><div style={{ width: `${fwPct}%`, height: '100%', background: P.accent, borderRadius: 1 }} /></div>
-                                <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 1 }}><div style={{ width: `${rwPct}%`, height: '100%', background: P.accent2, borderRadius: 1 }} /></div>
-                              </div>
-                            </div>
-                            <button onClick={e => { e.stopPropagation(); sSt(meta, s); }} style={{
-                              fontSize: 9, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1, padding: '5px 10px', borderRadius: 2,
-                              border: isSel ? 'none' : `1px solid ${meta.color}40`,
-                              background: isSel ? meta.color : 'transparent',
-                              color: isSel ? '#000' : meta.color, cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s',
-                              WebkitAppRegion: 'no-drag',
-                            } as any}>SELECT</button>
-                          </div>
-                          {/* Compatibility */}
-                          {cl && (
-                            <div style={{ padding: '4px 10px', background: `${cl.color}08`, borderTop: `1px solid ${P.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 9, fontWeight: 600, color: cl.color }}>{cl.icon} {team} {cl.label}</span>
-                              <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 1 }}>
-                                <div style={{ width: `${cs}%`, height: '100%', background: cl.color, borderRadius: 1 }} />
-                              </div>
-                              <span style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 800, color: cl.color }}>{cs}</span>
-                            </div>
-                          )}
-                          {/* Tags + Feel */}
-                          {(isExp || isSel) && (
-                            <div style={{ padding: '6px 10px', borderTop: `1px solid ${P.border}` }}>
-                              <div style={{ fontSize: 9, color: P.accent, fontFamily: P.mono, marginBottom: 4, opacity: 0.7 }}>{feel}</div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                                {tags.map(tg => (
-                                  <span key={tg.label} style={{ fontSize: 8, fontFamily: P.mono, padding: '2px 5px', borderRadius: 2, background: tg.color + '12', color: tg.color, letterSpacing: 0.5 }}>{tg.label}</span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {/* Expanded detail */}
-                          {isExp && (
-                            <div style={{ padding: '8px 10px', background: P.surface, borderTop: `1px solid ${P.border}` }}>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' }}>
-                                {FIELDS.map(f => (
-                                  <div key={f.k}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                                      <span style={{ fontSize: 8, fontFamily: P.mono, color: P.dim }}>{f.l}</span>
-                                      <span style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 700, color: P.accent }}>{s[f.k]}</span>
-                                    </div>
-                                    <Bar v={s[f.k]} min={DEFS[f.k].min} max={DEFS[f.k].max} />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Panel>
-              )}
-
-              {/* Step 5: AI Chat */}
-              {step >= 5 && selSetup && (
-                <Panel title="AI FEEDBACK">
-                  <div style={{ background: P.surface2, borderRadius: 3, padding: '6px 10px', marginBottom: 10, border: `1px solid ${P.border}` }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: selMeta?.color, fontFamily: P.sans }}>{selMeta?.label}</div>
-                    <div style={{ fontSize: 8, fontFamily: P.mono, color: P.dim, marginTop: 2 }}>{track} / {isNE ? "NON-EQUAL" : "EQUAL"}{team ? ` / ${team}` : ""} / {weather === "rain" ? "WET" : "DRY"}</div>
-                  </div>
-                  <div style={{ minHeight: 140, maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-                    {chat.length === 0 && <div style={{ textAlign: 'center', color: P.dim, paddingTop: 30, fontSize: 10, fontFamily: P.mono }}>-- 예시를 눌러보거나 입력하세요 --</div>}
-                    {chat.map((m, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
-                        <div style={{
-                          maxWidth: '85%', padding: '7px 10px', fontSize: 11, lineHeight: 1.6, borderRadius: 3,
-                          background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
-                          border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
-                          color: P.text, whiteSpace: 'pre-wrap', fontFamily: P.sans,
-                        }}>{m.t}</div>
-                      </div>
-                    ))}
-                    {loading && <div style={{ display: 'flex', justifyContent: 'flex-start' }}><div style={{ padding: '7px 12px', borderRadius: 3, fontSize: 10, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>ANALYZING...</div></div>}
-                    <div ref={chatEnd} />
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                    {/* Telemetry-based diagnostic chips (priority) */}
-                    {teleDiags.map(d => (
-                      <button key={d.label} onClick={() => setInput(d.prompt)} style={{
-                        fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
-                        border: `1px solid ${d.severity === 'high' ? P.danger : d.severity === 'med' ? P.accent : P.border}`,
-                        background: d.severity === 'high' ? 'rgba(255,82,92,0.1)' : d.severity === 'med' ? 'rgba(0,229,255,0.06)' : 'transparent',
-                        color: d.severity === 'high' ? P.danger : d.severity === 'med' ? P.accent : P.muted,
-                        fontFamily: P.sans, display: 'flex', alignItems: 'center', gap: 4,
-                      }}>
-                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: d.severity === 'high' ? P.danger : d.severity === 'med' ? P.accent : P.dim }} />
-                        {d.label}
-                      </button>
-                    ))}
-                    {/* Static fallback chips */}
-                    {qQ.map(q => (
-                      <button key={q} onClick={() => setInput(q)} style={{
-                        fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
-                        border: `1px solid ${P.border}`, background: 'transparent', color: P.muted,
-                        fontFamily: P.sans,
-                      }}>{q}</button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="주행 느낌을 입력하세요..." style={{
-                      flex: 1, padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
-                      background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.sans, outline: 'none',
-                    }} />
-                    <button onClick={send} disabled={loading} style={{
-                      padding: '8px 16px', borderRadius: 3, border: 'none',
-                      background: loading ? P.dim : P.accent, color: P.bg,
-                      fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                    }}>SEND</button>
-                  </div>
-                </Panel>
-              )}
-            </div>
-          )}
-
-          {/* ═══════ TELEMETRY TAB ═══════ */}
-          {tab === "telemetry" && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Record Control */}
-              <Panel title="RECORDING">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                  {!recOn ? (
-                    <button onClick={startRec} disabled={!senderConnected || !livePlayer} style={{
-                      padding: '10px 24px', borderRadius: 3, border: 'none', cursor: senderConnected && livePlayer ? 'pointer' : 'not-allowed',
-                      background: senderConnected && livePlayer ? '#ff3b5c' : P.dim, color: '#fff',
-                      fontFamily: P.mono, fontSize: 11, fontWeight: 700, letterSpacing: 1,
-                      display: 'flex', alignItems: 'center', gap: 8,
-                    }}>
-                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#fff' }} />
-                      START RECORD
-                    </button>
-                  ) : (
-                    <button onClick={stopRec} style={{
-                      padding: '10px 24px', borderRadius: 3, border: `1px solid ${P.border}`, cursor: 'pointer',
-                      background: P.surface2, color: P.text,
-                      fontFamily: P.mono, fontSize: 11, fontWeight: 700, letterSpacing: 1,
-                      display: 'flex', alignItems: 'center', gap: 8,
-                    }}>
-                      <span style={{ width: 10, height: 10, borderRadius: 2, background: '#ff3b5c', animation: 'none' }} />
-                      STOP RECORD
-                    </button>
-                  )}
-                  {recOn && (
-                    <div style={{ display: 'flex', gap: 16, fontSize: 11, fontFamily: P.mono }}>
-                      <span style={{ color: '#ff3b5c', fontWeight: 700 }}>● REC</span>
-                      <span style={{ color: P.muted }}>Samples: <span style={{ color: P.text, fontWeight: 700 }}>{recSnaps.length}</span></span>
-                      <span style={{ color: P.muted }}>Duration: <span style={{ color: P.text, fontWeight: 700 }}>{recStart ? Math.round((Date.now() - recStart) / 1000) + 's' : '--'}</span></span>
-                    </div>
-                  )}
-                  {!recOn && recSnaps.length > 0 && (
-                    <span style={{ fontSize: 10, fontFamily: P.mono, color: P.accent }}>{recSnaps.length} samples recorded</span>
-                  )}
+            {selectedSetup && selectedMeta && catalog ? (
+              <Panel title="REVIEW">
+                <div style={{ padding: 12, borderRadius: 4, border: `1px solid ${selectedMeta.color}`, marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: selectedMeta.color }}>{selectedMeta.label}</div>
+                  <div style={{ fontSize: 10, color: P.muted, marginTop: 4 }}>{track} / {isNonEqual ? "NON-EQUAL" : "EQUAL"} / {weather === "rain" ? "WET" : "DRY"}{selectedTeam ? ` / ${selectedTeam.name}` : ""}</div>
+                  {selectedSetup.note ? <div style={{ fontSize: 11, color: P.text, marginTop: 8 }}>{selectedSetup.note}</div> : null}
                 </div>
-                {!senderConnected && <div style={{ fontSize: 10, color: P.muted }}>Sender 연결이 필요합니다</div>}
-                {senderConnected && !livePlayer && <div style={{ fontSize: 10, color: P.muted }}>라이브 세션 대기 중...</div>}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[{ label: "Strategy", value: catalog.track.strategy }, { label: "Pit Window", value: catalog.track.pitWindow50 }, { label: "Quali Fuel", value: catalog.track.qualiFuel ?? "N/A" }, { label: "ERS Trigger", value: catalog.track.ersEnable ?? "N/A" }].map((item) => (
+                    <div key={item.label} style={{ padding: 10, borderRadius: 4, background: P.surface2 }}>
+                      <div style={{ fontSize: 10, color: P.muted, marginBottom: 4 }}>{item.label}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
               </Panel>
+            ) : null}
+          </>
+        ) : null}
 
-              {/* Live Metrics (visible while connected) */}
-              {senderConnected && livePlayer && (
-                <Panel title={recOn ? "LIVE TELEMETRY ● REC" : "LIVE TELEMETRY"}>
-                  {/* Tire Wear */}
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>TIRE WEAR</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
-                      {[['FL', 0], ['FR', 1], ['RL', 2], ['RR', 3]].map(([label, idx]) => {
-                        const w = livePlayer.tireWear?.[idx] || 0;
-                        const c = w > 80 ? P.danger : w > 50 ? '#f59e0b' : P.accent;
-                        return (
-                          <div key={label}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
-                              <span style={{ fontSize: 9, fontFamily: P.mono, color: P.muted }}>{label}</span>
-                              <span style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 700, color: c }}>{w.toFixed(1)}%</span>
-                            </div>
-                            <div style={{ height: 4, background: P.surface2, borderRadius: 2 }}>
-                              <div style={{ height: '100%', width: `${Math.min(w, 100)}%`, background: c, borderRadius: 2, transition: 'width 0.3s' }} />
-                            </div>
-                          </div>
-                        );
-                      })}
+        {tab === "telemetry" ? (
+          <>
+            <Panel title="RECORDING">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                {!recording ? (
+                  <button onClick={() => { setRecordedSnaps([]); setRecording(true); }} disabled={!senderConnected || !livePlayer} style={{ padding: "10px 16px", borderRadius: 4, border: "none", background: senderConnected && livePlayer ? P.danger : P.dim, color: "#fff", cursor: senderConnected && livePlayer ? "pointer" : "not-allowed", fontFamily: P.mono, fontSize: 11 }}>START RECORD</button>
+                ) : (
+                  <button onClick={() => setRecording(false)} style={{ padding: "10px 16px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, cursor: "pointer", fontFamily: P.mono, fontSize: 11 }}>STOP RECORD</button>
+                )}
+                <span style={{ fontSize: 11, color: P.muted }}>Samples {recordedSnaps.length}</span>
+              </div>
+              <div style={{ fontSize: 11, color: P.muted }}>{!senderConnected ? "Connect the sender to unlock live telemetry." : livePlayer ? "Recording captures the current player feed every poll cycle." : "Sender connected, waiting for a live player."}</div>
+            </Panel>
+
+            {livePlayer ? (
+              <Panel title="LIVE">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+                  {[{ label: "Top Speed", value: typeof livePlayer.topSpeed === "number" ? `${livePlayer.topSpeed} km/h` : "--" }, { label: "Compound", value: livePlayer.tireCompound?.toUpperCase() ?? "--" }, { label: "Fuel", value: typeof livePlayer.fuelRemainingLaps === "number" ? `${livePlayer.fuelRemainingLaps.toFixed(1)} laps` : "--" }, { label: "Tyre Age", value: typeof livePlayer.tireAge === "number" ? `${livePlayer.tireAge} laps` : "--" }, { label: "Best Lap", value: formatLapTime(livePlayer.bestLapTime) }, { label: "Last Lap", value: formatLapTime(livePlayer.lastLapTime) }].map((item) => (
+                    <div key={item.label} style={{ background: P.surface2, borderRadius: 4, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 9, fontFamily: P.mono, color: P.muted, marginBottom: 4 }}>{item.label}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{item.value}</div>
                     </div>
-                  </div>
-                  {/* Tire Temps */}
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>TIRE TEMP (INNER)</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
-                      {[['FL', 0], ['FR', 1], ['RL', 2], ['RR', 3]].map(([label, idx]) => {
-                        const t = livePlayer.tireInnerTemp?.[idx] || 0;
-                        const c = t > 115 ? P.danger : t > 105 ? '#f59e0b' : t < 80 ? '#60a5fa' : P.accent;
-                        return (
-                          <div key={label} style={{ background: P.surface2, borderRadius: 2, padding: '4px 6px', textAlign: 'center' }}>
-                            <div style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>{label}</div>
-                            <div style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 700, color: c }}>{t.toFixed(0)}°</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  {/* Key Metrics Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 12 }}>
-                    {[
-                      ['TOP SPEED', `${livePlayer.topSpeed || '--'}`, 'km/h'],
-                      ['COMPOUND', livePlayer.tireCompound?.toUpperCase() || '--', `${livePlayer.tireAge || 0}L`],
-                      ['FUEL LEFT', livePlayer.fuelRemainingLaps?.toFixed(1) || '--', 'laps'],
-                      ['BEST LAP', livePlayer.bestLapTime ? (livePlayer.bestLapTime / 1000).toFixed(3) : '--', 's'],
-                      ['LAST LAP', livePlayer.lastLapTime ? (livePlayer.lastLapTime / 1000).toFixed(3) : '--', 's'],
-                      ['BRAKE BIAS', `${livePlayer.brakeBias || '--'}`, '%'],
-                    ].map(([label, val, unit]) => (
-                      <div key={label} style={{ background: P.surface2, borderRadius: 2, padding: '6px 8px', textAlign: 'center' }}>
-                        <div style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>{label}</div>
-                        <div style={{ fontSize: 13, fontFamily: P.mono, fontWeight: 700, color: P.accent }}>{val}</div>
-                        <div style={{ fontSize: 7, fontFamily: P.mono, color: P.dim }}>{unit}</div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 14px" }}>
+                  {[["FL", livePlayer.tireWear?.[0] ?? 0], ["FR", livePlayer.tireWear?.[1] ?? 0], ["RL", livePlayer.tireWear?.[2] ?? 0], ["RR", livePlayer.tireWear?.[3] ?? 0]].map(([label, value]) => (
+                    <div key={label}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                        <span style={{ fontSize: 9, color: P.muted }}>{label}</span>
+                        <span style={{ fontSize: 10, fontFamily: P.mono, fontWeight: 700 }}>{Number(value).toFixed(1)}%</span>
                       </div>
-                    ))}
-                  </div>
-                  {/* Dynamics */}
-                  {(() => {
-                    const dyn = livePlayer.dynamics;
-                    const last = dyn?.length ? dyn[dyn.length - 1] : null;
-                    if (!last) return null;
-                    return (
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>DYNAMICS (LAP {last.lapNum})</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
-                          {[
-                            ['UNDERSTEER', `${last.understeerPct?.toFixed(1)}%`, last.understeerPct > 15 ? P.danger : last.understeerPct > 8 ? '#f59e0b' : P.accent],
-                            ['OVERSTEER', `${last.oversteerPct?.toFixed(1)}%`, last.oversteerPct > 15 ? P.danger : last.oversteerPct > 8 ? '#f59e0b' : P.accent],
-                            ['LOCKUPS', `${last.lockupCount}`, last.lockupCount > 3 ? P.danger : P.accent],
-                            ['SPINS', `${last.spinCount}`, last.spinCount > 0 ? P.danger : P.accent],
-                          ].map(([label, val, color]) => (
-                            <div key={label} style={{ background: P.surface2, borderRadius: 2, padding: '4px 6px', textAlign: 'center' }}>
-                              <div style={{ fontSize: 7, fontFamily: P.mono, color: P.muted, letterSpacing: 1 }}>{label}</div>
-                              <div style={{ fontSize: 12, fontFamily: P.mono, fontWeight: 700, color }}>{val}</div>
-                            </div>
+                      <MetricBar value={Number(value)} min={0} max={100} />
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
+
+            {recordedSnaps.length >= 2 ? (
+              <Panel title="SETUP FEEDBACK">
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {setupTips.map((tip) => (
+                    <div key={`${tip.issue}-${tip.reason}`} style={{ borderRadius: 4, border: `1px solid ${severityColor(tip.severity)}33`, background: `${severityColor(tip.severity)}12`, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 11, fontFamily: P.mono, fontWeight: 700, color: severityColor(tip.severity), marginBottom: 4 }}>{tip.issue}</div>
+                      <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>{tip.reason}</div>
+                      {tip.changes.length ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                          {tip.changes.map((change) => (
+                            <span key={`${tip.issue}-${change}`} style={{ padding: "3px 7px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: P.text, fontSize: 10, fontFamily: P.mono }}>
+                              {change}
+                            </span>
                           ))}
                         </div>
-                      </div>
-                    );
-                  })()}
-                  {/* Live Diagnostics */}
-                  {teleDiags.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 9, fontFamily: P.mono, fontWeight: 600, letterSpacing: 1.5, color: P.muted, textTransform: 'uppercase', marginBottom: 6 }}>DIAGNOSTICS</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {teleDiags.map(d => (
-                          <div key={d.label} style={{
-                            fontSize: 9, padding: '3px 8px', borderRadius: 2,
-                            border: `1px solid ${d.severity === 'high' ? P.danger : d.severity === 'med' ? '#f59e0b' : P.border}`,
-                            background: d.severity === 'high' ? 'rgba(255,82,92,0.1)' : d.severity === 'med' ? 'rgba(245,158,11,0.08)' : 'transparent',
-                            color: d.severity === 'high' ? P.danger : d.severity === 'med' ? '#f59e0b' : P.muted,
-                            fontFamily: P.sans, display: 'flex', alignItems: 'center', gap: 4,
-                          }}>
-                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: d.severity === 'high' ? P.danger : d.severity === 'med' ? '#f59e0b' : P.dim }} />
-                            {d.label}
-                          </div>
-                        ))}
-                      </div>
+                      ) : null}
                     </div>
-                  )}
-                </Panel>
-              )}
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
+          </>
+        ) : null}
 
-              {/* Rule-based Setup Feedback (no AI needed) */}
-              {recSnaps.length >= 2 && (() => {
-                const tips = buildSetupTips(recSnaps);
-                if (tips.length === 0) return null;
-                return (
-                  <Panel title="SETUP FEEDBACK">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {tips.map((tip, i) => (
-                        <div key={i} style={{
-                          background: tip.severity === 'high' ? 'rgba(255,82,92,0.06)' : tip.severity === 'med' ? 'rgba(0,229,255,0.04)' : 'rgba(255,255,255,0.02)',
-                          border: `1px solid ${tip.severity === 'high' ? 'rgba(255,82,92,0.2)' : tip.severity === 'med' ? 'rgba(0,229,255,0.12)' : P.border}`,
-                          borderRadius: 3, padding: '8px 10px',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                            <span style={{
-                              width: 6, height: 6, borderRadius: '50%',
-                              background: tip.severity === 'high' ? P.danger : tip.severity === 'med' ? P.accent : P.dim,
-                            }} />
-                            <span style={{ fontSize: 11, fontFamily: P.mono, fontWeight: 700, color: tip.severity === 'high' ? P.danger : tip.severity === 'med' ? P.accent : P.text }}>
-                              {tip.issue}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: 9, color: P.muted, marginBottom: tip.changes.length ? 6 : 0, paddingLeft: 12 }}>{tip.reason}</div>
-                          {tip.changes.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 12 }}>
-                              {tip.changes.map((c, j) => (
-                                <span key={j} style={{
-                                  fontSize: 9, padding: '2px 6px', borderRadius: 2, fontFamily: P.mono,
-                                  background: c.dir === '↑' ? 'rgba(205,255,19,0.08)' : 'rgba(255,82,92,0.08)',
-                                  border: `1px solid ${c.dir === '↑' ? 'rgba(205,255,19,0.2)' : 'rgba(255,82,92,0.2)'}`,
-                                  color: c.dir === '↑' ? '#cdff13' : '#ff525c',
-                                }}>
-                                  {c.param} {c.dir} {c.val || ''}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </Panel>
-                );
-              })()}
+        {tab === "settings" ? (
+          <>
+            <Panel title="SENDER URL">
+              <div style={{ display: "grid", gap: 8 }}>
+                <input value={draftSenderUrl} onChange={(event) => setDraftSenderUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSenderUrl(); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
+                <button onClick={() => void saveSenderUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
+              </div>
+            </Panel>
 
-              {/* AI Analysis (after recording, optional) */}
-              {!recOn && recSnaps.length >= 2 && (
-                <Panel title="AI ANALYSIS">
-                  <div style={{ minHeight: 120, maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-                    {recChat.length === 0 && (
-                      <div style={{ textAlign: 'center', color: P.dim, paddingTop: 20, fontSize: 10, fontFamily: P.mono }}>
-                        -- 녹화 데이터 기반으로 질문하세요 --
-                        <div style={{ marginTop: 8, fontSize: 9, color: P.muted, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{buildRecSummary()}</div>
-                      </div>
-                    )}
-                    {recChat.map((m, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: m.r === "u" ? "flex-end" : "flex-start" }}>
-                        <div style={{
-                          maxWidth: '85%', padding: '7px 10px', fontSize: 11, lineHeight: 1.6, borderRadius: 3,
-                          background: m.r === "u" ? 'rgba(0,229,255,0.1)' : P.surface2,
-                          border: `1px solid ${m.r === "u" ? 'rgba(0,229,255,0.15)' : P.border}`,
-                          color: P.text, whiteSpace: 'pre-wrap',
-                        }}>{m.t}</div>
-                      </div>
-                    ))}
-                    {recLoad && <div style={{ display: 'flex', justifyContent: 'flex-start' }}><div style={{ padding: '7px 12px', borderRadius: 3, fontSize: 10, fontFamily: P.mono, color: P.accent, background: P.surface2, border: `1px solid ${P.border}` }}>ANALYZING...</div></div>}
-                    <div ref={recEnd} />
+            <Panel title="STATUS">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[{ label: "Sender", value: senderConnected ? "Online" : "Offline" }, { label: "Track", value: detectedTrack ?? liveSession?.trackName ?? "N/A" }, { label: "Session", value: liveSession?.sessionType ?? "N/A" }, { label: "Weather", value: liveSession?.weather ?? "N/A" }, { label: "Best Lap", value: formatLapTime(livePlayer?.bestLapTime) }, { label: "Track Temp", value: typeof liveSession?.trackTemp === "number" ? `${liveSession.trackTemp.toFixed(0)}C` : "N/A" }].map((item) => (
+                  <div key={item.label} style={{ padding: 10, borderRadius: 4, background: P.surface2 }}>
+                    <div style={{ fontSize: 10, color: P.muted, marginBottom: 4 }}>{item.label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>{item.value}</div>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-                    {["전체 분석해줘", "셋업 추천해줘", "타이어 마모 원인은?", "언더/오버 해결법은?", "랩타임 개선 방법은?"].map(q => (
-                      <button key={q} onClick={() => setRecInput(q)} style={{
-                        fontSize: 9, padding: '3px 8px', borderRadius: 2, cursor: 'pointer',
-                        border: `1px solid ${P.border}`, background: 'transparent', color: P.muted, fontFamily: P.sans,
-                      }}>{q}</button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <input value={recInput} onChange={e => setRecInput(e.target.value)} onKeyDown={e => e.key === "Enter" && recSend()} placeholder="녹화 데이터에 대해 질문하세요..." style={{
-                      flex: 1, padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
-                      background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.sans, outline: 'none',
-                    }} />
-                    <button onClick={recSend} disabled={recLoad} style={{
-                      padding: '8px 16px', borderRadius: 3, border: 'none',
-                      background: recLoad ? P.dim : P.accent, color: P.bg,
-                      fontSize: 10, fontFamily: P.mono, fontWeight: 700, letterSpacing: 1,
-                      cursor: recLoad ? 'not-allowed' : 'pointer',
-                    }}>ANALYZE</button>
-                  </div>
-                </Panel>
-              )}
-            </div>
-          )}
+                ))}
+              </div>
+            </Panel>
 
-          {/* ═══ SETTINGS TAB ═══ */}
-          {tab === "settings" && (
-            <SettingsTab senderUrl={senderUrl} senderConnected={senderConnected} senderStatus={senderStatus} liveSession={liveSession} livePlayer={livePlayer} hasOverlay={hasOverlay} />
-          )}
-
-        </div>
-      </div>
-
-      {/* ═══ API Key Modal ═══ */}
-      {showKeyModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
-        }} onClick={() => setShowKeyModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: P.surface, border: `1px solid ${P.border}`, borderRadius: 3, padding: 20, width: 340, maxWidth: '90%',
-          }}>
-            <div style={{ fontSize: 11, fontFamily: P.mono, fontWeight: 600, letterSpacing: 2, color: P.muted, marginBottom: 14 }}>API KEY</div>
-            <input value={keyInput} onChange={e => setKeyInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleKeySubmit()}
-              placeholder="sk-ant-..." style={{
-                width: '100%', padding: '8px 12px', borderRadius: 3, border: `1px solid ${P.border}`,
-                background: P.surface2, color: P.text, fontSize: 11, fontFamily: P.mono, outline: 'none', marginBottom: 12,
-              }} />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowKeyModal(false)} style={{
-                padding: '6px 14px', borderRadius: 3, border: `1px solid ${P.border}`, background: 'transparent',
-                color: P.muted, fontSize: 10, fontFamily: P.mono, cursor: 'pointer',
-              }}>CANCEL</button>
-              <button onClick={handleKeySubmit} style={{
-                padding: '6px 14px', borderRadius: 3, border: 'none', background: P.accent,
-                color: P.bg, fontSize: 10, fontFamily: P.mono, fontWeight: 700, cursor: 'pointer',
-              }}>SAVE</button>
-            </div>
-          </div>
-        </div>
-      )}
+            <Panel title="PERMISSIONS">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[{ label: "Pitwall", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.pitwall) : true }, { label: "Overlay", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true }, { label: "Setup", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.setupSupport) : true }].map((item) => (
+                  <span key={item.label} style={{ padding: "4px 10px", borderRadius: 999, background: item.enabled ? "rgba(205,255,19,0.12)" : "rgba(255,82,92,0.12)", color: item.enabled ? P.accent2 : P.danger, fontSize: 10, fontFamily: P.mono }}>
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            </Panel>
+          </>
+        ) : null}
+      </main>
     </div>
   );
 }
