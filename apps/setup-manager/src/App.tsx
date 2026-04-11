@@ -7,9 +7,9 @@ declare global {
       platform: string;
       onUpdateStatus?: (cb: (data: UpdateStatus) => void) => void;
       installUpdate?: () => void;
-      getSetting?: (key: string) => Promise<string | null>;
-      setSetting?: (key: string, value: string) => Promise<void>;
-      getAllSettings?: () => Promise<Record<string, string>>;
+      getSetting?: <T = unknown>(key: string) => Promise<T | null>;
+      setSetting?: (key: string, value: unknown) => Promise<void>;
+      getAllSettings?: () => Promise<Record<string, unknown>>;
     };
   }
 }

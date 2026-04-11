@@ -266,6 +266,8 @@ func main() {
 		}
 		raceStorage = rs
 	}
+	var raceSummaryMu sync.RWMutex
+	var latestRaceSummary *races.RaceSummary
 
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
 	peerManager.SetCountChangeHandler(func(count int) {
@@ -353,6 +355,9 @@ func main() {
 			Warning: counts.Warning,
 			Info:    counts.Info,
 		}, timeline, time.Now())
+		raceSummaryMu.Lock()
+		latestRaceSummary = summary
+		raceSummaryMu.Unlock()
 
 		if rs != nil {
 			if _, err := rs.Save(summary); err != nil {
@@ -531,6 +536,54 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(preview)
+	})
+
+	mux.HandleFunc("GET /api/races/latest", func(w http.ResponseWriter, r *http.Request) {
+		raceSummaryMu.RLock()
+		summary := latestRaceSummary
+		raceSummaryMu.RUnlock()
+		if summary != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(summary)
+			return
+		}
+
+		cfgMu.Lock()
+		rs := raceStorage
+		cfgMu.Unlock()
+		if rs == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
+			return
+		}
+
+		list, err := rs.List()
+		if err != nil {
+			logger.Error("failed to list race summaries", "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
+			return
+		}
+		if len(list) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
+			return
+		}
+
+		loaded, err := rs.Load(list[0].ID)
+		if err != nil {
+			logger.Error("failed to load latest race summary", "id", list[0].ID, "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(loaded)
 	})
 
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {

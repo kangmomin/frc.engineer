@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   SETUP_FIELDS,
@@ -16,10 +16,26 @@ import {
   getSetupTags,
   getTrackCatalog,
 } from "../../../shared/setup-manager/catalog";
+import {
+  buildAutoSetupContext,
+  findSavedRecommendation,
+  formatSavedAtLocal,
+  normalizeLapComparisonState,
+  normalizeSavedRecommendations,
+  normalizeWeatherMode,
+  removeSavedRecommendation,
+  resolveTeamName,
+  resolveTrackName,
+  upsertSavedRecommendation,
+  type LapComparisonSnapshot,
+  type LapComparisonState,
+  type Mode,
+  type SavedRecommendation,
+  type SenderRaceResult,
+  type WeatherMode,
+} from "./setupDriverPack";
 
 type TabId = "setup" | "telemetry" | "settings";
-type Mode = "equal" | "nonequal" | null;
-type WeatherMode = "dry" | "rain" | null;
 type Severity = "high" | "med" | "low";
 
 interface SenderStatus {
@@ -41,6 +57,9 @@ interface SenderDynamics {
 }
 
 interface SenderPlayer {
+  name?: string;
+  teamId?: number;
+  position?: number;
   tireWear?: number[];
   tireInnerTemp?: number[];
   fuelRemainingLaps?: number;
@@ -67,6 +86,9 @@ interface SetupTip {
 }
 
 const DEFAULT_SENDER_URL = "http://localhost:8099";
+const SENDER_URL_KEY = "frc_sender_url";
+const SAVED_RECOMMENDATIONS_KEY = "frc_setup_recommendations";
+const LAP_COMPARISON_KEY = "frc_setup_lap_comparison";
 
 const P = {
   bg: "#131314",
@@ -94,8 +116,66 @@ function severityColor(severity: Severity): string {
   return P.dim;
 }
 
-function formatLapTime(value?: number): string {
-  return value && value > 0 ? `${(value / 1000).toFixed(3)}s` : "--";
+function formatLapTime(value?: number | null): string {
+  return typeof value === "number" && value > 0 ? `${(value / 1000).toFixed(3)}s` : "--";
+}
+
+function formatTrackTemp(value?: number | null): string {
+  return typeof value === "number" ? `${value.toFixed(0)}C` : "--";
+}
+
+function formatContextLabel(snapshot: {
+  track: string | null;
+  weather: WeatherMode;
+  team: string | null;
+  sessionType?: string | null;
+}): string {
+  const parts = [
+    snapshot.track ?? "Unknown Track",
+    snapshot.sessionType ?? "Session",
+    snapshot.weather === "rain" ? "Wet" : snapshot.weather === "dry" ? "Dry" : "Weather TBD",
+  ];
+  if (snapshot.team) {
+    parts.push(snapshot.team);
+  }
+  return parts.join(" / ");
+}
+
+function formatModeLabel(mode: Mode): string {
+  if (mode === "nonequal") return "NON-EQUAL";
+  if (mode === "equal") return "EQUAL";
+  return "UNSET";
+}
+
+async function readStoredValue<T>(key: string, fallback: T): Promise<T> {
+  if (window.electronAPI?.getSetting) {
+    const value = await window.electronAPI.getSetting<T>(key);
+    return (value ?? fallback) as T;
+  }
+
+  const raw = localStorage.getItem(key);
+  if (raw == null) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return raw as T;
+  }
+}
+
+async function writeStoredValue(key: string, value: unknown): Promise<void> {
+  if (window.electronAPI?.setSetting) {
+    await window.electronAPI.setSetting(key, value);
+    return;
+  }
+
+  if (typeof value === "string") {
+    localStorage.setItem(key, value);
+    return;
+  }
+
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
 function MetricBar({ value, min, max }: { value: number; min: number; max: number }) {
@@ -120,11 +200,53 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function StatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div style={{ padding: "10px 12px", borderRadius: 4, background: P.surface2 }}>
+      <div style={{ fontSize: 9, color: P.muted, marginBottom: 4, fontFamily: P.mono }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: accent ?? P.text }}>{value}</div>
+    </div>
+  );
+}
+
+function ComparisonSnapshotCard({
+  title,
+  snapshot,
+}: {
+  title: string;
+  snapshot: LapComparisonSnapshot | null;
+}) {
+  return (
+    <div style={{ borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, padding: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, fontFamily: P.mono }}>{title}</div>
+        <div style={{ fontSize: 9, color: P.muted }}>{snapshot?.capturedAtLocal ?? "Not captured"}</div>
+      </div>
+      {snapshot ? (
+        <>
+          <div style={{ fontSize: 10, color: P.muted, lineHeight: 1.6, marginBottom: 10 }}>
+            {formatContextLabel(snapshot)}
+            {snapshot.setupLabel ? ` / ${snapshot.setupLabel}` : ""}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            <StatTile label="Best Lap" value={formatLapTime(snapshot.bestLapTime)} />
+            <StatTile label="Last Lap" value={formatLapTime(snapshot.lastLapTime)} />
+            <StatTile label="Top Speed" value={typeof snapshot.topSpeed === "number" ? `${snapshot.topSpeed} km/h` : "--"} />
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 11, color: P.muted }}>Capture a run snapshot to compare setup changes.</div>
+      )}
+    </div>
+  );
+}
+
 function useSenderConnection(senderUrl: string) {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<SenderStatus | null>(null);
   const [session, setSession] = useState<SenderSession | null>(null);
   const [player, setPlayer] = useState<SenderPlayer | null>(null);
+  const [latestRaceResult, setLatestRaceResult] = useState<SenderRaceResult | null>(null);
 
   useEffect(() => {
     const normalized = normalizeSenderUrl(senderUrl);
@@ -158,6 +280,21 @@ function useSenderConnection(senderUrl: string) {
         setSession(null);
         setPlayer(null);
       }
+
+      try {
+        const resultRes = await fetch(`${normalized}/api/races/latest`);
+        if (resultRes.status === 404) {
+          if (!active) return;
+          setLatestRaceResult(null);
+          return;
+        }
+        const nextResult = (await resultRes.json()) as SenderRaceResult;
+        if (!active) return;
+        setLatestRaceResult(nextResult);
+      } catch {
+        if (!active) return;
+        setLatestRaceResult(null);
+      }
     };
 
     void poll();
@@ -168,9 +305,10 @@ function useSenderConnection(senderUrl: string) {
     };
   }, [senderUrl]);
 
-  const rawTrack = status?.currentTrack?.name;
-  const detectedTrack = rawTrack ? SENDER_TRACK_MAP[rawTrack] ?? null : null;
-  return { connected, status, session, player, detectedTrack };
+  const rawTrack = status?.currentTrack?.name ?? session?.trackName ?? null;
+  const detectedTrack = resolveTrackName(rawTrack, SENDER_TRACK_MAP, TRACKS);
+
+  return { connected, status, session, player, detectedTrack, latestRaceResult };
 }
 
 function buildSetupTips(snaps: TelemetrySnapshot[]): SetupTip[] {
@@ -219,6 +357,86 @@ function buildSetupTips(snaps: TelemetrySnapshot[]): SetupTip[] {
   return tips.length ? tips : [{ issue: "Stable run", severity: "low", reason: "No major setup issue stood out in the recording.", changes: [] }];
 }
 
+function buildLiveComparisonSnapshot(
+  slot: "before" | "after",
+  args: {
+    player: SenderPlayer;
+    session: SenderSession | null;
+    track: string | null;
+    weather: WeatherMode;
+    team: string | null;
+    selectedMeta: SetupMeta | null;
+  },
+): LapComparisonSnapshot {
+  const { player, session, track, weather, team, selectedMeta } = args;
+  return {
+    slot,
+    source: "live",
+    capturedAtLocal: formatSavedAtLocal(),
+    track,
+    weather,
+    team,
+    setupKey: selectedMeta?.key ?? null,
+    setupLabel: selectedMeta?.label ?? null,
+    sessionType: session?.sessionType ?? null,
+    trackTemp: typeof session?.trackTemp === "number" ? session.trackTemp : null,
+    bestLapTime: typeof player.bestLapTime === "number" ? player.bestLapTime : null,
+    lastLapTime: typeof player.lastLapTime === "number" ? player.lastLapTime : null,
+    topSpeed: typeof player.topSpeed === "number" ? player.topSpeed : null,
+  };
+}
+
+function buildRaceResultComparisonSnapshot(
+  result: SenderRaceResult,
+  args: {
+    track: string | null;
+    weather: WeatherMode;
+    team: string | null;
+    selectedMeta: SetupMeta | null;
+  },
+): LapComparisonSnapshot {
+  return {
+    slot: "before",
+    source: "race-result",
+    capturedAtLocal: result.savedAtLocal ?? formatSavedAtLocal(),
+    track: args.track,
+    weather: args.weather,
+    team: args.team,
+    setupKey: args.selectedMeta?.key ?? null,
+    setupLabel: args.selectedMeta?.label ?? null,
+    sessionType: result.session?.sessionType ?? null,
+    trackTemp: typeof result.session?.trackTemp === "number" ? result.session.trackTemp : null,
+    bestLapTime: typeof result.player?.bestLapMs === "number" ? result.player.bestLapMs : null,
+    lastLapTime: typeof result.player?.lastLapMs === "number" ? result.player.lastLapMs : null,
+    topSpeed: null,
+  };
+}
+
+function getComparisonDelta(
+  before: number | null,
+  after: number | null,
+  betterDirection: "lower" | "higher",
+): { text: string; color: string } {
+  if (typeof before !== "number" || typeof after !== "number") {
+    return { text: "--", color: P.muted };
+  }
+
+  const rawDelta = after - before;
+  if (betterDirection === "lower") {
+    const improved = rawDelta < 0;
+    return {
+      text: `${rawDelta > 0 ? "+" : ""}${(rawDelta / 1000).toFixed(3)}s`,
+      color: improved ? P.accent2 : rawDelta === 0 ? P.muted : P.danger,
+    };
+  }
+
+  const improved = rawDelta > 0;
+  return {
+    text: `${rawDelta > 0 ? "+" : ""}${rawDelta.toFixed(0)} km/h`,
+    color: improved ? P.accent2 : rawDelta === 0 ? P.muted : P.danger,
+  };
+}
+
 export function F1SetupManager() {
   const [tab, setTab] = useState<TabId>("setup");
   const [senderUrl, setSenderUrl] = useState(DEFAULT_SENDER_URL);
@@ -231,38 +449,53 @@ export function F1SetupManager() {
   const [selectedMeta, setSelectedMeta] = useState<SetupMeta | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [group, setGroup] = useState("all");
+  const [autoContextEnabled, setAutoContextEnabled] = useState(true);
 
   const [recording, setRecording] = useState(false);
   const [recordedSnaps, setRecordedSnaps] = useState<TelemetrySnapshot[]>([]);
+  const [savedRecommendations, setSavedRecommendations] = useState<SavedRecommendation[]>([]);
+  const [lapComparison, setLapComparison] = useState<LapComparisonState>({ before: null, after: null });
 
   useEffect(() => {
-    const saved = window.electronAPI?.getAllSettings
-      ? undefined
-      : localStorage.getItem("frc_sender_url");
+    let active = true;
 
-    if (saved) {
-      const normalized = normalizeSenderUrl(saved);
-      setSenderUrl(normalized);
-      setDraftSenderUrl(normalized);
-      return;
-    }
+    const loadPersistedState = async () => {
+      const storedSenderUrl = await readStoredValue<string>(SENDER_URL_KEY, DEFAULT_SENDER_URL);
+      const nextSenderUrl = normalizeSenderUrl(typeof storedSenderUrl === "string" ? storedSenderUrl : DEFAULT_SENDER_URL);
+      const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
+      const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
 
-    window.electronAPI?.getAllSettings?.().then((settings) => {
-      const normalized = normalizeSenderUrl(settings?.frc_sender_url ?? DEFAULT_SENDER_URL);
-      setSenderUrl(normalized);
-      setDraftSenderUrl(normalized);
-    });
+      if (!active) return;
+      setSenderUrl(nextSenderUrl);
+      setDraftSenderUrl(nextSenderUrl);
+      setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
+      setLapComparison(normalizeLapComparisonState(storedComparison));
+    };
+
+    void loadPersistedState();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const saveSenderUrl = async () => {
     const normalized = normalizeSenderUrl(draftSenderUrl);
     setSenderUrl(normalized);
     setDraftSenderUrl(normalized);
-    if (window.electronAPI?.setSetting) await window.electronAPI.setSetting("frc_sender_url", normalized);
-    else localStorage.setItem("frc_sender_url", normalized);
+    await writeStoredValue(SENDER_URL_KEY, normalized);
   };
 
-  const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack } = useSenderConnection(senderUrl);
+  const persistRecommendations = async (next: SavedRecommendation[]) => {
+    setSavedRecommendations(next);
+    await writeStoredValue(SAVED_RECOMMENDATIONS_KEY, next);
+  };
+
+  const persistComparison = async (next: LapComparisonState) => {
+    setLapComparison(next);
+    await writeStoredValue(LAP_COMPARISON_KEY, next);
+  };
+
+  const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack, latestRaceResult } = useSenderConnection(senderUrl);
   const permissionsKnown = Boolean(senderStatus?.driverPermissions);
   const canUseSetup = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.setupSupport) : true;
   const canUseTelemetry = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true;
@@ -274,8 +507,69 @@ export function F1SetupManager() {
 
   useEffect(() => {
     if (!recording || !livePlayer) return;
-    setRecordedSnaps((current) => [...current, { ts: Date.now(), player: { ...livePlayer, tireWear: livePlayer.tireWear ? [...livePlayer.tireWear] : undefined, tireInnerTemp: livePlayer.tireInnerTemp ? [...livePlayer.tireInnerTemp] : undefined, dynamics: livePlayer.dynamics?.map((item) => ({ ...item })) } }]);
+    setRecordedSnaps((current) => [
+      ...current,
+      {
+        ts: Date.now(),
+        player: {
+          ...livePlayer,
+          tireWear: livePlayer.tireWear ? [...livePlayer.tireWear] : undefined,
+          tireInnerTemp: livePlayer.tireInnerTemp ? [...livePlayer.tireInnerTemp] : undefined,
+          dynamics: livePlayer.dynamics?.map((item) => ({ ...item })),
+        },
+      },
+    ]);
   }, [livePlayer, recording]);
+
+  const liveTeam = useMemo(() => resolveTeamName(livePlayer?.teamId), [livePlayer?.teamId]);
+  const autoContext = useMemo(
+    () =>
+      buildAutoSetupContext({
+        liveTrack: detectedTrack,
+        liveWeather: liveSession?.weather,
+        liveTeam,
+        liveSessionType: liveSession?.sessionType ?? null,
+        liveTrackTemp: typeof liveSession?.trackTemp === "number" ? liveSession.trackTemp : null,
+        liveBestLapTime: typeof livePlayer?.bestLapTime === "number" ? livePlayer.bestLapTime : null,
+        latestRaceResult,
+        senderTrackMap: SENDER_TRACK_MAP,
+        knownTracks: TRACKS,
+      }),
+    [detectedTrack, livePlayer?.bestLapTime, liveSession?.sessionType, liveSession?.trackTemp, liveSession?.weather, liveTeam, latestRaceResult],
+  );
+
+  const autoContextSignature = useMemo(
+    () =>
+      autoContext
+        ? [
+            autoContext.source ?? "none",
+            autoContext.track ?? "",
+            autoContext.weather ?? "",
+            autoContext.team ?? "",
+            autoContext.mode ?? "",
+            autoContext.sessionType ?? "",
+          ].join("|")
+        : "none",
+    [autoContext],
+  );
+
+  useEffect(() => {
+    if (!autoContextEnabled || !autoContext) return;
+    setTrack(autoContext.track);
+    setMode(autoContext.mode);
+    setWeather(autoContext.weather);
+    setTeam(autoContext.mode === "nonequal" ? autoContext.team : null);
+  }, [autoContextEnabled, autoContextSignature, autoContext]);
+
+  const contextSignature = `${track ?? ""}|${mode ?? ""}|${team ?? ""}|${weather ?? ""}`;
+  const previousContextSignature = useRef(contextSignature);
+  useEffect(() => {
+    if (previousContextSignature.current !== contextSignature) {
+      previousContextSignature.current = contextSignature;
+      setSelectedMeta(null);
+      setExpanded({});
+    }
+  }, [contextSignature]);
 
   const catalog = useMemo(() => getTrackCatalog(track), [track]);
   const selectedTeam = useMemo(() => SORTED_TEAMS.find((item) => item.name === team) ?? null, [team]);
@@ -297,14 +591,155 @@ export function F1SetupManager() {
     });
   }, [catalog, group, isNonEqual, selectedTeam, weather]);
 
+  const matchingRecommendation = useMemo(
+    () => findSavedRecommendation(savedRecommendations, { track, weather, mode, team }),
+    [mode, savedRecommendations, team, track, weather],
+  );
+  const recommendationApplyRef = useRef<string>("");
+  useEffect(() => {
+    if (!matchingRecommendation) {
+      recommendationApplyRef.current = "";
+      return;
+    }
+
+    const nextToken = `${matchingRecommendation.id}:${matchingRecommendation.setupKey}`;
+    if (recommendationApplyRef.current === nextToken) {
+      return;
+    }
+
+    const meta = SETUP_META.find((item) => item.key === matchingRecommendation.setupKey) ?? null;
+    if (!meta) {
+      return;
+    }
+
+    recommendationApplyRef.current = nextToken;
+    setSelectedMeta(meta);
+  }, [matchingRecommendation]);
+
+  const savedRecommendationList = useMemo(() => {
+    if (!savedRecommendations.length) return [];
+    if (!matchingRecommendation) return savedRecommendations;
+    return [matchingRecommendation, ...savedRecommendations.filter((entry) => entry.id !== matchingRecommendation.id)];
+  }, [matchingRecommendation, savedRecommendations]);
+
   const setupTips = useMemo(() => buildSetupTips(recordedSnaps), [recordedSnaps]);
+
+  const latestResultContext = useMemo(() => {
+    if (!latestRaceResult) return null;
+    return {
+      track: resolveTrackName(latestRaceResult.track?.trackName, SENDER_TRACK_MAP, TRACKS),
+      weather: normalizeWeatherMode(latestRaceResult.session?.weather),
+      team: resolveTeamName(latestRaceResult.player?.teamId),
+      sessionType: latestRaceResult.session?.sessionType ?? null,
+    };
+  }, [latestRaceResult]);
+
+  const applyManualContext = (updater: () => void) => {
+    setAutoContextEnabled(false);
+    updater();
+  };
+
+  const applySavedRecommendation = (entry: SavedRecommendation) => {
+    applyManualContext(() => {
+      setTrack(entry.track);
+      setMode(entry.mode);
+      setWeather(entry.weather);
+      setTeam(entry.mode === "nonequal" ? entry.team : null);
+      const meta = SETUP_META.find((item) => item.key === entry.setupKey) ?? null;
+      setSelectedMeta(meta);
+    });
+    setTab("setup");
+  };
+
+  const saveRecommendation = async () => {
+    if (!track || !weather || !mode || !selectedMeta || (mode === "nonequal" && !team)) return;
+
+    const next = upsertSavedRecommendation(savedRecommendations, {
+      track,
+      weather,
+      mode,
+      team: mode === "nonequal" ? team : null,
+      setupKey: selectedMeta.key,
+      label: selectedMeta.label,
+      sessionType: liveSession?.sessionType ?? latestRaceResult?.session?.sessionType,
+      trackTemp: typeof liveSession?.trackTemp === "number" ? liveSession.trackTemp : latestRaceResult?.session?.trackTemp ?? null,
+    });
+    await persistRecommendations(next);
+  };
+
+  const deleteRecommendation = async (id: string) => {
+    await persistRecommendations(removeSavedRecommendation(savedRecommendations, id));
+  };
+
+  const captureComparison = async (slot: "before" | "after") => {
+    if (!livePlayer) return;
+    const next = {
+      ...lapComparison,
+      [slot]: buildLiveComparisonSnapshot(slot, {
+        player: livePlayer,
+        session: liveSession,
+        track,
+        weather,
+        team,
+        selectedMeta,
+      }),
+    };
+    await persistComparison(next);
+  };
+
+  const captureRaceResultAsBefore = async () => {
+    if (!latestRaceResult) return;
+    const sourceContext = latestResultContext ?? { track, weather, team, sessionType: liveSession?.sessionType ?? null };
+    const next = {
+      ...lapComparison,
+      before: buildRaceResultComparisonSnapshot(latestRaceResult, {
+        track: sourceContext.track,
+        weather: sourceContext.weather,
+        team: sourceContext.team,
+        selectedMeta,
+      }),
+    };
+    await persistComparison(next);
+  };
+
+  const resetComparison = async () => {
+    await persistComparison({ before: null, after: null });
+  };
+
+  const comparisonMetrics = useMemo(
+    () => [
+      {
+        label: "Best Lap",
+        before: formatLapTime(lapComparison.before?.bestLapTime),
+        after: formatLapTime(lapComparison.after?.bestLapTime),
+        delta: getComparisonDelta(lapComparison.before?.bestLapTime ?? null, lapComparison.after?.bestLapTime ?? null, "lower"),
+      },
+      {
+        label: "Last Lap",
+        before: formatLapTime(lapComparison.before?.lastLapTime),
+        after: formatLapTime(lapComparison.after?.lastLapTime),
+        delta: getComparisonDelta(lapComparison.before?.lastLapTime ?? null, lapComparison.after?.lastLapTime ?? null, "lower"),
+      },
+      {
+        label: "Top Speed",
+        before: typeof lapComparison.before?.topSpeed === "number" ? `${lapComparison.before.topSpeed} km/h` : "--",
+        after: typeof lapComparison.after?.topSpeed === "number" ? `${lapComparison.after.topSpeed} km/h` : "--",
+        delta: getComparisonDelta(lapComparison.before?.topSpeed ?? null, lapComparison.after?.topSpeed ?? null, "higher"),
+      },
+    ],
+    [lapComparison.after, lapComparison.before],
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: P.bg, color: P.text, fontFamily: P.sans }}>
       <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, fontFamily: P.mono, letterSpacing: 2 }}>MINMO DRIVER PACK</div>
-          <div style={{ fontSize: 11, color: P.muted }}>{senderConnected ? `Sender online${liveSession?.weather ? ` / ${liveSession.weather}` : ""}` : "Sender offline"}</div>
+          <div style={{ fontSize: 11, color: P.muted }}>
+            {senderConnected
+              ? `Sender online${autoContext?.source === "live-session" ? " / live context synced" : autoContext?.source === "race-result" ? " / result context ready" : ""}`
+              : "Sender offline"}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           {[
@@ -324,10 +759,77 @@ export function F1SetupManager() {
       <main style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
         {tab === "setup" ? (
           <>
+            <Panel title="AUTO CONTEXT">
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                  {autoContext
+                    ? `Auto sync uses ${autoContext.source === "live-session" ? "the current session" : "the latest race result"} to prefill track, weather, and team.`
+                    : "No live session or recent race result is available yet."}
+                  <br />
+                  Manual changes pause auto sync until you resume it.
+                </div>
+                <button
+                  onClick={() => setAutoContextEnabled((current) => !current)}
+                  style={{ padding: "8px 12px", borderRadius: 4, border: `1px solid ${autoContextEnabled ? P.accent : P.border}`, background: autoContextEnabled ? "rgba(0,229,255,0.08)" : "transparent", color: autoContextEnabled ? P.accent : P.text, cursor: "pointer", fontFamily: P.mono, fontSize: 10 }}
+                >
+                  {autoContextEnabled ? "AUTO ON" : "RESUME AUTO"}
+                </button>
+              </div>
+
+              {autoContext ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                  <StatTile label="Source" value={autoContext.source === "live-session" ? "Live Session" : "Latest Result"} accent={P.accent} />
+                  <StatTile label="Track" value={autoContext.track ?? "--"} />
+                  <StatTile label="Session" value={autoContext.sessionType ?? "--"} />
+                  <StatTile label="Weather" value={autoContext.weather === "rain" ? "Wet" : autoContext.weather === "dry" ? "Dry" : "--"} />
+                  <StatTile label="Team" value={autoContext.team ?? "--"} />
+                  <StatTile label="Best Lap" value={formatLapTime(autoContext.bestLapTime)} />
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: P.muted }}>Waiting for a live sender feed or a stored race result.</div>
+              )}
+
+              {latestRaceResult ? (
+                <div style={{ marginTop: 12, padding: 12, borderRadius: 4, background: P.surface2 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>LATEST RACE RESULT</div>
+                    <div style={{ fontSize: 9, color: P.muted }}>{latestRaceResult.savedAtLocal ?? "Unknown save time"}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                    {formatContextLabel({
+                      track: latestResultContext?.track ?? null,
+                      weather: latestResultContext?.weather ?? null,
+                      team: latestResultContext?.team ?? null,
+                      sessionType: latestResultContext?.sessionType ?? null,
+                    })}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 10 }}>
+                    <StatTile label="Driver" value={latestRaceResult.player?.name ?? "--"} />
+                    <StatTile label="Finish" value={typeof latestRaceResult.player?.finalPosition === "number" ? `P${latestRaceResult.player.finalPosition}` : "--"} />
+                    <StatTile label="Best Lap" value={formatLapTime(latestRaceResult.player?.bestLapMs)} />
+                  </div>
+                </div>
+              ) : null}
+            </Panel>
+
             <Panel title="TRACK">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
                 {TRACKS.map((item) => (
-                  <button key={item.name} onClick={() => { setTrack(item.name); setMode(null); setTeam(null); setWeather(null); setSelectedMeta(null); setExpanded({}); setGroup("all"); }} style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${track === item.name ? P.accent : P.border}`, background: track === item.name ? "rgba(0,229,255,0.08)" : P.surface2, color: track === item.name ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}>
+                  <button
+                    key={item.name}
+                    onClick={() =>
+                      applyManualContext(() => {
+                        setTrack(item.name);
+                        setMode(null);
+                        setTeam(null);
+                        setWeather(null);
+                        setSelectedMeta(null);
+                        setExpanded({});
+                        setGroup("all");
+                      })
+                    }
+                    style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${track === item.name ? P.accent : P.border}`, background: track === item.name ? "rgba(0,229,255,0.08)" : P.surface2, color: track === item.name ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}
+                  >
                     <div style={{ fontSize: 11, fontWeight: 700 }}>{item.name}{item.sprint ? " S" : ""}</div>
                     <div style={{ fontSize: 9, color: P.muted }}>R{item.round}{detectedTrack === item.name ? " / LIVE" : ""}</div>
                   </button>
@@ -339,7 +841,19 @@ export function F1SetupManager() {
               <Panel title="MODE">
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   {[["equal", "Equal performance"], ["nonequal", "Non-equal performance"]].map(([value, label]) => (
-                    <button key={value} onClick={() => { setMode(value as Mode); setTeam(null); setWeather(null); setSelectedMeta(null); setExpanded({}); }} style={{ padding: "14px 12px", borderRadius: 4, border: `1px solid ${mode === value ? P.accent : P.border}`, background: mode === value ? "rgba(0,229,255,0.08)" : P.surface2, color: mode === value ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}>
+                    <button
+                      key={value}
+                      onClick={() =>
+                        applyManualContext(() => {
+                          setMode(value as Mode);
+                          setTeam(null);
+                          setWeather(null);
+                          setSelectedMeta(null);
+                          setExpanded({});
+                        })
+                      }
+                      style={{ padding: "14px 12px", borderRadius: 4, border: `1px solid ${mode === value ? P.accent : P.border}`, background: mode === value ? "rgba(0,229,255,0.08)" : P.surface2, color: mode === value ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}
+                    >
                       <div style={{ fontSize: 12, fontWeight: 700 }}>{label}</div>
                     </button>
                   ))}
@@ -351,7 +865,18 @@ export function F1SetupManager() {
               <Panel title="TEAM">
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                   {SORTED_TEAMS.map((item) => (
-                    <button key={item.name} onClick={() => { setTeam(item.name); setWeather(null); setSelectedMeta(null); setExpanded({}); }} style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${team === item.name ? P.accent : P.border}`, background: team === item.name ? "rgba(0,229,255,0.08)" : P.surface2, color: team === item.name ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}>
+                    <button
+                      key={item.name}
+                      onClick={() =>
+                        applyManualContext(() => {
+                          setTeam(item.name);
+                          setWeather(null);
+                          setSelectedMeta(null);
+                          setExpanded({});
+                        })
+                      }
+                      style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${team === item.name ? P.accent : P.border}`, background: team === item.name ? "rgba(0,229,255,0.08)" : P.surface2, color: team === item.name ? P.accent : P.text, textAlign: "left", cursor: "pointer" }}
+                    >
                       <div style={{ fontSize: 11, fontWeight: 700 }}>{item.name}</div>
                       <div style={{ fontSize: 9, color: P.muted }}>Score {item.total}</div>
                     </button>
@@ -364,7 +889,18 @@ export function F1SetupManager() {
               <Panel title="WEATHER">
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   {[["dry", "Dry"], ["rain", "Wet"]].map(([value, label]) => (
-                    <button key={value} onClick={() => { setWeather(value as WeatherMode); setSelectedMeta(null); setExpanded({}); setGroup("all"); }} style={{ padding: "14px 12px", borderRadius: 4, border: `1px solid ${weather === value ? P.accent : P.border}`, background: weather === value ? "rgba(0,229,255,0.08)" : P.surface2, color: weather === value ? P.accent : P.text, cursor: "pointer" }}>
+                    <button
+                      key={value}
+                      onClick={() =>
+                        applyManualContext(() => {
+                          setWeather(value as WeatherMode);
+                          setSelectedMeta(null);
+                          setExpanded({});
+                          setGroup("all");
+                        })
+                      }
+                      style={{ padding: "14px 12px", borderRadius: 4, border: `1px solid ${weather === value ? P.accent : P.border}`, background: weather === value ? "rgba(0,229,255,0.08)" : P.surface2, color: weather === value ? P.accent : P.text, cursor: "pointer" }}
+                    >
                       {label}
                     </button>
                   ))}
@@ -438,9 +974,27 @@ export function F1SetupManager() {
             {selectedSetup && selectedMeta && catalog ? (
               <Panel title="REVIEW">
                 <div style={{ padding: 12, borderRadius: 4, border: `1px solid ${selectedMeta.color}`, marginBottom: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: selectedMeta.color }}>{selectedMeta.label}</div>
-                  <div style={{ fontSize: 10, color: P.muted, marginTop: 4 }}>{track} / {isNonEqual ? "NON-EQUAL" : "EQUAL"} / {weather === "rain" ? "WET" : "DRY"}{selectedTeam ? ` / ${selectedTeam.name}` : ""}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: selectedMeta.color }}>{selectedMeta.label}</div>
+                      <div style={{ fontSize: 10, color: P.muted, marginTop: 4 }}>
+                        {track} / {formatModeLabel(mode)} / {weather === "rain" ? "WET" : "DRY"}{selectedTeam ? ` / ${selectedTeam.name}` : ""}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void saveRecommendation()}
+                      disabled={!track || !weather || !mode || (mode === "nonequal" && !team)}
+                      style={{ padding: "8px 12px", borderRadius: 4, border: "none", background: !track || !weather || !mode || (mode === "nonequal" && !team) ? P.dim : P.accent2, color: P.bg, cursor: !track || !weather || !mode || (mode === "nonequal" && !team) ? "not-allowed" : "pointer", fontFamily: P.mono, fontSize: 10 }}
+                    >
+                      SAVE RECOMMENDATION
+                    </button>
+                  </div>
                   {selectedSetup.note ? <div style={{ fontSize: 11, color: P.text, marginTop: 8 }}>{selectedSetup.note}</div> : null}
+                  {matchingRecommendation?.setupKey === selectedMeta.key ? (
+                    <div style={{ marginTop: 8, fontSize: 10, color: P.accent2, fontFamily: P.mono }}>
+                      SAVED FOR CURRENT CONTEXT / {matchingRecommendation.savedAtLocal}
+                    </div>
+                  ) : null}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   {[{ label: "Strategy", value: catalog.track.strategy }, { label: "Pit Window", value: catalog.track.pitWindow50 }, { label: "Quali Fuel", value: catalog.track.qualiFuel ?? "N/A" }, { label: "ERS Trigger", value: catalog.track.ersEnable ?? "N/A" }].map((item) => (
@@ -452,9 +1006,34 @@ export function F1SetupManager() {
                 </div>
               </Panel>
             ) : null}
+
+            {savedRecommendationList.length ? (
+              <Panel title="SAVED RECOMMENDATIONS">
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {savedRecommendationList.map((entry) => (
+                    <div key={entry.id} style={{ borderRadius: 4, border: `1px solid ${matchingRecommendation?.id === entry.id ? P.accent2 : P.border}`, background: P.surface2, padding: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: matchingRecommendation?.id === entry.id ? P.accent2 : P.text }}>{entry.label}</div>
+                          <div style={{ fontSize: 10, color: P.muted, marginTop: 4 }}>
+                            {entry.track} / {entry.weather === "rain" ? "Wet" : "Dry"} / {formatModeLabel(entry.mode)}{entry.team ? ` / ${entry.team}` : ""}
+                          </div>
+                          <div style={{ fontSize: 9, color: P.muted, marginTop: 6 }}>
+                            Saved {entry.savedAtLocal}{entry.sessionType ? ` / ${entry.sessionType}` : ""}{entry.trackTemp != null ? ` / ${formatTrackTemp(entry.trackTemp)}` : ""}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={() => applySavedRecommendation(entry)} style={{ padding: "6px 10px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, cursor: "pointer", fontFamily: P.mono, fontSize: 10 }}>APPLY</button>
+                          <button onClick={() => void deleteRecommendation(entry.id)} style={{ padding: "6px 10px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: P.muted, cursor: "pointer", fontFamily: P.mono, fontSize: 10 }}>DELETE</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            ) : null}
           </>
         ) : null}
-
         {tab === "telemetry" ? (
           <>
             <Panel title="RECORDING">
@@ -493,6 +1072,50 @@ export function F1SetupManager() {
               </Panel>
             ) : null}
 
+            <Panel title="LAP COMPARE">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <button onClick={() => void captureComparison("before")} disabled={!livePlayer} style={{ padding: "10px 14px", borderRadius: 4, border: "none", background: livePlayer ? P.accent : P.dim, color: P.bg, cursor: livePlayer ? "pointer" : "not-allowed", fontFamily: P.mono, fontSize: 10 }}>
+                  CAPTURE BEFORE
+                </button>
+                <button onClick={() => void captureComparison("after")} disabled={!livePlayer} style={{ padding: "10px 14px", borderRadius: 4, border: "none", background: livePlayer ? P.accent2 : P.dim, color: P.bg, cursor: livePlayer ? "pointer" : "not-allowed", fontFamily: P.mono, fontSize: 10 }}>
+                  CAPTURE AFTER
+                </button>
+                <button onClick={() => void captureRaceResultAsBefore()} disabled={!latestRaceResult} style={{ padding: "10px 14px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: latestRaceResult ? P.text : P.muted, cursor: latestRaceResult ? "pointer" : "not-allowed", fontFamily: P.mono, fontSize: 10 }}>
+                  USE LATEST RESULT AS BEFORE
+                </button>
+                <button onClick={() => void resetComparison()} style={{ padding: "10px 14px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: P.muted, cursor: "pointer", fontFamily: P.mono, fontSize: 10 }}>
+                  RESET
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                <ComparisonSnapshotCard title="BEFORE" snapshot={lapComparison.before} />
+                <ComparisonSnapshotCard title="AFTER" snapshot={lapComparison.after} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                {comparisonMetrics.map((item) => (
+                  <div key={item.label} style={{ padding: 12, borderRadius: 4, background: P.surface2 }}>
+                    <div style={{ fontSize: 10, color: P.muted, marginBottom: 8 }}>{item.label}</div>
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                        <span style={{ color: P.muted }}>Before</span>
+                        <strong>{item.before}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                        <span style={{ color: P.muted }}>After</span>
+                        <strong>{item.after}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                        <span style={{ color: P.muted }}>Delta</span>
+                        <strong style={{ color: item.delta.color }}>{item.delta.text}</strong>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+
             {recordedSnaps.length >= 2 ? (
               <Panel title="SETUP FEEDBACK">
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -516,7 +1139,6 @@ export function F1SetupManager() {
             ) : null}
           </>
         ) : null}
-
         {tab === "settings" ? (
           <>
             <Panel title="SENDER URL">
