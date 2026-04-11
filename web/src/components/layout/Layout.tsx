@@ -8,21 +8,18 @@ import {
 } from '../../store/telemetryStore';
 import { getConnectionDetail, isConnectionFailure } from '../../utils/connectionStatus';
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
-import { CombatDashboard } from '../combat/CombatDashboard';
-import { CommentaryDashboard } from '../commentary/CommentaryDashboard';
+import { PostRaceDebrief } from '../debrief/PostRaceDebrief';
 import { QualifyingDashboard } from '../qualifying/QualifyingDashboard';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import { F1SetupManager } from '../setup/F1SetupManager';
 import styles from './Layout.module.css';
 
-type DashboardView = 'cockpit' | 'commentary' | 'qualifying' | 'combat' | 'setup';
+type DashboardView = 'cockpit' | 'qualifying' | 'setup';
 
 function readInitialView(): DashboardView {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
-  if (view === 'commentary') return 'commentary';
   if (view === 'qualifying') return 'qualifying';
-  if (view === 'combat') return 'combat';
   if (view === 'setup') return 'setup';
   return 'cockpit';
 }
@@ -89,14 +86,12 @@ export function Layout() {
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
   const connectionState = useTelemetryStore((state) => state.connectionState);
-  const viewCommentary = useTelemetryStore((state) => state.featurePermissions.viewCommentary);
+  const raceResult = useTelemetryStore((state) => state.raceResult);
   const viewQualifying = useTelemetryStore((state) => state.featurePermissions.viewQualifying);
-  const viewCombat = useTelemetryStore((state) => state.featurePermissions.viewCombat);
   const setupSupport = useTelemetryStore((state) => state.featurePermissions.setupSupport);
   const sessionType = useTelemetryStore((state) => state.pitwallState?.session?.sessionType ?? '');
   const isQualiSession = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(sessionType);
   const showQualifying = viewQualifying && isQualiSession;
-  const combatOnly = viewCombat && !viewCommentary && !viewQualifying;
 
   const [dashboardView, setDashboardView] = useState<DashboardView>(readInitialView);
 
@@ -121,15 +116,6 @@ export function Layout() {
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
   const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView } = useWebRTCDataChannel(webrtcOpts);
-
-  // Auto-switch combat-only users to combat view
-  useEffect(() => {
-    if (combatOnly && dashboardView !== 'combat') {
-      setDashboardView('combat');
-      persistView('combat');
-      sendView('combat');
-    }
-  }, [combatOnly, dashboardView, sendView]);
 
   const switchView = useCallback((view: DashboardView) => {
     setDashboardView(view);
@@ -220,23 +206,9 @@ export function Layout() {
 
   return (
     <div className={styles.shell}>
-      {dashboardView === 'combat' && viewCombat ? (
-        <CombatDashboard
-          onSwitchToCockpit={combatOnly ? undefined : () => switchView('cockpit')}
-          onGoHome={goToMainScreen}
-          remoteAction={remoteAction}
-        />
-      ) : dashboardView === 'qualifying' && showQualifying ? (
+      {dashboardView === 'qualifying' && showQualifying ? (
         <QualifyingDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
-          onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
-          onGoHome={goToMainScreen}
-          remoteAction={remoteAction}
-        />
-      ) : dashboardView === 'commentary' && viewCommentary ? (
-        <CommentaryDashboard
-          onSwitchToCockpit={() => switchView('cockpit')}
-          onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
           onGoHome={goToMainScreen}
           remoteAction={remoteAction}
         />
@@ -245,12 +217,11 @@ export function Layout() {
           onOpenSettings={() => {}}
           showSettingsButton={false}
           remoteAction={remoteAction}
-          onSwitchToCommentary={viewCommentary ? () => switchView('commentary') : undefined}
           onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
-          onSwitchToCombat={viewCombat ? () => switchView('combat') : undefined}
           onGoHome={goToMainScreen}
         />
       )}
+      {raceResult ? <PostRaceDebrief result={raceResult} onClose={clearRaceResult} /> : null}
     </div>
   );
 }

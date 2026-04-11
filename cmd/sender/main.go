@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/energye/systray"
+	"github.com/skip2/go-qrcode"
 
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
@@ -39,13 +40,16 @@ var defaultStrategyConfig = trackStrategyConfig{PitTimeLossMs: 22000, UndercutDi
 
 // senderConfig is the persistent config saved to disk.
 type senderConfig struct {
-	UDPPort        int                      `json:"udpPort"`
-	RoomName       string                   `json:"roomName,omitempty"`
-	RoomPassword   string                   `json:"roomPassword,omitempty"`
-	FRCAccountKey  string                   `json:"frcAccountKey,omitempty"`
-	SaveFiles      bool                     `json:"saveFiles"`
-	TrackRecording bool                     `json:"trackRecording"`
-	ForwardTargets []rtconfig.ForwardTarget `json:"forwardTargets"`
+	UDPPort              int                      `json:"udpPort"`
+	RoomName             string                   `json:"roomName,omitempty"`
+	RoomPassword         string                   `json:"roomPassword,omitempty"`
+	FRCAccountKey        string                   `json:"frcAccountKey,omitempty"`
+	EngineerDashboardURL string                   `json:"engineerDashboardUrl,omitempty"`
+	SaveFiles            bool                     `json:"saveFiles"`
+	TrackRecording       bool                     `json:"trackRecording"`
+	ForwardTargets       []rtconfig.ForwardTarget `json:"forwardTargets"`
+	OverlayPresets       []overlayPreset          `json:"overlayPresets,omitempty"`
+	OverlayHotkeys       *overlayHotkeys          `json:"overlayHotkeys,omitempty"`
 }
 
 const senderConfigPath = "data/sender-config.json"
@@ -149,15 +153,17 @@ func main() {
 	}
 	roomPassword := os.Getenv("SENDER_ROOM_PASSWORD")
 	frcAccountKey := os.Getenv("FRC_ACCOUNT_KEY")
+	engineerDashboardURL := normalizeEngineerDashboardURL(os.Getenv("ENGINEER_DASHBOARD_URL"))
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &udpPort)
 	}
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
 	trackRecording := saveFiles
+	savedConfig := loadSenderConfig()
 
 	// Override with saved config (persisted from previous session)
-	if saved := loadSenderConfig(); saved != nil {
+	if saved := savedConfig; saved != nil {
 		if saved.UDPPort > 0 && saved.UDPPort <= 65535 {
 			udpPort = saved.UDPPort
 		}
@@ -167,6 +173,9 @@ func main() {
 		roomPassword = saved.RoomPassword
 		if saved.FRCAccountKey != "" {
 			frcAccountKey = saved.FRCAccountKey
+		}
+		if saved.EngineerDashboardURL != "" {
+			engineerDashboardURL = normalizeEngineerDashboardURL(saved.EngineerDashboardURL)
 		}
 		saveFiles = saved.SaveFiles
 		trackRecording = saved.TrackRecording
@@ -225,13 +234,20 @@ func main() {
 	cfgRoomPassword := roomPassword
 	cfgDefaultPermissionsCode := frcAccountKey
 	cfgFRCAccountKey := frcAccountKey
+	cfgEngineerDashboardURL := engineerDashboardURL
 	var cachedDriverPerms *signaling.DriverPermissions
 	var cfgForwardTargets []rtconfig.ForwardTarget
-	if saved := loadSenderConfig(); saved != nil && len(saved.ForwardTargets) > 0 {
+	cfgOverlayPresets := []overlayPreset{}
+	cfgOverlayHotkeys := defaultedOverlayHotkeys(nil)
+	if saved := savedConfig; saved != nil && len(saved.ForwardTargets) > 0 {
 		cfgForwardTargets = saved.ForwardTargets
 		forwarder.UpdateTargets(cfgForwardTargets)
 	} else {
 		cfgForwardTargets = []rtconfig.ForwardTarget{}
+	}
+	if saved := savedConfig; saved != nil {
+		cfgOverlayPresets = normalizeOverlayPresets(saved.OverlayPresets)
+		cfgOverlayHotkeys = defaultedOverlayHotkeys(saved.OverlayHotkeys)
 	}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
@@ -327,30 +343,24 @@ func main() {
 		logger.Warn("pitwall permission denied, skipping signaling connection")
 	}
 
-	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, state *dto.PitwallState) error {
+	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState) error {
 		cfgMu.Lock()
 		rs := raceStorage
 		cfgMu.Unlock()
 
+		summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
+			Penalty: counts.Penalty,
+			Warning: counts.Warning,
+			Info:    counts.Info,
+		}, timeline, time.Now())
+
 		if rs != nil {
-			summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
-				Penalty: counts.Penalty,
-				Warning: counts.Warning,
-				Info:    counts.Info,
-			}, time.Now())
 			if _, err := rs.Save(summary); err != nil {
 				logger.Error("failed to save race summary", "error", err)
 			}
 		}
 
-		// Always broadcast to connected engineers
-		result := dto.WSResponse{
-			Type: dto.MessageTypeRaceResult,
-			Data: state,
-		}
-		if msg, err := json.Marshal(result); err == nil {
-			broadcaster.Broadcast(msg)
-		}
+		broadcaster.BroadcastRaceResult(summary)
 		return nil
 	})
 	processor.SetRaceSummaryRecording(true)
@@ -361,6 +371,22 @@ func main() {
 
 	// Settings HTTP server
 	mux := http.NewServeMux()
+	buildSenderConfigSnapshot := func() senderConfig {
+		forwardTargets := append([]rtconfig.ForwardTarget(nil), cfgForwardTargets...)
+		presets := append([]overlayPreset(nil), cfgOverlayPresets...)
+		return senderConfig{
+			UDPPort:              cfgUDPPort,
+			RoomName:             cfgRoomName,
+			RoomPassword:         cfgRoomPassword,
+			FRCAccountKey:        cfgFRCAccountKey,
+			EngineerDashboardURL: cfgEngineerDashboardURL,
+			SaveFiles:            cfgSaveFiles,
+			TrackRecording:       cfgTrackRecording,
+			ForwardTargets:       forwardTargets,
+			OverlayPresets:       presets,
+			OverlayHotkeys:       cloneOverlayHotkeys(cfgOverlayHotkeys),
+		}
+	}
 
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -460,10 +486,15 @@ func main() {
 		rn := cfgRoomName
 		rp := cfgRoomPassword
 		dp := cachedDriverPerms
+		dashboardURL := cfgEngineerDashboardURL
 		cfgMu.Unlock()
+
+		invite := buildInviteInfo(dashboardURL, signalingURL, peerManager.RoomID(), peerManager.RoomCode(), rp != "")
+		peers := peerManager.DebugPeers()
 
 		statusMap := map[string]any{
 			"roomCode":           peerManager.RoomCode(),
+			"roomId":             peerManager.RoomID(),
 			"roomName":           rn,
 			"roomProtected":      rp != "",
 			"connectedEngineers": peerManager.ConnectedCount(),
@@ -474,6 +505,8 @@ func main() {
 			"radarActive":        radarOv.IsRunning(),
 			"weatherActive":      weatherOv.IsRunning(),
 			"strategyActive":     strategyOv.IsRunning(),
+			"invite":             invite,
+			"peers":              peers,
 		}
 		if dp != nil {
 			statusMap["driverPermissions"] = dp
@@ -508,20 +541,118 @@ func main() {
 		rn := cfgRoomName
 		rp := cfgRoomPassword
 		fak := cfgFRCAccountKey
+		dashboardURL := cfgEngineerDashboardURL
 		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
 		copy(ft, cfgForwardTargets)
+		presets := append([]overlayPreset(nil), cfgOverlayPresets...)
+		hotkeys := cfgOverlayHotkeys
 		cfgMu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":        port,
-			"saveFiles":      sf,
-			"trackRecording": tr,
-			"roomName":       rn,
-			"roomPassword":   rp,
-			"frcAccountKey":  fak,
-			"forwardTargets": ft,
+			"udpPort":              port,
+			"saveFiles":            sf,
+			"trackRecording":       tr,
+			"roomName":             rn,
+			"roomPassword":         rp,
+			"frcAccountKey":        fak,
+			"engineerDashboardUrl": dashboardURL,
+			"forwardTargets":       ft,
+			"overlayPresets":       presets,
+			"overlayHotkeys":       hotkeys,
 		})
+	})
+
+	mux.HandleFunc("GET /api/local-ops", func(w http.ResponseWriter, r *http.Request) {
+		cfgMu.Lock()
+		dashboardURL := cfgEngineerDashboardURL
+		presets := append([]overlayPreset(nil), cfgOverlayPresets...)
+		hotkeys := cfgOverlayHotkeys
+		cfgMu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"engineerDashboardUrl": dashboardURL,
+			"overlayPresets":       presets,
+			"overlayHotkeys":       hotkeys,
+		})
+	})
+
+	mux.HandleFunc("PUT /api/local-ops", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			EngineerDashboardURL string          `json:"engineerDashboardUrl"`
+			OverlayPresets       []overlayPreset `json:"overlayPresets"`
+			OverlayHotkeys       overlayHotkeys  `json:"overlayHotkeys"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		nextDashboardURL := normalizeEngineerDashboardURL(body.EngineerDashboardURL)
+		nextPresets := normalizeOverlayPresets(body.OverlayPresets)
+		nextHotkeys := normalizeOverlayHotkeys(body.OverlayHotkeys)
+
+		cfgMu.Lock()
+		cfgEngineerDashboardURL = nextDashboardURL
+		cfgOverlayPresets = nextPresets
+		cfgOverlayHotkeys = nextHotkeys
+		persisted := buildSenderConfigSnapshot()
+		cfgMu.Unlock()
+
+		if err := saveSenderConfig(persisted); err != nil {
+			logger.Warn("failed to save sender local-ops config", "error", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"engineerDashboardUrl": nextDashboardURL,
+			"overlayPresets":       nextPresets,
+			"overlayHotkeys":       nextHotkeys,
+		})
+	})
+
+	mux.HandleFunc("POST /api/overlay/apply", func(w http.ResponseWriter, r *http.Request) {
+		var desired overlayState
+		if err := json.NewDecoder(r.Body).Decode(&desired); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		applied := applyOverlayState(desired, radarOv, weatherOv, strategyOv)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(applied)
+	})
+
+	mux.HandleFunc("GET /api/invite/qr", func(w http.ResponseWriter, r *http.Request) {
+		cfgMu.Lock()
+		dashboardURL := cfgEngineerDashboardURL
+		rp := cfgRoomPassword
+		cfgMu.Unlock()
+
+		invite := buildInviteInfo(dashboardURL, signalingURL, peerManager.RoomID(), peerManager.RoomCode(), rp != "")
+		if invite.Link == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invite link unavailable"})
+			return
+		}
+
+		png, err := qrcode.Encode(invite.Link, qrcode.Medium, 256)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to encode QR"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(png)
 	})
 
 	mux.HandleFunc("PUT /api/config", func(w http.ResponseWriter, r *http.Request) {
@@ -533,7 +664,10 @@ func main() {
 			RoomName                           string                   `json:"roomName"`
 			RoomPassword                       string                   `json:"roomPassword"`
 			FRCAccountKey                      string                   `json:"frcAccountKey"`
+			EngineerDashboardURL               *string                  `json:"engineerDashboardUrl"`
 			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
+			OverlayPresets                     *[]overlayPreset         `json:"overlayPresets"`
+			OverlayHotkeys                     *overlayHotkeys          `json:"overlayHotkeys"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -570,6 +704,15 @@ func main() {
 			nextRoomName = "Sender Room"
 		}
 		nextRoomPassword := body.RoomPassword
+		if body.EngineerDashboardURL != nil {
+			cfgEngineerDashboardURL = normalizeEngineerDashboardURL(*body.EngineerDashboardURL)
+		}
+		if body.OverlayPresets != nil {
+			cfgOverlayPresets = normalizeOverlayPresets(*body.OverlayPresets)
+		}
+		if body.OverlayHotkeys != nil {
+			cfgOverlayHotkeys = normalizeOverlayHotkeys(*body.OverlayHotkeys)
+		}
 
 		if body.TrackRecording && !cfgTrackRecording {
 			currentTrack := getCurrentTrack(trackState, trackStore)
@@ -660,27 +803,22 @@ func main() {
 		logger.Info("forward targets updated", "count", len(body.ForwardTargets))
 
 		// Persist config to disk
-		if err := saveSenderConfig(senderConfig{
-			UDPPort:        cfgUDPPort,
-			RoomName:       cfgRoomName,
-			RoomPassword:   cfgRoomPassword,
-			FRCAccountKey:  cfgFRCAccountKey,
-			SaveFiles:      cfgSaveFiles,
-			TrackRecording: cfgTrackRecording,
-			ForwardTargets: cfgForwardTargets,
-		}); err != nil {
+		if err := saveSenderConfig(buildSenderConfigSnapshot()); err != nil {
 			logger.Warn("failed to save sender config", "error", err)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"udpPort":        cfgUDPPort,
-			"saveFiles":      cfgSaveFiles,
-			"trackRecording": cfgTrackRecording,
-			"roomName":       cfgRoomName,
-			"roomPassword":   cfgRoomPassword,
-			"frcAccountKey":  cfgFRCAccountKey,
-			"forwardTargets": cfgForwardTargets,
+			"udpPort":              cfgUDPPort,
+			"saveFiles":            cfgSaveFiles,
+			"trackRecording":       cfgTrackRecording,
+			"roomName":             cfgRoomName,
+			"roomPassword":         cfgRoomPassword,
+			"frcAccountKey":        cfgFRCAccountKey,
+			"engineerDashboardUrl": cfgEngineerDashboardURL,
+			"forwardTargets":       cfgForwardTargets,
+			"overlayPresets":       cfgOverlayPresets,
+			"overlayHotkeys":       cfgOverlayHotkeys,
 		})
 	})
 

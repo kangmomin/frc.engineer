@@ -3,7 +3,6 @@ import type {
   PitwallState,
   CarPosition,
   RaceControlNotification,
-  BattleAlert,
   RaceSummary,
 } from '../types/telemetry';
 import { useTelemetryStore } from '../store/telemetryStore';
@@ -21,7 +20,6 @@ export interface MessageRouterActions {
   setPitwallState: (state: PitwallState | null) => void;
   updatePositions: (positions: CarPosition[]) => void;
   addRaceControlNotification: (n: RaceControlNotification) => void;
-  addBattleAlert: (a: BattleAlert) => void;
   setRaceResult: (r: RaceSummary) => void;
 }
 
@@ -31,7 +29,6 @@ export interface MessageRouterRefs {
   pendingPositions: { current: CarPosition[] | null };
   positionsRaf: { current: number };
   rcSeq: { current: number };
-  battleSeq: { current: number };
 }
 
 /**
@@ -92,13 +89,6 @@ export function routeMessage(
         ));
         return true;
 
-      case 'battleAlert':
-        actions.addBattleAlert(normalizeBattleAlert(
-          message.data as Partial<BattleAlert> | undefined,
-          refs.battleSeq.current++,
-        ));
-        return true;
-
       case 'raceResult':
         actions.setRaceResult(message.data as RaceSummary);
         return true;
@@ -122,23 +112,5 @@ export function normalizeRaceControl(
     message: raw?.message ?? '',
     severity: raw?.severity ?? 'info',
     driverName: raw?.driverName,
-  };
-}
-
-export function normalizeBattleAlert(
-  raw: Partial<BattleAlert> | undefined,
-  seq: number,
-): BattleAlert {
-  const timestamp = typeof raw?.timestamp === 'number' ? raw.timestamp : Date.now();
-  const id = raw?.id || `ba-${timestamp}-${seq}`;
-  return {
-    id,
-    timestamp,
-    driverAhead: raw?.driverAhead ?? 'Unknown',
-    driverBehind: raw?.driverBehind ?? 'Unknown',
-    gapSeconds: raw?.gapSeconds ?? 0,
-    closingRatePerLap: raw?.closingRatePerLap ?? 0,
-    estOvertakeLap: raw?.estOvertakeLap ?? 0,
-    side: raw?.side === 'behind' ? 'behind' : 'ahead',
   };
 }

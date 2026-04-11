@@ -21,7 +21,7 @@ func TestRaceSummarySavedOncePerSession(t *testing.T) {
 	p := NewProcessor(parser, hub, 0, logger, nil)
 
 	saveCount := 0
-	p.SetRaceSummarySaveCallback(func(sessionUID uint64, counts RaceSummaryCounts, _ *dto.PitwallState) error {
+	p.SetRaceSummarySaveCallback(func(sessionUID uint64, counts RaceSummaryCounts, _ []dto.RaceControlNotification, _ *dto.PitwallState) error {
 		saveCount++
 		if sessionUID == 0 {
 			t.Fatal("sessionUID should be non-zero")
@@ -53,7 +53,7 @@ func TestRaceSummaryRespectsDisabledFlag(t *testing.T) {
 	p := NewProcessor(parser, hub, 0, logger, nil)
 
 	saveCount := 0
-	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, _ *dto.PitwallState) error {
+	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, _ []dto.RaceControlNotification, _ *dto.PitwallState) error {
 		saveCount++
 		return nil
 	})
@@ -62,5 +62,39 @@ func TestRaceSummaryRespectsDisabledFlag(t *testing.T) {
 	p.trySaveRaceSummary(2001, "SEND")
 	if saveCount != 0 {
 		t.Fatalf("save count = %d, want 0", saveCount)
+	}
+}
+
+func TestRaceSummaryTimelineResetsPerSession(t *testing.T) {
+	logger := testLogger()
+	parser := udp.NewParser(logger)
+	hub := websocket.NewHub(8, logger)
+	p := NewProcessor(parser, hub, 0, logger, nil)
+
+	var savedTimeline []dto.RaceControlNotification
+	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, timeline []dto.RaceControlNotification, _ *dto.PitwallState) error {
+		savedTimeline = append([]dto.RaceControlNotification(nil), timeline...)
+		return nil
+	})
+	p.SetRaceSummaryRecording(true)
+
+	p.observeSessionUID(3001)
+	p.recordRaceSummaryNotification(&dto.RaceControlNotification{
+		ID:        "rc-1",
+		Category:  "info",
+		Message:   "Race Winner!",
+		Severity:  "info",
+		Timestamp: 1,
+	})
+	p.trySaveRaceSummary(3001, "RCWN")
+	if len(savedTimeline) != 1 {
+		t.Fatalf("saved timeline len = %d, want 1", len(savedTimeline))
+	}
+
+	savedTimeline = nil
+	p.observeSessionUID(3002)
+	p.trySaveRaceSummary(3002, "SEND")
+	if len(savedTimeline) != 0 {
+		t.Fatalf("saved timeline len = %d, want 0 after session reset", len(savedTimeline))
 	}
 }

@@ -33,10 +33,9 @@ type RaceSummaryCounts struct {
 
 // ReplayFrame is one timeline snapshot for dashboard replay.
 type ReplayFrame struct {
-	Timestamp    int64                         `json:"timestamp"`
-	Pitwall      *dto.PitwallState             `json:"pitwall"`
-	RaceControl  []dto.RaceControlNotification `json:"raceControl,omitempty"`
-	BattleAlerts []dto.BattleAlertDTO          `json:"battleAlerts,omitempty"`
+	Timestamp   int64                         `json:"timestamp"`
+	Pitwall     *dto.PitwallState             `json:"pitwall"`
+	RaceControl []dto.RaceControlNotification `json:"raceControl,omitempty"`
 }
 
 // ReplayTimeline is a complete replay payload for one session.
@@ -48,13 +47,13 @@ type ReplayTimeline struct {
 }
 
 const (
-	maxReplayRaceControl  = 50
-	maxReplayBattleAlert  = 10
-	replayFrameIntervalMS = 500
+	maxReplayRaceControl   = 50
+	maxRaceSummaryTimeline = 20
+	replayFrameIntervalMS  = 500
 )
 
 // RaceSummarySaveCallback is invoked once per session on race-end events.
-type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, state *dto.PitwallState) error
+type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState) error
 
 // PitwallStateObserver is invoked when a new pitwall snapshot is emitted.
 type PitwallStateObserver func(sessionUID uint64, capturedAt time.Time, state *dto.PitwallState)
@@ -65,18 +64,17 @@ type Processor struct {
 	hub             broadcast.Broadcaster
 	deltaCalculator *DeltaCalculator
 	pitwallManager  *PitwallManager
-	battleDetector  *BattleDetector
 	logger          *slog.Logger
 
 	// Fast broadcaster for high-frequency position data (optional)
 	fastHub broadcast.FastBroadcaster
 
 	// Rate limiting
-	minInterval      time.Duration
-	lastSend         time.Time
-	lastPitwallSend  time.Time
-	pitwallInterval  time.Duration // adaptive: 250ms (4Hz) ↔ 500ms (2Hz)
-	noDropStreak     int           // consecutive broadcasts without drops
+	minInterval     time.Duration
+	lastSend        time.Time
+	lastPitwallSend time.Time
+	pitwallInterval time.Duration // adaptive: 250ms (4Hz) ↔ 500ms (2Hz)
+	noDropStreak    int           // consecutive broadcasts without drops
 
 	// Latest data cache
 	mu              sync.RWMutex
@@ -91,6 +89,7 @@ type Processor struct {
 	raceSummarySession  uint64
 	raceSummarySaved    bool
 	raceSummaryCounters RaceSummaryCounts
+	raceSummaryTimeline []dto.RaceControlNotification
 
 	// Atomic counter for unique race-control notification IDs
 	rcSeq atomic.Int64
@@ -101,7 +100,6 @@ type Processor struct {
 	replaySessionUID  uint64
 	replayFrames      []ReplayFrame
 	replayRaceControl []dto.RaceControlNotification
-	replayBattleAlert []dto.BattleAlertDTO
 	replayTrackMap    *dto.TrackMapDTO
 	replaySession     *dto.SessionInfo
 	replayLastFrameTS int64
@@ -120,7 +118,6 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 		hub:             hub,
 		deltaCalculator: NewDeltaCalculator(),
 		pitwallManager:  NewPitwallManager(NewStrategyManager(), trackStore, nil),
-		battleDetector:  NewBattleDetector(),
 		logger:          logger,
 		minInterval:     interval,
 		pitwallInterval: 250 * time.Millisecond,
@@ -172,7 +169,6 @@ func (p *Processor) SetReplayRecording(enabled bool) {
 		p.replaySessionUID = 0
 		p.replayFrames = nil
 		p.replayRaceControl = nil
-		p.replayBattleAlert = nil
 		p.replayTrackMap = nil
 		p.replaySession = nil
 		p.replayLastFrameTS = 0
@@ -193,9 +189,6 @@ func (p *Processor) GetReplayTimeline(sessionUID uint64) *ReplayTimeline {
 		frame := p.replayFrames[i]
 		if len(frame.RaceControl) > 0 {
 			frame.RaceControl = append([]dto.RaceControlNotification(nil), frame.RaceControl...)
-		}
-		if len(frame.BattleAlerts) > 0 {
-			frame.BattleAlerts = append([]dto.BattleAlertDTO(nil), frame.BattleAlerts...)
 		}
 		frames[i] = frame
 	}
@@ -376,8 +369,6 @@ func (p *Processor) processPacket(data []byte) {
 			}
 		}
 
-		// Battle detection: check gap trends on lap change
-		p.checkBattleAlerts(pitwallState)
 		p.recordReplayFrame(parsed.Header.SessionUID, now.UnixMilli(), pitwallState)
 		if pitwallObserver != nil {
 			pitwallObserver(parsed.Header.SessionUID, now, pitwallState)
@@ -426,70 +417,10 @@ func (p *Processor) buildDashboardData() *dto.Dashboard {
 	}
 }
 
-// checkBattleAlerts runs the battle detector against the latest pitwall state
-func (p *Processor) checkBattleAlerts(state *dto.PitwallState) {
-	if state == nil || len(state.Drivers) == 0 {
-		return
-	}
-
-	playerIdx := state.PlayerIndex
-	if playerIdx < 0 || playerIdx >= len(state.Drivers) {
-		return
-	}
-	player := &state.Drivers[playerIdx]
-
-	// Find drivers immediately ahead and behind by position
-	var driverAheadName, driverBehindName string
-	var gapAheadMs, gapBehindMs int
-
-	for i := range state.Drivers {
-		d := &state.Drivers[i]
-		if d.Position == player.Position-1 {
-			driverAheadName = d.Name
-			gapAheadMs = player.DeltaToCarInFront
-		}
-		if d.Position == player.Position+1 {
-			driverBehindName = d.Name
-			gapBehindMs = d.DeltaToCarInFront
-		}
-	}
-
-	alerts := p.battleDetector.Check(player.CurrentLapNum, gapAheadMs, gapBehindMs, driverAheadName, driverBehindName)
-	for i := range alerts {
-		alert := alerts[i]
-		if alert.Timestamp == 0 {
-			alert.Timestamp = time.Now().UnixMilli()
-		}
-		if alert.ID == "" {
-			alert.ID = fmt.Sprintf("ba_%d_%s_%s", alert.Timestamp, alert.Side, alert.DriverBehind)
-		}
-		msg := dto.WSResponse{
-			Type: dto.MessageTypeBattleAlert,
-			Data: alert,
-		}
-		alertData, err := marshalForHub(p.hub, msg)
-		if err != nil {
-			p.logger.Error("failed to marshal battle alert", "error", err)
-			continue
-		}
-		p.hub.Broadcast(alertData)
-		p.recordReplayBattleAlert(alert)
-		p.logger.Info("battle alert",
-			"side", alert.Side,
-			"gap", alert.GapSeconds,
-			"closingRate", alert.ClosingRate,
-			"estLaps", alert.EstOvertakeLap,
-		)
-	}
-}
-
 // handleEventPacket processes event packets and broadcasts race control notifications
 func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 	event := parsed.Event
-
-	if isRaceEndEvent(event.EventStringCode) {
-		p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
-	}
+	shouldFinalize := isRaceEndEvent(event.EventStringCode)
 
 	var notification *dto.RaceControlNotification
 
@@ -581,10 +512,16 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		}
 
 	default:
+		if shouldFinalize {
+			p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
+		}
 		return
 	}
 
 	if notification == nil {
+		if shouldFinalize {
+			p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
+		}
 		return
 	}
 	if notification.Timestamp == 0 {
@@ -605,7 +542,10 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 	}
 	p.hub.Broadcast(rcData)
 	p.recordReplayRaceControl(notification)
-	p.countRaceControlNotification(notification)
+	p.recordRaceSummaryNotification(notification)
+	if shouldFinalize {
+		p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
+	}
 }
 
 func isRaceEndEvent(eventCode string) bool {
@@ -628,6 +568,7 @@ func (p *Processor) observeSessionUID(sessionUID uint64) {
 		p.raceSummarySession = sessionUID
 		p.raceSummarySaved = false
 		p.raceSummaryCounters = RaceSummaryCounts{}
+		p.raceSummaryTimeline = nil
 	}
 }
 
@@ -643,7 +584,6 @@ func (p *Processor) observeReplaySession(sessionUID uint64) {
 		p.replaySessionUID = sessionUID
 		p.replayFrames = nil
 		p.replayRaceControl = nil
-		p.replayBattleAlert = nil
 		p.replayTrackMap = nil
 		p.replaySession = nil
 		p.replayLastFrameTS = 0
@@ -681,9 +621,6 @@ func (p *Processor) recordReplayFrame(sessionUID uint64, ts int64, pitwallState 
 	if len(p.replayRaceControl) > 0 {
 		frame.RaceControl = append([]dto.RaceControlNotification(nil), p.replayRaceControl...)
 	}
-	if len(p.replayBattleAlert) > 0 {
-		frame.BattleAlerts = append([]dto.BattleAlertDTO(nil), p.replayBattleAlert...)
-	}
 	p.replayFrames = append(p.replayFrames, frame)
 }
 
@@ -704,20 +641,7 @@ func (p *Processor) recordReplayRaceControl(notification *dto.RaceControlNotific
 	}
 }
 
-func (p *Processor) recordReplayBattleAlert(alert dto.BattleAlertDTO) {
-	p.replayMu.Lock()
-	defer p.replayMu.Unlock()
-	if !p.replayEnabled {
-		return
-	}
-
-	p.replayBattleAlert = append([]dto.BattleAlertDTO{alert}, p.replayBattleAlert...)
-	if len(p.replayBattleAlert) > maxReplayBattleAlert {
-		p.replayBattleAlert = p.replayBattleAlert[:maxReplayBattleAlert]
-	}
-}
-
-func (p *Processor) countRaceControlNotification(notification *dto.RaceControlNotification) {
+func (p *Processor) recordRaceSummaryNotification(notification *dto.RaceControlNotification) {
 	if notification == nil {
 		return
 	}
@@ -733,6 +657,11 @@ func (p *Processor) countRaceControlNotification(notification *dto.RaceControlNo
 	default:
 		p.raceSummaryCounters.Info++
 	}
+
+	p.raceSummaryTimeline = append(p.raceSummaryTimeline, *notification)
+	if len(p.raceSummaryTimeline) > maxRaceSummaryTimeline {
+		p.raceSummaryTimeline = append([]dto.RaceControlNotification(nil), p.raceSummaryTimeline[len(p.raceSummaryTimeline)-maxRaceSummaryTimeline:]...)
+	}
 }
 
 func (p *Processor) trySaveRaceSummary(sessionUID uint64, trigger string) {
@@ -745,11 +674,12 @@ func (p *Processor) trySaveRaceSummary(sessionUID uint64, trigger string) {
 	}
 	save := p.raceSummarySave
 	counts := p.raceSummaryCounters
+	timeline := append([]dto.RaceControlNotification(nil), p.raceSummaryTimeline...)
 	p.raceSummarySaved = true
 	p.raceSummaryMu.Unlock()
 
 	state := p.pitwallManager.BuildState()
-	if err := save(sessionUID, counts, state); err != nil {
+	if err := save(sessionUID, counts, timeline, state); err != nil {
 		p.logger.Error("failed to save race summary", "sessionUID", sessionUID, "trigger", trigger, "error", err)
 		p.raceSummaryMu.Lock()
 		if p.raceSummarySession == sessionUID {

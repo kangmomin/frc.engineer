@@ -137,7 +137,7 @@ func main() {
 	// Create telemetry processor
 	processor := telemetry.NewProcessor(parser, hub, cfg.TelemetryUpdateHz, logger, trackStore)
 	processor.PitwallManager().SetRecorder(recorder)
-	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, state *dto.PitwallState) error {
+	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState) error {
 		currentCfg := runtimeCfg.Get()
 		mode := rtconfig.NormalizeDataStorageMode(currentCfg.DataStorageMode)
 
@@ -145,7 +145,7 @@ func main() {
 			Penalty: counts.Penalty,
 			Warning: counts.Warning,
 			Info:    counts.Info,
-		}, time.Now())
+		}, timeline, time.Now())
 		summary.DataStorageMode = mode
 		if mode == rtconfig.DataStorageModeSummary || mode == rtconfig.DataStorageModeAdvanced {
 			summary.Replay = convertReplayTimeline(processor.GetReplayTimeline(sessionUID))
@@ -689,9 +689,6 @@ func convertReplayTimeline(in *telemetry.ReplayTimeline) *races.ReplayTimeline {
 		}
 		if len(frame.RaceControl) > 0 {
 			out.Frames[i].RaceControl = append([]dto.RaceControlNotification(nil), frame.RaceControl...)
-		}
-		if len(frame.BattleAlerts) > 0 {
-			out.Frames[i].BattleAlerts = append([]dto.BattleAlertDTO(nil), frame.BattleAlerts...)
 		}
 	}
 

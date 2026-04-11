@@ -104,9 +104,7 @@ interface CockpitDashboardProps {
     onClick: () => void;
     active?: boolean;
   };
-  onSwitchToCommentary?: () => void;
   onSwitchToQualifying?: () => void;
-  onSwitchToCombat?: () => void;
   onGoHome?: () => void;
 }
 
@@ -114,14 +112,11 @@ export function CockpitDashboard({
   onOpenSettings,
   showSettingsButton,
   remoteAction,
-  onSwitchToCommentary,
   onSwitchToQualifying,
-  onSwitchToCombat,
   onGoHome,
 }: CockpitDashboardProps) {
   const {
     pitwallState,
-    battleAlerts,
     raceControlNotifications,
     connectionState,
     playbackActive,
@@ -129,7 +124,6 @@ export function CockpitDashboard({
   } = useTelemetryStore(
     useShallow((state) => ({
       pitwallState: state.pitwallState,
-      battleAlerts: state.battleAlerts,
       raceControlNotifications: state.raceControlNotifications,
       connectionState: state.connectionState,
       playbackActive: state.playbackActive,
@@ -168,18 +162,10 @@ export function CockpitDashboard({
   );
   const sectorHistoryMap = useCompletedSectorHistory(drivers, session);
 
-  const carAhead = useMemo(() => {
-    if (!player) return null;
-    return drivers.find((driver) => driver.position === player.position - 1) ?? null;
-  }, [drivers, player]);
-
   const carBehind = useMemo(() => {
     if (!player) return null;
     return drivers.find((driver) => driver.position === player.position + 1) ?? null;
   }, [drivers, player]);
-
-  const aheadAlert = battleAlerts.find((alert) => alert.side === 'ahead');
-  const behindAlert = battleAlerts.find((alert) => alert.side === 'behind');
   const topForecasts = session?.weatherForecast ?? [];
   const recentNotifications = raceControlNotifications.slice(0, 3);
   const raceStatus = getRaceStatus(session, recentNotifications);
@@ -333,16 +319,6 @@ export function CockpitDashboard({
             </svg>
           </button>
         )}
-        {onSwitchToCommentary && (
-          <button
-            type="button"
-            className={styles.remoteButton}
-            onClick={onSwitchToCommentary}
-            aria-label="Switch to commentary"
-          >
-            Live
-          </button>
-        )}
         {onSwitchToQualifying && (
           <button
             type="button"
@@ -351,16 +327,6 @@ export function CockpitDashboard({
             aria-label="Switch to qualifying"
           >
             Quali
-          </button>
-        )}
-        {onSwitchToCombat && (
-          <button
-            type="button"
-            className={styles.remoteButton}
-            onClick={onSwitchToCombat}
-            aria-label="Switch to combat"
-          >
-            Combat
           </button>
         )}
         {remoteAction && (
@@ -508,42 +474,6 @@ export function CockpitDashboard({
       </section>
 
       <div className={styles.sideRail}>
-        <div className={`${styles.panel} ${styles.combatPanel}`}>
-          <PanelTitle title="Combat Command" tone="secondary" />
-          <BattleTarget
-            label="Target Ahead"
-            driver={carAhead}
-            gapLabel={formatAheadGap(player)}
-            paceLabel={formatPaceDelta(aheadAlert)}
-            tone="tertiary"
-          />
-          <div className={styles.progressCard}>
-            <div className={styles.progressHeader}>
-              <span>DRS Status</span>
-              <span className={styles.progressStatus}>
-                {getDrsStatusLabel(player)}
-              </span>
-            </div>
-            <div className={styles.progressTrack}>
-              <div
-                className={styles.progressFill}
-                style={{ width: `${getDrsProgress(player)}%` }}
-              />
-            </div>
-            <div className={styles.progressFooter}>
-              <span>Laps to Combat</span>
-              <strong>{formatCombatWindow(aheadAlert, player)}</strong>
-            </div>
-          </div>
-          <BattleTarget
-            label="Chaser Behind"
-            driver={carBehind}
-            gapLabel={formatBehindGap(carBehind)}
-            paceLabel={formatPaceDelta(behindAlert)}
-            tone="secondary"
-          />
-        </div>
-
         <div className={`${styles.panel} ${styles.strategyPanel}`}>
           <PanelTitle title="Pit Strategy" tone="primary" detail={strategyPanel.titleDetail} />
           <div className={styles.strategyRow}>
@@ -954,7 +884,7 @@ function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
   const lastOffsetsRef = useRef('');
   const [, tick] = useState(0);
 
-  // Detect when game updates forecast offsets → reset timer
+  // Detect when game updates forecast offsets -> reset timer
   const currentOffsets = forecasts.map((f) => f.timeOffset).join(',');
   if (currentOffsets !== lastOffsetsRef.current) {
     lastOffsetsRef.current = currentOffsets;
@@ -1067,35 +997,6 @@ function MetricTile({
     <div className={className ? `${styles.metricTile} ${className}` : styles.metricTile}>
       <span>{label}</span>
       <strong className={styles[tone]}>{value}</strong>
-    </div>
-  );
-}
-
-function BattleTarget({
-  label,
-  driver,
-  gapLabel,
-  paceLabel,
-  tone,
-}: {
-  label: string;
-  driver: DriverInfo | null;
-  gapLabel: string;
-  paceLabel: string;
-  tone: 'tertiary' | 'secondary';
-}) {
-  return (
-    <div className={styles.battleCard}>
-      <div className={styles.battleHeader}>
-        <span>{label}</span>
-        <strong className={styles[tone]}>
-          {driver ? abbreviateDriver(driver.name, driver.index) : '--'}
-        </strong>
-      </div>
-      <div className={styles.metricGrid}>
-        <MetricTile label="Gap" value={gapLabel} tone={tone} />
-        <MetricTile label="Pace Δ" value={paceLabel} tone={tone === 'tertiary' ? 'primary' : 'neutral'} />
-      </div>
     </div>
   );
 }
@@ -1220,13 +1121,6 @@ function SectorDeltaCell({
   );
 }
 
-function abbreviateDriver(name: string, fallbackIndex?: number): string {
-  const trimmed = name?.trim();
-  if (!trimmed) return fallbackIndex != null ? `P${fallbackIndex}` : '---';
-  const parts = trimmed.split(/\s+/);
-  return (parts.length > 1 ? parts[parts.length - 1] : trimmed).slice(0, 3).toUpperCase();
-}
-
 function formatGap(driver: DriverInfo): string {
   if (driver.position === 1) return 'LEADER';
   if (driver.deltaToRaceLeader == null || driver.deltaToRaceLeader <= 0) return '--';
@@ -1257,27 +1151,6 @@ function getTopSpeedTone(driver: DriverInfo, visible: boolean): 'topSpeedLocked'
   if (!visible) return 'topSpeedLocked';
   if ((driver.topSpeed ?? 0) >= 320) return 'topSpeedHigh';
   return 'topSpeedBase';
-}
-
-function formatAheadGap(player: DriverInfo | null): string {
-  if (player?.deltaToCarInFront == null || player.deltaToCarInFront <= 0) return '--';
-  return `-${(player.deltaToCarInFront / 1000).toFixed(2)}s`;
-}
-
-function formatBehindGap(carBehind: DriverInfo | null): string {
-  if (carBehind?.deltaToCarInFront == null || carBehind.deltaToCarInFront <= 0) return '--';
-  return `+${(carBehind.deltaToCarInFront / 1000).toFixed(2)}s`;
-}
-
-function formatPaceDelta(value?: { closingRatePerLap: number } | null): string {
-  if (!value || value.closingRatePerLap === 0) return '0.00s';
-  return `${value.closingRatePerLap > 0 ? '-' : '+'}${Math.abs(value.closingRatePerLap).toFixed(2)}s`;
-}
-
-function formatCombatWindow(alert: { gapSeconds: number; closingRatePerLap: number } | undefined, player: DriverInfo | null): string {
-  if (!alert || alert.closingRatePerLap <= 0 || !player) return '--';
-  const laps = alert.gapSeconds / Math.max(alert.closingRatePerLap, 0.1);
-  return laps.toFixed(1);
 }
 
 function getSectorDeltaTone(deltaMs: number | null): SectorDeltaTone {
@@ -1405,13 +1278,6 @@ function getDrsTone(driver: DriverInfo): 'drsActive' | 'drsArmed' | 'drsInactive
   if (driverHasDrs(driver)) return 'drsActive';
   if (driverCanArmDrs(driver)) return 'drsArmed';
   return 'drsInactive';
-}
-
-function getDrsStatusLabel(driver: DriverInfo | null): string {
-  if (!driver) return 'LOCKED';
-  if (driverHasDrs(driver)) return 'ACTIVE';
-  if (driverCanArmDrs(driver)) return 'ARMED';
-  return 'LOCKED';
 }
 
 function formatPitStatus(driver: DriverInfo, visible: boolean): string {
@@ -1846,12 +1712,6 @@ function getTrainStatus(
   return { trainSize: 0, inTrain: false };
 }
 
-function getDrsProgress(player: DriverInfo | null): number {
-  if (player && driverHasDrs(player)) return 100;
-  if (!player?.deltaToCarInFront || player.deltaToCarInFront <= 0) return 0;
-  return clamp(100 - (player.deltaToCarInFront / 1000) * 100, 0, 100);
-}
-
 function formatForecastLabel(remainingMinutes: number): string {
   if (remainingMinutes <= 0.5) return 'NOW';
   const rounded = Math.ceil(remainingMinutes);
@@ -1875,3 +1735,4 @@ function getDamageSeverityStyle(value: number) {
     backgroundColor: `hsla(${hue} 82% 58% / 0.12)`,
   };
 }
+

@@ -34,7 +34,6 @@ export function usePitwallWebSocket(
   const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
   const addRaceControlNotification = useTelemetryStore((state) => state.addRaceControlNotification);
-  const addBattleAlert = useTelemetryStore((state) => state.addBattleAlert);
   const setRaceResult = useTelemetryStore((state) => state.setRaceResult);
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
 
@@ -48,7 +47,6 @@ export function usePitwallWebSocket(
   const pendingPositionsRef = useRef<import('../types/telemetry').CarPosition[] | null>(null);
   const positionsRafRef = useRef(0);
   const raceControlSeqRef = useRef(0);
-  const battleSeqRef = useRef(0);
 
   const clearReconnectTimeout = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -111,14 +109,13 @@ export function usePitwallWebSocket(
 
         routeMessage(
           event.data as string,
-          { setPitwallState, updatePositions: () => {}, addRaceControlNotification, addBattleAlert, setRaceResult },
+          { setPitwallState, updatePositions: () => {}, addRaceControlNotification, setRaceResult },
           {
             pendingPitwall: pendingPitwallRef,
             pitwallRaf: pitwallRafRef,
             pendingPositions: pendingPositionsRef,
             positionsRaf: positionsRafRef,
             rcSeq: raceControlSeqRef,
-            battleSeq: battleSeqRef,
           },
         );
       };
@@ -127,7 +124,7 @@ export function usePitwallWebSocket(
         setConnectionState('error');
       }
     }
-  }, [opts.url, opts.reconnectInterval, opts.maxReconnectAttempts, clearReconnectTimeout, setConnectionState, setPitwallState, addRaceControlNotification, addBattleAlert, setRaceResult]);
+  }, [opts.url, opts.reconnectInterval, opts.maxReconnectAttempts, clearReconnectTimeout, setConnectionState, setPitwallState, addRaceControlNotification, setRaceResult]);
 
   const reconnect = useCallback(() => {
     clearReconnectTimeout();

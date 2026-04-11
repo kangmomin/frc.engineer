@@ -25,6 +25,7 @@ type RaceSummary struct {
 	Player          PlayerSummary            `json:"player"`
 	Drivers         []DriverSummary          `json:"drivers"`
 	Highlights      RaceHighlights           `json:"highlights"`
+	Debrief         *RaceDebrief             `json:"debrief,omitempty"`
 	Replay          *ReplayTimeline          `json:"replay,omitempty"`
 }
 
@@ -52,13 +53,13 @@ type RaceStint struct {
 
 // PlayerSummary captures player-centric race result metrics.
 type PlayerSummary struct {
-	DriverIndex   int                       `json:"driverIndex"`
-	Name          string                    `json:"name"`
-	TeamID        int                       `json:"teamId"`
-	FinalPosition int                       `json:"finalPosition"`
-	CompletedLaps int                       `json:"completedLaps"`
-	BestLapMS     uint32                    `json:"bestLapMs"`
-	LastLapMS     uint32                    `json:"lastLapMs"`
+	DriverIndex   int         `json:"driverIndex"`
+	Name          string      `json:"name"`
+	TeamID        int         `json:"teamId"`
+	FinalPosition int         `json:"finalPosition"`
+	CompletedLaps int         `json:"completedLaps"`
+	BestLapMS     uint32      `json:"bestLapMs"`
+	LastLapMS     uint32      `json:"lastLapMs"`
 	PitStops      int         `json:"pitStops"`
 	Stints        []RaceStint `json:"stints,omitempty"`
 }
@@ -85,12 +86,51 @@ type RaceHighlights struct {
 	Notifications    NotificationCounts `json:"notifications"`
 }
 
+// RaceDebrief captures post-race review signals for the player.
+type RaceDebrief struct {
+	ClassifiedDrivers int                           `json:"classifiedDrivers"`
+	WinnerName        string                        `json:"winnerName,omitempty"`
+	GapToWinnerMS     uint32                        `json:"gapToWinnerMs,omitempty"`
+	FastestLapDeltaMS uint32                        `json:"fastestLapDeltaMs,omitempty"`
+	Penalties         RacePenaltySummary            `json:"penalties"`
+	Pit               RacePitSummary                `json:"pit"`
+	Tyres             RaceTyreSummary               `json:"tyres"`
+	Timeline          []dto.RaceControlNotification `json:"timeline,omitempty"`
+}
+
+// RacePenaltySummary aggregates player penalties and warnings.
+type RacePenaltySummary struct {
+	TimePenaltySeconds   int `json:"timePenaltySeconds,omitempty"`
+	Warnings             int `json:"warnings,omitempty"`
+	CornerCutWarnings    int `json:"cornerCutWarnings,omitempty"`
+	UnservedDriveThrough int `json:"unservedDriveThrough,omitempty"`
+	UnservedStopGo       int `json:"unservedStopGo,omitempty"`
+}
+
+// RacePitSummary captures pit stop count and time loss.
+type RacePitSummary struct {
+	Stops               int    `json:"stops"`
+	PitLaneTimeMS       uint32 `json:"pitLaneTimeMs,omitempty"`
+	EstimatedTimeLostMS uint32 `json:"estimatedTimeLostMs,omitempty"`
+}
+
+// RaceTyreSummary captures end-of-race tyre state.
+type RaceTyreSummary struct {
+	FinalCompound    string `json:"finalCompound,omitempty"`
+	FinalAge         int    `json:"finalAge,omitempty"`
+	AverageWearPct   int    `json:"averageWearPct,omitempty"`
+	PeakWearPct      int    `json:"peakWearPct,omitempty"`
+	FinalSetWearPct  int    `json:"finalSetWearPct,omitempty"`
+	LifeSpan         int    `json:"lifeSpan,omitempty"`
+	UsableLife       int    `json:"usableLife,omitempty"`
+	LifeRemainingPct int    `json:"lifeRemainingPct,omitempty"`
+}
+
 // ReplayFrame is one dashboard timeline snapshot.
 type ReplayFrame struct {
-	Timestamp    int64                         `json:"timestamp"`
-	Pitwall      *dto.PitwallState             `json:"pitwall"`
-	RaceControl  []dto.RaceControlNotification `json:"raceControl,omitempty"`
-	BattleAlerts []dto.BattleAlertDTO          `json:"battleAlerts,omitempty"`
+	Timestamp   int64                         `json:"timestamp"`
+	Pitwall     *dto.PitwallState             `json:"pitwall"`
+	RaceControl []dto.RaceControlNotification `json:"raceControl,omitempty"`
 }
 
 // ReplayTimeline holds time-ordered snapshots for timeline playback.
@@ -116,7 +156,7 @@ type RaceListItem struct {
 }
 
 // BuildSummary creates a race summary from the latest pitwall snapshot.
-func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts NotificationCounts, savedAt time.Time) *RaceSummary {
+func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts NotificationCounts, timeline []dto.RaceControlNotification, savedAt time.Time) *RaceSummary {
 	out := &RaceSummary{
 		SavedAtLocal:    savedAt.Format("2006-01-02 15:04:05"),
 		SessionUID:      sessionUID,
@@ -193,10 +233,85 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 					out.Player.Stints[i] = RaceStint{Compound: s.Compound, Laps: s.Laps}
 				}
 			}
+			out.Debrief = buildDebrief(p, state, out.Highlights.FastestLapMS, timeline)
 		}
 	}
 
 	return out
+}
+
+func buildDebrief(player dto.DriverInfo, state *dto.PitwallState, fastestLapMS uint32, timeline []dto.RaceControlNotification) *RaceDebrief {
+	debrief := &RaceDebrief{
+		ClassifiedDrivers: len(state.Drivers),
+		Penalties: RacePenaltySummary{
+			TimePenaltySeconds:   player.Penalties,
+			Warnings:             player.TotalWarnings,
+			CornerCutWarnings:    player.CornerCuttingWarnings,
+			UnservedDriveThrough: player.NumUnservedDriveThroughs,
+			UnservedStopGo:       player.NumUnservedStopGoPenalties,
+		},
+		Pit: RacePitSummary{
+			Stops: player.NumPitStops,
+		},
+		Tyres: RaceTyreSummary{
+			FinalCompound: player.TireCompound,
+			FinalAge:      player.TireAge,
+		},
+	}
+
+	for _, driver := range state.Drivers {
+		if driver.Position == 1 && driver.Name != "" {
+			debrief.WinnerName = driver.Name
+			break
+		}
+	}
+	if player.DeltaToRaceLeader > 0 {
+		debrief.GapToWinnerMS = uint32(player.DeltaToRaceLeader)
+	}
+	playerBest := uint32(maxf32(player.BestLapTime, 0))
+	if fastestLapMS > 0 && playerBest > fastestLapMS {
+		debrief.FastestLapDeltaMS = playerBest - fastestLapMS
+	}
+	if player.PitLaneTime > 0 {
+		debrief.Pit.PitLaneTimeMS = uint32(player.PitLaneTime)
+		debrief.Pit.EstimatedTimeLostMS = uint32(player.PitLaneTime)
+	} else if player.NumPitStops > 0 {
+		debrief.Pit.EstimatedTimeLostMS = uint32(player.NumPitStops * 22000)
+	}
+
+	wearTotal := 0
+	peakWear := 0
+	for _, wear := range player.TireWear {
+		if wear > peakWear {
+			peakWear = wear
+		}
+		wearTotal += wear
+	}
+	if wearTotal > 0 {
+		debrief.Tyres.AverageWearPct = wearTotal / len(player.TireWear)
+		debrief.Tyres.PeakWearPct = peakWear
+	}
+	if player.TyreSetWear != nil && *player.TyreSetWear > 0 {
+		debrief.Tyres.FinalSetWearPct = *player.TyreSetWear
+	}
+	if player.TyreLifeSpan != nil && *player.TyreLifeSpan > 0 {
+		debrief.Tyres.LifeSpan = *player.TyreLifeSpan
+	}
+	if player.TyreUsableLife != nil && *player.TyreUsableLife > 0 {
+		debrief.Tyres.UsableLife = *player.TyreUsableLife
+	}
+	if player.TyreLifeSpan != nil && *player.TyreLifeSpan > 0 && player.TireAge >= 0 {
+		remaining := *player.TyreLifeSpan - player.TireAge
+		if remaining < 0 {
+			remaining = 0
+		}
+		debrief.Tyres.LifeRemainingPct = int(float64(remaining) / float64(*player.TyreLifeSpan) * 100)
+	}
+	if len(timeline) > 0 {
+		debrief.Timeline = append([]dto.RaceControlNotification(nil), timeline...)
+	}
+
+	return debrief
 }
 
 func maxf32(v, min float32) float32 {

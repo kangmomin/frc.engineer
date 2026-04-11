@@ -4,7 +4,6 @@ import type {
   CarPosition,
   ConnectionState,
   RaceControlNotification,
-  BattleAlert,
   RaceSummary,
   FeaturePermissions,
 } from '../types/telemetry';
@@ -29,17 +28,12 @@ interface TelemetryState {
   applyReplayFrame: (frame: {
     pitwall: PitwallState;
     raceControl?: RaceControlNotification[];
-    battleAlerts?: BattleAlert[];
   }) => void;
 
   // Events & Notifications
   raceControlNotifications: RaceControlNotification[];
   addRaceControlNotification: (notification: RaceControlNotification) => void;
   setRaceControlNotifications: (notifications: RaceControlNotification[]) => void;
-
-  battleAlerts: BattleAlert[];
-  addBattleAlert: (alert: BattleAlert) => void;
-  setBattleAlerts: (alerts: BattleAlert[]) => void;
 
   // Race result
   raceResult: RaceSummary | null;
@@ -51,7 +45,6 @@ interface TelemetryState {
 }
 
 const MAX_NOTIFICATIONS = 50;
-const MAX_BATTLE_ALERTS = 10;
 
 export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewERSEstimate: false,
@@ -60,9 +53,7 @@ export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewPitStatus: false,
   viewTopSpeed: false,
   viewPlayerDelta: false,
-  viewCommentary: false,
   viewQualifying: false,
-  viewCombat: false,
   pitwall: false,
   overlay: false,
   setupSupport: false,
@@ -75,9 +66,7 @@ export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
   viewPitStatus: true,
   viewTopSpeed: true,
   viewPlayerDelta: true,
-  viewCommentary: true,
   viewQualifying: true,
-  viewCombat: true,
   pitwall: true,
   overlay: true,
   setupSupport: true,
@@ -104,7 +93,6 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
     set({
       pitwallState: frame.pitwall,
       raceControlNotifications: frame.raceControl ?? [],
-      battleAlerts: frame.battleAlerts ?? [],
     }),
 
   raceControlNotifications: [],
@@ -119,15 +107,6 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   setRaceControlNotifications: (notifications) =>
     set({ raceControlNotifications: notifications.slice(0, MAX_NOTIFICATIONS) }),
 
-  battleAlerts: [],
-  addBattleAlert: (alert) =>
-    set((state) => {
-      const updated = [alert, ...state.battleAlerts];
-      return { battleAlerts: updated.slice(0, MAX_BATTLE_ALERTS) };
-    }),
-  setBattleAlerts: (alerts) =>
-    set({ battleAlerts: alerts.slice(0, MAX_BATTLE_ALERTS) }),
-
   raceResult: null,
   setRaceResult: (result) => set({ raceResult: result }),
   clearRaceResult: () => set({ raceResult: null }),
@@ -135,6 +114,5 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   clearNotifications: () =>
     set({
       raceControlNotifications: [],
-      battleAlerts: [],
     }),
 }));
