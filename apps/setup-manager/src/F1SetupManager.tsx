@@ -34,8 +34,14 @@ import {
   type SenderRaceResult,
   type WeatherMode,
 } from "./setupDriverPack";
+import { SessionAnalysisSection } from "./SessionAnalysisSection";
+import {
+  ANALYSIS_URL_KEY,
+  DEFAULT_ANALYSIS_URL,
+  normalizeAnalysisServerUrl,
+} from "./sessionAnalysis";
 
-type TabId = "setup" | "telemetry" | "settings";
+type TabId = "setup" | "telemetry" | "analysis" | "settings";
 type Severity = "high" | "med" | "low";
 
 interface SenderStatus {
@@ -441,6 +447,8 @@ export function F1SetupManager() {
   const [tab, setTab] = useState<TabId>("setup");
   const [senderUrl, setSenderUrl] = useState(DEFAULT_SENDER_URL);
   const [draftSenderUrl, setDraftSenderUrl] = useState(DEFAULT_SENDER_URL);
+  const [analysisUrl, setAnalysisUrl] = useState(DEFAULT_ANALYSIS_URL);
+  const [draftAnalysisUrl, setDraftAnalysisUrl] = useState(DEFAULT_ANALYSIS_URL);
 
   const [track, setTrack] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>(null);
@@ -461,13 +469,19 @@ export function F1SetupManager() {
 
     const loadPersistedState = async () => {
       const storedSenderUrl = await readStoredValue<string>(SENDER_URL_KEY, DEFAULT_SENDER_URL);
+      const storedAnalysisUrl = await readStoredValue<string>(ANALYSIS_URL_KEY, DEFAULT_ANALYSIS_URL);
       const nextSenderUrl = normalizeSenderUrl(typeof storedSenderUrl === "string" ? storedSenderUrl : DEFAULT_SENDER_URL);
+      const nextAnalysisUrl = normalizeAnalysisServerUrl(
+        typeof storedAnalysisUrl === "string" ? storedAnalysisUrl : DEFAULT_ANALYSIS_URL,
+      );
       const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
       const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
 
       if (!active) return;
       setSenderUrl(nextSenderUrl);
       setDraftSenderUrl(nextSenderUrl);
+      setAnalysisUrl(nextAnalysisUrl);
+      setDraftAnalysisUrl(nextAnalysisUrl);
       setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
       setLapComparison(normalizeLapComparisonState(storedComparison));
     };
@@ -483,6 +497,13 @@ export function F1SetupManager() {
     setSenderUrl(normalized);
     setDraftSenderUrl(normalized);
     await writeStoredValue(SENDER_URL_KEY, normalized);
+  };
+
+  const saveAnalysisUrl = async () => {
+    const normalized = normalizeAnalysisServerUrl(draftAnalysisUrl);
+    setAnalysisUrl(normalized);
+    setDraftAnalysisUrl(normalized);
+    await writeStoredValue(ANALYSIS_URL_KEY, normalized);
   };
 
   const persistRecommendations = async (next: SavedRecommendation[]) => {
@@ -745,6 +766,7 @@ export function F1SetupManager() {
           {[
             { id: "setup" as const, label: "Setup", visible: canUseSetup },
             { id: "telemetry" as const, label: "Telemetry", visible: canUseTelemetry },
+            { id: "analysis" as const, label: "Analysis", visible: true },
             { id: "settings" as const, label: "Settings", visible: true },
           ]
             .filter((item) => item.visible)
@@ -1139,12 +1161,28 @@ export function F1SetupManager() {
             ) : null}
           </>
         ) : null}
+        {tab === "analysis" ? (
+          <SessionAnalysisSection
+            theme={P}
+            analysisUrl={analysisUrl}
+            draftAnalysisUrl={draftAnalysisUrl}
+            onDraftAnalysisUrlChange={setDraftAnalysisUrl}
+            onSaveAnalysisUrl={saveAnalysisUrl}
+          />
+        ) : null}
         {tab === "settings" ? (
           <>
             <Panel title="SENDER URL">
               <div style={{ display: "grid", gap: 8 }}>
                 <input value={draftSenderUrl} onChange={(event) => setDraftSenderUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSenderUrl(); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
                 <button onClick={() => void saveSenderUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
+              </div>
+            </Panel>
+
+            <Panel title="ANALYSIS SERVER">
+              <div style={{ display: "grid", gap: 8 }}>
+                <input value={draftAnalysisUrl} onChange={(event) => setDraftAnalysisUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveAnalysisUrl(); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
+                <button onClick={() => void saveAnalysisUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
               </div>
             </Panel>
 

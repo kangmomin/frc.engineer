@@ -34,6 +34,32 @@ import (
 	"frc.engineer/web"
 )
 
+type sessionAnalysisCacheEntry struct {
+	fingerprint string
+	result      *analysis.AnalysisResult
+}
+
+func sessionAnalysisFingerprint(dir string) (string, error) {
+	required := []string{"lap_data.jsonl", "telemetry.jsonl", "motion.jsonl", "session.jsonl"}
+	optional := []string{"car_status.jsonl"}
+
+	parts := make([]string, 0, len(required)+len(optional))
+	for _, name := range required {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, fmt.Sprintf("%s:%d:%d", name, info.Size(), info.ModTime().UnixNano()))
+	}
+	for _, name := range optional {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err == nil {
+			parts = append(parts, fmt.Sprintf("%s:%d:%d", name, info.Size(), info.ModTime().UnixNano()))
+		}
+	}
+	return strings.Join(parts, "|"), nil
+}
+
 func main() {
 	// Setup structured logging
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -165,6 +191,9 @@ func main() {
 	})
 	processor.SetRaceSummaryRecording(savedCfg.RaceSummaryRecording)
 	processor.SetReplayRecording(storageMode == rtconfig.DataStorageModeSummary || storageMode == rtconfig.DataStorageModeAdvanced)
+
+	var sessionAnalysisCacheMu sync.RWMutex
+	sessionAnalysisCache := make(map[string]sessionAnalysisCacheEntry)
 
 	// Connect storage to delta calculator
 	processor.DeltaCalculator().SetStorageCallbacks(
@@ -409,11 +438,29 @@ func main() {
 		}
 
 		fullPath := filepath.Join(cfg.PacketLogDir, dir)
+		if fingerprint, err := sessionAnalysisFingerprint(fullPath); err == nil {
+			sessionAnalysisCacheMu.RLock()
+			cached, ok := sessionAnalysisCache[dir]
+			sessionAnalysisCacheMu.RUnlock()
+			if ok && cached.fingerprint == fingerprint && cached.result != nil {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(cached.result)
+				return
+			}
+		}
 		result, err := analysis.Analyze(fullPath)
 		if err != nil {
 			logger.Error("analysis failed", "dir", dir, "error", err)
 			http.Error(w, "analysis failed: "+err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if fingerprint, err := sessionAnalysisFingerprint(fullPath); err == nil {
+			sessionAnalysisCacheMu.Lock()
+			sessionAnalysisCache[dir] = sessionAnalysisCacheEntry{
+				fingerprint: fingerprint,
+				result:      result,
+			}
+			sessionAnalysisCacheMu.Unlock()
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)

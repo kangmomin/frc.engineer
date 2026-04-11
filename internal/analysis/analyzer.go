@@ -7,27 +7,27 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 )
 
 // AnalysisResult is the top-level result returned by the API.
 type AnalysisResult struct {
-	Laps   []LapSummary    `json:"laps"`
-	Stints []StintAnalysis `json:"stints"`
-	Speed  *SpeedAnalysis  `json:"speed,omitempty"`
+	Session    *SessionMetadata    `json:"session,omitempty"`
+	Laps       []LapSummary        `json:"laps"`
+	Stints     []StintAnalysis     `json:"stints"`
+	Speed      *SpeedAnalysis      `json:"speed,omitempty"`
+	Comparison *ComparisonAnalysis `json:"comparison,omitempty"`
 }
 
 // LapSummary holds per-lap timing info.
 type LapSummary struct {
-	LapNum    int     `json:"lapNum"`
-	LapTimeMs uint32  `json:"lapTimeMs"`
-	Sector1Ms uint32  `json:"sector1Ms"`
-	Sector2Ms uint32  `json:"sector2Ms"`
-	Sector3Ms uint32  `json:"sector3Ms"`
-	Compound  string  `json:"compound"`
-	TireAge   int     `json:"tireAge"`
-	Valid     bool    `json:"valid"`
+	LapNum    int        `json:"lapNum"`
+	LapTimeMs uint32     `json:"lapTimeMs"`
+	Sector1Ms uint32     `json:"sector1Ms"`
+	Sector2Ms uint32     `json:"sector2Ms"`
+	Sector3Ms uint32     `json:"sector3Ms"`
+	Compound  string     `json:"compound"`
+	TireAge   int        `json:"tireAge"`
+	Valid     bool       `json:"valid"`
 	TireWear  [4]float64 `json:"tireWear"` // FL, FR, RL, RR
 }
 
@@ -44,9 +44,9 @@ type StintAnalysis struct {
 
 // SpeedAnalysis holds per-distance speed data for the best lap and average across laps.
 type SpeedAnalysis struct {
-	Distances []float64 `json:"distances"` // distance axis (meters)
-	BestSpeed []float64 `json:"bestSpeed"` // speed at each distance for best lap
-	AvgSpeed  []float64 `json:"avgSpeed"`  // average speed at each distance across laps
+	Distances []float64  `json:"distances"` // distance axis (meters)
+	BestSpeed []float64  `json:"bestSpeed"` // speed at each distance for best lap
+	AvgSpeed  []float64  `json:"avgSpeed"`  // average speed at each distance across laps
 	SlowZones []SlowZone `json:"slowZones"`
 }
 
@@ -61,11 +61,11 @@ type SlowZone struct {
 // ---- JSONL envelope structures ----
 
 type packetEnvelope struct {
-	TS        string          `json:"ts"`
-	Frame     uint32          `json:"frame"`
-	SessionTime float32       `json:"sessionTime"`
-	PacketID  int             `json:"packetID"`
-	Data      json.RawMessage `json:"data"`
+	TS          string          `json:"ts"`
+	Frame       uint32          `json:"frame"`
+	SessionTime float32         `json:"sessionTime"`
+	PacketID    int             `json:"packetID"`
+	Data        json.RawMessage `json:"data"`
 }
 
 // lap_data.jsonl
@@ -79,44 +79,45 @@ type packetHeader struct {
 }
 
 type lapDatum struct {
-	LastLapTimeInMS          uint32  `json:"LastLapTimeInMS"`
-	CurrentLapTimeInMS       uint32  `json:"CurrentLapTimeInMS"`
-	Sector1TimeInMS          uint16  `json:"Sector1TimeInMS"`
-	Sector2TimeInMS          uint16  `json:"Sector2TimeInMS"`
-	Sector1TimeMSPart        uint16  `json:"Sector1TimeMSPart"`
-	Sector2TimeMSPart        uint16  `json:"Sector2TimeMSPart"`
-	LapDistance              float32 `json:"LapDistance"`
-	CurrentLapNum            uint8   `json:"CurrentLapNum"`
-	CurrentLapInvalid        uint8   `json:"CurrentLapInvalid"`
-	Sector                   uint8   `json:"Sector"`
-	BestOverallSector1TimeInMS uint32 `json:"BestOverallSector1TimeInMS"`
-	BestOverallSector2TimeInMS uint32 `json:"BestOverallSector2TimeInMS"`
-	BestOverallSector3TimeInMS uint32 `json:"BestOverallSector3TimeInMS"`
+	LastLapTimeInMS            uint32  `json:"LastLapTimeInMS"`
+	CurrentLapTimeInMS         uint32  `json:"CurrentLapTimeInMS"`
+	Sector1TimeInMS            uint16  `json:"Sector1TimeInMS"`
+	Sector2TimeInMS            uint16  `json:"Sector2TimeInMS"`
+	Sector1TimeMSPart          uint16  `json:"Sector1TimeMSPart"`
+	Sector2TimeMSPart          uint16  `json:"Sector2TimeMSPart"`
+	LapDistance                float32 `json:"LapDistance"`
+	CurrentLapNum              uint8   `json:"CurrentLapNum"`
+	CurrentLapInvalid          uint8   `json:"CurrentLapInvalid"`
+	Sector                     uint8   `json:"Sector"`
+	BestOverallSector1TimeInMS uint32  `json:"BestOverallSector1TimeInMS"`
+	BestOverallSector2TimeInMS uint32  `json:"BestOverallSector2TimeInMS"`
+	BestOverallSector3TimeInMS uint32  `json:"BestOverallSector3TimeInMS"`
 }
 
 // telemetry.jsonl
 type telemetryPacket struct {
-	Header          packetHeader     `json:"Header"`
-	CarTelemetryData []carTelemetry  `json:"CarTelemetryData"`
+	Header           packetHeader   `json:"Header"`
+	CarTelemetryData []carTelemetry `json:"CarTelemetryData"`
 }
 
 type carTelemetry struct {
 	Speed    uint16  `json:"Speed"`
 	Throttle float32 `json:"Throttle"`
+	Steer    float32 `json:"Steer"`
 	Brake    float32 `json:"Brake"`
 	Gear     int8    `json:"Gear"`
 }
 
 // car_status.jsonl
 type carStatusPacket struct {
-	Header        packetHeader  `json:"Header"`
-	CarStatusData []carStatus   `json:"CarStatusData"`
+	Header        packetHeader `json:"Header"`
+	CarStatusData []carStatus  `json:"CarStatusData"`
 }
 
 type carStatus struct {
-	ActualTyreCompound  uint8 `json:"ActualTyreCompound"`
-	VisualTyreCompound  uint8 `json:"VisualTyreCompound"`
-	TyresAgeLaps        uint8 `json:"TyresAgeLaps"`
+	ActualTyreCompound uint8 `json:"ActualTyreCompound"`
+	VisualTyreCompound uint8 `json:"VisualTyreCompound"`
+	TyresAgeLaps       uint8 `json:"TyresAgeLaps"`
 }
 
 // ---- compound mapping ----
@@ -145,6 +146,10 @@ func compoundName(visual uint8) string {
 func Analyze(dir string) (*AnalysisResult, error) {
 	result := &AnalysisResult{}
 
+	if meta, err := readSessionMetadata(dir); err == nil {
+		result.Session = meta
+	}
+
 	// 1. Parse lap_data → build per-lap timing
 	laps, err := parseLapData(dir)
 	if err != nil {
@@ -168,10 +173,16 @@ func Analyze(dir string) (*AnalysisResult, error) {
 	// 3. Build stints from lap data
 	result.Stints = buildStints(laps)
 
-	// 4. Parse telemetry → speed analysis
-	speed, err := parseSpeedData(dir, laps)
-	if err == nil && speed != nil {
+	// 4. Build comparison traces and derive speed analysis from the same merged samples.
+	comparison, speed, err := buildComparisonAnalysis(dir, laps)
+	if err == nil {
+		result.Comparison = comparison
 		result.Speed = speed
+	} else {
+		speed, err = parseSpeedData(dir, laps)
+		if err == nil && speed != nil {
+			result.Speed = speed
+		}
 	}
 
 	return result, nil
@@ -369,8 +380,8 @@ func buildStints(laps []LapSummary) []StintAnalysis {
 
 	var stints []StintAnalysis
 	current := StintAnalysis{
-		Compound: laps[0].Compound,
-		StartLap: laps[0].LapNum,
+		Compound:  laps[0].Compound,
+		StartLap:  laps[0].LapNum,
 		WearStart: laps[0].TireWear,
 	}
 
@@ -384,8 +395,8 @@ func buildStints(laps []LapSummary) []StintAnalysis {
 			stints = append(stints, current)
 
 			current = StintAnalysis{
-				Compound: laps[i].Compound,
-				StartLap: laps[i].LapNum,
+				Compound:  laps[i].Compound,
+				StartLap:  laps[i].LapNum,
 				WearStart: laps[i].TireWear,
 			}
 		}
@@ -630,56 +641,4 @@ func parseSpeedData(dir string, laps []LapSummary) (*SpeedAnalysis, error) {
 		AvgSpeed:  avgSpeed,
 		SlowZones: slowZones,
 	}, nil
-}
-
-// ListSessions returns directory names under packetsDir.
-type SessionInfo struct {
-	UID       string `json:"uid"`
-	Timestamp string `json:"timestamp"`
-	Directory string `json:"directory"`
-}
-
-func ListSessions(packetsDir string) ([]SessionInfo, error) {
-	entries, err := os.ReadDir(packetsDir)
-	if err != nil {
-		return nil, err
-	}
-
-	var sessions []SessionInfo
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		// Format: {uid}_{date}_{time} e.g. "5362570775929466699_20260128_222712"
-		parts := strings.SplitN(name, "_", 3)
-		uid := ""
-		ts := ""
-		if len(parts) >= 1 {
-			uid = parts[0]
-		}
-		if len(parts) >= 3 {
-			ts = parts[1] + "_" + parts[2]
-		} else if len(parts) == 2 {
-			ts = parts[1]
-		}
-
-		// Only include directories that have at least lap_data.jsonl
-		if _, err := os.Stat(filepath.Join(packetsDir, name, "lap_data.jsonl")); err != nil {
-			continue
-		}
-
-		sessions = append(sessions, SessionInfo{
-			UID:       uid,
-			Timestamp: ts,
-			Directory: name,
-		})
-	}
-
-	// Sort by name descending (newest first)
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].Directory > sessions[j].Directory
-	})
-
-	return sessions, nil
 }

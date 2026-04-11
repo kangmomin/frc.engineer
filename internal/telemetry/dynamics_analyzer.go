@@ -1,22 +1,6 @@
 package telemetry
 
-import (
-	"math"
-
-	"frc.engineer/internal/dto"
-)
-
-const (
-	minCorneringSteer  = 0.05  // minimum |steering| to count as cornering
-	minCorneringSpeed  = 50.0  // km/h
-	understeerMaxSlip  = 2.0   // degrees - low slip despite significant steering
-	understeerMinSteer = 0.15  // minimum |steering| for understeer detection
-	oversteerMinSlip   = 6.0   // degrees - excessive rear slip
-	spinMinSlip        = 30.0  // degrees
-	spinMinSpeed       = 30.0  // km/h
-	lockupMinBrake     = 0.9
-	lockupMinSpeed     = 80.0 // km/h
-)
+import "frc.engineer/internal/dto"
 
 // DynamicsAnalyzer processes motion data at 60Hz to detect
 // understeer, oversteer, spins, and lockups per lap.
@@ -50,24 +34,10 @@ func (da *DynamicsAnalyzer) ProcessFrame(
 	}
 	da.currentLap = lapNum
 
-	speedKmh := float64(speed)
-
-	// Body slip angle: angle between velocity vector and car heading
-	slipAngle := math.Atan2(float64(velX), float64(velZ)) - float64(yaw)
-
-	// Normalize to [-π, π]
-	for slipAngle > math.Pi {
-		slipAngle -= 2 * math.Pi
-	}
-	for slipAngle < -math.Pi {
-		slipAngle += 2 * math.Pi
-	}
-
-	slipDeg := math.Abs(slipAngle) * 180.0 / math.Pi
-	absSteer := math.Abs(float64(steer))
+	signal := ClassifyDynamicsFrame(velX, velZ, yaw, speed, steer, brake)
 
 	// Spin detection (debounced)
-	if slipDeg > spinMinSlip && speedKmh > spinMinSpeed {
+	if signal.Spin {
 		if !da.spinActive {
 			da.spinActive = true
 			da.spinCount++
@@ -77,7 +47,7 @@ func (da *DynamicsAnalyzer) ProcessFrame(
 	}
 
 	// Lockup detection (debounced, approximate without individual wheel speeds)
-	if float64(brake) > lockupMinBrake && speedKmh > lockupMinSpeed {
+	if signal.Lockup {
 		if !da.lockupActive {
 			da.lockupActive = true
 			da.lockupCount++
@@ -87,12 +57,12 @@ func (da *DynamicsAnalyzer) ProcessFrame(
 	}
 
 	// Cornering classification
-	if absSteer > minCorneringSteer && speedKmh > minCorneringSpeed {
+	if signal.Cornering {
 		da.cornerFrames++
 
-		if slipDeg > oversteerMinSlip {
+		if signal.Oversteer {
 			da.oversteerFrames++
-		} else if slipDeg < understeerMaxSlip && absSteer > understeerMinSteer {
+		} else if signal.Understeer {
 			da.understeerFrames++
 		}
 	}
