@@ -40,10 +40,11 @@ deploy 레포(`kangmomin/frc.engineer-deploy`)의 최신 태그를 기준으로 
   ```
 - Electron 산출물 복사:
   ```
-  cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe build/deploy-inspect-1/
-  cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap build/deploy-inspect-1/
+  cp apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe build/deploy-inspect-1/
+  cp apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe.blockmap build/deploy-inspect-1/
   cp apps/setup-manager/release/latest.yml build/deploy-inspect-1/
   ```
+ - deploy 레포의 이전 버전명 installer / blockmap / portable 파일은 삭제하고 최신 파일만 유지
 
 ### 5. deploy 레포 커밋 & 태그 & 푸시
 ```
@@ -58,9 +59,9 @@ git push origin vX.Y.Z
 ### 6. GitHub Release 생성
 - deploy-inspect-1 디렉토리에서:
   ```
-  gh release create vX.Y.Z \
-    Minmo-Driver-Pack-Setup-X.Y.Z.exe \
-    Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap \
+gh release create vX.Y.Z \
+    Minmo-Driver-Pack-Setup.exe \
+    Minmo-Driver-Pack-Setup.exe.blockmap \
     latest.yml
   ```
 - 릴리스 노트에 주요 변경사항 포함

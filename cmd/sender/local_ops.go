@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	defaultEngineerDashboardURL = "http://localhost:5173"
+	defaultEngineerDashboardURL = "https://pitwall.up.railway.app"
 	maxOverlayPresets           = 12
 )
 

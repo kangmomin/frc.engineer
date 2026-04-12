@@ -40,9 +40,9 @@ Use this skill for project releases in `frc.engineer`.
 7. Build Electron Windows artifacts in `apps/setup-manager`:
    - install deps if needed
    - run the Windows distribution script that works in the current environment
-   - collect produced `.exe` assets from `apps/setup-manager/release/`
+   - collect `Minmo-Driver-Pack-Setup.exe`, `Minmo-Driver-Pack-Setup.exe.blockmap`, and `latest.yml` from `apps/setup-manager/release/`
 8. Sync `build/deploy-inspect-1` to `origin/main`.
-9. Copy release artifacts into `build/deploy-inspect-1/`.
+9. Delete legacy versioned installer / blockmap / portable files from `build/deploy-inspect-1/`, then copy only the latest release artifacts into it.
 10. Commit deploy repo changes, tag, and push branch + tag.
 11. Create GitHub release in deploy repo with the generated `.exe` assets.
 12. Tag and push the main repo with the same release version.

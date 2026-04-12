@@ -203,7 +203,7 @@ interface SenderStorageInfo {
 }
 
 const DEFAULT_SENDER_URL = "http://localhost:8099";
-const DEFAULT_ENGINEER_DASHBOARD_URL = "http://localhost:5173";
+const DEFAULT_ENGINEER_DASHBOARD_URL = "https://pitwall.up.railway.app";
 const SENDER_URL_KEY = "frc_sender_url";
 const SENDER_STORAGE_ROOT_KEY = "frc_sender_storage_root";
 const SAVED_RECOMMENDATIONS_KEY = "frc_setup_recommendations";

@@ -37,8 +37,7 @@
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "icon": "electron/icon.ico",
       "signAndEditExecutable": false
@@ -46,10 +45,7 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "artifactName": "Minmo-Driver-Pack-Setup-${version}.${ext}"
-    },
-    "portable": {
-      "artifactName": "Minmo-Driver-Pack-Portable.exe"
+      "artifactName": "Minmo-Driver-Pack-Setup.${ext}"
     }
   },
   "dependencies": {

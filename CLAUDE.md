@@ -45,10 +45,11 @@
 6. **deploy 레포 동기화**: `build/deploy-inspect-1` 에서 `git pull origin main`
 7. **Electron 산출물을 deploy 레포에 복사**:
    ```bash
-   cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe build/deploy-inspect-1/
-   cp apps/setup-manager/release/Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap build/deploy-inspect-1/
+   cp apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe build/deploy-inspect-1/
+   cp apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe.blockmap build/deploy-inspect-1/
    cp apps/setup-manager/release/latest.yml build/deploy-inspect-1/
    ```
+   > deploy 레포에는 최신 installer 한 벌만 유지하고, 이전 버전명 installer / blockmap / portable 파일은 삭제
 8. **deploy 레포 푸시**: `build/deploy-inspect-1` 에서 커밋 & push (태그 포함)
    ```bash
    cd build/deploy-inspect-1
@@ -61,8 +62,8 @@
 9. **GitHub Release 생성**: `kangmomin/frc.engineer-deploy` 에 릴리스 생성 + Setup 인스톨러 + `latest.yml` + `.blockmap` 3개 에셋 업로드 (auto-update에 필요)
    ```bash
    gh release create vX.Y.Z \
-     Minmo-Driver-Pack-Setup-X.Y.Z.exe \
-     Minmo-Driver-Pack-Setup-X.Y.Z.exe.blockmap \
+     Minmo-Driver-Pack-Setup.exe \
+     Minmo-Driver-Pack-Setup.exe.blockmap \
      latest.yml
    ```
 10. **메인 레포 태그**: 메인 레포에도 동일 버전 태그 생성 & push
