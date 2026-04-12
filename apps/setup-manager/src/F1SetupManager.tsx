@@ -36,9 +36,6 @@ import {
 } from "./setupDriverPack";
 import { SessionAnalysisSection } from "./SessionAnalysisSection";
 import {
-  ANALYSIS_URL_KEY,
-  DEFAULT_ANALYSIS_URL,
-  LEGACY_ANALYSIS_URL,
   normalizeAnalysisServerUrl,
 } from "./sessionAnalysis";
 
@@ -69,8 +66,14 @@ interface SenderPeer {
   permissions?: DriverPermissions;
 }
 
+interface SenderCurrentTrack {
+  name?: string;
+  filename?: string;
+  hasRecordedPreview?: boolean;
+}
+
 interface SenderStatus {
-  currentTrack?: { name?: string };
+  currentTrack?: SenderCurrentTrack;
   driverPermissions?: DriverPermissions;
   radarActive?: boolean;
   weatherActive?: boolean;
@@ -146,6 +149,47 @@ interface OverlayHotkeys {
   strategy: string;
 }
 
+interface SenderForwardTargetResponse {
+  host?: string;
+  port?: number;
+  enabled?: boolean;
+}
+
+interface SenderForwardTargetDraft {
+  host: string;
+  port: string;
+  enabled: boolean;
+}
+
+interface SenderConfigResponse {
+  udpPort?: number;
+  saveFiles?: boolean;
+  trackRecording?: boolean;
+  roomName?: string;
+  roomPassword?: string;
+  frcAccountKey?: string;
+  engineerDashboardUrl?: string;
+  forwardTargets?: SenderForwardTargetResponse[];
+  overlayPresets?: OverlayPreset[];
+  overlayHotkeys?: OverlayHotkeys;
+}
+
+interface SenderConfigConflictResponse {
+  error?: string;
+  requiresOverwriteConfirm?: boolean;
+  currentTrack?: SenderCurrentTrack;
+}
+
+interface SenderConfigDraft {
+  udpPort: string;
+  saveFiles: boolean;
+  trackRecording: boolean;
+  roomName: string;
+  roomPassword: string;
+  frcAccountKey: string;
+  forwardTargets: SenderForwardTargetDraft[];
+}
+
 interface LocalOpsResponse {
   engineerDashboardUrl?: string;
   overlayPresets?: OverlayPreset[];
@@ -162,6 +206,15 @@ const DEFAULT_OVERLAY_HOTKEYS: OverlayHotkeys = {
   radar: "Alt+Shift+1",
   weather: "Alt+Shift+2",
   strategy: "Alt+Shift+3",
+};
+const DEFAULT_SENDER_CONFIG: SenderConfigDraft = {
+  udpPort: "20777",
+  saveFiles: true,
+  trackRecording: false,
+  roomName: "Sender Room",
+  roomPassword: "",
+  frcAccountKey: "",
+  forwardTargets: [],
 };
 const DRIVER_PERMISSION_LABELS: Record<string, string> = {
   pitwall: "Pitwall",
@@ -210,6 +263,32 @@ const WINDOW_TITLEBAR_INSET = window.electronAPI?.platform === "win32" ? 32 : 0;
 function normalizeSenderUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
   return trimmed || DEFAULT_SENDER_URL;
+}
+
+function normalizeSenderForwardTargetsResponse(targets: SenderForwardTargetResponse[] | null | undefined): SenderForwardTargetDraft[] {
+  if (!Array.isArray(targets)) {
+    return [];
+  }
+  return targets.map((target) => ({
+    host: typeof target.host === "string" ? target.host : "",
+    port: typeof target.port === "number" && Number.isFinite(target.port) ? String(target.port) : "",
+    enabled: target.enabled !== false,
+  }));
+}
+
+function buildSenderConfigDraft(data: SenderConfigResponse | null | undefined): SenderConfigDraft {
+  return {
+    udpPort:
+      typeof data?.udpPort === "number" && Number.isFinite(data.udpPort)
+        ? String(data.udpPort)
+        : DEFAULT_SENDER_CONFIG.udpPort,
+    saveFiles: typeof data?.saveFiles === "boolean" ? data.saveFiles : DEFAULT_SENDER_CONFIG.saveFiles,
+    trackRecording: typeof data?.trackRecording === "boolean" ? data.trackRecording : DEFAULT_SENDER_CONFIG.trackRecording,
+    roomName: typeof data?.roomName === "string" ? data.roomName : DEFAULT_SENDER_CONFIG.roomName,
+    roomPassword: typeof data?.roomPassword === "string" ? data.roomPassword : DEFAULT_SENDER_CONFIG.roomPassword,
+    frcAccountKey: typeof data?.frcAccountKey === "string" ? data.frcAccountKey : DEFAULT_SENDER_CONFIG.frcAccountKey,
+    forwardTargets: normalizeSenderForwardTargetsResponse(data?.forwardTargets),
+  };
 }
 
 function severityColor(severity: Severity): string {
@@ -728,10 +807,14 @@ export function F1SetupManager() {
   const [setupWorkspace, setSetupWorkspace] = useState<SetupWorkspaceId>("builder");
   const [senderUrl, setSenderUrl] = useState(DEFAULT_SENDER_URL);
   const [draftSenderUrl, setDraftSenderUrl] = useState(DEFAULT_SENDER_URL);
-  const [analysisUrl, setAnalysisUrl] = useState(DEFAULT_ANALYSIS_URL);
-  const [draftAnalysisUrl, setDraftAnalysisUrl] = useState(DEFAULT_ANALYSIS_URL);
   const [engineerDashboardUrl, setEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
   const [draftEngineerDashboardUrl, setDraftEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
+  const [senderConfig, setSenderConfig] = useState<SenderConfigDraft>(DEFAULT_SENDER_CONFIG);
+  const [loadingSenderConfig, setLoadingSenderConfig] = useState(false);
+  const [savingSenderConfig, setSavingSenderConfig] = useState(false);
+  const [senderConfigNotice, setSenderConfigNotice] = useState<string | null>(null);
+  const [senderConfigError, setSenderConfigError] = useState<string | null>(null);
+  const [trackRecordingOverwriteFilename, setTrackRecordingOverwriteFilename] = useState("");
   const [overlayState, setOverlayState] = useState<OverlayState>(DEFAULT_OVERLAY_STATE);
   const [overlayPresets, setOverlayPresets] = useState<OverlayPreset[]>([]);
   const [overlayHotkeys, setOverlayHotkeys] = useState<OverlayHotkeys>(DEFAULT_OVERLAY_HOTKEYS);
@@ -761,22 +844,13 @@ export function F1SetupManager() {
 
     const loadPersistedState = async () => {
       const storedSenderUrl = await readStoredValue<string>(SENDER_URL_KEY, DEFAULT_SENDER_URL);
-      const storedAnalysisUrl = await readStoredValue<string>(ANALYSIS_URL_KEY, DEFAULT_ANALYSIS_URL);
       const nextSenderUrl = normalizeSenderUrl(typeof storedSenderUrl === "string" ? storedSenderUrl : DEFAULT_SENDER_URL);
-      const rawAnalysisUrl = typeof storedAnalysisUrl === "string" ? storedAnalysisUrl : "";
-      const normalizedStoredAnalysisUrl = normalizeAnalysisServerUrl(rawAnalysisUrl || DEFAULT_ANALYSIS_URL);
-      const nextAnalysisUrl =
-        rawAnalysisUrl.trim() === "" || normalizedStoredAnalysisUrl === LEGACY_ANALYSIS_URL
-          ? nextSenderUrl
-          : normalizedStoredAnalysisUrl;
       const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
       const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
 
       if (!active) return;
       setSenderUrl(nextSenderUrl);
       setDraftSenderUrl(nextSenderUrl);
-      setAnalysisUrl(nextAnalysisUrl);
-      setDraftAnalysisUrl(nextAnalysisUrl);
       setEngineerDashboardUrl(DEFAULT_ENGINEER_DASHBOARD_URL);
       setDraftEngineerDashboardUrl(DEFAULT_ENGINEER_DASHBOARD_URL);
       setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
@@ -791,30 +865,9 @@ export function F1SetupManager() {
 
   const saveSenderUrl = async () => {
     const normalized = normalizeSenderUrl(draftSenderUrl);
-    const currentSenderUrl = normalizeSenderUrl(senderUrl);
-    const currentAnalysisUrl = normalizeAnalysisServerUrl(analysisUrl);
-    const currentDraftAnalysisUrl = normalizeAnalysisServerUrl(draftAnalysisUrl);
-    const syncSavedAnalysis = currentAnalysisUrl === currentSenderUrl || currentAnalysisUrl === LEGACY_ANALYSIS_URL;
-    const syncDraftAnalysis = currentDraftAnalysisUrl === currentSenderUrl || currentDraftAnalysisUrl === LEGACY_ANALYSIS_URL;
     setSenderUrl(normalized);
     setDraftSenderUrl(normalized);
-    if (syncSavedAnalysis) {
-      setAnalysisUrl(normalized);
-    }
-    if (syncDraftAnalysis) {
-      setDraftAnalysisUrl(normalized);
-    }
     await writeStoredValue(SENDER_URL_KEY, normalized);
-    if (syncSavedAnalysis) {
-      await writeStoredValue(ANALYSIS_URL_KEY, normalized);
-    }
-  };
-
-  const saveAnalysisUrl = async () => {
-    const normalized = normalizeAnalysisServerUrl(draftAnalysisUrl);
-    setAnalysisUrl(normalized);
-    setDraftAnalysisUrl(normalized);
-    await writeStoredValue(ANALYSIS_URL_KEY, normalized);
   };
 
   const persistLocalOps = async (
@@ -877,6 +930,120 @@ export function F1SetupManager() {
     );
   };
 
+  const updateSenderForwardTarget = (index: number, patch: Partial<SenderForwardTargetDraft>) => {
+    setSenderConfig((current) => ({
+      ...current,
+      forwardTargets: current.forwardTargets.map((target, targetIndex) =>
+        targetIndex === index ? { ...target, ...patch } : target,
+      ),
+    }));
+  };
+
+  const addSenderForwardTarget = () => {
+    setSenderConfig((current) => ({
+      ...current,
+      forwardTargets: [...current.forwardTargets, { host: "", port: "", enabled: true }],
+    }));
+  };
+
+  const removeSenderForwardTarget = (index: number) => {
+    setSenderConfig((current) => ({
+      ...current,
+      forwardTargets: current.forwardTargets.filter((_, targetIndex) => targetIndex !== index),
+    }));
+  };
+
+  const saveSenderConfig = async () => {
+    setSavingSenderConfig(true);
+    setSenderConfigNotice(null);
+    setSenderConfigError(null);
+    try {
+      const udpPort = Number.parseInt(senderConfig.udpPort.trim(), 10);
+      if (!Number.isInteger(udpPort) || udpPort < 1 || udpPort > 65535) {
+        throw new Error("UDP port must be between 1 and 65535.");
+      }
+
+      const nextForwardTargets = [];
+      for (const target of senderConfig.forwardTargets) {
+        const host = target.host.trim();
+        const portText = target.port.trim();
+        if (!host && !portText) {
+          continue;
+        }
+        const port = Number.parseInt(portText, 10);
+        if (!host) {
+          throw new Error("Forward target host is required.");
+        }
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          throw new Error(`Forward target port for ${host} must be between 1 and 65535.`);
+        }
+        nextForwardTargets.push({
+          host,
+          port,
+          enabled: target.enabled,
+        });
+      }
+
+      const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          udpPort,
+          saveFiles: senderConfig.saveFiles,
+          trackRecording: senderConfig.trackRecording,
+          trackRecordingOverwriteApprovedFor: trackRecordingOverwriteFilename,
+          roomName: senderConfig.roomName,
+          roomPassword: senderConfig.roomPassword,
+          frcAccountKey: senderConfig.frcAccountKey,
+          engineerDashboardUrl: draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
+          forwardTargets: nextForwardTargets,
+          overlayPresets,
+          overlayHotkeys: draftOverlayHotkeys,
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | SenderConfigResponse
+        | SenderConfigConflictResponse
+        | null;
+
+      if (!response.ok) {
+        const conflict = data as SenderConfigConflictResponse | null;
+        if (response.status === 409 && conflict?.requiresOverwriteConfirm) {
+          setTrackRecordingOverwriteFilename(conflict.currentTrack?.filename?.trim() ?? "");
+          throw new Error(
+            conflict.error ||
+              `Track data already exists for ${conflict.currentTrack?.name || "the current track"}. Save again to confirm overwrite.`,
+          );
+        }
+        throw new Error((data as SenderConfigConflictResponse | null)?.error || "Failed to save sender settings.");
+      }
+
+      const nextConfigData = data as SenderConfigResponse | null;
+      setSenderConfig(buildSenderConfigDraft(nextConfigData));
+      setTrackRecordingOverwriteFilename("");
+
+      const nextDashboardUrl =
+        nextConfigData?.engineerDashboardUrl?.trim() || draftEngineerDashboardUrl.trim() || engineerDashboardUrl;
+      setEngineerDashboardUrl(nextDashboardUrl);
+      setDraftEngineerDashboardUrl(nextDashboardUrl);
+
+      if (nextConfigData?.overlayHotkeys) {
+        const nextHotkeys = normalizeOverlayHotkeysInput(nextConfigData.overlayHotkeys);
+        setOverlayHotkeys(nextHotkeys);
+        setDraftOverlayHotkeys(nextHotkeys);
+      }
+      if (nextConfigData?.overlayPresets) {
+        setOverlayPresets(normalizeOverlayPresetsInput(nextConfigData.overlayPresets));
+      }
+
+      setSenderConfigNotice("Sender settings saved.");
+    } catch (error) {
+      setSenderConfigError(error instanceof Error ? error.message : "Failed to save sender settings.");
+    } finally {
+      setSavingSenderConfig(false);
+    }
+  };
+
   const persistRecommendations = async (next: SavedRecommendation[]) => {
     setSavedRecommendations(next);
     await writeStoredValue(SAVED_RECOMMENDATIONS_KEY, next);
@@ -903,6 +1070,42 @@ export function F1SetupManager() {
   useEffect(() => {
     let active = true;
 
+    const loadSenderConfig = async () => {
+      setLoadingSenderConfig(true);
+      try {
+        const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/config`);
+        const data = (await response.json().catch(() => null)) as SenderConfigResponse | null;
+        if (!response.ok || !data || !active) {
+          return;
+        }
+
+        setSenderConfig(buildSenderConfigDraft(data));
+        setTrackRecordingOverwriteFilename("");
+        if (typeof data.engineerDashboardUrl === "string" && data.engineerDashboardUrl.trim()) {
+          const nextDashboardUrl = data.engineerDashboardUrl.trim();
+          setEngineerDashboardUrl(nextDashboardUrl);
+          setDraftEngineerDashboardUrl(nextDashboardUrl);
+        }
+        if (data.overlayHotkeys) {
+          const nextHotkeys = normalizeOverlayHotkeysInput(data.overlayHotkeys);
+          setOverlayHotkeys(nextHotkeys);
+          setDraftOverlayHotkeys(nextHotkeys);
+        }
+        if (data.overlayPresets) {
+          setOverlayPresets(normalizeOverlayPresetsInput(data.overlayPresets));
+        }
+        setSenderConfigError(null);
+      } catch {
+        if (!active) {
+          return;
+        }
+      } finally {
+        if (active) {
+          setLoadingSenderConfig(false);
+        }
+      }
+    };
+
     const loadLocalOps = async () => {
       try {
         const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/local-ops`);
@@ -927,6 +1130,7 @@ export function F1SetupManager() {
       }
     };
 
+    void loadSenderConfig();
     void loadLocalOps();
     return () => {
       active = false;
@@ -1631,10 +1835,7 @@ export function F1SetupManager() {
           {section === "setup-manager" && setupWorkspace === "analysis" ? (
             <SessionAnalysisSection
               theme={P}
-              analysisUrl={analysisUrl}
-              draftAnalysisUrl={draftAnalysisUrl}
-              onDraftAnalysisUrlChange={setDraftAnalysisUrl}
-              onSaveAnalysisUrl={saveAnalysisUrl}
+              analysisUrl={normalizeAnalysisServerUrl(senderUrl)}
             />
           ) : null}
 
@@ -1654,6 +1855,149 @@ export function F1SetupManager() {
               </div>
             </Panel>
 
+            <Panel title="SENDER SETTINGS">
+              {senderConfigError ? (
+                <div style={{ marginBottom: 12, padding: 10, borderRadius: 4, background: "rgba(255,82,92,0.08)", color: P.danger, fontSize: 11 }}>
+                  {senderConfigError}
+                </div>
+              ) : null}
+              {senderConfigNotice ? (
+                <div style={{ marginBottom: 12, padding: 10, borderRadius: 4, background: "rgba(0,229,255,0.08)", color: P.accent, fontSize: 11 }}>
+                  {senderConfigNotice}
+                </div>
+              ) : null}
+              {trackRecordingOverwriteFilename ? (
+                <div style={{ marginBottom: 12, padding: 10, borderRadius: 4, background: "rgba(205,255,19,0.08)", color: P.accent2, fontSize: 11, lineHeight: 1.6 }}>
+                  Existing recorded track data was detected for {senderStatus?.currentTrack?.name || "the current track"}.
+                  Save once more to confirm overwrite.
+                </div>
+              ) : null}
+
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>UDP Port</div>
+                    <input
+                      value={senderConfig.udpPort}
+                      onChange={(event) => setSenderConfig((current) => ({ ...current, udpPort: event.target.value }))}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                    />
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Room Name</div>
+                    <input
+                      value={senderConfig.roomName}
+                      onChange={(event) => setSenderConfig((current) => ({ ...current, roomName: event.target.value }))}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                    />
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Room Password</div>
+                    <input
+                      type="password"
+                      value={senderConfig.roomPassword}
+                      onChange={(event) => setSenderConfig((current) => ({ ...current, roomPassword: event.target.value }))}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                    />
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>FRC Account Key</div>
+                    <input
+                      value={senderConfig.frcAccountKey}
+                      onChange={(event) => setSenderConfig((current) => ({ ...current, frcAccountKey: event.target.value }))}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, fontSize: 11 }}>
+                    <input
+                      type="checkbox"
+                      checked={senderConfig.saveFiles}
+                      onChange={(event) => setSenderConfig((current) => ({ ...current, saveFiles: event.target.checked }))}
+                    />
+                    Save Files
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, fontSize: 11 }}>
+                    <input
+                      type="checkbox"
+                      checked={senderConfig.trackRecording}
+                      onChange={(event) => {
+                        const nextChecked = event.target.checked;
+                        setSenderConfig((current) => ({ ...current, trackRecording: nextChecked }));
+                        if (!nextChecked) {
+                          setTrackRecordingOverwriteFilename("");
+                        }
+                      }}
+                    />
+                    Track Recording
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono, marginBottom: 4 }}>Forward Targets</div>
+                      <div style={{ fontSize: 11, color: P.muted }}>Optional UDP forward destinations for local tools or telemetry mirrors.</div>
+                    </div>
+                    <button onClick={addSenderForwardTarget} style={{ padding: "8px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: P.text, fontFamily: P.mono, cursor: "pointer", fontSize: 10 }}>
+                      ADD TARGET
+                    </button>
+                  </div>
+
+                  {senderConfig.forwardTargets.length ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {senderConfig.forwardTargets.map((target, index) => (
+                        <div key={`forward-target-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 120px 120px 96px", gap: 8 }}>
+                          <input
+                            value={target.host}
+                            placeholder="Host"
+                            onChange={(event) => updateSenderForwardTarget(index, { host: event.target.value })}
+                            style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                          />
+                          <input
+                            value={target.port}
+                            placeholder="Port"
+                            onChange={(event) => updateSenderForwardTarget(index, { port: event.target.value })}
+                            style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                          />
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={target.enabled}
+                              onChange={(event) => updateSenderForwardTarget(index, { enabled: event.target.checked })}
+                            />
+                            Enabled
+                          </label>
+                          <button onClick={() => removeSenderForwardTarget(index)} style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: P.muted, fontFamily: P.mono, cursor: "pointer", fontSize: 10 }}>
+                            REMOVE
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: P.muted }}>No forward targets configured.</div>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11, color: P.muted }}>
+                    {loadingSenderConfig
+                      ? "Loading current sender config."
+                      : "These settings write back to the sender's /api/config endpoint."}
+                  </div>
+                  <button
+                    onClick={() => void saveSenderConfig()}
+                    disabled={savingSenderConfig || loadingSenderConfig}
+                    style={{ width: 160, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: savingSenderConfig || loadingSenderConfig ? "wait" : "pointer" }}
+                  >
+                    {savingSenderConfig ? "SAVING" : trackRecordingOverwriteFilename ? "SAVE & OVERWRITE" : "SAVE SETTINGS"}
+                  </button>
+                </div>
+              </div>
+            </Panel>
+
             <Panel title="SENDER ENDPOINTS">
               <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ display: "grid", gap: 8 }}>
@@ -1661,14 +2005,6 @@ export function F1SetupManager() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <input value={draftSenderUrl} onChange={(event) => setDraftSenderUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSenderUrl(); }} style={{ flex: 1, minWidth: 240, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
                     <button onClick={() => void saveSenderUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
-                  </div>
-                </div>
-
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Analysis API</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <input value={draftAnalysisUrl} onChange={(event) => setDraftAnalysisUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveAnalysisUrl(); }} style={{ flex: 1, minWidth: 240, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
-                    <button onClick={() => void saveAnalysisUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
                   </div>
                 </div>
               </div>

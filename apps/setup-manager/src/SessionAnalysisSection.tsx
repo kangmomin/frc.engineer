@@ -4,7 +4,6 @@ import {
   buildConditionMismatch,
   buildMetricDelta,
   buildTimeDelta,
-  DEFAULT_ANALYSIS_URL,
   findComparisonLap,
   formatLapTime,
   formatPercent,
@@ -40,17 +39,11 @@ interface DriverPackTheme {
 interface SessionAnalysisSectionProps {
   theme: DriverPackTheme;
   analysisUrl: string;
-  draftAnalysisUrl: string;
-  onDraftAnalysisUrlChange: (value: string) => void;
-  onSaveAnalysisUrl: () => Promise<void> | void;
 }
 
 export function SessionAnalysisSection({
   theme,
   analysisUrl,
-  draftAnalysisUrl,
-  onDraftAnalysisUrlChange,
-  onSaveAnalysisUrl,
 }: SessionAnalysisSectionProps) {
   const [sessions, setSessions] = useState<AnalysisSessionInfo[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -196,23 +189,10 @@ export function SessionAnalysisSection({
       <Panel theme={theme} title="SESSION ANALYSIS">
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontSize: 11, color: theme.muted, lineHeight: 1.6 }}>
-            Compare stored sessions and laps with the analysis server. The screen is optimized to show where time is lost and whether the delta comes from entry, braking, or balance.
+            Compare stored sessions and laps with the sender-embedded analysis API. The screen is optimized to show where time is lost and whether the delta comes from entry, braking, or balance.
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8 }}>
-            <input
-              value={draftAnalysisUrl}
-              onChange={(event) => onDraftAnalysisUrlChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void onSaveAnalysisUrl();
-                }
-              }}
-              style={inputStyle(theme)}
-              placeholder={DEFAULT_ANALYSIS_URL}
-            />
-            <button onClick={() => void onSaveAnalysisUrl()} style={primaryButton(theme)}>
-              SAVE URL
-            </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+            <input value={analysisUrl} readOnly style={inputStyle(theme)} />
             <button
               onClick={() => {
                 setAnalysisCache({});
