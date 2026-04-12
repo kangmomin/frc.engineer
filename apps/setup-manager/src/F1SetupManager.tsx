@@ -774,8 +774,10 @@ export function F1SetupManager() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        height: "100vh",
+        minHeight: 0,
+        height: "100%",
+        width: "100%",
+        minWidth: 0,
         paddingTop: WINDOW_TITLEBAR_INSET,
         background: P.bg,
         color: P.text,
@@ -810,8 +812,9 @@ export function F1SetupManager() {
         </div>
       </header>
 
-      <main style={{ flex: 1, minHeight: 0, minWidth: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", overflowX: "auto" }}>
-        {tab === "setup" ? (
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto", overflowX: "auto" }}>
+        <main style={{ minHeight: "100%", minWidth: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+          {tab === "setup" ? (
           <>
             <Panel title="AUTO CONTEXT">
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
@@ -1087,8 +1090,8 @@ export function F1SetupManager() {
               </Panel>
             ) : null}
           </>
-        ) : null}
-        {tab === "telemetry" ? (
+          ) : null}
+          {tab === "telemetry" ? (
           <>
             <Panel title="RECORDING">
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
@@ -1192,17 +1195,17 @@ export function F1SetupManager() {
               </Panel>
             ) : null}
           </>
-        ) : null}
-        {tab === "analysis" ? (
-          <SessionAnalysisSection
-            theme={P}
-            analysisUrl={analysisUrl}
-            draftAnalysisUrl={draftAnalysisUrl}
-            onDraftAnalysisUrlChange={setDraftAnalysisUrl}
-            onSaveAnalysisUrl={saveAnalysisUrl}
-          />
-        ) : null}
-        {tab === "settings" ? (
+          ) : null}
+          {tab === "analysis" ? (
+            <SessionAnalysisSection
+              theme={P}
+              analysisUrl={analysisUrl}
+              draftAnalysisUrl={draftAnalysisUrl}
+              onDraftAnalysisUrlChange={setDraftAnalysisUrl}
+              onSaveAnalysisUrl={saveAnalysisUrl}
+            />
+          ) : null}
+          {tab === "settings" ? (
           <>
             <Panel title="SENDER URL">
               <div style={{ display: "grid", gap: 8 }}>
@@ -1239,8 +1242,9 @@ export function F1SetupManager() {
               </div>
             </Panel>
           </>
-        ) : null}
-      </main>
+          ) : null}
+        </main>
+      </div>
     </div>
   );
 }
