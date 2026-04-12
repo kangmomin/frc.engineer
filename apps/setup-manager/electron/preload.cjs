@@ -11,4 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSetting: (key) => ipcRenderer.invoke('get-setting', key),
   setSetting: (key, value) => ipcRenderer.invoke('set-setting', key, value),
   getAllSettings: () => ipcRenderer.invoke('get-all-settings'),
+  getSenderStorageInfo: () => ipcRenderer.invoke('get-sender-storage-info'),
+  selectDirectory: (defaultPath) => ipcRenderer.invoke('select-directory', defaultPath),
+  restartSender: () => ipcRenderer.invoke('restart-sender'),
 });

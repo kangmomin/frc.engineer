@@ -1,6 +1,12 @@
 import { Component, useState, useEffect, type ReactNode } from 'react';
 import { F1SetupManager } from './F1SetupManager';
 
+interface SenderStorageInfo {
+  selected: string | null;
+  effective: string;
+  usingCustom: boolean;
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -10,6 +16,9 @@ declare global {
       getSetting?: <T = unknown>(key: string) => Promise<T | null>;
       setSetting?: (key: string, value: unknown) => Promise<void>;
       getAllSettings?: () => Promise<Record<string, unknown>>;
+      getSenderStorageInfo?: () => Promise<SenderStorageInfo>;
+      selectDirectory?: (defaultPath?: string) => Promise<string | null>;
+      restartSender?: () => Promise<void>;
     };
   }
 }

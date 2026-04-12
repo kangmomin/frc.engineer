@@ -55,6 +55,26 @@ type senderConfig struct {
 
 const senderConfigPath = "data/sender-config.json"
 
+func resolveSenderStorageRoot() string {
+	root := strings.TrimSpace(os.Getenv("FRC_STORAGE_DIR"))
+	if root == "" {
+		return ""
+	}
+	return filepath.Clean(root)
+}
+
+func resolveSenderStoragePath(parts ...string) string {
+	root := resolveSenderStorageRoot()
+	if root == "" {
+		return filepath.Join(parts...)
+	}
+
+	joined := make([]string, 0, len(parts)+1)
+	joined = append(joined, root)
+	joined = append(joined, parts...)
+	return filepath.Join(joined...)
+}
+
 func loadICEServers(raw string) ([]webrtc.ICEServer, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -110,11 +130,12 @@ func saveSenderConfig(cfg senderConfig) error {
 
 func main() {
 	// Log to file so the cmd banner stays clean
-	if err := os.MkdirAll("logs", 0755); err != nil {
+	logDir := resolveSenderStoragePath("logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create logs dir: %v\n", err)
 		os.Exit(1)
 	}
-	logFile, err := os.OpenFile("logs/sender.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile(filepath.Join(logDir, "sender.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open log file: %v\n", err)
 		os.Exit(1)
@@ -123,6 +144,9 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 	slog.SetDefault(logger)
+	if storageRoot := resolveSenderStorageRoot(); storageRoot != "" {
+		logger.Info("custom sender storage root enabled", "root", storageRoot)
+	}
 
 	settingsPort := os.Getenv("SETTINGS_PORT")
 	if settingsPort == "" {
@@ -193,7 +217,7 @@ func main() {
 		os.Exit(1)
 	}
 	parser := udp.NewParser(logger)
-	packetLogDir := filepath.Join("data", "packets")
+	packetLogDir := resolveSenderStoragePath("data", "packets")
 	var packetLogger *udp.PacketLogger
 	if saveFiles {
 		packetLogger = udp.NewPacketLogger(packetLogDir, logger)
@@ -206,7 +230,7 @@ func main() {
 	udpListener.SetForwarder(forwarder)
 
 	// Load track data (for delta calculations)
-	trackDataDir := filepath.Join("data", "tracks")
+	trackDataDir := resolveSenderStoragePath("data", "tracks")
 	trackStore := tracks.NewTrackStore(trackDataDir)
 
 	// Create peer manager
@@ -226,7 +250,7 @@ func main() {
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
 	processor.SetFastBroadcaster(broadcaster)
-	compareMonitor := newERSCompareMonitor("logs/ers_compare", logger)
+	compareMonitor := newERSCompareMonitor(resolveSenderStoragePath("logs", "ers_compare"), logger)
 	processor.SetPitwallStateObserver(compareMonitor.Observe)
 
 	// Track recorder (independently toggled from save files)
@@ -272,7 +296,7 @@ func main() {
 	}
 	var raceStorage *races.FileStorage
 	if saveFiles {
-		rs, err := races.NewFileStorage("data/races", logger)
+		rs, err := races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
 		if err != nil {
 			logger.Warn("failed to create race storage, file saving disabled", "error", err)
 		}
@@ -861,7 +885,7 @@ func main() {
 			cfgSaveFiles = effectiveSaveFiles
 			if effectiveSaveFiles {
 				if raceStorage == nil {
-					rs, err := races.NewFileStorage("data/races", logger)
+					rs, err := races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
 					if err != nil {
 						logger.Warn("failed to create race storage", "error", err)
 					} else {

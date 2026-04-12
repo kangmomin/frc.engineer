@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -7,6 +7,7 @@ const fs = require('fs');
 const distIndex = path.join(__dirname, '..', 'dist', 'index.html');
 const isDev = !app.isPackaged && !fs.existsSync(distIndex);
 const isWin = process.platform === 'win32';
+const SENDER_STORAGE_ROOT_KEY = 'frc_sender_storage_root';
 
 // ─── Persistent settings (survives app updates) ───
 const settingsPath = path.join(app.getPath('userData'), 'user-settings.json');
@@ -37,6 +38,17 @@ ipcMain.handle('get-all-settings', () => {
   return readSettings();
 });
 
+function normalizeStoredPath(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return path.resolve(trimmed);
+}
+
 // ─── Sender process management ───
 let senderProcess = null;
 
@@ -57,7 +69,47 @@ function findSenderBinary() {
   return null;
 }
 
+function getSelectedSenderStorageRoot() {
+  return normalizeStoredPath(readSettings()[SENDER_STORAGE_ROOT_KEY]);
+}
+
+function getDefaultSenderStorageRoot() {
+  const bin = findSenderBinary();
+  if (bin) {
+    return path.dirname(bin);
+  }
+  return path.join(app.getPath('userData'), 'sender');
+}
+
+function getSenderStorageInfo() {
+  const selected = getSelectedSenderStorageRoot();
+  return {
+    selected,
+    effective: selected || getDefaultSenderStorageRoot(),
+    usingCustom: Boolean(selected),
+  };
+}
+
+ipcMain.handle('get-sender-storage-info', () => {
+  return getSenderStorageInfo();
+});
+
+ipcMain.handle('select-directory', async (_event, defaultPath) => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: typeof defaultPath === 'string' && defaultPath.trim() ? defaultPath.trim() : undefined,
+  });
+  if (result.canceled || !result.filePaths.length) {
+    return null;
+  }
+  return result.filePaths[0];
+});
+
 function startSender() {
+  if (senderProcess) {
+    return;
+  }
+
   const bin = findSenderBinary();
   if (!bin) {
     console.log('[sender] Binary not found, running without sender backend');
@@ -66,18 +118,24 @@ function startSender() {
 
   console.log('[sender] Starting:', bin);
   const cwd = path.dirname(bin);
+  const senderStorageRoot = getSelectedSenderStorageRoot();
+  const env = {
+    ...process.env,
+    SETTINGS_PORT: '8099',
+    FRC_NO_BROWSER: '1',
+    DRIVER_PACK_EMBEDDED: '1',
+    SAVE_FILES: 'true',
+  };
+  if (senderStorageRoot) {
+    env.FRC_STORAGE_DIR = senderStorageRoot;
+    console.log('[sender] Using storage root:', senderStorageRoot);
+  }
 
   senderProcess = spawn(bin, [], {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
-    env: {
-      ...process.env,
-      SETTINGS_PORT: '8099',
-      FRC_NO_BROWSER: '1',
-      DRIVER_PACK_EMBEDDED: '1',
-      SAVE_FILES: 'true',
-    },
+    env,
   });
 
   senderProcess.stdout?.on('data', d => console.log('[sender]', d.toString().trim()));
@@ -89,16 +147,57 @@ function startSender() {
   });
 }
 
-function stopSender() {
-  if (!senderProcess) return;
+async function stopSender() {
+  const proc = senderProcess;
+  if (!proc) return;
   console.log('[sender] Stopping...');
-  if (isWin) {
-    spawn('taskkill', ['/pid', String(senderProcess.pid), '/f', '/t'], { windowsHide: true });
-  } else {
-    senderProcess.kill('SIGTERM');
-  }
   senderProcess = null;
+
+  await new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      resolve();
+    };
+
+    const timer = setTimeout(finish, 5000);
+    proc.once('exit', () => {
+      clearTimeout(timer);
+      finish();
+    });
+    proc.once('error', () => {
+      clearTimeout(timer);
+      finish();
+    });
+
+    if (isWin && proc.pid) {
+      const killer = spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      killer.on('error', () => {
+        clearTimeout(timer);
+        finish();
+      });
+      return;
+    }
+
+    try {
+      proc.kill('SIGTERM');
+    } catch {
+      clearTimeout(timer);
+      finish();
+    }
+  });
 }
+
+ipcMain.handle('restart-sender', async () => {
+  await stopSender();
+  startSender();
+});
 
 // ─── Auto-updater ───
 function setupAutoUpdater(win) {
@@ -127,8 +226,9 @@ function setupAutoUpdater(win) {
   });
 
   ipcMain.on('install-update', () => {
-    stopSender();
-    autoUpdater.quitAndInstall(true, true);
+    void stopSender().finally(() => {
+      autoUpdater.quitAndInstall(true, true);
+    });
   });
 
   setTimeout(() => {
@@ -192,12 +292,13 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  stopSender();
-  app.quit();
+  void stopSender().finally(() => {
+    app.quit();
+  });
 });
 
 app.on('before-quit', () => {
-  stopSender();
+  void stopSender();
 });
 
 app.on('activate', () => {

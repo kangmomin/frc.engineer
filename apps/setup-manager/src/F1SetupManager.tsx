@@ -196,11 +196,23 @@ interface LocalOpsResponse {
   overlayHotkeys?: OverlayHotkeys;
 }
 
+interface SenderStorageInfo {
+  selected: string | null;
+  effective: string;
+  usingCustom: boolean;
+}
+
 const DEFAULT_SENDER_URL = "http://localhost:8099";
 const DEFAULT_ENGINEER_DASHBOARD_URL = "http://localhost:5173";
 const SENDER_URL_KEY = "frc_sender_url";
+const SENDER_STORAGE_ROOT_KEY = "frc_sender_storage_root";
 const SAVED_RECOMMENDATIONS_KEY = "frc_setup_recommendations";
 const LAP_COMPARISON_KEY = "frc_setup_lap_comparison";
+const EMPTY_SENDER_STORAGE_INFO: SenderStorageInfo = {
+  selected: null,
+  effective: "",
+  usingCustom: false,
+};
 const DEFAULT_OVERLAY_STATE: OverlayState = { radar: false, weather: false, strategy: false };
 const DEFAULT_OVERLAY_HOTKEYS: OverlayHotkeys = {
   radar: "Alt+Shift+1",
@@ -368,6 +380,16 @@ function normalizeOverlayPresetsInput(source?: OverlayPreset[] | null): OverlayP
     });
   }
   return next.slice(0, 12);
+}
+
+function normalizeSenderStorageInfo(source?: Partial<SenderStorageInfo> | null): SenderStorageInfo {
+  const selected = typeof source?.selected === "string" && source.selected.trim() ? source.selected.trim() : null;
+  const effective = typeof source?.effective === "string" && source.effective.trim() ? source.effective.trim() : selected ?? "";
+  return {
+    selected,
+    effective,
+    usingCustom: Boolean(selected),
+  };
 }
 
 function slugifyPresetName(name: string): string {
@@ -810,8 +832,10 @@ export function F1SetupManager() {
   const [engineerDashboardUrl, setEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
   const [draftEngineerDashboardUrl, setDraftEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
   const [senderConfig, setSenderConfig] = useState<SenderConfigDraft>(DEFAULT_SENDER_CONFIG);
+  const [senderStorageInfo, setSenderStorageInfo] = useState<SenderStorageInfo>(EMPTY_SENDER_STORAGE_INFO);
   const [loadingSenderConfig, setLoadingSenderConfig] = useState(false);
   const [savingSenderConfig, setSavingSenderConfig] = useState(false);
+  const [changingSenderStorage, setChangingSenderStorage] = useState(false);
   const [senderConfigNotice, setSenderConfigNotice] = useState<string | null>(null);
   const [senderConfigError, setSenderConfigError] = useState<string | null>(null);
   const [trackRecordingOverwriteFilename, setTrackRecordingOverwriteFilename] = useState("");
@@ -847,6 +871,9 @@ export function F1SetupManager() {
       const nextSenderUrl = normalizeSenderUrl(typeof storedSenderUrl === "string" ? storedSenderUrl : DEFAULT_SENDER_URL);
       const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
       const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
+      const nextStorageInfo = window.electronAPI?.getSenderStorageInfo
+        ? normalizeSenderStorageInfo(await window.electronAPI.getSenderStorageInfo())
+        : EMPTY_SENDER_STORAGE_INFO;
 
       if (!active) return;
       setSenderUrl(nextSenderUrl);
@@ -855,6 +882,7 @@ export function F1SetupManager() {
       setDraftEngineerDashboardUrl(DEFAULT_ENGINEER_DASHBOARD_URL);
       setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
       setLapComparison(normalizeLapComparisonState(storedComparison));
+      setSenderStorageInfo(nextStorageInfo);
     };
 
     void loadPersistedState();
@@ -868,6 +896,96 @@ export function F1SetupManager() {
     setSenderUrl(normalized);
     setDraftSenderUrl(normalized);
     await writeStoredValue(SENDER_URL_KEY, normalized);
+  };
+
+  const refreshSenderStorageInfo = async () => {
+    if (!window.electronAPI?.getSenderStorageInfo) {
+      return;
+    }
+    const nextInfo = normalizeSenderStorageInfo(await window.electronAPI.getSenderStorageInfo());
+    setSenderStorageInfo(nextInfo);
+  };
+
+  const applySenderStorageRoot = async (nextRoot: string | null) => {
+    if (!window.electronAPI?.setSetting) {
+      setSenderConfigError("Storage location control is only available in the desktop app.");
+      return;
+    }
+
+    const normalized = nextRoot?.trim() || "";
+    const currentSelected = senderStorageInfo.selected ?? "";
+    if (normalized === currentSelected) {
+      setSenderConfigNotice(normalized ? "Storage location is already using the selected folder." : "Sender is already using the default app folder.");
+      setSenderConfigError(null);
+      return;
+    }
+
+    setChangingSenderStorage(true);
+    setSenderConfigNotice(null);
+    setSenderConfigError(null);
+    try {
+      await writeStoredValue(SENDER_STORAGE_ROOT_KEY, normalized);
+      await refreshSenderStorageInfo();
+
+      if (window.electronAPI?.restartSender) {
+        await window.electronAPI.restartSender();
+        setSenderConfigNotice(
+          normalized
+            ? "Storage location saved. Sender restarted and new logs/data will be written to the selected folder."
+            : "Storage location reset. Sender restarted and will use the default app folder again.",
+        );
+      } else {
+        setSenderConfigNotice(
+          normalized
+            ? "Storage location saved. Restart F1 Driver Pack to start writing new logs/data to the selected folder."
+            : "Storage location reset. Restart F1 Driver Pack to apply the default app folder again.",
+        );
+      }
+    } catch (error) {
+      setSenderConfigError(error instanceof Error ? error.message : "Failed to update sender storage location.");
+    } finally {
+      setChangingSenderStorage(false);
+    }
+  };
+
+  const chooseSenderStorageRoot = async () => {
+    if (!window.electronAPI?.selectDirectory) {
+      setSenderConfigError("Folder selection is only available in the desktop app.");
+      return;
+    }
+
+    try {
+      const selectedPath = await window.electronAPI.selectDirectory((senderStorageInfo.selected ?? senderStorageInfo.effective) || undefined);
+      if (!selectedPath) {
+        return;
+      }
+      await applySenderStorageRoot(selectedPath);
+    } catch (error) {
+      setSenderConfigError(error instanceof Error ? error.message : "Failed to select a storage folder.");
+    }
+  };
+
+  const resetSenderStorageRoot = async () => {
+    await applySenderStorageRoot(null);
+  };
+
+  const restartEmbeddedSender = async () => {
+    if (!window.electronAPI?.restartSender) {
+      setSenderConfigError("Sender restart control is only available in the desktop app.");
+      return;
+    }
+
+    setChangingSenderStorage(true);
+    setSenderConfigNotice(null);
+    setSenderConfigError(null);
+    try {
+      await window.electronAPI.restartSender();
+      setSenderConfigNotice("Sender restarted.");
+    } catch (error) {
+      setSenderConfigError(error instanceof Error ? error.message : "Failed to restart sender.");
+    } finally {
+      setChangingSenderStorage(false);
+    }
   };
 
   const persistLocalOps = async (
@@ -1933,6 +2051,55 @@ export function F1SetupManager() {
                     />
                     Track Recording
                   </label>
+                </div>
+
+                <div style={{ display: "grid", gap: 8, padding: 12, borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono, marginBottom: 4 }}>Storage Location</div>
+                      <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                        Logs, packet captures, race archives, and recorded track data are written under this folder.
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, color: senderStorageInfo.usingCustom ? P.accent : P.muted, fontFamily: P.mono }}>
+                      {senderStorageInfo.usingCustom ? "CUSTOM ROOT" : "DEFAULT ROOT"}
+                    </div>
+                  </div>
+
+                  <input
+                    value={senderStorageInfo.effective || "Default app folder"}
+                    readOnly
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: "#161719", color: P.text, fontFamily: P.mono, outline: "none" }}
+                  />
+
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => void chooseSenderStorageRoot()}
+                      disabled={changingSenderStorage}
+                      style={{ padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: changingSenderStorage ? "wait" : "pointer" }}
+                    >
+                      {changingSenderStorage ? "APPLYING" : "BROWSE"}
+                    </button>
+                    <button
+                      onClick={() => void resetSenderStorageRoot()}
+                      disabled={changingSenderStorage || !senderStorageInfo.usingCustom}
+                      style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: senderStorageInfo.usingCustom ? P.text : P.muted, fontFamily: P.mono, cursor: changingSenderStorage ? "wait" : senderStorageInfo.usingCustom ? "pointer" : "not-allowed" }}
+                    >
+                      USE DEFAULT
+                    </button>
+                    <button
+                      onClick={() => void restartEmbeddedSender()}
+                      disabled={changingSenderStorage || !window.electronAPI?.restartSender}
+                      style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: window.electronAPI?.restartSender ? P.text : P.muted, fontFamily: P.mono, cursor: changingSenderStorage ? "wait" : window.electronAPI?.restartSender ? "pointer" : "not-allowed" }}
+                    >
+                      RESTART SENDER
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: 10, color: P.muted, lineHeight: 1.6 }}>
+                    Current root: {senderStorageInfo.effective || "Default app folder"}
+                    {senderStorageInfo.selected ? " / custom folder saved in desktop settings." : " / using the packaged sender folder."}
+                  </div>
                 </div>
 
                 <div style={{ display: "grid", gap: 8 }}>
