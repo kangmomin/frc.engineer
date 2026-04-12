@@ -1,4 +1,5 @@
-export const DEFAULT_ANALYSIS_URL = "http://localhost:8081";
+export const LEGACY_ANALYSIS_URL = "http://localhost:8081";
+export const DEFAULT_ANALYSIS_URL = "http://localhost:8099";
 export const ANALYSIS_URL_KEY = "frc_analysis_url";
 
 export interface AnalysisSessionInfo {

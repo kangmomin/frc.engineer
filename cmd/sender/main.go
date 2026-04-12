@@ -16,6 +16,7 @@ import (
 	"github.com/energye/systray"
 	"github.com/skip2/go-qrcode"
 
+	"frc.engineer/internal/analysis"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/frcapi"
@@ -158,7 +159,8 @@ func main() {
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &udpPort)
 	}
-	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true")
+	embeddedDriverPack := os.Getenv("DRIVER_PACK_EMBEDDED") == "1"
+	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true") || os.Getenv("SAVE_FILES") == "1"
 	trackRecording := saveFiles
 	savedConfig := loadSenderConfig()
 
@@ -180,6 +182,9 @@ func main() {
 		saveFiles = saved.SaveFiles
 		trackRecording = saved.TrackRecording
 	}
+	if embeddedDriverPack {
+		saveFiles = true
+	}
 
 	// Create UDP listener & parser
 	udpListener, err := udp.NewListener(udpPort, 2048, logger)
@@ -188,6 +193,13 @@ func main() {
 		os.Exit(1)
 	}
 	parser := udp.NewParser(logger)
+	packetLogDir := filepath.Join("data", "packets")
+	var packetLogger *udp.PacketLogger
+	if saveFiles {
+		packetLogger = udp.NewPacketLogger(packetLogDir, logger)
+		parser.SetPacketLogger(packetLogger)
+		logger.Info("packet logging enabled", "dir", packetLogDir)
+	}
 
 	// Create UDP forwarder and attach to listener
 	forwarder := udp.NewForwarder(logger)
@@ -268,6 +280,8 @@ func main() {
 	}
 	var raceSummaryMu sync.RWMutex
 	var latestRaceSummary *races.RaceSummary
+	var sessionAnalysisCacheMu sync.RWMutex
+	sessionAnalysisCache := make(map[string]sessionAnalysisCacheEntry)
 
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
 	peerManager.SetCountChangeHandler(func(count int) {
@@ -586,6 +600,54 @@ func main() {
 		json.NewEncoder(w).Encode(loaded)
 	})
 
+	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		sessions, err := analysis.ListSessions(packetLogDir)
+		if err != nil {
+			json.NewEncoder(w).Encode([]struct{}{})
+			return
+		}
+		json.NewEncoder(w).Encode(sessions)
+	})
+
+	mux.HandleFunc("GET /api/sessions/{dir}/analysis", func(w http.ResponseWriter, r *http.Request) {
+		dir := r.PathValue("dir")
+		if dir == "" || strings.Contains(dir, "..") || strings.Contains(dir, "/") || strings.Contains(dir, "\\") {
+			http.Error(w, "invalid directory", http.StatusBadRequest)
+			return
+		}
+
+		fullPath := filepath.Join(packetLogDir, dir)
+		if fingerprint, err := sessionAnalysisFingerprint(fullPath); err == nil {
+			sessionAnalysisCacheMu.RLock()
+			cached, ok := sessionAnalysisCache[dir]
+			sessionAnalysisCacheMu.RUnlock()
+			if ok && cached.fingerprint == fingerprint && cached.result != nil {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(cached.result)
+				return
+			}
+		}
+
+		result, err := analysis.Analyze(fullPath)
+		if err != nil {
+			logger.Error("analysis failed", "dir", dir, "error", err)
+			http.Error(w, "analysis failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if fingerprint, err := sessionAnalysisFingerprint(fullPath); err == nil {
+			sessionAnalysisCacheMu.Lock()
+			sessionAnalysisCache[dir] = sessionAnalysisCacheEntry{
+				fingerprint: fingerprint,
+				result:      result,
+			}
+			sessionAnalysisCacheMu.Unlock()
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+	})
+
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.Lock()
 		port := cfgUDPPort
@@ -794,9 +856,10 @@ func main() {
 		}
 
 		// Toggle save files (race storage) if changed
-		if body.SaveFiles != cfgSaveFiles {
-			cfgSaveFiles = body.SaveFiles
-			if body.SaveFiles {
+		effectiveSaveFiles := body.SaveFiles || embeddedDriverPack
+		if effectiveSaveFiles != cfgSaveFiles {
+			cfgSaveFiles = effectiveSaveFiles
+			if effectiveSaveFiles {
 				if raceStorage == nil {
 					rs, err := races.NewFileStorage("data/races", logger)
 					if err != nil {
@@ -805,10 +868,22 @@ func main() {
 						raceStorage = rs
 					}
 				}
+				if packetLogger == nil {
+					packetLogger = udp.NewPacketLogger(packetLogDir, logger)
+					parser.SetPacketLogger(packetLogger)
+				}
 			} else {
 				raceStorage = nil
+				parser.SetPacketLogger(nil)
+				if packetLogger != nil {
+					packetLogger.Close()
+					packetLogger = nil
+				}
+				sessionAnalysisCacheMu.Lock()
+				sessionAnalysisCache = make(map[string]sessionAnalysisCacheEntry)
+				sessionAnalysisCacheMu.Unlock()
 			}
-			logger.Info("save files changed", "enabled", body.SaveFiles)
+			logger.Info("save files changed", "requested", body.SaveFiles, "effective", effectiveSaveFiles, "embeddedDriverPack", embeddedDriverPack)
 		}
 
 		// Toggle track recording independently
@@ -966,6 +1041,9 @@ func main() {
 	forwarder.Close()
 	peerManager.Close()
 	compareMonitor.Close()
+	if packetLogger != nil {
+		packetLogger.Close()
+	}
 	settingsSrv.Shutdown(context.Background())
 	logger.Info("sender shutdown complete")
 	logFile.Close()

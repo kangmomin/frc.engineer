@@ -71,7 +71,13 @@ function startSender() {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
-    env: { ...process.env, SETTINGS_PORT: '8099', FRC_NO_BROWSER: '1' },
+    env: {
+      ...process.env,
+      SETTINGS_PORT: '8099',
+      FRC_NO_BROWSER: '1',
+      DRIVER_PACK_EMBEDDED: '1',
+      SAVE_FILES: 'true',
+    },
   });
 
   senderProcess.stdout?.on('data', d => console.log('[sender]', d.toString().trim()));

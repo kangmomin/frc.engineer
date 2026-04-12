@@ -209,17 +209,6 @@ func FindExeAsset(assets []ReleaseAsset, selfName string) *ReleaseAsset {
 			return &assets[i]
 		}
 	}
-	var single *ReleaseAsset
-	count := 0
-	for i := range assets {
-		if strings.HasSuffix(strings.ToLower(assets[i].Name), ".exe") {
-			single = &assets[i]
-			count++
-		}
-	}
-	if count == 1 {
-		return single
-	}
 	return nil
 }
 

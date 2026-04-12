@@ -38,6 +38,7 @@ import { SessionAnalysisSection } from "./SessionAnalysisSection";
 import {
   ANALYSIS_URL_KEY,
   DEFAULT_ANALYSIS_URL,
+  LEGACY_ANALYSIS_URL,
   normalizeAnalysisServerUrl,
 } from "./sessionAnalysis";
 
@@ -473,9 +474,12 @@ export function F1SetupManager() {
       const storedSenderUrl = await readStoredValue<string>(SENDER_URL_KEY, DEFAULT_SENDER_URL);
       const storedAnalysisUrl = await readStoredValue<string>(ANALYSIS_URL_KEY, DEFAULT_ANALYSIS_URL);
       const nextSenderUrl = normalizeSenderUrl(typeof storedSenderUrl === "string" ? storedSenderUrl : DEFAULT_SENDER_URL);
-      const nextAnalysisUrl = normalizeAnalysisServerUrl(
-        typeof storedAnalysisUrl === "string" ? storedAnalysisUrl : DEFAULT_ANALYSIS_URL,
-      );
+      const rawAnalysisUrl = typeof storedAnalysisUrl === "string" ? storedAnalysisUrl : "";
+      const normalizedStoredAnalysisUrl = normalizeAnalysisServerUrl(rawAnalysisUrl || DEFAULT_ANALYSIS_URL);
+      const nextAnalysisUrl =
+        rawAnalysisUrl.trim() === "" || normalizedStoredAnalysisUrl === LEGACY_ANALYSIS_URL
+          ? nextSenderUrl
+          : normalizedStoredAnalysisUrl;
       const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
       const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
 
@@ -496,9 +500,23 @@ export function F1SetupManager() {
 
   const saveSenderUrl = async () => {
     const normalized = normalizeSenderUrl(draftSenderUrl);
+    const currentSenderUrl = normalizeSenderUrl(senderUrl);
+    const currentAnalysisUrl = normalizeAnalysisServerUrl(analysisUrl);
+    const currentDraftAnalysisUrl = normalizeAnalysisServerUrl(draftAnalysisUrl);
+    const syncSavedAnalysis = currentAnalysisUrl === currentSenderUrl || currentAnalysisUrl === LEGACY_ANALYSIS_URL;
+    const syncDraftAnalysis = currentDraftAnalysisUrl === currentSenderUrl || currentDraftAnalysisUrl === LEGACY_ANALYSIS_URL;
     setSenderUrl(normalized);
     setDraftSenderUrl(normalized);
+    if (syncSavedAnalysis) {
+      setAnalysisUrl(normalized);
+    }
+    if (syncDraftAnalysis) {
+      setDraftAnalysisUrl(normalized);
+    }
     await writeStoredValue(SENDER_URL_KEY, normalized);
+    if (syncSavedAnalysis) {
+      await writeStoredValue(ANALYSIS_URL_KEY, normalized);
+    }
   };
 
   const saveAnalysisUrl = async () => {
