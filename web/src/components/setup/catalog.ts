@@ -339,7 +339,7 @@ export const SENDER_TRACK_MAP: Record<string, string> = {
 
 const normalizedTracks = Object.fromEntries(
   Object.entries(
-    import.meta.glob<NormalizedTrackFile>("../../data/strategy/normalized/tracks/*.json", {
+    import.meta.glob<NormalizedTrackFile>("./data/strategy/normalized/tracks/*.json", {
       eager: true,
       import: "default",
     }),
@@ -347,7 +347,7 @@ const normalizedTracks = Object.fromEntries(
 ) as Record<string, NormalizedTrackFile>;
 
 const brendonData = Object.values(
-  import.meta.glob<BrendonLeighFile>("../../data/brendonLeigh_setups.json", {
+  import.meta.glob<BrendonLeighFile>("./data/brendonLeigh_setups.json", {
     eager: true,
     import: "default",
   }),

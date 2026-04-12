@@ -1,0 +1,1231 @@
+{
+  "author": "Brendon Leigh",
+  "game": "F1 25",
+  "date": "15/02/2026",
+  "tracks": [
+    {
+      "track": "Australia",
+      "race": {
+        "aerodynamics": { "front": 10, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The ride height is very low to extract the optimal pace, If you would like the car to be more stable and easier to drive over kerbs try 21-42 ride height"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 13, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The front wing angle is very aggressive to help extract the pace for qualifying, if you would like the rear to be more stable try 8 front wing angle"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 25, "rear": 15 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 25, "rear": 15 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Baku",
+      "race": {
+        "aerodynamics": { "front": 9, "rear": 6 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Rear tyre deg is the most important factor for race pace here, The off throttle differential is set very high to aid rear stability. Focus to not slide the rear tyres to minimise tyre wear"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 9, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like the rear to be more stable for your qualifying lap, try adding 5% to the off throttle differential to help aid rear stability"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 22, "rear": 14 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 22, "rear": 14 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "China",
+      "race": {
+        "aerodynamics": { "front": 30, "rear": 25 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 13.0, "right": 23.0 },
+        "notes": "A lower wing setup can be 27-23, This will help top speed, also when overtaking/defending. But will hurt overall laptime, Compared to 30-25 wing"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 35, "rear": 30 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 24.0, "right": 29.5 },
+        "rearTyres": { "left": 24.0, "right": 24.0 },
+        "notes": "The key to fast one lap pace around China is to not over stress the tyre temps in sector 1 and sector 2, Leaving good tyre grip for the traction zones of sector 3"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 45, "rear": 40 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 23.0, "right": 23.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 40 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 23.0, "right": 23.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Monaco",
+      "race": {
+        "aerodynamics": { "front": 50, "rear": 50 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 17 },
+        "rideHeight": { "front": 21, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Rear tyre management is very important in Monaco, The low rear tyre psi offers better grip and pace, but can overheat easier, Try 23.0 rear psi to have less overheating"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 50, "rear": 50 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 17 },
+        "rideHeight": { "front": 21, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 20.5, "right": 20.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "Monaco is all about having confidence to push the limits with high risk, if you would like the car to be more stable try 33% off throttle differential"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 50, "rear": 50 },
+        "transmission": { "on": 100, "off": 15 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 17 },
+        "rideHeight": { "front": 21, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 50 },
+        "transmission": { "on": 100, "off": 10 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 17 },
+        "rideHeight": { "front": 21, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Zandvoort + Reverse",
+      "race": {
+        "aerodynamics": { "front": 50, "rear": 33 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 43 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Try to avoid over stressing the front left tyre here, if you over stress the tyre it will lead to added understeer as the stint goes on. Due to the extra tyre deg you will gain"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 42, "rear": 37 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 43 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The key to a fast hotlap around Zandvoort is not over stress the front left tyre, Focus on smooth steering inputs to avoid tyre overheating during sector 2"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 20 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Abu Dhabi",
+      "race": {
+        "aerodynamics": { "front": 32, "rear": 28 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wing level is setup for optimal pace, if you would prefer lower wings for battling then 30-26 wings will also be a great option, very low wings can be 22-18 wing level"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 35, "rear": 31 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.53 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 32.0 },
+        "notes": "If you would like the rear to be more stable while using the kerbs, you can also use 21-42 ride height to help the kerb usage"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 41, "rear": 35 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 46, "rear": 38 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Austria + Reverse",
+      "race": {
+        "aerodynamics": { "front": 27, "rear": 13 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wings are setup to be ideal for race pace and tyre deg, If you would like higher top speed a good option will be 25-11 wings"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 30, "rear": 16 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 22.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Try to not overstress the front left tyre in sector 3, If you overheat the tyre you will lose lap time in the final turn"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 42, "rear": 30 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The inter tyre can overheat easily, Use the long straights driving off line to help cool the tyres"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 38 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The rear tyres will wear very quickly here, Try your best to manage the tyre deg"
+      }
+    },
+    {
+      "track": "Bahrain",
+      "race": {
+        "aerodynamics": { "front": 30, "rear": 28 },
+        "transmission": { "on": 100, "off": 19 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The 30-28 wings are setup for optimal pace and tyre wear management, if you would like lower wings to help with overtaking you can also try 28-26 wings"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 32, "rear": 28 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 5, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like the rear to be more stable, You can increase the off throttle differential to 35%"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 46, "rear": 41 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 45 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Brazil",
+      "race": {
+        "aerodynamics": { "front": 11, "rear": 8 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Lower wings can be 7-4, This will make overtaking more easy but will hamper sector 2 pace. Higher wing for clean air, Lower wing for battling"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 15, "rear": 12 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wings are very low, they offer better laptime than higher wings. Focus on smooth inputs for sector 2 to avoid any over driving. Then gain the laptime potential in sector 1 and sector 2"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 44, "rear": 40 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Manage your tyres, If you slide the car too much you will cost yourself pace in total stint pace"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Canada",
+      "race": {
+        "aerodynamics": { "front": 26, "rear": 14 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Focus on not get any extra wheel spin here, The key for race pace is not wearing out the rear tyres. Any rear tyre deg you can save, The faster you will go"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 31, "rear": 27 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like the rear to be more stable in chicane turns, You can increase the rear ride height to 44"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 41, "rear": 34 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 15 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "COTA (Texas)",
+      "race": {
+        "aerodynamics": { "front": 34, "rear": 30 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.3, "right": 22.3 },
+        "notes": "The 34-30 wings are setup for optimal pace and tyre wear management, if you would like lower wings to help with overtaking you can also try 32-28 wings"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 38, "rear": 34 },
+        "transmission": { "on": 100, "off": 35 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.3, "right": 22.3 },
+        "notes": "If you would like the rear to be more stable, You can increase the off throttle differential to 40%"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 50, "rear": 43 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 30, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.3, "right": 22.3 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 48 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.3, "right": 22.3 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Hungary",
+      "race": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 19 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 5, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The tyres are very easy to overheat during race stints here, Focus to not over stressing the rear tyres to help maintain grip during your race stints"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like the rear to be more stable, You can increase the rear wing to 45"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 50, "rear": 46 },
+        "transmission": { "on": 100, "off": 15 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 46 },
+        "transmission": { "on": 100, "off": 10 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 5, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Imola",
+      "race": {
+        "aerodynamics": { "front": 27, "rear": 22 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 28, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Imola is very easy to get corner cutting warnings, Focus on your racing line on the corner entry. If you run wide on corner entry adjust your speed to not risk a track limit warning"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 31, "rear": 26 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like the rear to be more stable when using the kerbs, You can increase the rear ride height to 46"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 34, "rear": 24 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 40, "rear": 33 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Japan",
+      "race": {
+        "aerodynamics": { "front": 31, "rear": 22 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like higher top speed you can use 28-19, The lower wings will help with top speed but will have a negative effect for grip in sector 1. Also a risk to increase tyre wear over the stint"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 31, "rear": 22 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 22.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 32.0 },
+        "notes": "To master Suzuka it is all about keeping a strong flow and momentum, Try to be super smooth with your steering inputs. The smooth inputs will help in sector 1 especially"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 34, "rear": 24 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 38, "rear": 28 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 42 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Jeddah",
+      "race": {
+        "aerodynamics": { "front": 10, "rear": 6 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "During race pace it is key to have very low wings to maximise top speed and thus the ability to overtake or defend. Depending on your preference 12-4 or 8-0 wings are also available"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 14, "rear": 6 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The key to Jeddah is being confident with the car to be close to the walls, If you would like the car to be more stable try using 7 rear wing"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 40, "rear": 35 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 40, "rear": 35 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Mexico",
+      "race": {
+        "aerodynamics": { "front": 14, "rear": 14 },
+        "transmission": { "on": 100, "off": 40 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 6 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 26.5, "right": 26.5 },
+        "notes": "The key to strong race pace here in Mexico is to never slide the rear tyres, The rear deg is very high, Any rear sliding will only add to the tyre deg, Costing you more lap time"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 23, "rear": 17 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 6 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 20.5, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "During the Qualifying lap here in Mexico, Ensure you have not overheated your tyres for sector 31 to this, Focus to not slide your rear tyres during this lap"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 40, "rear": 33 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 6 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 26.5, "right": 26.5 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 48, "rear": 39 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 6 },
+        "rideHeight": { "front": 20, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 26.5, "right": 26.5 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Miami",
+      "race": {
+        "aerodynamics": { "front": 13, "rear": 6 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "During race pace it is key to have very low wings to maximise top speed and thus the ability to overtake or defend. Depending on your preference 10-5 wings are also available"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 14, "rear": 8 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "During sector 1 focus on carrying strong corner speed, During sector 2 and sector 3 focus on not getting any wheel spin. Any wheel spin will hurt laptime"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 28, "rear": 18 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 30, "rear": 24 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Monza",
+      "race": {
+        "aerodynamics": { "front": 1, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Focus on getting strong exits from the turns around Monza, Try to be careful with your throttle usage here. Wheel spin adds a lot of rear tyre deg"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 6, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 21 },
+        "rideHeight": { "front": 21, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 20.5, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "The front wing angle is very aggressive to help extract the pace for qualifying, if you would like the rear to be more stable try 6 front wing"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 11, "rear": 10 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 20, "rear": 10 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Qatar",
+      "race": {
+        "aerodynamics": { "front": 44, "rear": 38 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 41 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Focus on not over stressing the tyres, Mainly the front left tyre in sector 3. Overpushing in sector 3 will cause a huge amount of extra tyre deg"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 45, "rear": 39 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 41 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like the rear to be more stable in high speed turns, You can increase the rear wing angle to 40 or 41"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 41 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 41 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Silverstone + Reverse",
+      "race": {
+        "aerodynamics": { "front": 18, "rear": 5 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 20 },
+        "rideHeight": { "front": 21, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Focus on not over stressing the tyres, Mainly the front left tyre as if you over push that tyre, It will cause major understeer"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 18, "rear": 5 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 3, "rear": 20 },
+        "rideHeight": { "front": 21, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 22.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 32.0 },
+        "notes": "If you would like the rear to be more stable in high speed turns, You can increase the rear ride height to 44"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 30, "rear": 22 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 30 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 40, "rear": 32 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 30 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Singapore",
+      "race": {
+        "aerodynamics": { "front": 42, "rear": 42 },
+        "transmission": { "on": 100, "off": 19 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 28, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Try to avoid over stressing the rear tyres here, If you over stress the rear tyres it will lead to oversteer due to the extra tyre wear as the stint goes on"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 46, "rear": 42 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 6, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 32.0 },
+        "notes": "The key to a fast hotlap in Singapore is to not over push in the first half of the lap. Smooth inputs are critical here! If you over push and slide the tyres you will lose grip in sector 3"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 50, "rear": 44 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 24, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 50 },
+        "transmission": { "on": 100, "off": 15 },
+        "camberToe": "all",
+        "suspension": { "front": 40, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 24, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Spa",
+      "race": {
+        "aerodynamics": { "front": 4, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.5, "right": 22.5 },
+        "notes": "The key for race pace at spa is keeping a strong flow and confidence during the middle sector. Focus to not over push the corner entry and use good discipline to stay on the racing line"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 4, "rear": 0 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.5, "right": 22.5 },
+        "notes": "If you would like the rear to be more stable you can use 30% off throttle differential, This will help to make the rear more predictable"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 12, "rear": 8 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.5, "right": 22.5 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 20, "rear": 14 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 20, "rear": 40 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.5, "right": 22.5 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Spain",
+      "race": {
+        "aerodynamics": { "front": 30, "rear": 25 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 19 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "Focus on not over stressing the tyres, Mainly the front left tyre as if you over push the tyre, it will cause major understeer in the final turn"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 35, "rear": 28 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 4, "rear": 19 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "If you would like the rear to be more stable in high speed turns, You can increase the rear ride height to 42"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 44, "rear": 35 },
+        "transmission": { "on": 100, "off": 25 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 19 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 50, "rear": 45 },
+        "transmission": { "on": 100, "off": 20 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 19 },
+        "rideHeight": { "front": 20, "rear": 41 },
+        "brakes": { "pressure": 100, "bias": 54.53 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 22.0, "right": 22.0 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    },
+    {
+      "track": "Vegas",
+      "race": {
+        "aerodynamics": { "front": 8, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 54 },
+        "frontTyres": { "left": 23.8, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "Rear tyre deg is the most important factor for race pace here. Try to avoid rear tyre wheel spin. Any extra wheel spin will cause a grip drop off during the stint"
+      },
+      "qualifying": {
+        "aerodynamics": { "front": 4, "rear": 0 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 1, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 20.5, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "If you would like the rear to be more stable for your qualifying lap, try adding 5% to the off throttle differential to help aid the rear stability"
+      },
+      "intermediates": {
+        "aerodynamics": { "front": 17, "rear": 12 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 29.5, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "It is very easy to overheat your tyres during an Intermediates tyre stint. Try to use smooth throttle inputs to avoid extra wheel spin"
+      },
+      "wets": {
+        "aerodynamics": { "front": 17, "rear": 12 },
+        "transmission": { "on": 100, "off": 30 },
+        "camberToe": "all",
+        "suspension": { "front": 41, "rear": 1 },
+        "rollbars": { "front": 2, "rear": 21 },
+        "rideHeight": { "front": 22, "rear": 44 },
+        "brakes": { "pressure": 100, "bias": 55.54 },
+        "frontTyres": { "left": 25.8, "right": 29.5 },
+        "rearTyres": { "left": 20.5, "right": 20.5 },
+        "notes": "The wets tyres overheat on F1 25 very quickly, Drive on the standing water while on the straights to help cool the tyres"
+      }
+    }
+  ]
+}
