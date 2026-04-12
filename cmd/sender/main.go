@@ -28,7 +28,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-var appVersion = "v4.15.0"
+var appVersion = "v4.16.0"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
