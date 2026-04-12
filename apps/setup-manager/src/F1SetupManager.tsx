@@ -204,7 +204,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
       <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${P.border}`, fontSize: 12, fontFamily: P.mono, fontWeight: 700, letterSpacing: 2, color: P.muted }}>
         {title}
       </div>
-      <div style={{ padding: "14px 16px" }}>{children}</div>
+      <div style={{ padding: "14px 16px", minWidth: 0, overflowX: "auto", overflowY: "visible" }}>{children}</div>
     </section>
   );
 }
@@ -785,7 +785,7 @@ export function F1SetupManager() {
         overflow: "hidden",
       }}
     >
-      <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexShrink: 0 }}>
+      <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, rowGap: 8, flexWrap: "wrap", flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, fontFamily: P.mono, letterSpacing: 2 }}>MINMO DRIVER PACK</div>
           <div style={{ fontSize: 11, color: P.muted }}>
@@ -794,7 +794,7 @@ export function F1SetupManager() {
               : "Sender offline"}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {[
             { id: "setup" as const, label: "Setup", visible: canUseSetup },
             { id: "telemetry" as const, label: "Telemetry", visible: canUseTelemetry },
@@ -810,7 +810,7 @@ export function F1SetupManager() {
         </div>
       </header>
 
-      <main style={{ flex: 1, minHeight: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", overflowX: "hidden" }}>
+      <main style={{ flex: 1, minHeight: 0, minWidth: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", overflowX: "auto" }}>
         {tab === "setup" ? (
           <>
             <Panel title="AUTO CONTEXT">

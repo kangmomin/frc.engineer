@@ -629,7 +629,7 @@ function Panel({
       <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${theme.border}`, fontSize: 12, fontFamily: theme.mono, fontWeight: 700, letterSpacing: 2, color: theme.muted }}>
         {title}
       </div>
-      <div style={{ padding: "14px 16px" }}>{children}</div>
+      <div style={{ padding: "14px 16px", minWidth: 0, overflowX: "auto", overflowY: "visible" }}>{children}</div>
     </section>
   );
 }
