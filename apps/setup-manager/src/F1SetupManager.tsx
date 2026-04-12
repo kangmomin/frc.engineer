@@ -757,13 +757,17 @@ export function F1SetupManager() {
     <div
       style={{
         minHeight: "100vh",
+        height: "100vh",
         paddingTop: WINDOW_TITLEBAR_INSET,
         background: P.bg,
         color: P.text,
         fontFamily: P.sans,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
       }}
     >
-      <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, fontFamily: P.mono, letterSpacing: 2 }}>MINMO DRIVER PACK</div>
           <div style={{ fontSize: 11, color: P.muted }}>
@@ -788,7 +792,7 @@ export function F1SetupManager() {
         </div>
       </header>
 
-      <main style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+      <main style={{ flex: 1, minHeight: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", overflowX: "hidden" }}>
         {tab === "setup" ? (
           <>
             <Panel title="AUTO CONTEXT">
