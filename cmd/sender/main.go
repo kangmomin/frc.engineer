@@ -178,7 +178,7 @@ func main() {
 	}
 	roomPassword := os.Getenv("SENDER_ROOM_PASSWORD")
 	frcAccountKey := os.Getenv("FRC_ACCOUNT_KEY")
-	engineerDashboardURL := normalizeEngineerDashboardURL(os.Getenv("ENGINEER_DASHBOARD_URL"))
+	engineerDashboardURL := normalizeEngineerDashboardURL("")
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
 		fmt.Sscanf(p, "%d", &udpPort)
@@ -199,9 +199,6 @@ func main() {
 		roomPassword = saved.RoomPassword
 		if saved.FRCAccountKey != "" {
 			frcAccountKey = saved.FRCAccountKey
-		}
-		if saved.EngineerDashboardURL != "" {
-			engineerDashboardURL = normalizeEngineerDashboardURL(saved.EngineerDashboardURL)
 		}
 		saveFiles = saved.SaveFiles
 		trackRecording = saved.TrackRecording
@@ -719,9 +716,8 @@ func main() {
 
 	mux.HandleFunc("PUT /api/local-ops", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			EngineerDashboardURL string          `json:"engineerDashboardUrl"`
-			OverlayPresets       []overlayPreset `json:"overlayPresets"`
-			OverlayHotkeys       overlayHotkeys  `json:"overlayHotkeys"`
+			OverlayPresets []overlayPreset `json:"overlayPresets"`
+			OverlayHotkeys overlayHotkeys  `json:"overlayHotkeys"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -730,7 +726,7 @@ func main() {
 			return
 		}
 
-		nextDashboardURL := normalizeEngineerDashboardURL(body.EngineerDashboardURL)
+		nextDashboardURL := normalizeEngineerDashboardURL("")
 		nextPresets := normalizeOverlayPresets(body.OverlayPresets)
 		nextHotkeys := normalizeOverlayHotkeys(body.OverlayHotkeys)
 
@@ -803,7 +799,6 @@ func main() {
 			RoomName                           string                   `json:"roomName"`
 			RoomPassword                       string                   `json:"roomPassword"`
 			FRCAccountKey                      string                   `json:"frcAccountKey"`
-			EngineerDashboardURL               *string                  `json:"engineerDashboardUrl"`
 			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
 			OverlayPresets                     *[]overlayPreset         `json:"overlayPresets"`
 			OverlayHotkeys                     *overlayHotkeys          `json:"overlayHotkeys"`
@@ -843,9 +838,7 @@ func main() {
 			nextRoomName = "Sender Room"
 		}
 		nextRoomPassword := body.RoomPassword
-		if body.EngineerDashboardURL != nil {
-			cfgEngineerDashboardURL = normalizeEngineerDashboardURL(*body.EngineerDashboardURL)
-		}
+		cfgEngineerDashboardURL = normalizeEngineerDashboardURL("")
 		if body.OverlayPresets != nil {
 			cfgOverlayPresets = normalizeOverlayPresets(*body.OverlayPresets)
 		}

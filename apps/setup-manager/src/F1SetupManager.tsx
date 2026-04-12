@@ -273,8 +273,23 @@ const P = {
 const WINDOW_TITLEBAR_INSET = window.electronAPI?.platform === "win32" ? 32 : 0;
 
 function normalizeSenderUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  return trimmed || DEFAULT_SENDER_URL;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return DEFAULT_SENDER_URL;
+  }
+
+  try {
+    const parsed = new URL(trimmed.includes("://") ? trimmed : `http://${trimmed}`);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return DEFAULT_SENDER_URL;
+    }
+    if (!parsed.host) {
+      return DEFAULT_SENDER_URL;
+    }
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return DEFAULT_SENDER_URL;
+  }
 }
 
 function normalizeSenderForwardTargetsResponse(targets: SenderForwardTargetResponse[] | null | undefined): SenderForwardTargetDraft[] {
@@ -827,10 +842,8 @@ function getComparisonDelta(
 export function F1SetupManager() {
   const [section, setSection] = useState<SectionId>("setup-manager");
   const [setupWorkspace, setSetupWorkspace] = useState<SetupWorkspaceId>("builder");
-  const [senderUrl, setSenderUrl] = useState(DEFAULT_SENDER_URL);
-  const [draftSenderUrl, setDraftSenderUrl] = useState(DEFAULT_SENDER_URL);
-  const [engineerDashboardUrl, setEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
-  const [draftEngineerDashboardUrl, setDraftEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
+  const senderUrl = DEFAULT_SENDER_URL;
+  const engineerDashboardUrl = DEFAULT_ENGINEER_DASHBOARD_URL;
   const [senderConfig, setSenderConfig] = useState<SenderConfigDraft>(DEFAULT_SENDER_CONFIG);
   const [senderStorageInfo, setSenderStorageInfo] = useState<SenderStorageInfo>(EMPTY_SENDER_STORAGE_INFO);
   const [loadingSenderConfig, setLoadingSenderConfig] = useState(false);
@@ -867,19 +880,14 @@ export function F1SetupManager() {
     let active = true;
 
     const loadPersistedState = async () => {
-      const storedSenderUrl = await readStoredValue<string>(SENDER_URL_KEY, DEFAULT_SENDER_URL);
-      const nextSenderUrl = normalizeSenderUrl(typeof storedSenderUrl === "string" ? storedSenderUrl : DEFAULT_SENDER_URL);
       const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
       const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
       const nextStorageInfo = window.electronAPI?.getSenderStorageInfo
         ? normalizeSenderStorageInfo(await window.electronAPI.getSenderStorageInfo())
         : EMPTY_SENDER_STORAGE_INFO;
+      await writeStoredValue(SENDER_URL_KEY, DEFAULT_SENDER_URL);
 
       if (!active) return;
-      setSenderUrl(nextSenderUrl);
-      setDraftSenderUrl(nextSenderUrl);
-      setEngineerDashboardUrl(DEFAULT_ENGINEER_DASHBOARD_URL);
-      setDraftEngineerDashboardUrl(DEFAULT_ENGINEER_DASHBOARD_URL);
       setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
       setLapComparison(normalizeLapComparisonState(storedComparison));
       setSenderStorageInfo(nextStorageInfo);
@@ -890,13 +898,6 @@ export function F1SetupManager() {
       active = false;
     };
   }, []);
-
-  const saveSenderUrl = async () => {
-    const normalized = normalizeSenderUrl(draftSenderUrl);
-    setSenderUrl(normalized);
-    setDraftSenderUrl(normalized);
-    await writeStoredValue(SENDER_URL_KEY, normalized);
-  };
 
   const refreshSenderStorageInfo = async () => {
     if (!window.electronAPI?.getSenderStorageInfo) {
@@ -989,7 +990,6 @@ export function F1SetupManager() {
   };
 
   const persistLocalOps = async (
-    nextDashboardUrl: string,
     nextHotkeys: OverlayHotkeys,
     nextPresets: OverlayPreset[],
     successMessage: string,
@@ -1002,7 +1002,7 @@ export function F1SetupManager() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          engineerDashboardUrl: nextDashboardUrl,
+          engineerDashboardUrl: DEFAULT_ENGINEER_DASHBOARD_URL,
           overlayHotkeys: nextHotkeys,
           overlayPresets: nextPresets,
         }),
@@ -1012,11 +1012,8 @@ export function F1SetupManager() {
         throw new Error((data as { error?: string } | null)?.error || "Failed to save local ops settings.");
       }
 
-      const savedDashboardUrl = (data as LocalOpsResponse | null)?.engineerDashboardUrl?.trim() || nextDashboardUrl.trim() || DEFAULT_ENGINEER_DASHBOARD_URL;
       const savedHotkeys = normalizeOverlayHotkeysInput((data as LocalOpsResponse | null)?.overlayHotkeys ?? nextHotkeys);
       const savedPresets = normalizeOverlayPresetsInput((data as LocalOpsResponse | null)?.overlayPresets ?? nextPresets);
-      setEngineerDashboardUrl(savedDashboardUrl);
-      setDraftEngineerDashboardUrl(savedDashboardUrl);
       setOverlayHotkeys(savedHotkeys);
       setDraftOverlayHotkeys(savedHotkeys);
       setOverlayPresets(savedPresets);
@@ -1030,18 +1027,8 @@ export function F1SetupManager() {
     }
   };
 
-  const saveEngineerDashboardUrl = async () => {
-    await persistLocalOps(
-      draftEngineerDashboardUrl.trim() || DEFAULT_ENGINEER_DASHBOARD_URL,
-      draftOverlayHotkeys,
-      overlayPresets,
-      "Sender sharing settings saved.",
-    );
-  };
-
   const saveOverlayHotkeySettings = async () => {
     await persistLocalOps(
-      draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
       normalizeOverlayHotkeysInput(draftOverlayHotkeys),
       overlayPresets,
       "Overlay hotkeys saved.",
@@ -1113,7 +1100,6 @@ export function F1SetupManager() {
           roomName: senderConfig.roomName,
           roomPassword: senderConfig.roomPassword,
           frcAccountKey: senderConfig.frcAccountKey,
-          engineerDashboardUrl: draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
           forwardTargets: nextForwardTargets,
           overlayPresets,
           overlayHotkeys: draftOverlayHotkeys,
@@ -1139,11 +1125,6 @@ export function F1SetupManager() {
       const nextConfigData = data as SenderConfigResponse | null;
       setSenderConfig(buildSenderConfigDraft(nextConfigData));
       setTrackRecordingOverwriteFilename("");
-
-      const nextDashboardUrl =
-        nextConfigData?.engineerDashboardUrl?.trim() || draftEngineerDashboardUrl.trim() || engineerDashboardUrl;
-      setEngineerDashboardUrl(nextDashboardUrl);
-      setDraftEngineerDashboardUrl(nextDashboardUrl);
 
       if (nextConfigData?.overlayHotkeys) {
         const nextHotkeys = normalizeOverlayHotkeysInput(nextConfigData.overlayHotkeys);
@@ -1199,11 +1180,6 @@ export function F1SetupManager() {
 
         setSenderConfig(buildSenderConfigDraft(data));
         setTrackRecordingOverwriteFilename("");
-        if (typeof data.engineerDashboardUrl === "string" && data.engineerDashboardUrl.trim()) {
-          const nextDashboardUrl = data.engineerDashboardUrl.trim();
-          setEngineerDashboardUrl(nextDashboardUrl);
-          setDraftEngineerDashboardUrl(nextDashboardUrl);
-        }
         if (data.overlayHotkeys) {
           const nextHotkeys = normalizeOverlayHotkeysInput(data.overlayHotkeys);
           setOverlayHotkeys(nextHotkeys);
@@ -1232,11 +1208,8 @@ export function F1SetupManager() {
           return;
         }
 
-        const nextDashboardUrl = data.engineerDashboardUrl?.trim() || DEFAULT_ENGINEER_DASHBOARD_URL;
         const nextHotkeys = normalizeOverlayHotkeysInput(data.overlayHotkeys);
         const nextPresets = normalizeOverlayPresetsInput(data.overlayPresets);
-        setEngineerDashboardUrl(nextDashboardUrl);
-        setDraftEngineerDashboardUrl(nextDashboardUrl);
         setOverlayHotkeys(nextHotkeys);
         setDraftOverlayHotkeys(nextHotkeys);
         setOverlayPresets(nextPresets);
@@ -1518,7 +1491,6 @@ export function F1SetupManager() {
     }
     nextPresets.unshift(nextPreset);
     const saved = await persistLocalOps(
-      draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
       draftOverlayHotkeys,
       normalizeOverlayPresetsInput(nextPresets),
       `Preset ${name} saved.`,
@@ -1530,7 +1502,6 @@ export function F1SetupManager() {
 
   const deleteOverlayPreset = async (presetId: string) => {
     await persistLocalOps(
-      draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
       draftOverlayHotkeys,
       overlayPresets.filter((preset) => preset.id !== presetId),
       "Preset removed.",
@@ -2168,10 +2139,10 @@ export function F1SetupManager() {
             <Panel title="SENDER ENDPOINTS">
               <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Sender URL</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <input value={draftSenderUrl} onChange={(event) => setDraftSenderUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSenderUrl(); }} style={{ flex: 1, minWidth: 240, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
-                    <button onClick={() => void saveSenderUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
+                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Embedded Sender API</div>
+                  <input value={senderUrl} readOnly style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: "#161719", color: P.text, fontFamily: P.mono, outline: "none" }} />
+                  <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                    Driver Pack always talks to the embedded sender on this local endpoint.
                   </div>
                 </div>
               </div>
@@ -2180,15 +2151,14 @@ export function F1SetupManager() {
             <Panel title="ROOM & SHARING">
               <div style={{ display: "grid", gap: 12 }}>
                 <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Engineer Dashboard URL</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <input
-                      value={draftEngineerDashboardUrl}
-                      onChange={(event) => setDraftEngineerDashboardUrl(event.target.value)}
-                      onKeyDown={(event) => { if (event.key === "Enter") void saveEngineerDashboardUrl(); }}
-                      style={{ flex: 1, minWidth: 240, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
-                    />
-                    <button onClick={() => void saveEngineerDashboardUrl()} disabled={savingOverlayConfig} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: savingOverlayConfig ? "wait" : "pointer" }}>SAVE</button>
+                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Engineer Dashboard</div>
+                  <input
+                    value={engineerDashboardUrl}
+                    readOnly
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: "#161719", color: P.text, fontFamily: P.mono, outline: "none" }}
+                  />
+                  <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                    Invite links always target the production pitwall dashboard.
                   </div>
                 </div>
 
