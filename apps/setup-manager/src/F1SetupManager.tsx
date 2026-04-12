@@ -111,6 +111,8 @@ const P = {
   sans: "'Inter', sans-serif",
 };
 
+const WINDOW_TITLEBAR_INSET = window.electronAPI?.platform === "win32" ? 32 : 0;
+
 function normalizeSenderUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, "");
   return trimmed || DEFAULT_SENDER_URL;
@@ -752,7 +754,15 @@ export function F1SetupManager() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: P.bg, color: P.text, fontFamily: P.sans }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        paddingTop: WINDOW_TITLEBAR_INSET,
+        background: P.bg,
+        color: P.text,
+        fontFamily: P.sans,
+      }}
+    >
       <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, fontFamily: P.mono, letterSpacing: 2 }}>MINMO DRIVER PACK</div>
