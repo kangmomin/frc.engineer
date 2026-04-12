@@ -999,7 +999,8 @@ func main() {
 		})
 	})
 
-	// Try settingsPort, then auto-increment up to 10 times on conflict
+	// Try settingsPort, then auto-increment up to 10 times on conflict.
+	// In the embedded driver pack, keep the API contract pinned to the requested port.
 	actualSettingsPort := settingsPort
 	settingsSrv := &http.Server{Handler: mux}
 	go func() {
@@ -1008,13 +1009,21 @@ func main() {
 		if basePort == 0 {
 			basePort = 8099
 		}
-		for attempt := range 10 {
+		maxAttempts := 10
+		if embeddedDriverPack {
+			maxAttempts = 1
+		}
+		for attempt := range maxAttempts {
 			port := basePort + attempt
 			actualSettingsPort = fmt.Sprintf("%d", port)
 			settingsSrv.Addr = ":" + actualSettingsPort
 			logger.Info("settings server starting", "port", actualSettingsPort)
 			err := settingsSrv.ListenAndServe()
 			if err != nil && err != http.ErrServerClosed {
+				if embeddedDriverPack {
+					logger.Error("embedded settings server failed", "port", port, "error", err)
+					return
+				}
 				logger.Warn("settings server port in use, trying next", "port", port, "error", err)
 				continue
 			}

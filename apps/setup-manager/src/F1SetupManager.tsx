@@ -42,12 +42,48 @@ import {
   normalizeAnalysisServerUrl,
 } from "./sessionAnalysis";
 
-type TabId = "setup" | "telemetry" | "analysis" | "settings";
+type SectionId = "setup-manager" | "sender" | "overlay";
+type SetupWorkspaceId = "builder" | "analysis";
 type Severity = "high" | "med" | "low";
+
+interface DriverPermissions {
+  pitwall?: boolean;
+  overlay?: boolean;
+  setupSupport?: boolean;
+  [key: string]: boolean | undefined;
+}
+
+interface SenderInvite {
+  dashboardUrl?: string;
+  signalingUrl?: string;
+  roomId?: string;
+  roomCode?: string;
+  link?: string;
+  passwordRequired?: boolean;
+}
+
+interface SenderPeer {
+  peerId?: string;
+  state?: string;
+  view?: string;
+  permissions?: DriverPermissions;
+}
 
 interface SenderStatus {
   currentTrack?: { name?: string };
-  driverPermissions?: { pitwall?: boolean; overlay?: boolean; setupSupport?: boolean };
+  driverPermissions?: DriverPermissions;
+  radarActive?: boolean;
+  weatherActive?: boolean;
+  strategyActive?: boolean;
+  roomCode?: string;
+  roomId?: string;
+  roomName?: string;
+  roomProtected?: boolean;
+  connectedEngineers?: number;
+  udpPort?: number;
+  saveFiles?: boolean;
+  invite?: SenderInvite;
+  peers?: SenderPeer[];
 }
 
 interface SenderSession {
@@ -92,10 +128,67 @@ interface SetupTip {
   changes: string[];
 }
 
+interface OverlayState {
+  radar: boolean;
+  weather: boolean;
+  strategy: boolean;
+}
+
+interface OverlayPreset extends OverlayState {
+  id: string;
+  name: string;
+  savedAtLocal?: string;
+}
+
+interface OverlayHotkeys {
+  radar: string;
+  weather: string;
+  strategy: string;
+}
+
+interface LocalOpsResponse {
+  engineerDashboardUrl?: string;
+  overlayPresets?: OverlayPreset[];
+  overlayHotkeys?: OverlayHotkeys;
+}
+
 const DEFAULT_SENDER_URL = "http://localhost:8099";
+const DEFAULT_ENGINEER_DASHBOARD_URL = "http://localhost:5173";
 const SENDER_URL_KEY = "frc_sender_url";
 const SAVED_RECOMMENDATIONS_KEY = "frc_setup_recommendations";
 const LAP_COMPARISON_KEY = "frc_setup_lap_comparison";
+const DEFAULT_OVERLAY_STATE: OverlayState = { radar: false, weather: false, strategy: false };
+const DEFAULT_OVERLAY_HOTKEYS: OverlayHotkeys = {
+  radar: "Alt+Shift+1",
+  weather: "Alt+Shift+2",
+  strategy: "Alt+Shift+3",
+};
+const DRIVER_PERMISSION_LABELS: Record<string, string> = {
+  pitwall: "Pitwall",
+  overlay: "Overlay",
+  setupSupport: "Setup",
+  viewERSEstimate: "ERS Est",
+  viewERSActual: "ERS",
+  viewAdvancedStrategy: "Adv Strat",
+  viewPitStatus: "Pit Status",
+  viewTopSpeed: "Top Speed",
+  viewPlayerDelta: "Player Delta",
+  viewQualifying: "Qualifying",
+};
+const SECTION_COPY: Record<SectionId, { title: string; detail: string }> = {
+  "setup-manager": {
+    title: "Setup Manager",
+    detail: "Track, weather, team, saved recommendation, and session analysis in one workspace.",
+  },
+  sender: {
+    title: "Sender",
+    detail: "Backend connection, room sharing, live telemetry, and lap comparison controls.",
+  },
+  overlay: {
+    title: "Overlay",
+    detail: "Radar, weather, and strategy overlay state, presets, and hotkey management.",
+  },
+};
 
 const P = {
   bg: "#131314",
@@ -154,6 +247,65 @@ function formatModeLabel(mode: Mode): string {
   if (mode === "nonequal") return "NON-EQUAL";
   if (mode === "equal") return "EQUAL";
   return "UNSET";
+}
+
+function formatBooleanState(value: boolean): string {
+  return value ? "On" : "Off";
+}
+
+function normalizeOverlayHotkeysInput(source?: Partial<OverlayHotkeys> | null): OverlayHotkeys {
+  return {
+    radar: source?.radar?.trim() || DEFAULT_OVERLAY_HOTKEYS.radar,
+    weather: source?.weather?.trim() || DEFAULT_OVERLAY_HOTKEYS.weather,
+    strategy: source?.strategy?.trim() || DEFAULT_OVERLAY_HOTKEYS.strategy,
+  };
+}
+
+function normalizeOverlayPresetsInput(source?: OverlayPreset[] | null): OverlayPreset[] {
+  if (!Array.isArray(source) || source.length === 0) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const next: OverlayPreset[] = [];
+  for (const preset of source) {
+    const id = preset?.id?.trim();
+    const name = preset?.name?.trim();
+    if (!id || !name) {
+      continue;
+    }
+    const key = `${id.toLowerCase()}|${name.toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    next.push({
+      id,
+      name,
+      savedAtLocal: preset.savedAtLocal || formatSavedAtLocal(),
+      radar: Boolean(preset.radar),
+      weather: Boolean(preset.weather),
+      strategy: Boolean(preset.strategy),
+    });
+  }
+  return next.slice(0, 12);
+}
+
+function slugifyPresetName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function grantedPermissionLabels(permissions?: DriverPermissions): string[] {
+  if (!permissions) {
+    return [];
+  }
+  return Object.entries(permissions)
+    .filter(([, enabled]) => Boolean(enabled))
+    .map(([key]) => DRIVER_PERMISSION_LABELS[key] || key);
 }
 
 async function readStoredValue<T>(key: string, fallback: T): Promise<T> {
@@ -246,6 +398,131 @@ function ComparisonSnapshotCard({
       ) : (
         <div style={{ fontSize: 11, color: P.muted }}>Capture a run snapshot to compare setup changes.</div>
       )}
+    </div>
+  );
+}
+
+function WorkspaceNavCard({
+  title,
+  detail,
+  accent,
+  active,
+  badges,
+  onClick,
+}: {
+  title: string;
+  detail: string;
+  accent: string;
+  active: boolean;
+  badges: string[];
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "grid",
+        gap: 10,
+        padding: "14px 14px 12px",
+        borderRadius: 8,
+        border: `1px solid ${active ? accent : P.border}`,
+        background: active ? `${accent}12` : P.surface,
+        color: P.text,
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontFamily: P.mono, letterSpacing: 1.2, color: active ? accent : P.muted }}>{title}</div>
+          <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6, marginTop: 6 }}>{detail}</div>
+        </div>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: accent, flexShrink: 0, marginTop: 4 }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {badges.map((badge) => (
+          <span
+            key={`${title}-${badge}`}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 999,
+              background: active ? `${accent}18` : "rgba(255,255,255,0.05)",
+              color: active ? accent : P.muted,
+              fontSize: 9,
+              fontFamily: P.mono,
+            }}
+          >
+            {badge}
+          </span>
+        ))}
+      </div>
+    </button>
+  );
+}
+
+function WorkspaceModuleCard({
+  title,
+  detail,
+  status,
+  accent,
+  active = false,
+  onClick,
+}: {
+  title: string;
+  detail: string;
+  status: string;
+  accent: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontFamily: P.mono, color: active ? accent : P.text }}>{title}</div>
+          <div style={{ fontSize: 10, color: P.muted, lineHeight: 1.6, marginTop: 6 }}>{detail}</div>
+        </div>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: accent, flexShrink: 0, marginTop: 4 }} />
+      </div>
+      <div style={{ fontSize: 10, color: active ? accent : P.text, fontWeight: 700 }}>{status}</div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          width: "100%",
+          display: "grid",
+          gap: 10,
+          padding: "12px 14px",
+          borderRadius: 6,
+          border: `1px solid ${active ? accent : P.border}`,
+          background: active ? `${accent}14` : P.surface2,
+          color: P.text,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 10,
+        padding: "12px 14px",
+        borderRadius: 6,
+        border: `1px solid ${P.border}`,
+        background: P.surface2,
+      }}
+    >
+      {content}
     </div>
   );
 }
@@ -447,11 +724,23 @@ function getComparisonDelta(
 }
 
 export function F1SetupManager() {
-  const [tab, setTab] = useState<TabId>("setup");
+  const [section, setSection] = useState<SectionId>("setup-manager");
+  const [setupWorkspace, setSetupWorkspace] = useState<SetupWorkspaceId>("builder");
   const [senderUrl, setSenderUrl] = useState(DEFAULT_SENDER_URL);
   const [draftSenderUrl, setDraftSenderUrl] = useState(DEFAULT_SENDER_URL);
   const [analysisUrl, setAnalysisUrl] = useState(DEFAULT_ANALYSIS_URL);
   const [draftAnalysisUrl, setDraftAnalysisUrl] = useState(DEFAULT_ANALYSIS_URL);
+  const [engineerDashboardUrl, setEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
+  const [draftEngineerDashboardUrl, setDraftEngineerDashboardUrl] = useState(DEFAULT_ENGINEER_DASHBOARD_URL);
+  const [overlayState, setOverlayState] = useState<OverlayState>(DEFAULT_OVERLAY_STATE);
+  const [overlayPresets, setOverlayPresets] = useState<OverlayPreset[]>([]);
+  const [overlayHotkeys, setOverlayHotkeys] = useState<OverlayHotkeys>(DEFAULT_OVERLAY_HOTKEYS);
+  const [draftOverlayHotkeys, setDraftOverlayHotkeys] = useState<OverlayHotkeys>(DEFAULT_OVERLAY_HOTKEYS);
+  const [overlayPresetName, setOverlayPresetName] = useState("");
+  const [overlayNotice, setOverlayNotice] = useState<string | null>(null);
+  const [overlayError, setOverlayError] = useState<string | null>(null);
+  const [savingOverlayConfig, setSavingOverlayConfig] = useState(false);
+  const [applyingOverlay, setApplyingOverlay] = useState(false);
 
   const [track, setTrack] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>(null);
@@ -488,6 +777,8 @@ export function F1SetupManager() {
       setDraftSenderUrl(nextSenderUrl);
       setAnalysisUrl(nextAnalysisUrl);
       setDraftAnalysisUrl(nextAnalysisUrl);
+      setEngineerDashboardUrl(DEFAULT_ENGINEER_DASHBOARD_URL);
+      setDraftEngineerDashboardUrl(DEFAULT_ENGINEER_DASHBOARD_URL);
       setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
       setLapComparison(normalizeLapComparisonState(storedComparison));
     };
@@ -526,6 +817,66 @@ export function F1SetupManager() {
     await writeStoredValue(ANALYSIS_URL_KEY, normalized);
   };
 
+  const persistLocalOps = async (
+    nextDashboardUrl: string,
+    nextHotkeys: OverlayHotkeys,
+    nextPresets: OverlayPreset[],
+    successMessage: string,
+  ): Promise<boolean> => {
+    setSavingOverlayConfig(true);
+    setOverlayError(null);
+    setOverlayNotice(null);
+    try {
+      const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/local-ops`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          engineerDashboardUrl: nextDashboardUrl,
+          overlayHotkeys: nextHotkeys,
+          overlayPresets: nextPresets,
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as LocalOpsResponse | { error?: string } | null;
+      if (!response.ok) {
+        throw new Error((data as { error?: string } | null)?.error || "Failed to save local ops settings.");
+      }
+
+      const savedDashboardUrl = (data as LocalOpsResponse | null)?.engineerDashboardUrl?.trim() || nextDashboardUrl.trim() || DEFAULT_ENGINEER_DASHBOARD_URL;
+      const savedHotkeys = normalizeOverlayHotkeysInput((data as LocalOpsResponse | null)?.overlayHotkeys ?? nextHotkeys);
+      const savedPresets = normalizeOverlayPresetsInput((data as LocalOpsResponse | null)?.overlayPresets ?? nextPresets);
+      setEngineerDashboardUrl(savedDashboardUrl);
+      setDraftEngineerDashboardUrl(savedDashboardUrl);
+      setOverlayHotkeys(savedHotkeys);
+      setDraftOverlayHotkeys(savedHotkeys);
+      setOverlayPresets(savedPresets);
+      setOverlayNotice(successMessage);
+      return true;
+    } catch (error) {
+      setOverlayError(error instanceof Error ? error.message : "Failed to save local ops settings.");
+      return false;
+    } finally {
+      setSavingOverlayConfig(false);
+    }
+  };
+
+  const saveEngineerDashboardUrl = async () => {
+    await persistLocalOps(
+      draftEngineerDashboardUrl.trim() || DEFAULT_ENGINEER_DASHBOARD_URL,
+      draftOverlayHotkeys,
+      overlayPresets,
+      "Sender sharing settings saved.",
+    );
+  };
+
+  const saveOverlayHotkeySettings = async () => {
+    await persistLocalOps(
+      draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
+      normalizeOverlayHotkeysInput(draftOverlayHotkeys),
+      overlayPresets,
+      "Overlay hotkeys saved.",
+    );
+  };
+
   const persistRecommendations = async (next: SavedRecommendation[]) => {
     setSavedRecommendations(next);
     await writeStoredValue(SAVED_RECOMMENDATIONS_KEY, next);
@@ -539,12 +890,48 @@ export function F1SetupManager() {
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack, latestRaceResult } = useSenderConnection(senderUrl);
   const permissionsKnown = Boolean(senderStatus?.driverPermissions);
   const canUseSetup = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.setupSupport) : true;
-  const canUseTelemetry = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true;
+  const canUseOverlay = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true;
 
   useEffect(() => {
-    if (tab === "setup" && !canUseSetup) setTab("settings");
-    if (tab === "telemetry" && !canUseTelemetry) setTab("settings");
-  }, [canUseSetup, canUseTelemetry, tab]);
+    setOverlayState({
+      radar: Boolean(senderStatus?.radarActive),
+      weather: Boolean(senderStatus?.weatherActive),
+      strategy: Boolean(senderStatus?.strategyActive),
+    });
+  }, [senderStatus?.radarActive, senderStatus?.weatherActive, senderStatus?.strategyActive]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadLocalOps = async () => {
+      try {
+        const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/local-ops`);
+        const data = (await response.json().catch(() => null)) as LocalOpsResponse | null;
+        if (!response.ok || !data || !active) {
+          return;
+        }
+
+        const nextDashboardUrl = data.engineerDashboardUrl?.trim() || DEFAULT_ENGINEER_DASHBOARD_URL;
+        const nextHotkeys = normalizeOverlayHotkeysInput(data.overlayHotkeys);
+        const nextPresets = normalizeOverlayPresetsInput(data.overlayPresets);
+        setEngineerDashboardUrl(nextDashboardUrl);
+        setDraftEngineerDashboardUrl(nextDashboardUrl);
+        setOverlayHotkeys(nextHotkeys);
+        setDraftOverlayHotkeys(nextHotkeys);
+        setOverlayPresets(nextPresets);
+        setOverlayError(null);
+      } catch {
+        if (!active) {
+          return;
+        }
+      }
+    };
+
+    void loadLocalOps();
+    return () => {
+      active = false;
+    };
+  }, [senderUrl]);
 
   useEffect(() => {
     if (!recording || !livePlayer) return;
@@ -689,7 +1076,8 @@ export function F1SetupManager() {
       const meta = SETUP_META.find((item) => item.key === entry.setupKey) ?? null;
       setSelectedMeta(meta);
     });
-    setTab("setup");
+    setSection("setup-manager");
+    setSetupWorkspace("builder");
   };
 
   const saveRecommendation = async () => {
@@ -747,6 +1135,97 @@ export function F1SetupManager() {
     await persistComparison({ before: null, after: null });
   };
 
+  const applyOverlayStateUpdate = async (nextState: OverlayState, successMessage: string) => {
+    setApplyingOverlay(true);
+    setOverlayError(null);
+    setOverlayNotice(null);
+    try {
+      const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/overlay/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextState),
+      });
+      const data = (await response.json().catch(() => null)) as OverlayState | { error?: string } | null;
+      if (!response.ok) {
+        throw new Error((data as { error?: string } | null)?.error || "Failed to apply overlay state.");
+      }
+      const appliedState: OverlayState = {
+        radar: Boolean((data as OverlayState | null)?.radar),
+        weather: Boolean((data as OverlayState | null)?.weather),
+        strategy: Boolean((data as OverlayState | null)?.strategy),
+      };
+      setOverlayState(appliedState);
+      setOverlayNotice(successMessage);
+    } catch (error) {
+      setOverlayError(error instanceof Error ? error.message : "Failed to apply overlay state.");
+    } finally {
+      setApplyingOverlay(false);
+    }
+  };
+
+  const toggleOverlayKind = async (kind: keyof OverlayState) => {
+    await applyOverlayStateUpdate(
+      {
+        ...overlayState,
+        [kind]: !overlayState[kind],
+      },
+      `${kind[0].toUpperCase()}${kind.slice(1)} overlay ${overlayState[kind] ? "closed" : "opened"}.`,
+    );
+  };
+
+  const saveOverlayPreset = async () => {
+    const name = overlayPresetName.trim();
+    if (!name) {
+      setOverlayError("Enter a preset name before saving.");
+      setOverlayNotice(null);
+      return;
+    }
+
+    const existingIndex = overlayPresets.findIndex((preset) => preset.name.toLowerCase() === name.toLowerCase());
+    const nextPreset: OverlayPreset = {
+      id: existingIndex >= 0 ? overlayPresets[existingIndex].id : slugifyPresetName(name) || `preset-${Date.now()}`,
+      name,
+      savedAtLocal: formatSavedAtLocal(),
+      radar: overlayState.radar,
+      weather: overlayState.weather,
+      strategy: overlayState.strategy,
+    };
+    const nextPresets = [...overlayPresets];
+    if (existingIndex >= 0) {
+      nextPresets.splice(existingIndex, 1);
+    }
+    nextPresets.unshift(nextPreset);
+    const saved = await persistLocalOps(
+      draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
+      draftOverlayHotkeys,
+      normalizeOverlayPresetsInput(nextPresets),
+      `Preset ${name} saved.`,
+    );
+    if (saved) {
+      setOverlayPresetName("");
+    }
+  };
+
+  const deleteOverlayPreset = async (presetId: string) => {
+    await persistLocalOps(
+      draftEngineerDashboardUrl.trim() || engineerDashboardUrl,
+      draftOverlayHotkeys,
+      overlayPresets.filter((preset) => preset.id !== presetId),
+      "Preset removed.",
+    );
+  };
+
+  const applyOverlayPreset = async (preset: OverlayPreset) => {
+    await applyOverlayStateUpdate(
+      {
+        radar: preset.radar,
+        weather: preset.weather,
+        strategy: preset.strategy,
+      },
+      `Preset ${preset.name} applied.`,
+    );
+  };
+
   const comparisonMetrics = useMemo(
     () => [
       {
@@ -771,6 +1250,11 @@ export function F1SetupManager() {
     [lapComparison.after, lapComparison.before],
   );
 
+  const activeSection = SECTION_COPY[section];
+  const senderInvite = senderStatus?.invite ?? null;
+  const senderPeers = senderStatus?.peers ?? [];
+  const senderPermissionLabels = grantedPermissionLabels(senderStatus?.driverPermissions);
+
   return (
     <div
       style={{
@@ -789,32 +1273,84 @@ export function F1SetupManager() {
     >
       <header style={{ padding: "16px 20px", borderBottom: `1px solid ${P.border}`, background: P.surface, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, rowGap: 8, flexWrap: "wrap", flexShrink: 0 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: P.mono, letterSpacing: 2 }}>MINMO DRIVER PACK</div>
+          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: P.mono, letterSpacing: 2 }}>F1 DRIVER PACK</div>
           <div style={{ fontSize: 11, color: P.muted }}>
             {senderConnected
-              ? `Sender online${autoContext?.source === "live-session" ? " / live context synced" : autoContext?.source === "race-result" ? " / result context ready" : ""}`
-              : "Sender offline"}
+              ? `Sender online / room ${senderStatus?.roomCode || "----"}${autoContext?.source === "live-session" ? " / live context synced" : autoContext?.source === "race-result" ? " / result context ready" : ""}`
+              : "Sender offline / local workspaces available"}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {[
-            { id: "setup" as const, label: "Setup", visible: canUseSetup },
-            { id: "telemetry" as const, label: "Telemetry", visible: canUseTelemetry },
-            { id: "analysis" as const, label: "Analysis", visible: true },
-            { id: "settings" as const, label: "Settings", visible: true },
-          ]
-            .filter((item) => item.visible)
-            .map((item) => (
-              <button key={item.id} onClick={() => setTab(item.id)} style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${tab === item.id ? P.accent : P.border}`, background: tab === item.id ? P.accent : "transparent", color: tab === item.id ? P.bg : P.muted, cursor: "pointer", fontFamily: P.mono, fontSize: 10 }}>
-                {item.label}
-              </button>
-            ))}
+          {(["setup-manager", "sender", "overlay"] as const).map((item) => (
+            <button
+              key={item}
+              onClick={() => setSection(item)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: `1px solid ${section === item ? P.accent : P.border}`,
+                background: section === item ? P.accent : "transparent",
+                color: section === item ? P.bg : P.muted,
+                cursor: "pointer",
+                fontFamily: P.mono,
+                fontSize: 10,
+              }}
+            >
+              {SECTION_COPY[item].title}
+            </button>
+          ))}
         </div>
       </header>
 
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto", overflowX: "auto" }}>
         <main style={{ minHeight: "100%", minWidth: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
-          {tab === "setup" ? (
+          <Panel title="WORKSPACE">
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{activeSection.title}</div>
+                <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>{activeSection.detail}</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ padding: "4px 10px", borderRadius: 999, background: canUseSetup ? "rgba(205,255,19,0.12)" : "rgba(255,82,92,0.12)", color: canUseSetup ? P.accent2 : P.danger, fontSize: 10, fontFamily: P.mono }}>
+                  Setup {canUseSetup ? "Ready" : "Limited"}
+                </span>
+                <span style={{ padding: "4px 10px", borderRadius: 999, background: canUseOverlay ? "rgba(0,229,255,0.12)" : "rgba(255,82,92,0.12)", color: canUseOverlay ? P.accent : P.danger, fontSize: 10, fontFamily: P.mono }}>
+                  Overlay {canUseOverlay ? "Ready" : "Limited"}
+                </span>
+                <span style={{ padding: "4px 10px", borderRadius: 999, background: senderConnected ? "rgba(0,229,255,0.12)" : "rgba(59,73,76,0.18)", color: senderConnected ? P.accent : P.muted, fontSize: 10, fontFamily: P.mono }}>
+                  Sender {senderConnected ? "Online" : "Offline"}
+                </span>
+              </div>
+            </div>
+
+            {section === "setup-manager" ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                {[
+                  { id: "builder" as const, label: "Setup Builder" },
+                  { id: "analysis" as const, label: "Session Analysis" },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSetupWorkspace(item.id)}
+                    style={{
+                      padding: "7px 12px",
+                      borderRadius: 999,
+                      border: `1px solid ${setupWorkspace === item.id ? P.accent2 : P.border}`,
+                      background: setupWorkspace === item.id ? P.accent2 : "transparent",
+                      color: setupWorkspace === item.id ? P.bg : P.muted,
+                      cursor: "pointer",
+                      fontFamily: P.mono,
+                      fontSize: 10,
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </Panel>
+
+          {section === "setup-manager" && setupWorkspace === "builder" ? (
           <>
             <Panel title="AUTO CONTEXT">
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
@@ -1091,8 +1627,111 @@ export function F1SetupManager() {
             ) : null}
           </>
           ) : null}
-          {tab === "telemetry" ? (
+
+          {section === "setup-manager" && setupWorkspace === "analysis" ? (
+            <SessionAnalysisSection
+              theme={P}
+              analysisUrl={analysisUrl}
+              draftAnalysisUrl={draftAnalysisUrl}
+              onDraftAnalysisUrlChange={setDraftAnalysisUrl}
+              onSaveAnalysisUrl={saveAnalysisUrl}
+            />
+          ) : null}
+
+          {section === "sender" ? (
           <>
+            <Panel title="SENDER STATUS">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                <StatTile label="Sender" value={senderConnected ? "Online" : "Offline"} accent={senderConnected ? P.accent : P.danger} />
+                <StatTile label="UDP Port" value={senderStatus?.udpPort ? String(senderStatus.udpPort) : "--"} />
+                <StatTile label="Track" value={detectedTrack ?? liveSession?.trackName ?? "--"} />
+                <StatTile label="Session" value={liveSession?.sessionType ?? "--"} />
+                <StatTile label="Weather" value={liveSession?.weather ?? "--"} />
+                <StatTile label="Track Temp" value={typeof liveSession?.trackTemp === "number" ? `${liveSession.trackTemp.toFixed(0)}C` : "--"} />
+                <StatTile label="Best Lap" value={formatLapTime(livePlayer?.bestLapTime)} />
+                <StatTile label="Save Files" value={typeof senderStatus?.saveFiles === "boolean" ? (senderStatus.saveFiles ? "Enabled" : "Disabled") : "--"} />
+                <StatTile label="Connected Engineers" value={typeof senderStatus?.connectedEngineers === "number" ? String(senderStatus.connectedEngineers) : "--"} />
+              </div>
+            </Panel>
+
+            <Panel title="SENDER ENDPOINTS">
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Sender URL</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input value={draftSenderUrl} onChange={(event) => setDraftSenderUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSenderUrl(); }} style={{ flex: 1, minWidth: 240, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
+                    <button onClick={() => void saveSenderUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Analysis API</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input value={draftAnalysisUrl} onChange={(event) => setDraftAnalysisUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveAnalysisUrl(); }} style={{ flex: 1, minWidth: 240, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
+                    <button onClick={() => void saveAnalysisUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel title="ROOM & SHARING">
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>Engineer Dashboard URL</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <input
+                      value={draftEngineerDashboardUrl}
+                      onChange={(event) => setDraftEngineerDashboardUrl(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === "Enter") void saveEngineerDashboardUrl(); }}
+                      style={{ flex: 1, minWidth: 240, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                    />
+                    <button onClick={() => void saveEngineerDashboardUrl()} disabled={savingOverlayConfig} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: savingOverlayConfig ? "wait" : "pointer" }}>SAVE</button>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                  <StatTile label="Room Name" value={senderStatus?.roomName || "--"} />
+                  <StatTile label="Room Code" value={senderStatus?.roomCode || "--"} />
+                  <StatTile label="Room ID" value={senderStatus?.roomId || "--"} />
+                  <StatTile label="Access" value={senderStatus?.roomProtected ? "Password" : "Open"} />
+                  <StatTile label="Dashboard" value={engineerDashboardUrl} />
+                  <StatTile label="Invite Link" value={senderInvite?.link || "--"} />
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono, marginBottom: 8 }}>Connected Engineers</div>
+                  {senderPeers.length ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {senderPeers.map((peer) => (
+                        <div key={peer.peerId || `${peer.view}-${peer.state}`} style={{ padding: 10, borderRadius: 4, background: P.surface2, border: `1px solid ${P.border}` }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 6 }}>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 700 }}>{peer.peerId || "Unknown Peer"}</div>
+                              <div style={{ fontSize: 10, color: P.muted }}>View {peer.view || "cockpit"}</div>
+                            </div>
+                            <span style={{ fontSize: 10, color: P.accent }}>{peer.state || "unknown"}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {grantedPermissionLabels(peer.permissions).length ? (
+                              grantedPermissionLabels(peer.permissions).map((label) => (
+                                <span key={`${peer.peerId}-${label}`} style={{ padding: "3px 7px", borderRadius: 999, background: "rgba(0,229,255,0.12)", color: P.accent, fontSize: 9, fontFamily: P.mono }}>
+                                  {label}
+                                </span>
+                              ))
+                            ) : (
+                              <span style={{ fontSize: 10, color: P.muted }}>No permissions granted.</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: P.muted }}>No engineers connected yet.</div>
+                  )}
+                </div>
+              </div>
+            </Panel>
+
             <Panel title="RECORDING">
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                 {!recording ? (
@@ -1196,49 +1835,146 @@ export function F1SetupManager() {
             ) : null}
           </>
           ) : null}
-          {tab === "analysis" ? (
-            <SessionAnalysisSection
-              theme={P}
-              analysisUrl={analysisUrl}
-              draftAnalysisUrl={draftAnalysisUrl}
-              onDraftAnalysisUrlChange={setDraftAnalysisUrl}
-              onSaveAnalysisUrl={saveAnalysisUrl}
-            />
-          ) : null}
-          {tab === "settings" ? (
+
+          {section === "overlay" ? (
           <>
-            <Panel title="SENDER URL">
-              <div style={{ display: "grid", gap: 8 }}>
-                <input value={draftSenderUrl} onChange={(event) => setDraftSenderUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSenderUrl(); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
-                <button onClick={() => void saveSenderUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
-              </div>
-            </Panel>
+            <Panel title="OVERLAY STATUS">
+              {!canUseOverlay ? (
+                <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, border: `1px solid ${P.danger}`, background: "rgba(255,82,92,0.08)", color: P.text, fontSize: 11, lineHeight: 1.6 }}>
+                  Overlay permission is reported as limited by the sender. Local controls remain visible, but the runtime may reject changes until the permission issue is cleared.
+                </div>
+              ) : null}
 
-            <Panel title="ANALYSIS SERVER">
-              <div style={{ display: "grid", gap: 8 }}>
-                <input value={draftAnalysisUrl} onChange={(event) => setDraftAnalysisUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveAnalysisUrl(); }} style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }} />
-                <button onClick={() => void saveAnalysisUrl()} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: "pointer" }}>SAVE</button>
-              </div>
-            </Panel>
+              {overlayError ? (
+                <div style={{ marginBottom: 12, padding: 10, borderRadius: 4, background: "rgba(255,82,92,0.08)", color: P.danger, fontSize: 11 }}>
+                  {overlayError}
+                </div>
+              ) : null}
+              {overlayNotice ? (
+                <div style={{ marginBottom: 12, padding: 10, borderRadius: 4, background: "rgba(0,229,255,0.08)", color: P.accent, fontSize: 11 }}>
+                  {overlayNotice}
+                </div>
+              ) : null}
 
-            <Panel title="STATUS">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {[{ label: "Sender", value: senderConnected ? "Online" : "Offline" }, { label: "Track", value: detectedTrack ?? liveSession?.trackName ?? "N/A" }, { label: "Session", value: liveSession?.sessionType ?? "N/A" }, { label: "Weather", value: liveSession?.weather ?? "N/A" }, { label: "Best Lap", value: formatLapTime(livePlayer?.bestLapTime) }, { label: "Track Temp", value: typeof liveSession?.trackTemp === "number" ? `${liveSession.trackTemp.toFixed(0)}C` : "N/A" }].map((item) => (
-                  <div key={item.label} style={{ padding: 10, borderRadius: 4, background: P.surface2 }}>
-                    <div style={{ fontSize: 10, color: P.muted, marginBottom: 4 }}>{item.label}</div>
-                    <div style={{ fontSize: 12, fontWeight: 700 }}>{item.value}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                {([
+                  { key: "radar" as const, label: "Radar", accent: P.accent },
+                  { key: "weather" as const, label: "Weather", accent: P.accent2 },
+                  { key: "strategy" as const, label: "Strategy", accent: "#ff8f4d" },
+                ]).map((item) => (
+                  <div key={item.key} style={{ padding: 12, borderRadius: 4, background: P.surface2, border: `1px solid ${P.border}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>{item.label}</div>
+                        <div style={{ fontSize: 10, color: overlayState[item.key] ? item.accent : P.muted }}>{formatBooleanState(overlayState[item.key])}</div>
+                      </div>
+                      <button
+                        onClick={() => void toggleOverlayKind(item.key)}
+                        disabled={applyingOverlay}
+                        style={{ padding: "7px 10px", borderRadius: 4, border: "none", background: overlayState[item.key] ? item.accent : P.dim, color: P.bg, cursor: applyingOverlay ? "wait" : "pointer", fontFamily: P.mono, fontSize: 10 }}
+                      >
+                        {overlayState[item.key] ? "CLOSE" : "OPEN"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10, color: P.muted, lineHeight: 1.6 }}>
+                      {item.label} overlay is currently {overlayState[item.key] ? "running" : "idle"} on the sender host.
+                    </div>
                   </div>
                 ))}
               </div>
             </Panel>
 
-            <Panel title="PERMISSIONS">
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Panel title="PRESETS">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <input
+                  value={overlayPresetName}
+                  onChange={(event) => setOverlayPresetName(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") void saveOverlayPreset(); }}
+                  placeholder="Preset name"
+                  style={{ flex: 1, minWidth: 220, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                />
+                <button onClick={() => void saveOverlayPreset()} disabled={savingOverlayConfig} style={{ width: 140, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent, color: P.bg, fontFamily: P.mono, cursor: savingOverlayConfig ? "wait" : "pointer" }}>
+                  SAVE CURRENT
+                </button>
+              </div>
+
+              {overlayPresets.length ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {overlayPresets.map((preset) => (
+                    <div key={preset.id} style={{ padding: 12, borderRadius: 4, background: P.surface2, border: `1px solid ${P.border}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>{preset.name}</div>
+                          <div style={{ fontSize: 10, color: P.muted, marginTop: 4 }}>{preset.savedAtLocal || "Saved just now"}</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                            {([
+                              { label: "Radar", active: preset.radar },
+                              { label: "Weather", active: preset.weather },
+                              { label: "Strategy", active: preset.strategy },
+                            ]).map((item) => (
+                              <span key={`${preset.id}-${item.label}`} style={{ padding: "3px 7px", borderRadius: 999, background: item.active ? "rgba(0,229,255,0.12)" : "rgba(59,73,76,0.18)", color: item.active ? P.accent : P.muted, fontSize: 9, fontFamily: P.mono }}>
+                                {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button onClick={() => void applyOverlayPreset(preset)} disabled={applyingOverlay} style={{ padding: "6px 10px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, cursor: applyingOverlay ? "wait" : "pointer", fontFamily: P.mono, fontSize: 10 }}>APPLY</button>
+                          <button onClick={() => void deleteOverlayPreset(preset.id)} disabled={savingOverlayConfig} style={{ padding: "6px 10px", borderRadius: 4, border: `1px solid ${P.border}`, background: "transparent", color: P.muted, cursor: savingOverlayConfig ? "wait" : "pointer", fontFamily: P.mono, fontSize: 10 }}>DELETE</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: P.muted }}>No overlay presets saved yet.</div>
+              )}
+            </Panel>
+
+            <Panel title="HOTKEYS">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+                {([
+                  { key: "radar" as const, label: "Radar" },
+                  { key: "weather" as const, label: "Weather" },
+                  { key: "strategy" as const, label: "Strategy" },
+                ]).map((item) => (
+                  <div key={item.key} style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>{item.label}</div>
+                    <input
+                      value={draftOverlayHotkeys[item.key]}
+                      onChange={(event) =>
+                        setDraftOverlayHotkeys((current) => ({
+                          ...current,
+                          [item.key]: event.target.value,
+                        }))
+                      }
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ fontSize: 11, color: P.muted }}>
+                  Saved: Radar {overlayHotkeys.radar} / Weather {overlayHotkeys.weather} / Strategy {overlayHotkeys.strategy}
+                </div>
+                <button onClick={() => void saveOverlayHotkeySettings()} disabled={savingOverlayConfig} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: savingOverlayConfig ? "wait" : "pointer" }}>
+                  SAVE
+                </button>
+              </div>
+            </Panel>
+
+            <Panel title="ACCESS">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
                 {[{ label: "Pitwall", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.pitwall) : true }, { label: "Overlay", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true }, { label: "Setup", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.setupSupport) : true }].map((item) => (
                   <span key={item.label} style={{ padding: "4px 10px", borderRadius: 999, background: item.enabled ? "rgba(205,255,19,0.12)" : "rgba(255,82,92,0.12)", color: item.enabled ? P.accent2 : P.danger, fontSize: 10, fontFamily: P.mono }}>
                     {item.label}
                   </span>
                 ))}
+              </div>
+              <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                {senderPermissionLabels.length
+                  ? `Active sender permissions: ${senderPermissionLabels.join(", ")}.`
+                  : "Permission preview is unavailable until the sender reports driver permissions."}
               </div>
             </Panel>
           </>

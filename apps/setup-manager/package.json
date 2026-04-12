@@ -1,7 +1,7 @@
 {
   "name": "minmo-driver-pack",
   "version": "4.21.0",
-  "description": "Minmo Driver Pack — F1 25 Setup + Telemetry Suite",
+  "description": "F1 Driver Pack for F1 25 setup and telemetry",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
@@ -14,7 +14,7 @@
   },
   "build": {
     "appId": "engineer.frc.setup-manager",
-    "productName": "Minmo Driver Pack",
+    "productName": "F1 Driver Pack",
     "publish": [
       {
         "provider": "github",
