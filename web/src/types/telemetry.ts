@@ -214,12 +214,26 @@ export interface RaceSummary {
     frameIntervalMs: number;
     trackMap?: TrackMapData;
     session?: SessionInfo;
-    frames: {
-      timestamp: number;
-      pitwall: PitwallState;
-      raceControl?: RaceControlNotification[];
-    }[];
+    frames: ReplayFrame[];
   };
+}
+
+export interface ReplayFrame {
+  timestamp: number;
+  pitwall: PitwallState;
+  raceControl?: RaceControlNotification[];
+}
+
+export interface ReplayStreamMeta {
+  type: 'meta';
+  frameIntervalMs: number;
+  trackMap?: TrackMapData;
+  session?: SessionInfo;
+}
+
+export interface ReplayStreamFrame {
+  type: 'frame';
+  frame: ReplayFrame;
 }
 
 /**

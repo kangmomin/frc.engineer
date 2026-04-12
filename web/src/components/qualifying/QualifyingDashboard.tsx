@@ -16,6 +16,7 @@ import styles from './QualifyingDashboard.module.css';
 
 interface QualifyingDashboardProps {
   onSwitchToCockpit: () => void;
+  onSwitchToRaces?: () => void;
   onGoHome?: () => void;
   remoteAction?: {
     label: string;
@@ -155,6 +156,7 @@ function getPitLabel(pitStatus: number): { label: string; className: string } {
 
 export function QualifyingDashboard({
   onSwitchToCockpit,
+  onSwitchToRaces,
   onGoHome,
   remoteAction,
 }: QualifyingDashboardProps) {
@@ -219,6 +221,11 @@ export function QualifyingDashboard({
         <button type="button" className={styles.dockButton} onClick={onSwitchToCockpit}>
           Cockpit
         </button>
+        {onSwitchToRaces && (
+          <button type="button" className={styles.dockButton} onClick={onSwitchToRaces}>
+            Races
+          </button>
+        )}
         {remoteAction && (
           <button
             type="button"

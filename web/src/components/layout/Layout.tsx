@@ -10,16 +10,18 @@ import { getConnectionDetail, isConnectionFailure } from '../../utils/connection
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { PostRaceDebrief } from '../debrief/PostRaceDebrief';
 import { QualifyingDashboard } from '../qualifying/QualifyingDashboard';
+import { RaceArchiveDrawer } from '../races/RaceArchiveDrawer';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import { F1SetupManager } from '../setup/F1SetupManager';
 import styles from './Layout.module.css';
 
-type DashboardView = 'cockpit' | 'qualifying' | 'setup';
+type DashboardView = 'cockpit' | 'qualifying' | 'setup' | 'races';
 
 function readInitialView(): DashboardView {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
   if (view === 'qualifying') return 'qualifying';
+  if (view === 'races') return 'races';
   if (view === 'setup') return 'setup';
   return 'cockpit';
 }
@@ -85,6 +87,7 @@ export function Layout() {
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
+  const setPlaybackActive = useTelemetryStore((state) => state.setPlaybackActive);
   const connectionState = useTelemetryStore((state) => state.connectionState);
   const raceResult = useTelemetryStore((state) => state.raceResult);
   const viewQualifying = useTelemetryStore((state) => state.featurePermissions.viewQualifying);
@@ -118,10 +121,13 @@ export function Layout() {
   const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView } = useWebRTCDataChannel(webrtcOpts);
 
   const switchView = useCallback((view: DashboardView) => {
+    if (dashboardView === 'races' && view !== 'races') {
+      setPlaybackActive(false);
+    }
     setDashboardView(view);
     persistView(view);
     sendView(view);
-  }, [sendView]);
+  }, [dashboardView, sendView, setPlaybackActive]);
 
   const handleRemoteConnect = useCallback((
     signalingUrl: string,
@@ -209,6 +215,7 @@ export function Layout() {
       {dashboardView === 'qualifying' && showQualifying ? (
         <QualifyingDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
+          onSwitchToRaces={() => switchView('races')}
           onGoHome={goToMainScreen}
           remoteAction={remoteAction}
         />
@@ -218,9 +225,38 @@ export function Layout() {
           showSettingsButton={false}
           remoteAction={remoteAction}
           onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
+          onSwitchToRaces={dashboardView === 'races' ? undefined : () => switchView('races')}
           onGoHome={goToMainScreen}
         />
       )}
+      {dashboardView === 'races' ? (
+        <>
+          <button
+            type="button"
+            className={styles.backdrop}
+            onClick={() => switchView('cockpit')}
+            aria-label="Close race archive"
+          />
+          <aside className={styles.drawer}>
+            <div className={styles.drawerHeader}>
+              <div>
+                <span className={styles.drawerEyebrow}>Archive</span>
+                <h2 className={styles.drawerTitle}>Race Replay</h2>
+              </div>
+              <button
+                type="button"
+                className={styles.closeButton}
+                onClick={() => switchView('cockpit')}
+              >
+                Close
+              </button>
+            </div>
+            <div className={styles.drawerBody}>
+              <RaceArchiveDrawer onClose={() => switchView('cockpit')} />
+            </div>
+          </aside>
+        </>
+      ) : null}
       {raceResult ? <PostRaceDebrief result={raceResult} onClose={clearRaceResult} /> : null}
     </div>
   );

@@ -1,0 +1,384 @@
+.archive {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+  padding: 18px;
+  color: var(--text-primary);
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(53, 52, 54, 0.78), rgba(32, 31, 32, 0.92)),
+    repeating-linear-gradient(45deg,
+      rgba(255, 255, 255, 0.018) 0,
+      rgba(255, 255, 255, 0.018) 2px,
+      transparent 2px,
+      transparent 6px);
+  border: 1px solid rgba(59, 73, 76, 0.15);
+}
+
+.eyebrow,
+.sectionHeader span,
+.statLabel,
+.summaryMeta,
+.label,
+.markerMeta,
+.chip {
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-racing);
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.subtitle {
+  margin-top: 10px;
+  color: var(--text-secondary);
+}
+
+.heroActions {
+  display: flex;
+  gap: 8px;
+}
+
+.actionButton,
+.closeButton,
+.speedButton,
+.markerButton,
+.listButton {
+  border: 1px solid rgba(59, 73, 76, 0.2);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.actionButton,
+.closeButton,
+.markerButton {
+  padding: 10px 14px;
+  font-family: var(--font-racing);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.actionButton:hover,
+.closeButton:hover,
+.speedButton:hover,
+.markerButton:hover,
+.listButton:hover {
+  border-color: rgba(0, 229, 255, 0.35);
+  background: rgba(0, 229, 255, 0.12);
+}
+
+.closeButton {
+  color: var(--accent-lime);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background:
+    linear-gradient(180deg, rgba(53, 52, 54, 0.78), rgba(32, 31, 32, 0.92)),
+    repeating-linear-gradient(45deg,
+      rgba(255, 255, 255, 0.018) 0,
+      rgba(255, 255, 255, 0.018) 2px,
+      transparent 2px,
+      transparent 6px);
+  border: 1px solid rgba(59, 73, 76, 0.15);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  font-family: var(--font-racing);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.sectionHeader span,
+.summaryMeta,
+.label,
+.markerMeta {
+  color: var(--text-secondary);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.searchInput,
+.select {
+  width: 100%;
+  border: 1px solid rgba(59, 73, 76, 0.2);
+  background: rgba(14, 14, 15, 0.64);
+  color: var(--text-primary);
+  padding: 11px 12px;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.raceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.listButton {
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+}
+
+.listButtonActive {
+  border-color: rgba(0, 229, 255, 0.35);
+  background: rgba(0, 229, 255, 0.12);
+}
+
+.listTop,
+.listMeta,
+.summaryTop,
+.summaryGrid,
+.frameStats,
+.timelineHeader,
+.controls,
+.markers {
+  display: flex;
+  gap: 10px;
+}
+
+.listTop,
+.summaryTop,
+.timelineHeader {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.listTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.listTitle strong,
+.summaryTitle {
+  font-family: var(--font-racing);
+  font-weight: 800;
+}
+
+.listMeta {
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--text-secondary);
+}
+
+.chipAccent {
+  color: var(--accent-lime);
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(14, 14, 15, 0.5);
+}
+
+.statLabel {
+  color: var(--text-secondary);
+}
+
+.statValue {
+  font-family: var(--font-racing);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.summaryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.timelineRailWrap {
+  position: relative;
+  padding-top: 22px;
+}
+
+.markerRail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 18px;
+}
+
+.markerDot {
+  position: absolute;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.markerDotPenalty {
+  background: var(--accent-red);
+}
+
+.markerDotSafety {
+  background: #f7d047;
+}
+
+.markerDotBattle {
+  background: var(--accent);
+}
+
+.timelineInput {
+  width: 100%;
+}
+
+.timelineHeader {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.controls {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.speedButton,
+.markerButton {
+  padding: 8px 10px;
+}
+
+.speedButtonActive {
+  border-color: rgba(205, 255, 19, 0.35);
+  background: rgba(205, 255, 19, 0.14);
+  color: var(--accent-lime);
+}
+
+.frameStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.markers {
+  flex-direction: column;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.markerButton {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.markerCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.markerMeta {
+  max-width: 190px;
+  text-align: right;
+}
+
+.emptyState,
+.errorState {
+  padding: 16px;
+  color: var(--text-secondary);
+  background: rgba(14, 14, 15, 0.5);
+}
+
+.errorState {
+  color: var(--accent-red-hover);
+}
+
+@media (max-width: 900px) {
+  .archive {
+    padding: 14px;
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  .heroActions {
+    width: 100%;
+  }
+
+  .filters,
+  .summaryGrid,
+  .frameStats {
+    grid-template-columns: 1fr;
+  }
+}

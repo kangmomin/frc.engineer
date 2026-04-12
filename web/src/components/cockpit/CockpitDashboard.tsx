@@ -105,6 +105,7 @@ interface CockpitDashboardProps {
     active?: boolean;
   };
   onSwitchToQualifying?: () => void;
+  onSwitchToRaces?: () => void;
   onGoHome?: () => void;
 }
 
@@ -113,6 +114,7 @@ export function CockpitDashboard({
   showSettingsButton,
   remoteAction,
   onSwitchToQualifying,
+  onSwitchToRaces,
   onGoHome,
 }: CockpitDashboardProps) {
   const {
@@ -329,6 +331,16 @@ export function CockpitDashboard({
             Quali
           </button>
         )}
+        {onSwitchToRaces && (
+          <button
+            type="button"
+            className={`${styles.remoteButton} ${playbackActive ? styles.remoteActive : ''}`}
+            onClick={onSwitchToRaces}
+            aria-label="Open race archive"
+          >
+            Races
+          </button>
+        )}
         {remoteAction && (
           <button
             type="button"
@@ -339,6 +351,7 @@ export function CockpitDashboard({
             {remoteAction.label}
           </button>
         )}
+        {playbackActive && <span className={`${styles.remoteButton} ${styles.remoteActive}`}>Replay</span>}
       </div>
 
       {settingsOpen && (
