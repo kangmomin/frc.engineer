@@ -10,7 +10,7 @@ import {
   getSetupFeel,
   getSetupTags,
   getTrackCatalog,
-} from "@shared/setup-manager/catalog";
+} from "./catalog";
 
 type WeatherMode = "dry" | "rain" | null;
 
