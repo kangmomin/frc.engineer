@@ -40,6 +40,7 @@ const (
 	ParticipantDataSize  = 57
 	CarStatusDataSize    = 55
 	SessionPacketSize    = 685
+	recordingPageSize    = 12
 )
 
 var mockudpVersion = "v3.30.0"
@@ -84,10 +85,13 @@ func main() {
 
 func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64, loop bool) {
 	scanner := bufio.NewScanner(os.Stdin)
+	page := 0
 
 	for {
 		// Collect available recordings
-		recordings := listRecordings()
+		recordings, cleanup := listRecordings()
+		pageItems, currentPage, totalPages := paginateRecordings(recordings, page, recordingPageSize)
+		page = currentPage
 
 		fmt.Println()
 		fmt.Println("╔══════════════════════════════════════════╗")
@@ -96,7 +100,7 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		fmt.Println("╠══════════════════════════════════════════╣")
 		fmt.Println("║  1. Simulate (synthetic data)            ║")
 
-		for i, rec := range recordings {
+		for i, rec := range pageItems {
 			st := rec.sessionType
 			size := fmt.Sprintf("%.1fMB", float64(rec.size)/(1024*1024))
 			fmt.Printf("║  %d. %-30s %5s ║\n", i+2, st, size)
@@ -106,6 +110,19 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		fmt.Printf("║  L. Loop  (current: %-5v)               ║\n", loop)
 		fmt.Println("║  0. Exit                                ║")
 		fmt.Println("╚══════════════════════════════════════════╝")
+
+		if cleanup.deletedCount > 0 {
+			fmt.Printf("Cleaned %d recordings under 30MB (%.1f MB freed)\n", cleanup.deletedCount, float64(cleanup.deletedBytes)/(1024*1024))
+		}
+		if totalPages > 1 {
+			fmt.Printf("Page %d/%d | showing %d recordings on this page\n", currentPage+1, totalPages, len(pageItems))
+			if currentPage+1 < totalPages {
+				fmt.Println("N. Next page")
+			}
+			if currentPage > 0 {
+				fmt.Println("P. Previous page")
+			}
+		}
 		fmt.Print("Select: ")
 
 		if !scanner.Scan() {
@@ -116,6 +133,24 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		if choice == "0" {
 			fmt.Println("Bye!")
 			return
+		}
+
+		if choice == "n" {
+			if currentPage+1 < totalPages {
+				page = currentPage + 1
+			} else {
+				fmt.Println("Already on the last page.")
+			}
+			continue
+		}
+
+		if choice == "p" {
+			if currentPage > 0 {
+				page = currentPage - 1
+			} else {
+				fmt.Println("Already on the first page.")
+			}
+			continue
 		}
 
 		if choice == "s" {
@@ -147,52 +182,87 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		}
 
 		idx := 0
-		if _, err := fmt.Sscanf(choice, "%d", &idx); err != nil || idx < 2 || idx > len(recordings)+1 {
+		if _, err := fmt.Sscanf(choice, "%d", &idx); err != nil || idx < 2 || idx > len(pageItems)+1 {
 			fmt.Println("Invalid selection.")
 			continue
 		}
 
-		rec := recordings[idx-2]
+		rec := pageItems[idx-2]
+		fmt.Printf("Loading replay: %s\n", rec.name)
+		data, err := rec.loadData()
+		if err != nil {
+			fmt.Printf("Failed to load %s: %v\n", rec.name, err)
+			continue
+		}
 		fmt.Printf("Replaying: %s (%.1f MB) at %.1fx (Ctrl+C to stop)\n", rec.name, float64(rec.size)/(1024*1024), speed)
 		ctx, cancel := interruptContext()
-		runReplayFromBytes(ctx, conn, rec.name, rec.data, speed, loop)
+		runReplayFromBytes(ctx, conn, rec.name, data, speed, loop)
 		cancel()
 	}
 }
 
 type recordingEntry struct {
-	name        string
-	size        int
-	data        []byte
-	sessionType string
+	name         string
+	size         int64
+	sessionType  string
+	path         string
+	embeddedPath string
 }
 
-const minRecordingSize = 1 * 1024 * 1024 // 1 MB
+const minRecordingSize = 30 * 1024 * 1024 // 30 MB
 
-func listRecordings() []recordingEntry {
+type cleanupSummary struct {
+	deletedCount int
+	deletedBytes int64
+}
+
+func (r recordingEntry) loadData() ([]byte, error) {
+	if r.path != "" {
+		return os.ReadFile(r.path)
+	}
+	if r.embeddedPath != "" {
+		return embeddedRecordings.ReadFile(r.embeddedPath)
+	}
+	return nil, fmt.Errorf("recording %q has no readable source", r.name)
+}
+
+func listRecordings() ([]recordingEntry, cleanupSummary) {
 	var entries []recordingEntry
+	seen := make(map[string]struct{})
+	cleanup := cleanupSmallRecordings(
+		[]string{"recordings", filepath.Join("cmd", "mockudp", "recordings")},
+		[]string{"data/packets", "../data/packets"},
+		minRecordingSize,
+	)
 
-	// Embedded recordings
+	for _, root := range []string{"recordings", filepath.Join("cmd", "mockudp", "recordings")} {
+		entries = append(entries, collectDiskRecordings(root, seen)...)
+	}
+
 	fs.WalkDir(embeddedRecordings, "recordings", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".bin") {
 			return nil
 		}
-		data, err := embeddedRecordings.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		if len(data) < minRecordingSize {
+		info, err := d.Info()
+		if err != nil || info.Size() <= minRecordingSize {
 			return nil
 		}
 		name := strings.TrimPrefix(path, "recordings/")
 		name = strings.TrimSuffix(name, ".bin")
-		entries = append(entries, recordingEntry{name: name, size: len(data), data: data, sessionType: extractSessionType(data)})
+		if _, ok := seen[name]; ok {
+			return nil
+		}
+		seen[name] = struct{}{}
+		entries = append(entries, recordingEntry{
+			name:         name,
+			size:         info.Size(),
+			sessionType:  extractSessionTypeFromFS(embeddedRecordings, path),
+			embeddedPath: path,
+		})
 		return nil
 	})
 
-	// External recordings from data/packets/*/raw.bin (if running near the project)
-	packetDirs := []string{"data/packets", "../data/packets"}
-	for _, base := range packetDirs {
+	for _, base := range []string{"data/packets", "../data/packets"} {
 		dirs, err := os.ReadDir(base)
 		if err != nil {
 			continue
@@ -202,22 +272,145 @@ func listRecordings() []recordingEntry {
 				continue
 			}
 			rawPath := filepath.Join(base, d.Name(), "raw.bin")
-			data, err := os.ReadFile(rawPath)
-			if err != nil || len(data) < minRecordingSize {
+			info, err := os.Stat(rawPath)
+			if err != nil || info.Size() <= minRecordingSize {
 				continue
 			}
-			entries = append(entries, recordingEntry{name: d.Name(), size: len(data), data: data, sessionType: extractSessionType(data)})
+			name := d.Name()
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			entries = append(entries, recordingEntry{
+				name:        name,
+				size:        info.Size(),
+				path:        rawPath,
+				sessionType: extractSessionTypeFromFile(rawPath),
+			})
 		}
 	}
 
-	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].size == entries[j].size {
+			return entries[i].name < entries[j].name
+		}
+		return entries[i].size > entries[j].size
+	})
+	return entries, cleanup
+}
+
+func collectDiskRecordings(root string, seen map[string]struct{}) []recordingEntry {
+	var entries []recordingEntry
+	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(strings.ToLower(path), ".bin") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() <= minRecordingSize {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		name := strings.TrimSuffix(filepath.ToSlash(rel), ".bin")
+		if _, ok := seen[name]; ok {
+			return nil
+		}
+		seen[name] = struct{}{}
+		entries = append(entries, recordingEntry{
+			name:        name,
+			size:        info.Size(),
+			path:        path,
+			sessionType: extractSessionTypeFromFile(path),
+		})
+		return nil
+	})
 	return entries
+}
+
+func cleanupSmallRecordings(recordingRoots, packetRoots []string, maxSize int64) cleanupSummary {
+	var summary cleanupSummary
+	seenPaths := make(map[string]struct{})
+
+	removeFile := func(path string, size int64) {
+		resolved, err := filepath.Abs(path)
+		if err == nil {
+			if _, ok := seenPaths[resolved]; ok {
+				return
+			}
+			seenPaths[resolved] = struct{}{}
+		}
+		if err := os.Remove(path); err == nil {
+			summary.deletedCount++
+			summary.deletedBytes += size
+		}
+	}
+
+	for _, root := range recordingRoots {
+		filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(strings.ToLower(path), ".bin") {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil || info.Size() > maxSize {
+				return nil
+			}
+			removeFile(path, info.Size())
+			return nil
+		})
+	}
+
+	for _, base := range packetRoots {
+		dirs, err := os.ReadDir(base)
+		if err != nil {
+			continue
+		}
+		for _, d := range dirs {
+			if !d.IsDir() {
+				continue
+			}
+			rawPath := filepath.Join(base, d.Name(), "raw.bin")
+			info, err := os.Stat(rawPath)
+			if err != nil || info.Size() > maxSize {
+				continue
+			}
+			removeFile(rawPath, info.Size())
+			_ = os.Remove(filepath.Dir(rawPath))
+		}
+	}
+
+	return summary
+}
+
+func paginateRecordings(entries []recordingEntry, page, pageSize int) ([]recordingEntry, int, int) {
+	if pageSize <= 0 {
+		pageSize = recordingPageSize
+	}
+	totalPages := 1
+	if len(entries) > 0 {
+		totalPages = (len(entries) + pageSize - 1) / pageSize
+	}
+	if page < 0 {
+		page = 0
+	}
+	if page >= totalPages {
+		page = totalPages - 1
+	}
+	start := page * pageSize
+	if start > len(entries) {
+		start = len(entries)
+	}
+	end := start + pageSize
+	if end > len(entries) {
+		end = len(entries)
+	}
+	return entries[start:end], page, totalPages
 }
 
 // extractSessionType scans length-prefixed packets to find the first Session packet
 // and returns a human-readable session type label.
-func extractSessionType(data []byte) string {
-	r := bytes.NewReader(data)
+func extractSessionTypeFromReader(r io.Reader) string {
 	var lenBuf [4]byte
 	for {
 		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
@@ -237,6 +430,28 @@ func extractSessionType(data []byte) string {
 		}
 	}
 	return "?"
+}
+
+func extractSessionType(data []byte) string {
+	return extractSessionTypeFromReader(bytes.NewReader(data))
+}
+
+func extractSessionTypeFromFile(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return "?"
+	}
+	defer f.Close()
+	return extractSessionTypeFromReader(f)
+}
+
+func extractSessionTypeFromFS(fsys fs.FS, path string) string {
+	f, err := fsys.Open(path)
+	if err != nil {
+		return "?"
+	}
+	defer f.Close()
+	return extractSessionTypeFromReader(f)
 }
 
 func sessionTypeLabel(v byte) string {
