@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 
 import {
   buildConditionMismatch,
-  buildLapDelta,
+  buildMetricDelta,
+  buildTimeDelta,
   DEFAULT_ANALYSIS_URL,
   findComparisonLap,
   formatLapTime,
@@ -176,15 +177,15 @@ export function SessionAnalysisSection({
     const comparisonBrake = averageTrace(comparisonLap?.trace.brake ?? []);
 
     return [
-      { label: "Lap Delta", delta: buildLapDelta(comparisonLap?.lapTimeMs ?? null, baselineLap?.lapTimeMs ?? null) },
-      { label: "S1 Delta", delta: buildLapDelta(comparisonLap?.sector1Ms ?? null, baselineLap?.sector1Ms ?? null) },
-      { label: "S2 Delta", delta: buildLapDelta(comparisonLap?.sector2Ms ?? null, baselineLap?.sector2Ms ?? null) },
-      { label: "S3 Delta", delta: buildLapDelta(comparisonLap?.sector3Ms ?? null, baselineLap?.sector3Ms ?? null) },
-      { label: "Top Speed", delta: buildLapDelta(comparisonTopSpeed, baselineTopSpeed, false) },
-      { label: "Throttle Avg", delta: buildLapDelta(comparisonThrottle, baselineThrottle, false) },
-      { label: "Brake Avg", delta: buildLapDelta(comparisonBrake, baselineBrake, true) },
-      { label: "Understeer", delta: buildLapDelta(comparisonLap?.understeerPct ?? null, baselineLap?.understeerPct ?? null) },
-      { label: "Oversteer", delta: buildLapDelta(comparisonLap?.oversteerPct ?? null, baselineLap?.oversteerPct ?? null) },
+      { label: "Lap Delta", delta: buildTimeDelta(comparisonLap?.lapTimeMs ?? null, baselineLap?.lapTimeMs ?? null) },
+      { label: "S1 Delta", delta: buildTimeDelta(comparisonLap?.sector1Ms ?? null, baselineLap?.sector1Ms ?? null) },
+      { label: "S2 Delta", delta: buildTimeDelta(comparisonLap?.sector2Ms ?? null, baselineLap?.sector2Ms ?? null) },
+      { label: "S3 Delta", delta: buildTimeDelta(comparisonLap?.sector3Ms ?? null, baselineLap?.sector3Ms ?? null) },
+      { label: "Top Speed", delta: buildMetricDelta(comparisonTopSpeed, baselineTopSpeed, { precision: 0, unit: " km/h", mode: "higher" }) },
+      { label: "Throttle Avg", delta: buildMetricDelta(comparisonThrottle, baselineThrottle, { scale: 100, precision: 1, unit: "%", mode: "neutral" }) },
+      { label: "Brake Avg", delta: buildMetricDelta(comparisonBrake, baselineBrake, { scale: 100, precision: 1, unit: "%", mode: "neutral" }) },
+      { label: "Understeer", delta: buildMetricDelta(comparisonLap?.understeerPct ?? null, baselineLap?.understeerPct ?? null, { precision: 1, unit: "%", mode: "lower" }) },
+      { label: "Oversteer", delta: buildMetricDelta(comparisonLap?.oversteerPct ?? null, baselineLap?.oversteerPct ?? null, { precision: 1, unit: "%", mode: "lower" }) },
     ];
   }, [baselineLap, comparisonLap]);
 

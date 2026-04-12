@@ -172,21 +172,54 @@ export function buildConditionMismatch(
   return `Comparison conditions differ: ${mismatches.join(", ")}.`;
 }
 
-export function buildLapDelta(after: number | null, before: number | null, lowerIsBetter = true): ComparisonDelta {
+export function buildTimeDelta(after: number | null, before: number | null): ComparisonDelta {
+  return buildMetricDelta(after, before, {
+    scale: 1 / 1000,
+    precision: 3,
+    unit: "s",
+    mode: "lower",
+  });
+}
+
+export function buildMetricDelta(
+  after: number | null,
+  before: number | null,
+  options: {
+    scale?: number;
+    precision?: number;
+    unit?: string;
+    mode?: "lower" | "higher" | "neutral";
+  } = {},
+): ComparisonDelta {
   if (typeof after !== "number" || typeof before !== "number") {
     return { value: null, text: "--", direction: "neutral" };
   }
 
+  const scale = typeof options.scale === "number" ? options.scale : 1;
+  const precision = typeof options.precision === "number" ? options.precision : 1;
+  const unit = options.unit ?? "";
+  const mode = options.mode ?? "neutral";
   const delta = after - before;
+  const scaledDelta = delta * scale;
   if (delta === 0) {
-    return { value: delta, text: lowerIsBetter ? "0.000s" : "0.0", direction: "same" };
+    return {
+      value: delta,
+      text: `${scaledDelta.toFixed(precision)}${unit}`,
+      direction: "same",
+    };
   }
 
-  const improved = lowerIsBetter ? delta < 0 : delta > 0;
+  let direction: ComparisonDelta["direction"] = "neutral";
+  if (mode === "lower") {
+    direction = delta < 0 ? "better" : "worse";
+  } else if (mode === "higher") {
+    direction = delta > 0 ? "better" : "worse";
+  }
+
   return {
     value: delta,
-    text: lowerIsBetter ? `${delta > 0 ? "+" : ""}${(delta / 1000).toFixed(3)}s` : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`,
-    direction: improved ? "better" : "worse",
+    text: `${scaledDelta > 0 ? "+" : ""}${scaledDelta.toFixed(precision)}${unit}`,
+    direction,
   };
 }
 
