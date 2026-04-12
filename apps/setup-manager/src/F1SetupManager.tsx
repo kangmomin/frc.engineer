@@ -989,6 +989,30 @@ export function F1SetupManager() {
     }
   };
 
+  const syncElectronOverlayHotkeys = async (
+    nextHotkeys: OverlayHotkeys,
+    options?: { silent?: boolean },
+  ): Promise<boolean> => {
+    if (!window.electronAPI?.setOverlayHotkeys) {
+      return true;
+    }
+    try {
+      const result = await window.electronAPI.setOverlayHotkeys(nextHotkeys);
+      if (result.errors.length) {
+        if (!options?.silent) {
+          setOverlayError(`Hotkey registration failed: ${result.errors.join(", ")}`);
+        }
+        return false;
+      }
+      return true;
+    } catch (error) {
+      if (!options?.silent) {
+        setOverlayError(error instanceof Error ? error.message : "Failed to register overlay hotkeys.");
+      }
+      return false;
+    }
+  };
+
   const persistLocalOps = async (
     nextHotkeys: OverlayHotkeys,
     nextPresets: OverlayPreset[],
@@ -1017,6 +1041,7 @@ export function F1SetupManager() {
       setOverlayHotkeys(savedHotkeys);
       setDraftOverlayHotkeys(savedHotkeys);
       setOverlayPresets(savedPresets);
+      await syncElectronOverlayHotkeys(savedHotkeys);
       setOverlayNotice(successMessage);
       return true;
     } catch (error) {
@@ -1130,6 +1155,7 @@ export function F1SetupManager() {
         const nextHotkeys = normalizeOverlayHotkeysInput(nextConfigData.overlayHotkeys);
         setOverlayHotkeys(nextHotkeys);
         setDraftOverlayHotkeys(nextHotkeys);
+        await syncElectronOverlayHotkeys(nextHotkeys);
       }
       if (nextConfigData?.overlayPresets) {
         setOverlayPresets(normalizeOverlayPresetsInput(nextConfigData.overlayPresets));
@@ -1184,6 +1210,7 @@ export function F1SetupManager() {
           const nextHotkeys = normalizeOverlayHotkeysInput(data.overlayHotkeys);
           setOverlayHotkeys(nextHotkeys);
           setDraftOverlayHotkeys(nextHotkeys);
+          void syncElectronOverlayHotkeys(nextHotkeys, { silent: !active });
         }
         if (data.overlayPresets) {
           setOverlayPresets(normalizeOverlayPresetsInput(data.overlayPresets));
@@ -1214,6 +1241,7 @@ export function F1SetupManager() {
         setDraftOverlayHotkeys(nextHotkeys);
         setOverlayPresets(nextPresets);
         setOverlayError(null);
+        void syncElectronOverlayHotkeys(nextHotkeys, { silent: !active });
       } catch {
         if (!active) {
           return;
@@ -2405,6 +2433,9 @@ export function F1SetupManager() {
             </Panel>
 
             <Panel title="HOTKEYS">
+              <div style={{ fontSize: 11, color: P.muted, marginBottom: 12, lineHeight: 1.6 }}>
+                Global overlay hotkeys stay active while F1 Driver Pack is running. Use combos like <span style={{ color: P.text }}>Alt+Shift+1</span> or <span style={{ color: P.text }}>Ctrl+Alt+R</span>.
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
                 {([
                   { key: "radar" as const, label: "Radar" },
@@ -2421,6 +2452,7 @@ export function F1SetupManager() {
                           [item.key]: event.target.value,
                         }))
                       }
+                      placeholder="Alt+Shift+1"
                       style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
                     />
                   </div>

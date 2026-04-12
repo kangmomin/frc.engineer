@@ -7,6 +7,20 @@ interface SenderStorageInfo {
   usingCustom: boolean;
 }
 
+interface OverlayHotkeySyncResult {
+  hotkeys: {
+    radar?: string;
+    weather?: string;
+    strategy?: string;
+  };
+  errors: string[];
+  registered: {
+    radar: boolean;
+    weather: boolean;
+    strategy: boolean;
+  };
+}
+
 declare global {
   interface Window {
     electronAPI?: {
@@ -16,6 +30,8 @@ declare global {
       getSetting?: <T = unknown>(key: string) => Promise<T | null>;
       setSetting?: (key: string, value: unknown) => Promise<void>;
       getAllSettings?: () => Promise<Record<string, unknown>>;
+      getOverlayHotkeys?: () => Promise<Record<string, string> | null>;
+      setOverlayHotkeys?: (hotkeys: Record<string, string>) => Promise<OverlayHotkeySyncResult>;
       getSenderStorageInfo?: () => Promise<SenderStorageInfo>;
       selectDirectory?: (defaultPath?: string) => Promise<string | null>;
       restartSender?: () => Promise<void>;

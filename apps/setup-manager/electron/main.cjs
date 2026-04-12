@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, globalShortcut, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -8,6 +8,8 @@ const distIndex = path.join(__dirname, '..', 'dist', 'index.html');
 const isDev = !app.isPackaged && !fs.existsSync(distIndex);
 const isWin = process.platform === 'win32';
 const SENDER_STORAGE_ROOT_KEY = 'frc_sender_storage_root';
+const OVERLAY_HOTKEYS_KEY = 'overlay_hotkeys';
+const DEFAULT_SENDER_API_BASE = 'http://localhost:8099';
 
 // ─── Persistent settings (survives app updates) ───
 const settingsPath = path.join(app.getPath('userData'), 'user-settings.json');
@@ -38,6 +40,80 @@ ipcMain.handle('get-all-settings', () => {
   return readSettings();
 });
 
+ipcMain.handle('set-overlay-hotkeys', (_event, hotkeys) => {
+  const result = registerOverlayHotkeys(hotkeys || {});
+  const data = readSettings();
+  data[OVERLAY_HOTKEYS_KEY] = result.hotkeys;
+  writeSettings(data);
+  return result;
+});
+
+ipcMain.handle('get-overlay-hotkeys', () => {
+  return readSettings()[OVERLAY_HOTKEYS_KEY] ?? null;
+});
+
+function normalizeHotkeyValue(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value
+    .split('+')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join('+');
+}
+
+function toElectronAccelerator(value) {
+  const normalized = normalizeHotkeyValue(value);
+  if (!normalized) {
+    return '';
+  }
+  return normalized
+    .split('+')
+    .map((part) => {
+      const lower = part.toLowerCase();
+      switch (lower) {
+        case 'ctrl':
+        case 'control':
+          return 'CommandOrControl';
+        case 'cmd':
+        case 'command':
+          return process.platform === 'darwin' ? 'Command' : 'Super';
+        case 'meta':
+        case 'super':
+        case 'win':
+        case 'windows':
+          return 'Super';
+        case 'option':
+          return 'Alt';
+        case 'esc':
+        case 'escape':
+          return 'Esc';
+        case 'return':
+          return 'Enter';
+        case 'arrowup':
+          return 'Up';
+        case 'arrowdown':
+          return 'Down';
+        case 'arrowleft':
+          return 'Left';
+        case 'arrowright':
+          return 'Right';
+        case 'plus':
+          return 'Plus';
+        default:
+          if (/^f\d{1,2}$/i.test(part)) {
+            return part.toUpperCase();
+          }
+          if (part.length === 1) {
+            return part.toUpperCase();
+          }
+          return part[0].toUpperCase() + part.slice(1);
+      }
+    })
+    .join('+');
+}
+
 function normalizeStoredPath(value) {
   if (typeof value !== 'string') {
     return null;
@@ -51,6 +127,90 @@ function normalizeStoredPath(value) {
 
 // ─── Sender process management ───
 let senderProcess = null;
+let registeredOverlayHotkeys = {};
+
+async function postSenderToggle(kind) {
+  const endpointMap = {
+    radar: '/api/radar/toggle',
+    weather: '/api/weather/toggle',
+    strategy: '/api/strategy/toggle',
+  };
+  const endpoint = endpointMap[kind];
+  if (!endpoint) {
+    return;
+  }
+  try {
+    const response = await fetch(`${DEFAULT_SENDER_API_BASE}${endpoint}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      console.error(`[hotkey] Failed to toggle ${kind}: HTTP ${response.status}`);
+    }
+  } catch (error) {
+    console.error(`[hotkey] Failed to toggle ${kind}:`, error instanceof Error ? error.message : String(error));
+  }
+}
+
+function unregisterOverlayHotkeys() {
+  Object.values(registeredOverlayHotkeys).forEach((accelerator) => {
+    if (accelerator && globalShortcut.isRegistered(accelerator)) {
+      globalShortcut.unregister(accelerator);
+    }
+  });
+  registeredOverlayHotkeys = {};
+}
+
+function registerOverlayHotkeys(hotkeys) {
+  const normalizedHotkeys = {
+    radar: normalizeHotkeyValue(hotkeys?.radar),
+    weather: normalizeHotkeyValue(hotkeys?.weather),
+    strategy: normalizeHotkeyValue(hotkeys?.strategy),
+  };
+  const errors = [];
+  const seenAccelerators = new Map();
+
+  unregisterOverlayHotkeys();
+
+  for (const [kind, value] of Object.entries(normalizedHotkeys)) {
+    if (!value) {
+      continue;
+    }
+    const accelerator = toElectronAccelerator(value);
+    if (!accelerator) {
+      errors.push(`${kind}: invalid hotkey`);
+      continue;
+    }
+    const duplicateKind = seenAccelerators.get(accelerator);
+    if (duplicateKind) {
+      errors.push(`${kind}: duplicates ${duplicateKind}`);
+      continue;
+    }
+
+    try {
+      const registered = globalShortcut.register(accelerator, () => {
+        void postSenderToggle(kind);
+      });
+      if (!registered) {
+        errors.push(`${kind}: failed to register ${value}`);
+        continue;
+      }
+      seenAccelerators.set(accelerator, kind);
+      registeredOverlayHotkeys[kind] = accelerator;
+    } catch (error) {
+      errors.push(`${kind}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  return {
+    hotkeys: normalizedHotkeys,
+    errors,
+    registered: {
+      radar: Boolean(registeredOverlayHotkeys.radar),
+      weather: Boolean(registeredOverlayHotkeys.weather),
+      strategy: Boolean(registeredOverlayHotkeys.strategy),
+    },
+  };
+}
 
 function findSenderBinary() {
   const candidates = [
@@ -284,6 +444,7 @@ function createWindow() {
 
 // ─── Lifecycle ───
 app.whenReady().then(() => {
+  registerOverlayHotkeys(readSettings()[OVERLAY_HOTKEYS_KEY] || {});
   startSender();
   const win = createWindow();
   if (app.isPackaged) {
@@ -299,6 +460,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void stopSender();
+});
+
+app.on('will-quit', () => {
+  unregisterOverlayHotkeys();
 });
 
 app.on('activate', () => {
