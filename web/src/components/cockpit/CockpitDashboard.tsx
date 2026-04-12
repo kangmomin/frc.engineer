@@ -661,31 +661,16 @@ export function CockpitDashboard({
         <div className={`${styles.panel} ${styles.energyPanel}`}>
           <PanelTitle title="Hybrid / Fuel Analysis" tone="primary" />
           <div className={styles.energyContent}>
-            <div className={styles.ersDial}>
-              <div
-                className={styles.ersDialRing}
-                style={{ ['--ring-fill' as string]: `${ersPct}%` }}
-              />
-              <div className={styles.ersDialCenter}>
-                <strong>{ersActualReady ? `${Math.round(ersPct)}%` : '--'}</strong>
-                <span>{ersActualReady ? getErsModeLabel(player) : '--'}</span>
-              </div>
-            </div>
-
-            <div className={styles.energyColumn}>
-              <div className={styles.setupMetrics}>
-                <MetricTile
-                  label="Brake Bias"
-                  value={player?.brakeBias ? `${player.brakeBias.toFixed(1)}%` : '--'}
-                  tone="tertiary"
-                  className={styles.compactMetricTile}
+            <div className={styles.energyDialColumn}>
+              <div className={styles.ersDial}>
+                <div
+                  className={styles.ersDialRing}
+                  style={{ ['--ring-fill' as string]: `${ersPct}%` }}
                 />
-                <MetricTile
-                  label="Diff On Throttle"
-                  value={player?.diffOnThrottle ? `${player.diffOnThrottle}%` : '--'}
-                  tone="primary"
-                  className={styles.compactMetricTile}
-                />
+                <div className={styles.ersDialCenter}>
+                  <strong>{ersActualReady ? `${Math.round(ersPct)}%` : '--'}</strong>
+                  <span>{ersActualReady ? getErsModeLabel(player) : '--'}</span>
+                </div>
               </div>
 
               <div className={styles.splitPills}>
@@ -698,12 +683,27 @@ export function CockpitDashboard({
                   <strong>{ersActualReady ? `${deploySplit.harvest}%` : '--'}</strong>
                 </div>
               </div>
+            </div>
 
-              <div className={styles.energyMetrics}>
+            <div className={styles.energyColumn}>
+              <div className={styles.energyCompactGrid}>
                 <MetricTile
-                  label="Fuel at Finish"
+                  label="Fuel Finish"
                   value={fuelMargin}
                   tone={fuelMargin.startsWith('-') ? 'secondary' : 'tertiary'}
+                  className={styles.compactMetricTile}
+                />
+                <MetricTile
+                  label="Brake Bias"
+                  value={player?.brakeBias ? `${player.brakeBias.toFixed(1)}%` : '--'}
+                  tone="tertiary"
+                  className={styles.compactMetricTile}
+                />
+                <MetricTile
+                  label="Diff On Throttle"
+                  value={player?.diffOnThrottle ? `${player.diffOnThrottle}%` : '--'}
+                  tone="primary"
+                  className={styles.compactMetricTile}
                 />
               </div>
             </div>
@@ -1402,11 +1402,14 @@ function getErsSplit(player: DriverInfo | null): { deploy: number; harvest: numb
 }
 
 function getErsModeLabel(player: DriverInfo | null): string {
+  const ERS_MODE_LABELS: Record<number, string> = {
+    0: 'NONE',
+    1: 'MEDIUM',
+    2: 'HOTLAP',
+    3: 'OVERTAKE',
+  };
   const mode = player?.ersDeployMode ?? 0;
-  if (mode >= 3) return 'Overtake';
-  if (mode === 2) return 'Balanced';
-  if (mode === 1) return 'Build';
-  return 'Standby';
+  return ERS_MODE_LABELS[mode] ?? ERS_MODE_LABELS[0];
 }
 
 function formatErsActual(driver: DriverInfo): string {
