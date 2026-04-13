@@ -283,6 +283,10 @@ export function CockpitDashboard({
   );
   const sectorHistoryMap = useCompletedSectorHistory(drivers, session);
 
+  const carAhead = useMemo(() => {
+    if (!player) return null;
+    return drivers.find((driver) => driver.position === player.position - 1) ?? null;
+  }, [drivers, player]);
   const carBehind = useMemo(() => {
     if (!player) return null;
     return drivers.find((driver) => driver.position === player.position + 1) ?? null;
@@ -836,6 +840,41 @@ export function CockpitDashboard({
       </section>
 
       <div className={styles.sideRail}>
+        <div className={`${styles.panel} ${styles.combatPanel}`}>
+          <PanelTitle title="Combat Command" tone="secondary" detail={player ? `P${player.position} Attack / Defend` : 'Racecraft Monitor'} />
+          <BattleTarget
+            label="Target Ahead"
+            driver={carAhead}
+            gapLabel={formatAheadGap(player)}
+            paceLabel={formatBattlePace(player, carAhead, 'ahead')}
+            tone="tertiary"
+          />
+          <div className={styles.progressCard}>
+            <div className={styles.progressHeader}>
+              <span>DRS Status</span>
+              <span className={styles.progressStatus}>
+                {getDrsWindowStatus(player)}
+              </span>
+            </div>
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${getDrsProgress(player)}%` }}
+              />
+            </div>
+            <div className={styles.progressFooter}>
+              <span>{getDrsWindowLabel(player)}</span>
+              <strong>{formatDrsWindow(player)}</strong>
+            </div>
+          </div>
+          <BattleTarget
+            label="Chaser Behind"
+            driver={carBehind}
+            gapLabel={formatBehindGap(carBehind)}
+            paceLabel={formatBattlePace(player, carBehind, 'behind')}
+            tone="secondary"
+          />
+        </div>
         <div className={`${styles.panel} ${styles.strategyPanel}`}>
           <PanelTitle title="Pit Strategy" tone="primary" detail={strategyPanel.titleDetail} />
           <div className={styles.strategyRow}>
@@ -1363,6 +1402,35 @@ function MetricTile({
   );
 }
 
+function BattleTarget({
+  label,
+  driver,
+  gapLabel,
+  paceLabel,
+  tone,
+}: {
+  label: string;
+  driver: DriverInfo | null;
+  gapLabel: string;
+  paceLabel: string;
+  tone: 'tertiary' | 'secondary';
+}) {
+  return (
+    <div className={styles.battleCard}>
+      <div className={styles.battleHeader}>
+        <span>{label}</span>
+        <strong className={styles[tone]}>
+          {driver ? abbreviateDriver(driver.name, driver.index) : '--'}
+        </strong>
+      </div>
+      <div className={styles.metricGrid}>
+        <MetricTile label="Gap" value={gapLabel} tone={tone} />
+        <MetricTile label="Pace Δ" value={paceLabel} tone={tone === 'tertiary' ? 'primary' : 'neutral'} />
+      </div>
+    </div>
+  );
+}
+
 function DamageMetric({ label, value }: { label: string; value: number }) {
   return (
     <div className={styles.damageMetric}>
@@ -1508,6 +1576,60 @@ function SectorDeltaCell({
       })}
     </span>
   );
+}
+
+function abbreviateDriver(name: string, fallbackIndex?: number): string {
+  const trimmed = name?.trim();
+  if (!trimmed) return fallbackIndex != null ? `P${fallbackIndex}` : '---';
+  const parts = trimmed.split(/\s+/);
+  return (parts.length > 1 ? parts[parts.length - 1] : trimmed).slice(0, 3).toUpperCase();
+}
+
+function formatAheadGap(player: DriverInfo | null): string {
+  if (player?.deltaToCarInFront == null || player.deltaToCarInFront <= 0) return '--';
+  return `-${(player.deltaToCarInFront / 1000).toFixed(2)}s`;
+}
+
+function formatBehindGap(carBehind: DriverInfo | null): string {
+  if (carBehind?.deltaToCarInFront == null || carBehind.deltaToCarInFront <= 0) return '--';
+  return `+${(carBehind.deltaToCarInFront / 1000).toFixed(2)}s`;
+}
+
+function formatBattlePace(
+  player: DriverInfo | null,
+  rival: DriverInfo | null,
+  side: 'ahead' | 'behind',
+): string {
+  if (!player || !rival || player.lastLapTime <= 0 || rival.lastLapTime <= 0) return '--';
+  const deltaMs = side === 'ahead'
+    ? player.lastLapTime - rival.lastLapTime
+    : rival.lastLapTime - player.lastLapTime;
+  return `${deltaMs > 0 ? '+' : ''}${(deltaMs / 1000).toFixed(2)}s`;
+}
+
+function getDrsProgress(player: DriverInfo | null): number {
+  if (!player?.deltaToCarInFront || player.deltaToCarInFront <= 0) return 0;
+  return clamp(100 - (player.deltaToCarInFront / 1000) * 100, 0, 100);
+}
+
+function getDrsWindowStatus(player: DriverInfo | null): string {
+  if (!player?.deltaToCarInFront || player.deltaToCarInFront <= 0) return 'NO TARGET';
+  if (player.deltaToCarInFront <= 1000) return 'ARMED';
+  if (player.deltaToCarInFront <= 1500) return 'PRESSING';
+  return 'LOCKED';
+}
+
+function getDrsWindowLabel(player: DriverInfo | null): string {
+  if (!player?.deltaToCarInFront || player.deltaToCarInFront <= 0) return 'Combat Window';
+  return player.deltaToCarInFront <= 1000 ? 'DRS Gap' : 'To DRS';
+}
+
+function formatDrsWindow(player: DriverInfo | null): string {
+  if (!player?.deltaToCarInFront || player.deltaToCarInFront <= 0) return '--';
+  if (player.deltaToCarInFront <= 1000) {
+    return `${(player.deltaToCarInFront / 1000).toFixed(2)}s`;
+  }
+  return `${((player.deltaToCarInFront - 1000) / 1000).toFixed(2)}s`;
 }
 
 function formatGap(driver: DriverInfo): string {

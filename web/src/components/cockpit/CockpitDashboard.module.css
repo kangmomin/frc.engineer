@@ -799,12 +799,20 @@
   overflow: hidden;
 }
 
+.combatPanel,
 .strategyPanel,
 .tyrePanel,
 .energyPanel,
 .damagePanel {
   padding: 14px;
   min-height: 0;
+}
+
+.combatPanel {
+  border-right: 4px solid rgba(255, 82, 92, 0.58);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .strategyPanel {
@@ -1525,6 +1533,7 @@
     width: 100%;
   }
 
+  .combatPanel,
   .strategyPanel,
   .tyrePanel,
   .energyPanel,
