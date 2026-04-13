@@ -55,6 +55,17 @@ export function usePitwallWebSocket(
     }
   }, []);
 
+  const cancelPendingFrames = useCallback(() => {
+    if (pitwallRafRef.current) {
+      cancelAnimationFrame(pitwallRafRef.current);
+      pitwallRafRef.current = 0;
+    }
+    if (positionsRafRef.current) {
+      cancelAnimationFrame(positionsRafRef.current);
+      positionsRafRef.current = 0;
+    }
+  }, []);
+
   const connect = useCallback(() => {
     // Don't connect if URL is empty (remote mode) or unmounted
     if (!opts.url) return;
@@ -152,13 +163,13 @@ export function usePitwallWebSocket(
     return () => {
       isMountedRef.current = false;
       clearReconnectTimeout();
-      if (pitwallRafRef.current) cancelAnimationFrame(pitwallRafRef.current);
+      cancelPendingFrames();
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [connect, clearReconnectTimeout]);
+  }, [cancelPendingFrames, connect, clearReconnectTimeout]);
 
   return {
     reconnect,

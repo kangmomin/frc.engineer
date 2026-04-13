@@ -219,7 +219,12 @@ const trackSources: TrackSource[] = [
   { name: "Abu Dhabi", badge: "AE", round: 24, normalizedKey: "abu-dhabi", brendonTrack: "Abu Dhabi" },
 ];
 
-export const TRACKS: TrackOption[] = trackSources.map(({ normalizedKey: _normalizedKey, brendonTrack: _brendonTrack, ...track }) => track);
+export const TRACKS: TrackOption[] = trackSources.map(({ name, badge, round, sprint }) => ({
+  name,
+  badge,
+  round,
+  sprint,
+}));
 
 export const TEAM_PROFILES: TeamProfile[] = [
   { name: "Red Bull", total: 55, pros: "Best front aero and strongest total downforce.", cons: "Heaviest package and awkward weight distribution.", mass: 803, drag: 0.01303, aeroF: 3.368, aeroR: 1.9974, gear: 1.6417, wDist: 0.204 },

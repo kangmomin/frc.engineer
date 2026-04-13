@@ -161,7 +161,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     setConnectionState('disconnected');
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setRtcState('new');
-  }, [cleanup, setConnectionState, setFeaturePermissions]);
+  }, [cleanup, clearStageTimeout, setConnectionState, setFeaturePermissions]);
 
   const sendView = useCallback((view: string) => {
     if (dcRef.current?.readyState === 'open') {

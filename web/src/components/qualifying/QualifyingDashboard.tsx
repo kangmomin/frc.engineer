@@ -168,7 +168,7 @@ export function QualifyingDashboard({
   );
 
   const session = pitwallState?.session ?? null;
-  const allDrivers = pitwallState?.drivers ?? [];
+  const allDrivers = useMemo(() => pitwallState?.drivers ?? [], [pitwallState?.drivers]);
   const playerIndex = pitwallState?.playerIndex ?? 0;
 
   const isQualifying = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(session?.sessionType ?? '');

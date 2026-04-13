@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
@@ -36,6 +36,107 @@ const DEFAULT_PIT_SETTINGS: PitSettings = {
   optimalTempHigh: 110,
 };
 
+const LEADERBOARD_COLUMN_ORDER: LeaderboardColumnKey[] = [
+  'drs',
+  'ers',
+  'gap',
+  'interval',
+  'lastLap',
+  'penalty',
+  'tyre',
+  'pit',
+  'vmax',
+  'sector',
+  'damage',
+];
+
+const DEFAULT_LEADERBOARD_COLUMNS: LeaderboardColumnVisibility = {
+  drs: true,
+  ers: true,
+  gap: true,
+  interval: true,
+  lastLap: true,
+  penalty: true,
+  tyre: true,
+  pit: true,
+  vmax: true,
+  sector: true,
+  damage: true,
+};
+
+const DEFAULT_LEADERBOARD_COLUMN_WIDTHS: LeaderboardColumnWidths = {
+  position: 52,
+  driver: 150,
+  drs: 56,
+  ers: 72,
+  gap: 92,
+  interval: 72,
+  lastLap: 88,
+  penalty: 80,
+  tyre: 100,
+  pit: 56,
+  vmax: 60,
+  sector: 200,
+  damage: 128,
+};
+
+const LEADERBOARD_COLUMN_MIN_WIDTHS: LeaderboardColumnWidths = {
+  position: 44,
+  driver: 120,
+  drs: 44,
+  ers: 60,
+  gap: 72,
+  interval: 60,
+  lastLap: 78,
+  penalty: 64,
+  tyre: 84,
+  pit: 48,
+  vmax: 52,
+  sector: 140,
+  damage: 96,
+};
+
+function parseLeaderboardColumnVisibility(parsed: unknown): LeaderboardColumnVisibility | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const source = parsed as Record<string, unknown>;
+  const next = { ...DEFAULT_LEADERBOARD_COLUMNS };
+  for (const key of LEADERBOARD_COLUMN_ORDER) {
+    if (typeof source[key] === 'boolean') {
+      next[key] = source[key] as boolean;
+    }
+  }
+  return next;
+}
+
+function parseLeaderboardColumnWidths(parsed: unknown): LeaderboardColumnWidths | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const source = parsed as Record<string, unknown>;
+  const next = { ...DEFAULT_LEADERBOARD_COLUMN_WIDTHS };
+  const keys = ['position', 'driver', ...LEADERBOARD_COLUMN_ORDER] as LeaderboardGridColumnKey[];
+  for (const key of keys) {
+    if (typeof source[key] !== 'number' || !Number.isFinite(source[key])) {
+      continue;
+    }
+    next[key] = Math.round(
+      clamp(source[key] as number, LEADERBOARD_COLUMN_MIN_WIDTHS[key], 420),
+    );
+  }
+  return next;
+}
+
+function buildLeaderboardGridTemplate(
+  visibleColumns: LeaderboardGridColumnKey[],
+  widths: LeaderboardColumnWidths,
+): string {
+  return visibleColumns.map((key) => `${widths[key]}px`).join(' ');
+}
+
 function readPitSettingsFromQuery(): PitSettings {
   const params = new URLSearchParams(window.location.search);
   const speed = Number(params.get('pitRepeatSpeed'));
@@ -63,6 +164,21 @@ function writePitSettingsToQuery(settings: PitSettings) {
 type SectorTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
 type StrategyWindowStatus = 'open' | 'soon' | 'complete';
+type LeaderboardColumnKey =
+  | 'drs'
+  | 'ers'
+  | 'gap'
+  | 'interval'
+  | 'lastLap'
+  | 'penalty'
+  | 'tyre'
+  | 'pit'
+  | 'vmax'
+  | 'sector'
+  | 'damage';
+type LeaderboardGridColumnKey = 'position' | 'driver' | LeaderboardColumnKey;
+type LeaderboardColumnVisibility = Record<LeaderboardColumnKey, boolean>;
+type LeaderboardColumnWidths = Record<LeaderboardGridColumnKey, number>;
 
 interface PrevSectorSnapshot {
   currentLapNum: number;
@@ -117,6 +233,9 @@ export function CockpitDashboard({
   onSwitchToRaces,
   onGoHome,
 }: CockpitDashboardProps) {
+  const headerScrollRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const syncScrollRef = useRef<'header' | 'body' | null>(null);
   const {
     pitwallState,
     raceControlNotifications,
@@ -186,6 +305,16 @@ export function CockpitDashboard({
     'absolute',
     (v) => (v === 'absolute' || v === 'relative' ? v : null),
   );
+  const [leaderboardColumns, setLeaderboardColumns] = useLocalStorage<LeaderboardColumnVisibility>(
+    'pitwallLeaderboardColumns',
+    DEFAULT_LEADERBOARD_COLUMNS,
+    parseLeaderboardColumnVisibility,
+  );
+  const [leaderboardColumnWidths, setLeaderboardColumnWidths] = useLocalStorage<LeaderboardColumnWidths>(
+    'pitwallLeaderboardColumnWidths',
+    DEFAULT_LEADERBOARD_COLUMN_WIDTHS,
+    parseLeaderboardColumnWidths,
+  );
   const [predictionLaps, setPredictionLaps] = useState(DEFAULT_PREDICTION_LAPS);
   const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
   const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
@@ -199,6 +328,152 @@ export function CockpitDashboard({
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
+  const gapColumnLabel = playerDeltaVisible ? 'To You' : 'Gap';
+  const tyreColumnLabel = featurePermissions.viewAdvancedStrategy ? 'Tyre / Life' : 'Tyre Age';
+  const leaderboardColumnOptions = useMemo(
+    () => [
+      { key: 'drs' as const, label: 'DRS' },
+      { key: 'ers' as const, label: 'ERS' },
+      { key: 'gap' as const, label: gapColumnLabel },
+      { key: 'interval' as const, label: 'Interval' },
+      { key: 'lastLap' as const, label: 'Last Lap' },
+      { key: 'penalty' as const, label: 'Pen' },
+      { key: 'tyre' as const, label: tyreColumnLabel },
+      { key: 'pit' as const, label: 'Pit' },
+      { key: 'vmax' as const, label: 'Vmax' },
+      { key: 'sector' as const, label: 'Sector' },
+      { key: 'damage' as const, label: 'DMG' },
+    ],
+    [gapColumnLabel, tyreColumnLabel],
+  );
+  const visibleLeaderboardColumns = useMemo(
+    () => LEADERBOARD_COLUMN_ORDER.filter((key) => leaderboardColumns[key]),
+    [leaderboardColumns],
+  );
+  const renderedLeaderboardColumns = useMemo(
+    () => [
+      { key: 'position' as const, label: 'Pos' },
+      { key: 'driver' as const, label: 'Driver' },
+      ...visibleLeaderboardColumns.map((key) => ({
+        key,
+        label:
+          key === 'gap'
+            ? gapColumnLabel
+            : key === 'tyre'
+              ? tyreColumnLabel
+              : key === 'lastLap'
+                ? 'Last Lap'
+                : key === 'penalty'
+                  ? 'Pen'
+                  : key === 'vmax'
+                    ? 'Vmax'
+                    : key === 'damage'
+                      ? 'DMG'
+                      : key === 'interval'
+                        ? 'Interval'
+                        : key === 'sector'
+                          ? 'Sector'
+                          : key === 'pit'
+                            ? 'Pit'
+                            : key.toUpperCase(),
+      })),
+    ],
+    [gapColumnLabel, tyreColumnLabel, visibleLeaderboardColumns],
+  );
+  const visibleLeaderboardGridColumns = useMemo(
+    () => renderedLeaderboardColumns.map((column) => column.key),
+    [renderedLeaderboardColumns],
+  );
+  const leaderboardGridStyle = useMemo(
+    (): CSSProperties => ({
+      ['--leaderboard-columns-desktop' as string]: buildLeaderboardGridTemplate(
+        visibleLeaderboardGridColumns,
+        leaderboardColumnWidths,
+      ),
+      ['--leaderboard-columns-wide' as string]: buildLeaderboardGridTemplate(
+        visibleLeaderboardGridColumns,
+        leaderboardColumnWidths,
+      ),
+      ['--leaderboard-columns-tablet' as string]: buildLeaderboardGridTemplate(
+        visibleLeaderboardGridColumns,
+        leaderboardColumnWidths,
+      ),
+    }),
+    [leaderboardColumnWidths, visibleLeaderboardGridColumns],
+  );
+  const toggleLeaderboardColumn = useCallback((key: LeaderboardColumnKey) => {
+    setLeaderboardColumns((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, [setLeaderboardColumns]);
+  const syncHeaderScroll = useCallback(() => {
+    if (!headerScrollRef.current || !bodyScrollRef.current) return;
+    if (syncScrollRef.current === 'header') return;
+    syncScrollRef.current = 'body';
+    bodyScrollRef.current.scrollLeft = headerScrollRef.current.scrollLeft;
+    requestAnimationFrame(() => {
+      syncScrollRef.current = null;
+    });
+  }, []);
+  const syncBodyScroll = useCallback(() => {
+    if (!headerScrollRef.current || !bodyScrollRef.current) return;
+    if (syncScrollRef.current === 'body') return;
+    syncScrollRef.current = 'header';
+    headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
+    requestAnimationFrame(() => {
+      syncScrollRef.current = null;
+    });
+  }, []);
+  const startColumnResize = useCallback((
+    event: React.PointerEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    const leftColumn = renderedLeaderboardColumns[index];
+    const rightColumn = renderedLeaderboardColumns[index + 1];
+    if (!leftColumn || !rightColumn) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const leftKey = leftColumn.key;
+    const rightKey = rightColumn.key;
+    const startLeftWidth = leaderboardColumnWidths[leftKey];
+    const startRightWidth = leaderboardColumnWidths[rightKey];
+    const minLeftWidth = LEADERBOARD_COLUMN_MIN_WIDTHS[leftKey];
+    const minRightWidth = LEADERBOARD_COLUMN_MIN_WIDTHS[rightKey];
+    const combinedWidth = startLeftWidth + startRightWidth;
+
+    const originalUserSelect = document.body.style.userSelect;
+    document.body.style.userSelect = 'none';
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const rawNextLeftWidth = startLeftWidth + (moveEvent.clientX - startX);
+      const nextLeftWidth = Math.round(clamp(rawNextLeftWidth, minLeftWidth, combinedWidth - minRightWidth));
+      const nextRightWidth = combinedWidth - nextLeftWidth;
+      setLeaderboardColumnWidths((prev) => {
+        if (prev[leftKey] === nextLeftWidth && prev[rightKey] === nextRightWidth) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [leftKey]: nextLeftWidth,
+          [rightKey]: nextRightWidth,
+        };
+      });
+    };
+
+    const clearResize = () => {
+      document.body.style.userSelect = originalUserSelect;
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', clearResize);
+      window.removeEventListener('pointercancel', clearResize);
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', clearResize);
+    window.addEventListener('pointercancel', clearResize);
+  }, [leaderboardColumnWidths, renderedLeaderboardColumns, setLeaderboardColumnWidths]);
   const trainStatus = useMemo(() => getTrainStatus(drivers, player), [drivers, player]);
   const strategyPanel = useMemo(
     () => buildStrategyPanelData(player, session, strategyGuide, recommendedTyre, pitWindow, trafficStatus),
@@ -281,6 +556,11 @@ export function CockpitDashboard({
     setPitSettings(next);
     writePitSettingsToQuery(next);
   }, [strategyGuide, player?.tireCompound]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!headerScrollRef.current || !bodyScrollRef.current) return;
+    headerScrollRef.current.scrollLeft = bodyScrollRef.current.scrollLeft;
+  }, [leaderboardGridStyle]);
 
   return (
     <div className={styles.dashboard}>
@@ -383,104 +663,173 @@ export function CockpitDashboard({
           </div>
 
           <div className={`${styles.panel} ${styles.leaderboardPanel}`}>
-            <div className={styles.tableHeader}>
-              <span>Pos</span>
-              <span>Driver</span>
-              <span>DRS</span>
-              <span>{ersVisible ? 'ERS' : ''}</span>
-              <span>{playerDeltaVisible ? 'To You' : 'Gap'}</span>
-              <span>Interval</span>
-              <span>Last Lap</span>
-              <span>Pen</span>
-              <span>{featurePermissions.viewAdvancedStrategy ? 'Tyre / Life' : 'Tyre Age'}</span>
-              <span>{pitStatusVisible ? 'Pit' : ''}</span>
-              <span>{topSpeedVisible ? 'Vmax' : ''}</span>
-              <span>Sector</span>
-              <span>DMG</span>
+            <div className={styles.leaderboardControls}>
+              <span className={styles.leaderboardControlsLabel}>Leaderboard Fields</span>
+              <div className={styles.leaderboardToggleGroup}>
+                {leaderboardColumnOptions.map((option) => (
+                  <label key={option.key} className={styles.leaderboardToggle}>
+                    <input
+                      type="checkbox"
+                      checked={leaderboardColumns[option.key]}
+                      onChange={() => toggleLeaderboardColumn(option.key)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div
+              ref={headerScrollRef}
+              className={styles.tableHeaderViewport}
+              onScroll={syncHeaderScroll}
+            >
+              <div
+                className={styles.tableHeader}
+                style={leaderboardGridStyle}
+              >
+                {renderedLeaderboardColumns.map((column, index) => (
+                  <div key={column.key} className={styles.tableHeaderCell}>
+                    <span className={styles.tableHeaderLabel}>{column.label}</span>
+                    {index < renderedLeaderboardColumns.length - 1 && (
+                      <button
+                        type="button"
+                        className={styles.columnResizeHandle}
+                        aria-label={`Resize ${column.label} column`}
+                        onPointerDown={(event) => startColumnResize(event, index)}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className={styles.tableBody}>
-              {drivers.length === 0 && (
-                <div className={styles.emptyState}>
-                  Waiting for telemetry stream...
-                </div>
-              )}
+            <div ref={bodyScrollRef} className={styles.tableBodyViewport} onScroll={syncBodyScroll}>
+              <div className={styles.tableBody}>
+                {drivers.length === 0 && (
+                  <div className={styles.emptyState}>
+                    Waiting for telemetry stream...
+                  </div>
+                )}
 
-              {drivers.map((driver) => {
-                const rowTone = getDriverRowTone(driver, player);
-                return (
-                  <div
-                    key={driver.index}
-                    className={`${styles.tableRow} ${rowTone ? styles[rowTone] : ''}`}
-                  >
-                    <span className={styles.positionCell}>
-                      {String(driver.position).padStart(2, '0')}
-                    </span>
-                    <span className={styles.driverCell}>
-                      <span className={styles.teamBar} style={{ background: getTeamColor(driver.teamId) }} />
-                      {driver.name.slice(0, 6)}
-                      {driver.aiControlled && <span className={styles.driverBadge}>AI</span>}
-                    </span>
-                    <span className={styles.drsCell}>
-                      <span className={styles[getDrsTone(driver)]}>
-                        DRS
+                {drivers.map((driver) => {
+                  const rowTone = getDriverRowTone(driver, player);
+                  return (
+                    <div
+                      key={driver.index}
+                      className={`${styles.tableRow} ${rowTone ? styles[rowTone] : ''}`}
+                      style={leaderboardGridStyle}
+                    >
+                      <span className={styles.positionCell}>
+                        {String(driver.position).padStart(2, '0')}
                       </span>
-                    </span>
-                    <span className={`${styles.ersCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}>
-                      {ersVisible && (
-                        <>
-                          <span className={styles[getErsActualTone(driver)]}>{formatErsActual(driver)}</span>
-                          {ersComparisonEnabled && (
-                            <span className={styles.ersCompareMeta}>
-                              {formatErsCompare(driver)}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </span>
-                    <span className={playerDeltaVisible ? styles.referenceGapPlayer : styles.referenceGapLeader}>
-                      {formatReferenceGap(driver, player, playerDeltaVisible)}
-                    </span>
-                    <span>{formatInterval(driver)}</span>
-                    <span>{formatLapTime(driver.lastLapTime)}</span>
-                    <PenaltyCell driver={driver} />
-                    <span className={styles.tyreCell}>
-                      {(driver.stintHistory ?? []).map((stint, si) => (
-                        <span key={si} className={styles.stintDot} style={{ backgroundColor: getTyreColor(stint.compound) }} title={`${stint.compound} ${stint.laps}L`} />
-                      ))}
-                      <span
-                        className={styles.tyreDot}
-                        style={{ backgroundColor: getTyreColor(driver.tireCompound) }}
-                      />
-                      {driver.tireAge}
-                      {featurePermissions.viewAdvancedStrategy && (
-                        <span
-                          className={styles.tyreLifeCell}
-                          style={driver.tyreLifeSpan != null && driver.tyreUsableLife != null && driver.tyreUsableLife > 0
-                            ? { color: getWearStatusColor(Math.round(((driver.tyreUsableLife - driver.tyreLifeSpan) / driver.tyreUsableLife) * 100)) }
-                            : undefined}
-                        >
-                          {driver.tyreLifeSpan != null && driver.tyreUsableLife != null
-                            ? `${driver.tyreLifeSpan}/${driver.tyreUsableLife}`
-                            : '--'}
+                      <span className={styles.driverCell}>
+                        <span className={styles.teamBar} style={{ background: getTeamColor(driver.teamId) }} />
+                        {driver.name.slice(0, 6)}
+                        {driver.aiControlled && <span className={styles.driverBadge}>AI</span>}
+                      </span>
+                      {leaderboardColumns.drs && (
+                        <span className={`${styles.drsCell} ${styles.mobileLabeledCell}`} data-mobile-label="DRS">
+                          <span className={styles[getDrsTone(driver)]}>
+                            DRS
+                          </span>
                         </span>
                       )}
-                    </span>
-                    <span className={styles.pitCell}>
-                      <span className={styles[getPitStatusTone(driver, pitStatusVisible)]}>
-                        {formatPitStatus(driver, pitStatusVisible)}
-                      </span>
-                    </span>
-                    <span className={styles.topSpeedCell}>
-                      <span className={styles[getTopSpeedTone(driver, topSpeedVisible)]}>
-                        {formatTopSpeed(driver, topSpeedVisible)}
-                      </span>
-                    </span>
-                    <SectorDeltaCell sectorHistory={sectorHistoryMap.get(driver.index)} />
-                    <DamageSummaryCell driver={driver} />
-                  </div>
-                );
-              })}
+                      {leaderboardColumns.ers && (
+                        <span
+                          className={`${styles.ersCell} ${styles.mobileLabeledCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}
+                          data-mobile-label="ERS"
+                        >
+                          {ersVisible ? (
+                            <>
+                              <span className={styles[getErsActualTone(driver)]}>{formatErsActual(driver)}</span>
+                              {ersComparisonEnabled && (
+                                <span className={styles.ersCompareMeta}>
+                                  {formatErsCompare(driver)}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className={styles.ersPending}>LOCK</span>
+                          )}
+                        </span>
+                      )}
+                      {leaderboardColumns.gap && (
+                        <span
+                          className={`${styles.referenceCell} ${styles.mobileLabeledCell} ${playerDeltaVisible ? styles.referenceGapPlayer : styles.referenceGapLeader}`}
+                          data-mobile-label={gapColumnLabel}
+                        >
+                          {formatReferenceGap(driver, player, playerDeltaVisible)}
+                        </span>
+                      )}
+                      {leaderboardColumns.interval && (
+                        <span className={`${styles.intervalCell} ${styles.mobileLabeledCell}`} data-mobile-label="Interval">
+                          {formatInterval(driver)}
+                        </span>
+                      )}
+                      {leaderboardColumns.lastLap && (
+                        <span className={`${styles.lastLapCell} ${styles.mobileLabeledCell}`} data-mobile-label="Last Lap">
+                          {formatLapTime(driver.lastLapTime)}
+                        </span>
+                      )}
+                      {leaderboardColumns.penalty && (
+                        <PenaltyCell driver={driver} className={styles.mobileLabeledCell} mobileLabel="Pen" />
+                      )}
+                      {leaderboardColumns.tyre && (
+                        <span className={`${styles.tyreCell} ${styles.mobileLabeledCell}`} data-mobile-label="Tyre">
+                          {(driver.stintHistory ?? []).map((stint, si) => (
+                            <span key={si} className={styles.stintDot} style={{ backgroundColor: getTyreColor(stint.compound) }} title={`${stint.compound} ${stint.laps}L`} />
+                          ))}
+                          <span
+                            className={styles.tyreDot}
+                            style={{ backgroundColor: getTyreColor(driver.tireCompound) }}
+                          />
+                          {driver.tireAge}
+                          {featurePermissions.viewAdvancedStrategy && (
+                            <span
+                              className={styles.tyreLifeCell}
+                              style={driver.tyreLifeSpan != null && driver.tyreUsableLife != null && driver.tyreUsableLife > 0
+                                ? { color: getWearStatusColor(Math.round(((driver.tyreUsableLife - driver.tyreLifeSpan) / driver.tyreUsableLife) * 100)) }
+                                : undefined}
+                            >
+                              {driver.tyreLifeSpan != null && driver.tyreUsableLife != null
+                                ? `${driver.tyreLifeSpan}/${driver.tyreUsableLife}`
+                                : '--'}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      {leaderboardColumns.pit && (
+                        <span className={`${styles.pitCell} ${styles.mobileLabeledCell}`} data-mobile-label="Pit">
+                          <span className={styles[getPitStatusTone(driver, pitStatusVisible)]}>
+                            {formatPitStatus(driver, pitStatusVisible)}
+                          </span>
+                        </span>
+                      )}
+                      {leaderboardColumns.vmax && (
+                        <span className={`${styles.topSpeedCell} ${styles.mobileLabeledCell}`} data-mobile-label="Vmax">
+                          <span className={styles[getTopSpeedTone(driver, topSpeedVisible)]}>
+                            {formatTopSpeed(driver, topSpeedVisible)}
+                          </span>
+                        </span>
+                      )}
+                      {leaderboardColumns.sector && (
+                        <SectorDeltaCell
+                          sectorHistory={sectorHistoryMap.get(driver.index)}
+                          className={styles.mobileLabeledCell}
+                          mobileLabel="Sector"
+                        />
+                      )}
+                      {leaderboardColumns.damage && (
+                        <DamageSummaryCell
+                          driver={driver}
+                          className={styles.mobileLabeledCell}
+                          mobileLabel="Damage"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -1023,7 +1372,15 @@ function DamageMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function DamageSummaryCell({ driver }: { driver: DriverInfo }) {
+function DamageSummaryCell({
+  driver,
+  className,
+  mobileLabel,
+}: {
+  driver: DriverInfo;
+  className?: string;
+  mobileLabel?: string;
+}) {
   const damageItems = [
     { label: 'FL', value: driver.damage?.frontLeftWing ?? 0 },
     { label: 'FR', value: driver.damage?.frontRightWing ?? 0 },
@@ -1039,7 +1396,10 @@ function DamageSummaryCell({ driver }: { driver: DriverInfo }) {
   ];
 
   return (
-    <div className={styles.damageSummaryCell}>
+    <div
+      className={[styles.damageSummaryCell, className].filter(Boolean).join(' ')}
+      data-mobile-label={mobileLabel}
+    >
       {damageItems.map((item) => (
         <span
           key={item.label}
@@ -1054,15 +1414,24 @@ function DamageSummaryCell({ driver }: { driver: DriverInfo }) {
   );
 }
 
-function PenaltyCell({ driver }: { driver: DriverInfo }) {
+function PenaltyCell({
+  driver,
+  className,
+  mobileLabel,
+}: {
+  driver: DriverInfo;
+  className?: string;
+  mobileLabel?: string;
+}) {
   const warnings = driver.totalWarnings ?? 0;
   const timePen = driver.penalties ?? 0;
   const dt = driver.numUnservedDriveThroughs ?? 0;
   const sg = driver.numUnservedStopGoPenalties ?? 0;
   const hasPenalty = warnings > 0 || timePen > 0 || dt > 0 || sg > 0;
+  const penaltyClassName = [styles.penaltyCell, className].filter(Boolean).join(' ');
 
   if (!hasPenalty) {
-    return <span className={styles.penaltyCell}>--</span>;
+    return <span className={penaltyClassName} data-mobile-label={mobileLabel}>--</span>;
   }
 
   const badges: string[] = [];
@@ -1083,7 +1452,7 @@ function PenaltyCell({ driver }: { driver: DriverInfo }) {
   if (sg > 0) details.push(`Stop-go: ${sg} unserved`);
 
   return (
-    <span className={styles.penaltyCell} title={details.join('\n')}>
+    <span className={penaltyClassName} title={details.join('\n')} data-mobile-label={mobileLabel}>
       {badges.map((badge) => {
         const isWarning = badge.startsWith('W');
         return (
@@ -1101,14 +1470,21 @@ function PenaltyCell({ driver }: { driver: DriverInfo }) {
 
 function SectorDeltaCell({
   sectorHistory,
+  className,
+  mobileLabel,
 }: {
   sectorHistory?: DriverSectorHistory;
+  className?: string;
+  mobileLabel?: string;
 }) {
   const sectorTimes = sectorHistory?.latestSectorTimes ?? [0, 0, 0];
   const previousSectorTimes = sectorHistory?.previousSectorTimes ?? [0, 0, 0];
 
   return (
-    <span className={styles.sectorCell}>
+    <span
+      className={[styles.sectorCell, className].filter(Boolean).join(' ')}
+      data-mobile-label={mobileLabel}
+    >
       {SECTOR_LABELS.map((label, index) => {
         const sectorTime = sectorTimes[index];
         const previousSectorTime = previousSectorTimes[index];
