@@ -1446,7 +1446,7 @@ function BattleTarget({
         </span>
         <div className={styles.battleTrendCopy}>
           <span>{side === 'ahead' ? 'Attack Window' : 'Rear Threat'}</span>
-          <strong>{getBattleTrendLabel(trend)}</strong>
+          <strong>{getBattleTrendLabel(side, trend)}</strong>
         </div>
       </div>
       <div className={styles.metricGrid}>
@@ -1674,16 +1674,29 @@ function formatBattlePace(
   return `${deltaMs > 0 ? '+' : ''}${(deltaMs / 1000).toFixed(2)}s`;
 }
 
-function getBattleTrendLabel(trend: BattleTrend): string {
+function getBattleTrendLabel(side: 'ahead' | 'behind', trend: BattleTrend): string {
+  if (side === 'ahead') {
+    switch (trend) {
+      case 'closing':
+        return 'Catching';
+      case 'opening':
+        return 'Losing';
+      case 'stable':
+        return 'Even';
+      default:
+        return 'Waiting';
+    }
+  }
+
   switch (trend) {
     case 'closing':
-      return 'Closing';
+      return 'Under Attack';
     case 'opening':
-      return 'Opening';
+      return 'Safe';
     case 'stable':
-      return 'Stable';
+      return 'Even';
     default:
-      return 'Reading';
+      return 'Waiting';
   }
 }
 
