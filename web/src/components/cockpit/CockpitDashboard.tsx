@@ -164,6 +164,7 @@ function writePitSettingsToQuery(settings: PitSettings) {
 type SectorTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
 type StrategyWindowStatus = 'open' | 'soon' | 'complete';
+type BattleTrend = 'closing' | 'opening' | 'stable' | 'unknown';
 type LeaderboardColumnKey =
   | 'drs'
   | 'ers'
@@ -291,6 +292,8 @@ export function CockpitDashboard({
     if (!player) return null;
     return drivers.find((driver) => driver.position === player.position + 1) ?? null;
   }, [drivers, player]);
+  const carAheadTrend = useGapTrend(player?.deltaToCarInFront, carAhead?.index ?? null);
+  const carBehindTrend = useGapTrend(carBehind?.deltaToCarInFront, carBehind?.index ?? null);
   const topForecasts = session?.weatherForecast ?? [];
   const recentNotifications = raceControlNotifications.slice(0, 3);
   const raceStatus = getRaceStatus(session, recentNotifications);
@@ -847,7 +850,9 @@ export function CockpitDashboard({
             driver={carAhead}
             gapLabel={formatAheadGap(player)}
             paceLabel={formatBattlePace(player, carAhead, 'ahead')}
+            side="ahead"
             tone="tertiary"
+            trend={carAheadTrend}
           />
           <div className={styles.progressCard}>
             <div className={styles.progressHeader}>
@@ -872,7 +877,9 @@ export function CockpitDashboard({
             driver={carBehind}
             gapLabel={formatBehindGap(carBehind)}
             paceLabel={formatBattlePace(player, carBehind, 'behind')}
+            side="behind"
             tone="secondary"
+            trend={carBehindTrend}
           />
         </div>
         <div className={`${styles.panel} ${styles.strategyPanel}`}>
@@ -1407,13 +1414,17 @@ function BattleTarget({
   driver,
   gapLabel,
   paceLabel,
+  side,
   tone,
+  trend,
 }: {
   label: string;
   driver: DriverInfo | null;
   gapLabel: string;
   paceLabel: string;
+  side: 'ahead' | 'behind';
   tone: 'tertiary' | 'secondary';
+  trend: BattleTrend;
 }) {
   return (
     <div className={styles.battleCard}>
@@ -1422,6 +1433,21 @@ function BattleTarget({
         <strong className={styles[tone]}>
           {driver ? abbreviateDriver(driver.name, driver.index) : '--'}
         </strong>
+      </div>
+      <div
+        className={[
+          styles.battleTrendBadge,
+          side === 'ahead' ? styles.battleTrendAhead : styles.battleTrendBehind,
+          styles[`battleTrend${capitalizeBattleTrend(trend)}`],
+        ].join(' ')}
+      >
+        <span className={styles.battleTrendArrow} aria-hidden="true">
+          {side === 'ahead' ? '\u2191' : '\u2193'}
+        </span>
+        <div className={styles.battleTrendCopy}>
+          <span>{side === 'ahead' ? 'Attack Window' : 'Rear Threat'}</span>
+          <strong>{getBattleTrendLabel(trend)}</strong>
+        </div>
       </div>
       <div className={styles.metricGrid}>
         <MetricTile label="Gap" value={gapLabel} tone={tone} />
@@ -1438,6 +1464,47 @@ function DamageMetric({ label, value }: { label: string; value: number }) {
       <strong className={styles[getDamageTone(value)]}>{`${Math.round(value)}%`}</strong>
     </div>
   );
+}
+
+function useGapTrend(gapMs: number | null | undefined, rivalKey: number | null): BattleTrend {
+  const historyRef = useRef<Array<{ time: number; gapMs: number }>>([]);
+  const rivalKeyRef = useRef<number | null>(rivalKey);
+  const [trend, setTrend] = useState<BattleTrend>('unknown');
+
+  useEffect(() => {
+    if (rivalKeyRef.current !== rivalKey) {
+      rivalKeyRef.current = rivalKey;
+      historyRef.current = [];
+      setTrend('unknown');
+    }
+
+    if (gapMs == null || gapMs <= 0 || rivalKey == null) {
+      historyRef.current = [];
+      setTrend('unknown');
+      return;
+    }
+
+    const now = Date.now();
+    const nextHistory = historyRef.current.filter((entry) => now - entry.time <= 1400);
+    nextHistory.push({ time: now, gapMs });
+    historyRef.current = nextHistory;
+
+    const baseline = nextHistory.find((entry) => now - entry.time >= 450);
+    if (!baseline) {
+      setTrend('unknown');
+      return;
+    }
+
+    const gapDelta = gapMs - baseline.gapMs;
+    const nextTrend: BattleTrend =
+      gapDelta <= -60 ? 'closing'
+        : gapDelta >= 60 ? 'opening'
+          : 'stable';
+
+    setTrend((current) => (current === nextTrend ? current : nextTrend));
+  }, [gapMs, rivalKey]);
+
+  return trend;
 }
 
 function DamageSummaryCell({
@@ -1605,6 +1672,32 @@ function formatBattlePace(
     ? player.lastLapTime - rival.lastLapTime
     : rival.lastLapTime - player.lastLapTime;
   return `${deltaMs > 0 ? '+' : ''}${(deltaMs / 1000).toFixed(2)}s`;
+}
+
+function getBattleTrendLabel(trend: BattleTrend): string {
+  switch (trend) {
+    case 'closing':
+      return 'Closing';
+    case 'opening':
+      return 'Opening';
+    case 'stable':
+      return 'Stable';
+    default:
+      return 'Reading';
+  }
+}
+
+function capitalizeBattleTrend(trend: BattleTrend): 'Closing' | 'Opening' | 'Stable' | 'Unknown' {
+  switch (trend) {
+    case 'closing':
+      return 'Closing';
+    case 'opening':
+      return 'Opening';
+    case 'stable':
+      return 'Stable';
+    default:
+      return 'Unknown';
+  }
 }
 
 function getDrsProgress(player: DriverInfo | null): number {

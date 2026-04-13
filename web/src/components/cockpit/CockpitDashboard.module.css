@@ -873,6 +873,12 @@
   padding: 12px;
 }
 
+.battleCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .battleHeader,
 .progressHeader,
 .progressFooter,
@@ -882,6 +888,85 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.battleTrendBadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(59, 73, 76, 0.18);
+  background: rgba(255, 255, 255, 0.025);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.battleTrendArrow {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-racing);
+  font-size: 1.18rem;
+  font-weight: 800;
+  line-height: 1;
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.battleTrendCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.battleTrendCopy span {
+  font-size: 10px;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.battleTrendCopy strong {
+  font-family: var(--font-racing);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.battleTrendAhead .battleTrendArrow,
+.battleTrendAhead .battleTrendCopy strong {
+  color: var(--accent-lime);
+}
+
+.battleTrendBehind .battleTrendArrow,
+.battleTrendBehind .battleTrendCopy strong {
+  color: var(--accent-red);
+}
+
+.battleTrendClosing {
+  opacity: 1;
+}
+
+.battleTrendClosing.battleTrendAhead {
+  border-color: rgba(205, 255, 19, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(205, 255, 19, 0.12);
+}
+
+.battleTrendClosing.battleTrendBehind {
+  border-color: rgba(255, 82, 92, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(255, 82, 92, 0.12);
+}
+
+.battleTrendOpening,
+.battleTrendStable,
+.battleTrendUnknown {
+  opacity: 0.72;
 }
 
 .strategySupportText,
