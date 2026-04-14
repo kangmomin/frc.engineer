@@ -316,8 +316,14 @@ export interface PitwallState {
   positions: CarPosition[];
   playerIndex: number;
   trackMap?: TrackMapData;
+  senderState?: SenderState | null;
   ersEstimateEnabled: boolean;
   ersComparisonEnabled: boolean;
+}
+
+export interface SenderState {
+  saveFiles: boolean;
+  trackRecording: boolean;
 }
 
 export interface WeatherForecast {

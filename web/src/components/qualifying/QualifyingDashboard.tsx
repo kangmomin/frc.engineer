@@ -181,6 +181,7 @@ export function QualifyingDashboard({
   );
 
   const session = pitwallState?.session ?? null;
+  const senderState = pitwallState?.senderState ?? null;
   const allDrivers = useMemo(() => pitwallState?.drivers ?? [], [pitwallState?.drivers]);
   const playerIndex = pitwallState?.playerIndex ?? 0;
 
@@ -257,6 +258,16 @@ export function QualifyingDashboard({
           >
             {remoteAction.label}
           </button>
+        )}
+        {senderState && (
+          <span className={`${styles.dockButton} ${senderState.saveFiles ? styles.dockButtonActive : ''}`}>
+            {senderState.saveFiles ? 'Save On' : 'Save Off'}
+          </span>
+        )}
+        {senderState && (
+          <span className={`${styles.dockButton} ${senderState.trackRecording ? styles.dockButtonActive : ''}`}>
+            {senderState.trackRecording ? 'Track Rec' : 'Track Idle'}
+          </span>
         )}
       </div>
 

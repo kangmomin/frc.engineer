@@ -184,7 +184,7 @@ export function Layout() {
         onConnect={handleRemoteConnect}
         connectionState={connectionState}
         title="P2P Telemetry Link"
-        subtitle="Enter the signaling server and a room code or room ID to join the live telemetry stream."
+        subtitle="Pick an active sender room from the signaling server, then enter its password to join."
         initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
         initialRoomId={readRemoteQuery().roomId || ''}
         initialRoomCode={readRemoteQuery().roomCode || ''}
@@ -214,7 +214,7 @@ export function Layout() {
     );
   }
 
-  const remoteAction = { label: 'Change Room', onClick: openRoomPicker, active: true };
+  const remoteAction = { label: 'Rooms', onClick: openRoomPicker, active: true };
 
   return (
     <div className={styles.shell}>

@@ -43,6 +43,7 @@ type PitwallManager struct {
 	ersEstimator      *ERSEstimator
 	ersActualEnabled  bool
 	ersCompareEnabled bool
+	senderState       *dto.SenderState
 	trackMapSendCount int  // remaining broadcasts to include trackMap
 	lastTrackID       int8 // last track ID for change detection
 	peakActiveCars    int  // high-water mark for NumActiveCars
@@ -77,6 +78,14 @@ func (pm *PitwallManager) SetERSComparisonEnabled(enabled bool) {
 func (pm *PitwallManager) SetERSActualEnabled(enabled bool) {
 	pm.mu.Lock()
 	pm.ersActualEnabled = enabled
+	pm.mu.Unlock()
+}
+
+// SetSenderState publishes sender-owned runtime flags into the pitwall snapshot.
+func (pm *PitwallManager) SetSenderState(state dto.SenderState) {
+	pm.mu.Lock()
+	stateCopy := state
+	pm.senderState = &stateCopy
 	pm.mu.Unlock()
 }
 
@@ -248,6 +257,10 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 		PlayerIndex:          int(pm.playerIndex),
 		ERSEstimateEnabled:   true, // broadcaster filters per-peer via ViewERSEstimate
 		ERSComparisonEnabled: pm.ersCompareEnabled,
+	}
+	if pm.senderState != nil {
+		senderStateCopy := *pm.senderState
+		state.SenderState = &senderStateCopy
 	}
 
 	// Session info

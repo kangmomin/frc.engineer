@@ -7,8 +7,15 @@ type PitwallState struct {
 	Positions            []CarPosition `json:"positions"`
 	PlayerIndex          int           `json:"playerIndex"`
 	TrackMap             *TrackMapDTO  `json:"trackMap,omitempty"`
+	SenderState          *SenderState  `json:"senderState,omitempty"`
 	ERSEstimateEnabled   bool          `json:"ersEstimateEnabled"`
 	ERSComparisonEnabled bool          `json:"ersComparisonEnabled"`
+}
+
+// SenderState exposes sender-owned runtime flags that remote engineers should read over P2P.
+type SenderState struct {
+	SaveFiles      bool `json:"saveFiles"`
+	TrackRecording bool `json:"trackRecording"`
 }
 
 // TrackMapDTO holds the full track outline with bounds

@@ -278,6 +278,7 @@ export function CockpitDashboard({
   }, []);
 
   const session = pitwallState?.session ?? null;
+  const senderState = pitwallState?.senderState ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
   const ersVisible = featurePermissions.viewERSActual;
   const ersEstimateVisible = pitwallState?.ersEstimateEnabled ?? false;
@@ -653,6 +654,16 @@ export function CockpitDashboard({
           >
             {remoteAction.label}
           </button>
+        )}
+        {senderState && (
+          <span className={`${styles.remoteButton} ${senderState.saveFiles ? styles.remoteActive : ''}`}>
+            {senderState.saveFiles ? 'Save On' : 'Save Off'}
+          </span>
+        )}
+        {senderState && (
+          <span className={`${styles.remoteButton} ${senderState.trackRecording ? styles.remoteActive : ''}`}>
+            {senderState.trackRecording ? 'Track Rec' : 'Track Idle'}
+          </span>
         )}
         {playbackActive && <span className={`${styles.remoteButton} ${styles.remoteActive}`}>Replay</span>}
       </div>

@@ -295,6 +295,10 @@ func main() {
 		}
 		return defaultStrategyConfig
 	}
+	processor.PitwallManager().SetSenderState(dto.SenderState{
+		SaveFiles:      cfgSaveFiles,
+		TrackRecording: cfgTrackRecording,
+	})
 	var raceStorage *races.FileStorage
 	if saveFiles {
 		rs, err := races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
@@ -939,6 +943,10 @@ func main() {
 			recorder.SetEnabled(body.TrackRecording)
 			logger.Info("track recording changed", "enabled", body.TrackRecording)
 		}
+		processor.PitwallManager().SetSenderState(dto.SenderState{
+			SaveFiles:      cfgSaveFiles,
+			TrackRecording: cfgTrackRecording,
+		})
 
 		prevFRCKey := cfgFRCAccountKey
 		cfgFRCAccountKey = strings.TrimSpace(body.FRCAccountKey)
