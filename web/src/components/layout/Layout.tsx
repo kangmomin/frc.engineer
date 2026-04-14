@@ -36,7 +36,8 @@ function persistView(view: DashboardView) {
 
 interface RemoteRTCOptions {
   signalingUrl: string;
-  roomId: string;
+  roomId?: string;
+  roomCode?: string;
   password: string;
 }
 
@@ -45,16 +46,18 @@ function readRemoteQuery(): Partial<RemoteRTCOptions> {
   return {
     signalingUrl: params.get('signalingUrl') ?? '',
     roomId: params.get('roomId') ?? '',
+    roomCode: params.get('roomCode') ?? '',
   };
 }
 
 function buildInitialRemoteOptions(): RemoteRTCOptions | null {
   const query = readRemoteQuery();
 
-  if (query.roomId && query.signalingUrl) {
+  if ((query.roomId || query.roomCode) && query.signalingUrl) {
     return {
       signalingUrl: query.signalingUrl,
       roomId: query.roomId,
+      roomCode: query.roomCode,
       password: '',
     };
   }
@@ -65,8 +68,11 @@ function buildInitialRemoteOptions(): RemoteRTCOptions | null {
 function persistRemoteSession(options: RemoteRTCOptions) {
   const params = new URLSearchParams(window.location.search);
   params.set('remote', '1');
-  params.set('roomId', options.roomId);
   params.set('signalingUrl', options.signalingUrl);
+  if (options.roomId) params.set('roomId', options.roomId);
+  else params.delete('roomId');
+  if (options.roomCode) params.set('roomCode', options.roomCode);
+  else params.delete('roomCode');
 
   const nextQuery = params.toString();
   window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
@@ -96,7 +102,10 @@ export function Layout() {
   const isQualiSession = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(sessionType);
   const showQualifying = viewQualifying && isQualiSession;
 
-  const [dashboardView, setDashboardView] = useState<DashboardView>(readInitialView);
+  const [dashboardView, setDashboardView] = useState<DashboardView>(() => {
+    const initialView = readInitialView();
+    return initialView === 'races' ? 'cockpit' : initialView;
+  });
 
   useEffect(() => {
     window.sessionStorage.removeItem('frc_remote_session');
@@ -129,12 +138,7 @@ export function Layout() {
     sendView(view);
   }, [dashboardView, sendView, setPlaybackActive]);
 
-  const handleRemoteConnect = useCallback((
-    signalingUrl: string,
-    roomId: string,
-    password: string,
-  ) => {
-    const nextOptions = { signalingUrl, roomId, password };
+  const handleRemoteConnect = useCallback((nextOptions: RemoteRTCOptions) => {
     persistRemoteSession(nextOptions);
     setRtcOptions(nextOptions);
     setConnectAttempted(true);
@@ -180,9 +184,10 @@ export function Layout() {
         onConnect={handleRemoteConnect}
         connectionState={connectionState}
         title="P2P Telemetry Link"
-        subtitle="Pick an active sender room from the signaling server, then enter its password to join."
+        subtitle="Enter the signaling server and a room code or room ID to join the live telemetry stream."
         initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
         initialRoomId={readRemoteQuery().roomId || ''}
+        initialRoomCode={readRemoteQuery().roomCode || ''}
         initialPassword=""
       />
     );
@@ -203,19 +208,19 @@ export function Layout() {
         subtitle={rtcLastError || getConnectionDetail(connectionState)}
         initialSignalingUrl={rtcOptions.signalingUrl}
         initialRoomId={rtcOptions.roomId}
+        initialRoomCode={rtcOptions.roomCode}
         initialPassword={rtcOptions.password}
       />
     );
   }
 
-  const remoteAction = { label: 'Rooms', onClick: openRoomPicker, active: true };
+  const remoteAction = { label: 'Change Room', onClick: openRoomPicker, active: true };
 
   return (
     <div className={styles.shell}>
       {dashboardView === 'qualifying' && showQualifying ? (
         <QualifyingDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
-          onSwitchToRaces={() => switchView('races')}
           onGoHome={goToMainScreen}
           remoteAction={remoteAction}
         />
@@ -223,9 +228,9 @@ export function Layout() {
         <CockpitDashboard
           onOpenSettings={() => {}}
           showSettingsButton={false}
+          enableStrategyGuide={false}
           remoteAction={remoteAction}
           onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
-          onSwitchToRaces={dashboardView === 'races' ? undefined : () => switchView('races')}
           onGoHome={goToMainScreen}
         />
       )}

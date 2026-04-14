@@ -227,6 +227,7 @@ type CompoundLifeCard = {
 interface CockpitDashboardProps {
   onOpenSettings: () => void;
   showSettingsButton: boolean;
+  enableStrategyGuide?: boolean;
   remoteAction?: {
     label: string;
     onClick: () => void;
@@ -240,6 +241,7 @@ interface CockpitDashboardProps {
 export function CockpitDashboard({
   onOpenSettings,
   showSettingsButton,
+  enableStrategyGuide = true,
   remoteAction,
   onSwitchToQualifying,
   onSwitchToRaces,
@@ -510,7 +512,7 @@ export function CockpitDashboard({
   }, [featurePermissions.viewAdvancedStrategy, strategyGuide, strategyGuideLoading]);
 
   useEffect(() => {
-    if (!featurePermissions.viewAdvancedStrategy || sessionTrackId == null || sessionTrackId < 0) {
+    if (!enableStrategyGuide || !featurePermissions.viewAdvancedStrategy || sessionTrackId == null || sessionTrackId < 0) {
       setStrategyGuide(null);
       setStrategyGuideLoading(false);
       return;
@@ -555,7 +557,7 @@ export function CockpitDashboard({
     return () => {
       cancelled = true;
     };
-  }, [featurePermissions.viewAdvancedStrategy, sessionTrackId, sessionTrackName]);
+  }, [enableStrategyGuide, featurePermissions.viewAdvancedStrategy, sessionTrackId, sessionTrackName]);
 
   // Seed optimal temp from strategy guide peak_temps_c when available and no manual override in query
   useEffect(() => {
@@ -2411,4 +2413,3 @@ function getDamageSeverityStyle(value: number) {
     backgroundColor: `hsla(${hue} 82% 58% / 0.12)`,
   };
 }
-
