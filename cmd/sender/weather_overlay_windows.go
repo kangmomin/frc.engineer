@@ -22,13 +22,10 @@ var (
 )
 
 const (
-	swpNoMove    = 0x0002
-	logPixelsX   = 88 // GetDeviceCaps index for horizontal DPI
-	minScale     = 0.6
-	maxScale     = 2.5
-	baseWidth    = 340
-	baseHeight   = 280
-	defaultScale = 1.0
+	swpNoMove  = 0x0002
+	logPixelsX = 88 // GetDeviceCaps index for horizontal DPI
+	baseWidth  = 340
+	baseHeight = 280
 )
 
 // weatherOverlay is a transparent, always-on-top, borderless Win32 overlay
@@ -43,17 +40,43 @@ type weatherOverlay struct {
 	wndProcPtr uintptr
 	scale      float64 // user zoom factor (0.6 .. 2.5)
 	dpiScale   float64 // system DPI / 96
+	x          int
+	y          int
 	drag       bool
 	lastPt     w32Point
 	alpha      uint8
+	saveState  func(overlayWindowState)
 	running    atomic.Bool
 	classReg   atomic.Bool
 }
 
-func newWeatherOverlay(pm *telemetry.PitwallManager) *weatherOverlay {
-	ov := &weatherOverlay{pm: pm, scale: defaultScale, dpiScale: 1.0, alpha: 230}
+func newWeatherOverlay(pm *telemetry.PitwallManager, saved overlayWindowState, saveState func(overlayWindowState)) *weatherOverlay {
+	ov := &weatherOverlay{
+		pm:        pm,
+		scale:     saved.Scale,
+		dpiScale:  1.0,
+		x:         saved.X,
+		y:         saved.Y,
+		alpha:     saved.Alpha,
+		saveState: saveState,
+	}
 	ov.wndProcPtr = syscall.NewCallback(ov.wndProc)
 	return ov
+}
+
+func (o *weatherOverlay) snapshotState() overlayWindowState {
+	return overlayWindowState{
+		X:     o.x,
+		Y:     o.y,
+		Alpha: o.alpha,
+		Scale: o.scale,
+	}
+}
+
+func (o *weatherOverlay) persistLayout() {
+	if o.saveState != nil {
+		o.saveState(o.snapshotState())
+	}
 }
 
 // px converts a logical dimension to physical pixels.
@@ -61,8 +84,12 @@ func (o *weatherOverlay) px(v float64) int32 {
 	return int32(math.Round(v * o.scale * o.dpiScale))
 }
 
-func (o *weatherOverlay) winWidth() int  { return int(math.Round(float64(baseWidth) * o.scale * o.dpiScale)) }
-func (o *weatherOverlay) winHeight() int { return int(math.Round(float64(baseHeight) * o.scale * o.dpiScale)) }
+func (o *weatherOverlay) winWidth() int {
+	return int(math.Round(float64(baseWidth) * o.scale * o.dpiScale))
+}
+func (o *weatherOverlay) winHeight() int {
+	return int(math.Round(float64(baseHeight) * o.scale * o.dpiScale))
+}
 
 func (o *weatherOverlay) IsRunning() bool { return o.running.Load() }
 
@@ -138,7 +165,7 @@ func (o *weatherOverlay) run() {
 		exTopmost|exToolWin|exLayered,
 		uintptr(unsafe.Pointer(cls)), 0,
 		wsPopup|wsVisible,
-		200, 200, 1, 1,
+		uintptr(o.x), uintptr(o.y), 1, 1,
 		0, 0, hInst, 0,
 	)
 	runtime.KeepAlive(cls)
@@ -154,7 +181,7 @@ func (o *weatherOverlay) run() {
 
 	// Resize to real dimensions now that we know DPI.
 	w, h := uintptr(o.winWidth()), uintptr(o.winHeight())
-	uSetWindowPos.Call(hwnd, 0, 200, 200, w, h, swpNoZOrd)
+	uSetWindowPos.Call(hwnd, 0, uintptr(o.x), uintptr(o.y), w, h, swpNoZOrd)
 
 	uSetLayeredAttr.Call(hwnd, 0, uintptr(o.alpha), lwaAlpha)
 
@@ -213,16 +240,21 @@ func (o *weatherOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 			uGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 			var rc w32Rect
 			uGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			nextX := int(rc.Left + pt.X - o.lastPt.X)
+			nextY := int(rc.Top + pt.Y - o.lastPt.Y)
 			uSetWindowPos.Call(hwnd, 0,
-				uintptr(rc.Left+pt.X-o.lastPt.X),
-				uintptr(rc.Top+pt.Y-o.lastPt.Y),
+				uintptr(nextX),
+				uintptr(nextY),
 				0, 0, swpNoSize|swpNoZOrd)
+			o.x = nextX
+			o.y = nextY
 			o.lastPt = pt
 		}
 		return 0
 	case wmLBtnUp:
 		o.drag = false
 		uReleaseCapture.Call()
+		o.persistLayout()
 		return 0
 	case wmMWheel:
 		delta := int16(wp >> 16)
@@ -238,15 +270,17 @@ func (o *weatherOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 		} else {
 			// Wheel → resize window
 			step := 0.1
-			if delta > 0 && o.scale < maxScale {
-				o.scale = math.Min(o.scale+step, maxScale)
-			} else if delta < 0 && o.scale > minScale {
-				o.scale = math.Max(o.scale-step, minScale)
+			if delta > 0 && o.scale < maxOverlayScale {
+				o.scale = math.Min(o.scale+step, maxOverlayScale)
+			} else if delta < 0 && o.scale > minOverlayScale {
+				o.scale = math.Max(o.scale-step, minOverlayScale)
 			}
 			o.resize()
 		}
+		o.persistLayout()
 		return 0
 	case wmRBtnUp, wmClose:
+		o.persistLayout()
 		uKillTimer.Call(hwnd, 1)
 		uDestroyWindow.Call(hwnd)
 		return 0
@@ -307,11 +341,11 @@ func (o *weatherOverlay) paint(hwnd uintptr) {
 	// Layout constants: proportional column positions (fraction of width)
 	pad := o.px(14)
 	ww := int32(w)
-	col1 := pad                        // TIME start
-	col2 := int32(float64(ww) * 0.18)  // COND start
-	col3 := int32(float64(ww) * 0.47)  // TRACK start
-	col4 := int32(float64(ww) * 0.63)  // AIR start
-	col5 := int32(float64(ww) * 0.78)  // RAIN start
+	col1 := pad                       // TIME start
+	col2 := int32(float64(ww) * 0.18) // COND start
+	col3 := int32(float64(ww) * 0.47) // TRACK start
+	col4 := int32(float64(ww) * 0.63) // AIR start
+	col5 := int32(float64(ww) * 0.78) // RAIN start
 	col5End := ww - pad
 
 	rowH := o.px(24) // row height
@@ -455,10 +489,10 @@ func (o *weatherOverlay) makeFont(logicalPx int, weight int) uintptr {
 	fontName := utf16Ptr("Segoe UI")
 	font, _, _ := gCreateFont.Call(
 		uintptr(h), 0, 0, 0, uintptr(weight),
-		0, 0, 0, 1,  // italic=0, underline=0, strikeout=0, charset=DEFAULT
-		0, 0,         // outPrecision, clipPrecision
-		6,            // quality = CLEARTYPE_QUALITY
-		0,            // pitchAndFamily
+		0, 0, 0, 1, // italic=0, underline=0, strikeout=0, charset=DEFAULT
+		0, 0, // outPrecision, clipPrecision
+		6, // quality = CLEARTYPE_QUALITY
+		0, // pitchAndFamily
 		uintptr(unsafe.Pointer(fontName)),
 	)
 	return font

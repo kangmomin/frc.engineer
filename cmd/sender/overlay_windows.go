@@ -16,22 +16,22 @@ import (
 
 // Win32 constants
 const (
-	csHRedraw  = 0x0002
-	csVRedraw  = 0x0001
-	wsPopup    = 0x80000000
-	wsVisible  = 0x10000000
-	exTopmost  = 0x00000008
-	exToolWin  = 0x00000080
-	exLayered  = 0x00080000
-	lwaAlpha   = 0x00000002
-	swpNoSize  = 0x0001
-	swpNoZOrd  = 0x0004
-	srcCopy    = 0x00CC0020
-	psSolid    = 0
-	bkTransp   = 1
-	dtCenter   = 0x01
-	dtVCenter  = 0x04
-	dtSingle   = 0x20
+	csHRedraw = 0x0002
+	csVRedraw = 0x0001
+	wsPopup   = 0x80000000
+	wsVisible = 0x10000000
+	exTopmost = 0x00000008
+	exToolWin = 0x00000080
+	exLayered = 0x00080000
+	lwaAlpha  = 0x00000002
+	swpNoSize = 0x0001
+	swpNoZOrd = 0x0004
+	srcCopy   = 0x00CC0020
+	psSolid   = 0
+	bkTransp  = 1
+	dtCenter  = 0x01
+	dtVCenter = 0x04
+	dtSingle  = 0x20
 
 	wmDestroy  = 0x0002
 	wmPaint    = 0x000F
@@ -101,18 +101,33 @@ var (
 type w32Rect struct{ Left, Top, Right, Bottom int32 }
 type w32Point struct{ X, Y int32 }
 type w32Msg struct {
-	Hwnd uintptr; Message uint32; WParam, LParam uintptr
-	Time uint32; Pt w32Point
+	Hwnd           uintptr
+	Message        uint32
+	WParam, LParam uintptr
+	Time           uint32
+	Pt             w32Point
 }
 type w32PaintStruct struct {
-	HDC     uintptr; FErase int32; RcPaint w32Rect
-	Restore int32; IncUpdate int32; Rgb [32]byte
+	HDC       uintptr
+	FErase    int32
+	RcPaint   w32Rect
+	Restore   int32
+	IncUpdate int32
+	Rgb       [32]byte
 }
 type w32WndClassEx struct {
-	Size       uint32; Style uint32; WndProc uintptr
-	ClsExtra   int32; WndExtra int32; Instance uintptr
-	Icon       uintptr; Cursor uintptr; Background uintptr
-	MenuName   *uint16; ClassName *uint16; IconSm uintptr
+	Size       uint32
+	Style      uint32
+	WndProc    uintptr
+	ClsExtra   int32
+	WndExtra   int32
+	Instance   uintptr
+	Icon       uintptr
+	Cursor     uintptr
+	Background uintptr
+	MenuName   *uint16
+	ClassName  *uint16
+	IconSm     uintptr
 }
 
 func rgb(r, g, b uint8) uintptr {
@@ -163,17 +178,43 @@ type radarOverlay struct {
 	wndProcPtr uintptr // callback created once, reused across restarts
 	size       int
 	rangeM     float64
+	x          int
+	y          int
 	drag       bool
 	lastPt     w32Point
-	alpha     uint8
-	running   atomic.Bool
-	classReg  atomic.Bool // true after the window class has been registered
+	alpha      uint8
+	saveState  func(overlayWindowState)
+	running    atomic.Bool
+	classReg   atomic.Bool // true after the window class has been registered
 }
 
-func newRadarOverlay(pm *telemetry.PitwallManager) *radarOverlay {
-	ov := &radarOverlay{pm: pm, size: 250, rangeM: 80, alpha: 230}
+func newRadarOverlay(pm *telemetry.PitwallManager, saved overlayWindowState, saveState func(overlayWindowState)) *radarOverlay {
+	ov := &radarOverlay{
+		pm:        pm,
+		size:      250,
+		rangeM:    saved.RangeM,
+		x:         saved.X,
+		y:         saved.Y,
+		alpha:     saved.Alpha,
+		saveState: saveState,
+	}
 	ov.wndProcPtr = syscall.NewCallback(ov.wndProc)
 	return ov
+}
+
+func (o *radarOverlay) snapshotState() overlayWindowState {
+	return overlayWindowState{
+		X:      o.x,
+		Y:      o.y,
+		Alpha:  o.alpha,
+		RangeM: o.rangeM,
+	}
+}
+
+func (o *radarOverlay) persistLayout() {
+	if o.saveState != nil {
+		o.saveState(o.snapshotState())
+	}
 }
 
 func (o *radarOverlay) IsRunning() bool { return o.running.Load() }
@@ -249,7 +290,7 @@ func (o *radarOverlay) run() {
 		exTopmost|exToolWin|exLayered,
 		uintptr(unsafe.Pointer(cls)), 0,
 		wsPopup|wsVisible,
-		200, 200, s, s,
+		uintptr(o.x), uintptr(o.y), s, s,
 		0, 0, hInst, 0,
 	)
 	runtime.KeepAlive(cls)
@@ -301,16 +342,21 @@ func (o *radarOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 			uGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 			var rc w32Rect
 			uGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			nextX := int(rc.Left + pt.X - o.lastPt.X)
+			nextY := int(rc.Top + pt.Y - o.lastPt.Y)
 			uSetWindowPos.Call(hwnd, 0,
-				uintptr(rc.Left+pt.X-o.lastPt.X),
-				uintptr(rc.Top+pt.Y-o.lastPt.Y),
+				uintptr(nextX),
+				uintptr(nextY),
 				0, 0, swpNoSize|swpNoZOrd)
+			o.x = nextX
+			o.y = nextY
 			o.lastPt = pt
 		}
 		return 0
 	case wmLBtnUp:
 		o.drag = false
 		uReleaseCapture.Call()
+		o.persistLayout()
 		return 0
 	case wmMWheel:
 		delta := int16(wp >> 16)
@@ -329,8 +375,10 @@ func (o *radarOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 				o.rangeM += 5
 			}
 		}
+		o.persistLayout()
 		return 0
 	case wmRBtnUp, wmClose:
+		o.persistLayout()
 		uKillTimer.Call(hwnd, 1)
 		uDestroyWindow.Call(hwnd)
 		return 0

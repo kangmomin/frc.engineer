@@ -33,6 +33,20 @@ type overlayHotkeys struct {
 	Strategy string `json:"strategy"`
 }
 
+type overlayWindowState struct {
+	X      int     `json:"x,omitempty"`
+	Y      int     `json:"y,omitempty"`
+	Alpha  uint8   `json:"alpha,omitempty"`
+	Scale  float64 `json:"scale,omitempty"`
+	RangeM float64 `json:"rangeM,omitempty"`
+}
+
+type overlayWindowSettings struct {
+	Radar    overlayWindowState `json:"radar,omitempty"`
+	Weather  overlayWindowState `json:"weather,omitempty"`
+	Strategy overlayWindowState `json:"strategy,omitempty"`
+}
+
 type inviteInfo struct {
 	DashboardURL     string `json:"dashboardUrl"`
 	SignalingURL     string `json:"signalingUrl"`
@@ -52,6 +66,22 @@ var defaultOverlayHotkeys = overlayHotkeys{
 	Weather:  "Alt+Shift+2",
 	Strategy: "Alt+Shift+3",
 }
+
+const (
+	defaultOverlayAlpha = 230
+	minOverlayAlpha     = 30
+	maxOverlayAlpha     = 245
+	defaultRadarX       = 200
+	defaultRadarY       = 200
+	defaultWeatherX     = 200
+	defaultWeatherY     = 200
+	defaultStrategyX    = 160
+	defaultStrategyY    = 160
+	defaultOverlayScale = 1.0
+	defaultRadarRangeM  = 80.0
+	minOverlayScale     = 0.6
+	maxOverlayScale     = 2.5
+)
 
 func normalizeEngineerDashboardURL(raw string) string {
 	trimmed := strings.TrimSpace(raw)
@@ -113,6 +143,69 @@ func defaultedOverlayHotkeys(saved *overlayHotkeys) overlayHotkeys {
 func cloneOverlayHotkeys(saved overlayHotkeys) *overlayHotkeys {
 	cloned := normalizeOverlayHotkeys(saved)
 	return &cloned
+}
+
+func defaultedOverlayWindowSettings(saved *overlayWindowSettings) overlayWindowSettings {
+	defaults := overlayWindowSettings{
+		Radar: overlayWindowState{
+			X:      defaultRadarX,
+			Y:      defaultRadarY,
+			Alpha:  defaultOverlayAlpha,
+			RangeM: defaultRadarRangeM,
+		},
+		Weather: overlayWindowState{
+			X:     defaultWeatherX,
+			Y:     defaultWeatherY,
+			Alpha: defaultOverlayAlpha,
+			Scale: defaultOverlayScale,
+		},
+		Strategy: overlayWindowState{
+			X:     defaultStrategyX,
+			Y:     defaultStrategyY,
+			Alpha: defaultOverlayAlpha,
+			Scale: defaultOverlayScale,
+		},
+	}
+	if saved == nil {
+		return defaults
+	}
+
+	return overlayWindowSettings{
+		Radar:    normalizeOverlayWindowState("radar", saved.Radar, defaults.Radar),
+		Weather:  normalizeOverlayWindowState("weather", saved.Weather, defaults.Weather),
+		Strategy: normalizeOverlayWindowState("strategy", saved.Strategy, defaults.Strategy),
+	}
+}
+
+func cloneOverlayWindowSettings(saved overlayWindowSettings) *overlayWindowSettings {
+	cloned := saved
+	return &cloned
+}
+
+func normalizeOverlayWindowState(kind string, in overlayWindowState, fallback overlayWindowState) overlayWindowState {
+	out := in
+	if out.X == 0 && out.Y == 0 {
+		out.X = fallback.X
+		out.Y = fallback.Y
+	}
+	if out.Alpha < minOverlayAlpha || out.Alpha > maxOverlayAlpha {
+		out.Alpha = fallback.Alpha
+	}
+
+	switch kind {
+	case "radar":
+		if out.RangeM <= 0 {
+			out.RangeM = fallback.RangeM
+		}
+		out.Scale = 0
+	default:
+		if out.Scale < minOverlayScale || out.Scale > maxOverlayScale {
+			out.Scale = fallback.Scale
+		}
+		out.RangeM = 0
+	}
+
+	return out
 }
 
 func normalizeOverlayPresets(in []overlayPreset) []overlayPreset {

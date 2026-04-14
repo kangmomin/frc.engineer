@@ -51,6 +51,7 @@ type senderConfig struct {
 	ForwardTargets       []rtconfig.ForwardTarget `json:"forwardTargets"`
 	OverlayPresets       []overlayPreset          `json:"overlayPresets,omitempty"`
 	OverlayHotkeys       *overlayHotkeys          `json:"overlayHotkeys,omitempty"`
+	OverlayWindows       *overlayWindowSettings   `json:"overlayWindows,omitempty"`
 }
 
 const senderConfigPath = "data/sender-config.json"
@@ -272,6 +273,8 @@ func main() {
 	var cfgForwardTargets []rtconfig.ForwardTarget
 	cfgOverlayPresets := []overlayPreset{}
 	cfgOverlayHotkeys := defaultedOverlayHotkeys(nil)
+	overlayWindowDefaults := defaultedOverlayWindowSettings(nil)
+	cfgOverlayWindows := overlayWindowDefaults
 	if saved := savedConfig; saved != nil && len(saved.ForwardTargets) > 0 {
 		cfgForwardTargets = saved.ForwardTargets
 		forwarder.UpdateTargets(cfgForwardTargets)
@@ -281,6 +284,7 @@ func main() {
 	if saved := savedConfig; saved != nil {
 		cfgOverlayPresets = normalizeOverlayPresets(saved.OverlayPresets)
 		cfgOverlayHotkeys = defaultedOverlayHotkeys(saved.OverlayHotkeys)
+		cfgOverlayWindows = defaultedOverlayWindowSettings(saved.OverlayWindows)
 	}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
@@ -425,7 +429,27 @@ func main() {
 			ForwardTargets:       forwardTargets,
 			OverlayPresets:       presets,
 			OverlayHotkeys:       cloneOverlayHotkeys(cfgOverlayHotkeys),
+			OverlayWindows:       cloneOverlayWindowSettings(cfgOverlayWindows),
 		}
+	}
+
+	persistOverlayWindow := func(kind string, state overlayWindowState) {
+		cfgMu.Lock()
+		switch kind {
+		case "radar":
+			cfgOverlayWindows.Radar = normalizeOverlayWindowState(kind, state, overlayWindowDefaults.Radar)
+		case "weather":
+			cfgOverlayWindows.Weather = normalizeOverlayWindowState(kind, state, overlayWindowDefaults.Weather)
+		case "strategy":
+			cfgOverlayWindows.Strategy = normalizeOverlayWindowState(kind, state, overlayWindowDefaults.Strategy)
+		default:
+			cfgMu.Unlock()
+			return
+		}
+		if err := saveSenderConfig(buildSenderConfigSnapshot()); err != nil {
+			logger.Warn("failed to save overlay window config", "kind", kind, "error", err)
+		}
+		cfgMu.Unlock()
 	}
 
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
@@ -449,14 +473,18 @@ func main() {
 	weatherSSE := newWeatherSSEHub(processor.PitwallManager())
 	mux.Handle("GET /api/weather/stream", weatherSSE)
 
-	radarOv := newRadarOverlay(processor.PitwallManager())
+	radarOv := newRadarOverlay(processor.PitwallManager(), cfgOverlayWindows.Radar, func(state overlayWindowState) {
+		persistOverlayWindow("radar", state)
+	})
 	mux.HandleFunc("POST /api/radar/toggle", func(w http.ResponseWriter, r *http.Request) {
 		active := radarOv.Toggle()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"active": active})
 	})
 
-	weatherOv := newWeatherOverlay(processor.PitwallManager())
+	weatherOv := newWeatherOverlay(processor.PitwallManager(), cfgOverlayWindows.Weather, func(state overlayWindowState) {
+		persistOverlayWindow("weather", state)
+	})
 	mux.HandleFunc("POST /api/weather/toggle", func(w http.ResponseWriter, r *http.Request) {
 		active := weatherOv.Toggle()
 		w.Header().Set("Content-Type", "application/json")
@@ -471,7 +499,9 @@ func main() {
 	strategySSE := newStrategySSEHub(processor.PitwallManager(), getStrategyConfig)
 	mux.Handle("GET /api/strategy/stream", strategySSE)
 
-	strategyOv := newStrategyOverlay(processor.PitwallManager(), getStrategyConfig)
+	strategyOv := newStrategyOverlay(processor.PitwallManager(), getStrategyConfig, cfgOverlayWindows.Strategy, func(state overlayWindowState) {
+		persistOverlayWindow("strategy", state)
+	})
 	mux.HandleFunc("POST /api/strategy/toggle", func(w http.ResponseWriter, r *http.Request) {
 		active := strategyOv.Toggle()
 		w.Header().Set("Content-Type", "application/json")

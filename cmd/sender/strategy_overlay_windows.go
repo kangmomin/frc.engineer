@@ -22,17 +22,44 @@ type strategyOverlay struct {
 	wndProcPtr uintptr
 	scale      float64
 	dpiScale   float64
+	x          int
+	y          int
 	drag       bool
 	lastPt     w32Point
 	alpha      uint8
+	saveState  func(overlayWindowState)
 	running    atomic.Bool
 	classReg   atomic.Bool
 }
 
-func newStrategyOverlay(pm *telemetry.PitwallManager, getConfig func(int8) trackStrategyConfig) *strategyOverlay {
-	ov := &strategyOverlay{pm: pm, getConfig: getConfig, scale: 1.0, dpiScale: 1.0, alpha: 230}
+func newStrategyOverlay(pm *telemetry.PitwallManager, getConfig func(int8) trackStrategyConfig, saved overlayWindowState, saveState func(overlayWindowState)) *strategyOverlay {
+	ov := &strategyOverlay{
+		pm:        pm,
+		getConfig: getConfig,
+		scale:     saved.Scale,
+		dpiScale:  1.0,
+		x:         saved.X,
+		y:         saved.Y,
+		alpha:     saved.Alpha,
+		saveState: saveState,
+	}
 	ov.wndProcPtr = syscall.NewCallback(ov.wndProc)
 	return ov
+}
+
+func (o *strategyOverlay) snapshotState() overlayWindowState {
+	return overlayWindowState{
+		X:     o.x,
+		Y:     o.y,
+		Alpha: o.alpha,
+		Scale: o.scale,
+	}
+}
+
+func (o *strategyOverlay) persistLayout() {
+	if o.saveState != nil {
+		o.saveState(o.snapshotState())
+	}
 }
 
 const (
@@ -111,7 +138,7 @@ func (o *strategyOverlay) run() {
 
 	hwnd, _, _ := uCreateWindowEx.Call(
 		exTopmost|exToolWin|exLayered, uintptr(unsafe.Pointer(cls)), 0,
-		wsPopup|wsVisible, 160, 160, 1, 1, 0, 0, hInst, 0,
+		wsPopup|wsVisible, uintptr(o.x), uintptr(o.y), 1, 1, 0, 0, hInst, 0,
 	)
 	runtime.KeepAlive(cls)
 	if hwnd == 0 {
@@ -125,7 +152,7 @@ func (o *strategyOverlay) run() {
 	}
 
 	w, h := uintptr(o.winW()), uintptr(o.winH())
-	uSetWindowPos.Call(hwnd, 0, 160, 160, w, h, swpNoZOrd)
+	uSetWindowPos.Call(hwnd, 0, uintptr(o.x), uintptr(o.y), w, h, swpNoZOrd)
 	uSetLayeredAttr.Call(hwnd, 0, uintptr(o.alpha), lwaAlpha)
 	uSetTimer.Call(hwnd, 1, 500, 0) // 2 fps
 
@@ -159,15 +186,20 @@ func (o *strategyOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 			uGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 			var rc w32Rect
 			uGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			nextX := int(rc.Left + pt.X - o.lastPt.X)
+			nextY := int(rc.Top + pt.Y - o.lastPt.Y)
 			uSetWindowPos.Call(hwnd, 0,
-				uintptr(rc.Left+pt.X-o.lastPt.X), uintptr(rc.Top+pt.Y-o.lastPt.Y),
+				uintptr(nextX), uintptr(nextY),
 				0, 0, swpNoSize|swpNoZOrd)
+			o.x = nextX
+			o.y = nextY
 			o.lastPt = pt
 		}
 		return 0
 	case wmLBtnUp:
 		o.drag = false
 		uReleaseCapture.Call()
+		o.persistLayout()
 		return 0
 	case wmMWheel:
 		delta := int16(wp >> 16)
@@ -182,14 +214,16 @@ func (o *strategyOverlay) wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 		} else {
 			step := 0.1
 			if delta > 0 {
-				o.scale = math.Min(o.scale+step, 2.5)
+				o.scale = math.Min(o.scale+step, maxOverlayScale)
 			} else {
-				o.scale = math.Max(o.scale-step, 0.6)
+				o.scale = math.Max(o.scale-step, minOverlayScale)
 			}
 			uSetWindowPos.Call(o.hwnd, 0, 0, 0, uintptr(o.winW()), uintptr(o.winH()), swpNoMove|swpNoZOrd)
 		}
+		o.persistLayout()
 		return 0
 	case wmRBtnUp, wmClose:
+		o.persistLayout()
 		uKillTimer.Call(hwnd, 1)
 		uDestroyWindow.Call(hwnd)
 		return 0

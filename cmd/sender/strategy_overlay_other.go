@@ -6,7 +6,7 @@ import "frc.engineer/internal/telemetry"
 
 type strategyOverlay struct{}
 
-func newStrategyOverlay(_ *telemetry.PitwallManager, _ func(int8) trackStrategyConfig) *strategyOverlay {
+func newStrategyOverlay(_ *telemetry.PitwallManager, _ func(int8) trackStrategyConfig, _ overlayWindowState, _ func(overlayWindowState)) *strategyOverlay {
 	return &strategyOverlay{}
 }
 func (o *strategyOverlay) Start()          {}

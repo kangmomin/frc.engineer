@@ -1398,6 +1398,23 @@
   min-width: 0;
 }
 
+.damagePanelSummary {
+  gap: 8px;
+}
+
+.damagePanelSummary .damageSummaryPill {
+  padding: 10px 12px;
+}
+
+.damagePanelSummary .damageSummaryLabel {
+  font-size: 10px;
+}
+
+.damagePanelSummary strong {
+  font-family: var(--font-racing);
+  font-size: 1rem;
+}
+
 .damageSummaryPill {
   display: inline-flex;
   align-items: center;

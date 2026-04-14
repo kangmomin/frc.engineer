@@ -84,3 +84,46 @@ func TestApplyOverlayState(t *testing.T) {
 		t.Fatalf("unexpected state %#v", state)
 	}
 }
+
+func TestDefaultedOverlayWindowSettings(t *testing.T) {
+	got := defaultedOverlayWindowSettings(nil)
+	if got.Radar.X != defaultRadarX || got.Radar.Y != defaultRadarY || got.Radar.Alpha != defaultOverlayAlpha {
+		t.Fatalf("unexpected radar defaults %#v", got.Radar)
+	}
+	if got.Weather.Scale != defaultOverlayScale || got.Strategy.Scale != defaultOverlayScale {
+		t.Fatalf("unexpected scale defaults weather=%#v strategy=%#v", got.Weather, got.Strategy)
+	}
+	if got.Radar.RangeM != defaultRadarRangeM {
+		t.Fatalf("unexpected radar range default %#v", got.Radar)
+	}
+}
+
+func TestDefaultedOverlayWindowSettingsPreservesSavedValues(t *testing.T) {
+	got := defaultedOverlayWindowSettings(&overlayWindowSettings{
+		Radar: overlayWindowState{
+			X:      48,
+			Y:      72,
+			Alpha:  210,
+			RangeM: 95,
+		},
+		Weather: overlayWindowState{
+			X:     10,
+			Y:     20,
+			Alpha: 180,
+			Scale: 1.4,
+		},
+		Strategy: overlayWindowState{
+			X:     640,
+			Y:     80,
+			Alpha: 160,
+			Scale: 1.2,
+		},
+	})
+
+	if got.Radar.X != 48 || got.Radar.Y != 72 || got.Radar.Alpha != 210 || got.Radar.RangeM != 95 {
+		t.Fatalf("unexpected radar state %#v", got.Radar)
+	}
+	if got.Weather.Scale != 1.4 || got.Strategy.Scale != 1.2 {
+		t.Fatalf("unexpected scale state weather=%#v strategy=%#v", got.Weather, got.Strategy)
+	}
+}

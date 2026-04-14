@@ -486,15 +486,6 @@ export function CockpitDashboard({
     () => buildStrategyPanelData(player, session, strategyGuide, recommendedTyre, pitWindow, trafficStatus),
     [pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
   );
-  const damageReadouts = [
-    { label: 'Front Left', value: player?.damage?.frontLeftWing ?? 0 },
-    { label: 'Front Right', value: player?.damage?.frontRightWing ?? 0 },
-    { label: 'Floor', value: player?.damage?.floor ?? 0 },
-    { label: 'Diffuser', value: player?.damage?.diffuser ?? 0 },
-    { label: 'Sidepod', value: player?.damage?.sidepod ?? 0 },
-    { label: 'Rear Wing', value: player?.damage?.rearWing ?? 0 },
-  ];
-
   useEffect(() => {
     if (!featurePermissions.viewAdvancedStrategy || sessionTrackId == null || sessionTrackId < 0) {
       setStrategyGuide(null);
@@ -1107,9 +1098,10 @@ export function CockpitDashboard({
 
         <div className={`${styles.panel} ${styles.damagePanel}`}>
           <PanelTitle title="Damage Status" tone="secondary" />
-          {damageReadouts.map((damage) => (
-            <DamageMetric key={damage.label} label={damage.label} value={damage.value} />
-          ))}
+          <DamageSummaryCell
+            driver={player}
+            className={styles.damagePanelSummary}
+          />
         </div>
       </section>
 
@@ -1457,15 +1449,6 @@ function BattleTarget({
   );
 }
 
-function DamageMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className={styles.damageMetric}>
-      <span>{label}</span>
-      <strong className={styles[getDamageTone(value)]}>{`${Math.round(value)}%`}</strong>
-    </div>
-  );
-}
-
 function useGapTrend(gapMs: number | null | undefined, rivalKey: number | null): BattleTrend {
   const historyRef = useRef<Array<{ time: number; gapMs: number }>>([]);
   const rivalKeyRef = useRef<number | null>(rivalKey);
@@ -1512,23 +1495,11 @@ function DamageSummaryCell({
   className,
   mobileLabel,
 }: {
-  driver: DriverInfo;
+  driver: DriverInfo | null;
   className?: string;
   mobileLabel?: string;
 }) {
-  const damageItems = [
-    { label: 'FL', value: driver.damage?.frontLeftWing ?? 0 },
-    { label: 'FR', value: driver.damage?.frontRightWing ?? 0 },
-    { label: 'RW', value: driver.damage?.rearWing ?? 0 },
-    {
-      label: 'OTH',
-      value: Math.max(
-        driver.damage?.floor ?? 0,
-        driver.damage?.diffuser ?? 0,
-        driver.damage?.sidepod ?? 0,
-      ),
-    },
-  ];
+  const damageItems = getDamageSummaryItems(driver);
 
   return (
     <div
@@ -1643,6 +1614,22 @@ function SectorDeltaCell({
       })}
     </span>
   );
+}
+
+function getDamageSummaryItems(driver: DriverInfo | null): Array<{ label: 'FL' | 'FR' | 'RW' | 'OTH'; value: number }> {
+  return [
+    { label: 'FL', value: driver?.damage?.frontLeftWing ?? 0 },
+    { label: 'FR', value: driver?.damage?.frontRightWing ?? 0 },
+    { label: 'RW', value: driver?.damage?.rearWing ?? 0 },
+    {
+      label: 'OTH',
+      value: Math.max(
+        driver?.damage?.floor ?? 0,
+        driver?.damage?.diffuser ?? 0,
+        driver?.damage?.sidepod ?? 0,
+      ),
+    },
+  ];
 }
 
 function abbreviateDriver(name: string, fallbackIndex?: number): string {
@@ -2338,12 +2325,6 @@ function formatForecastLabel(remainingMinutes: number): string {
   return `+${rounded}M`;
 }
 
-
-function getDamageTone(value: number): 'tertiary' | 'primary' | 'secondary' {
-  if (value >= 20) return 'secondary';
-  if (value >= 5) return 'primary';
-  return 'tertiary';
-}
 
 function getDamageSeverityStyle(value: number) {
   const severity = clamp(value, 0, 100) / 100;
