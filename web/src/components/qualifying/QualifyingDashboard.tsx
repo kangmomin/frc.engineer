@@ -10,6 +10,11 @@ import type { DriverInfo, SessionInfo } from '../../types/telemetry';
 import { getConnectionBadgeLabel } from '../../utils/connectionStatus';
 import { formatLapTime } from '../../utils/formatters';
 import { sortQualifyingDrivers } from './leaderboardOrder';
+import {
+  evaluateDriverTryState,
+  type DriverTryState,
+  type TrySectorBaseline,
+} from './tryStatus';
 import styles from './QualifyingDashboard.module.css';
 
 // ── Props ──
@@ -152,6 +157,14 @@ function getPitLabel(pitStatus: number): { label: string; className: string } {
   return { label: 'IN PIT', className: styles.pitIn };
 }
 
+function buildTryBaseline(driver: DriverInfo, acc?: SectorAcc): TrySectorBaseline {
+  return {
+    s1: driver.bestSector1Ms ?? acc?.bestS1 ?? 0,
+    s2: driver.bestSector2Ms ?? acc?.bestS2 ?? 0,
+    s3: driver.bestSector3Ms ?? acc?.bestS3 ?? 0,
+  };
+}
+
 // ── Main Component ──
 
 export function QualifyingDashboard({
@@ -202,8 +215,18 @@ export function QualifyingDashboard({
   // Track gaps
   const trackGap = useTrackGaps(allDrivers, trackLength, playerIndex);
 
+  const driverTryStateMap = useMemo(() => {
+    const next = new Map<number, DriverTryState>();
+    for (const driver of allDrivers) {
+      next.set(driver.index, evaluateDriverTryState(driver, buildTryBaseline(driver, accMap.get(driver.index))));
+    }
+    return next;
+  }, [accMap, allDrivers]);
+
   // Player sector data
   const playerAcc = player ? accMap.get(player.index) : null;
+  const aheadTryState = trackGap.aheadDriver ? driverTryStateMap.get(trackGap.aheadDriver.index) ?? null : null;
+  const behindTryState = trackGap.behindDriver ? driverTryStateMap.get(trackGap.behindDriver.index) ?? null : null;
 
   const pitInfo = player ? getPitLabel(player.pitStatus) : { label: '--', className: '' };
 
@@ -275,12 +298,14 @@ export function QualifyingDashboard({
               <th>Gap</th>
               <th>Tyre</th>
               <th>Laps</th>
+              <th>Try</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {sortedDrivers.map((d, i) => {
               const acc = accMap.get(d.index);
+              const driverTryState = driverTryStateMap.get(d.index);
               const isPlayer = d.index === playerIndex;
               return (
                 <tr key={d.index} className={isPlayer ? styles.playerRow : undefined}>
@@ -314,6 +339,9 @@ export function QualifyingDashboard({
                     </span>
                   </td>
                   <td>{d.currentLapNum}</td>
+                  <td>
+                    {driverTryState ? <TryBadge state={driverTryState} /> : '--'}
+                  </td>
                   <td><DriverStatusBadge pitStatus={d.pitStatus} driverStatus={d.driverStatus} /></td>
                 </tr>
               );
@@ -341,7 +369,11 @@ export function QualifyingDashboard({
           <div className={styles.gapRow}>
             <div>
               <div className={styles.gapLabel}>Ahead</div>
-              <div className={styles.gapDriver}>{trackGap.aheadDriver?.name ?? '--'}</div>
+              <div className={styles.gapDriverRow}>
+                <div className={styles.gapDriver}>{trackGap.aheadDriver?.name ?? '--'}</div>
+                {aheadTryState && <TryBadge state={aheadTryState} compact />}
+              </div>
+              <div className={styles.gapMeta}>{aheadTryState?.summary ?? 'No car ahead'}</div>
             </div>
             <div className={`${styles.gapValue} ${getGapTone(trackGap.gapAheadM)}`}>
               {formatDistance(trackGap.gapAheadM)}
@@ -350,7 +382,11 @@ export function QualifyingDashboard({
           <div className={styles.gapRow}>
             <div>
               <div className={styles.gapLabel}>Behind</div>
-              <div className={styles.gapDriver}>{trackGap.behindDriver?.name ?? '--'}</div>
+              <div className={styles.gapDriverRow}>
+                <div className={styles.gapDriver}>{trackGap.behindDriver?.name ?? '--'}</div>
+                {behindTryState && <TryBadge state={behindTryState} compact />}
+              </div>
+              <div className={styles.gapMeta}>{behindTryState?.summary ?? 'No car behind'}</div>
             </div>
             <div className={`${styles.gapValue} ${getGapTone(trackGap.gapBehindM)}`}>
               {formatDistance(trackGap.gapBehindM)}
@@ -445,4 +481,28 @@ function formatTimeLeft(seconds?: number): string {
 function DriverStatusBadge({ pitStatus, driverStatus }: { pitStatus: number; driverStatus: number }) {
   const { label, className } = getDriverStatusInfo(pitStatus, driverStatus);
   return <span className={`${styles.statusBadge} ${className}`}>{label}</span>;
+}
+
+function TryBadge({ state, compact = false }: { state: DriverTryState; compact?: boolean }) {
+  const toneClassName = getTryToneClassName(state.tone);
+  const compactClassName = compact ? styles.tryBadgeCompact : '';
+  return (
+    <span
+      className={`${styles.tryBadge} ${toneClassName} ${compactClassName}`.trim()}
+      title={state.summary}
+    >
+      {state.label}
+    </span>
+  );
+}
+
+function getTryToneClassName(tone: DriverTryState['tone']): string {
+  switch (tone) {
+    case 'attack':
+      return styles.tryAttack;
+    case 'watch':
+      return styles.tryWatch;
+    default:
+      return styles.tryStandby;
+  }
 }

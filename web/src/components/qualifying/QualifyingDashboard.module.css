@@ -330,6 +330,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 6px 0;
 }
 
@@ -339,6 +340,12 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-secondary);
+}
+
+.gapDriverRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .gapValue {
@@ -351,7 +358,12 @@
 .gapDriver {
   font-size: 10px;
   color: var(--text-muted);
-  text-align: right;
+}
+
+.gapMeta {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 .gapClose { color: var(--accent-red); }
@@ -471,4 +483,43 @@
 .statusGarage {
   color: var(--text-muted);
   background: rgba(50, 50, 50, 0.12);
+}
+
+.tryBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tryBadgeCompact {
+  min-width: 40px;
+  padding: 1px 6px;
+  font-size: 9px;
+}
+
+.tryAttack {
+  color: var(--accent-lime);
+  background: rgba(205, 255, 19, 0.12);
+  border: 1px solid rgba(205, 255, 19, 0.22);
+}
+
+.tryWatch {
+  color: #ffb400;
+  background: rgba(255, 180, 0, 0.10);
+  border: 1px solid rgba(255, 180, 0, 0.18);
+}
+
+.tryStandby {
+  color: var(--text-muted);
+  background: rgba(80, 80, 80, 0.15);
+  border: 1px solid rgba(80, 80, 80, 0.2);
 }
