@@ -150,6 +150,11 @@
 .tyreCardLabel,
 .tyreWearMeta span,
 .tyreStatus,
+.compoundLifeTitle,
+.compoundLifeMeta,
+.compoundLifeLabel,
+.compoundLifeHint,
+.compoundLifeCurrent,
 .progressStatus {
   font-size: 11px;
   line-height: 1.2;
@@ -1123,7 +1128,7 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr) 272px;
+  grid-template-columns: minmax(420px, 1fr) minmax(220px, 0.34fr) 272px;
   gap: 16px;
   min-height: 0;
   overflow: hidden;
@@ -1142,6 +1147,84 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   min-height: 0;
+}
+
+.compoundLifeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compoundLifeHeader,
+.compoundLifeTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compoundLifeHeader {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.compoundLifeMeta {
+  color: var(--text-muted);
+}
+
+.compoundLifeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compoundLifeCard,
+.compoundLifeEmpty {
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(14, 14, 15, 0.52);
+  border: 1px solid rgba(59, 73, 76, 0.15);
+}
+
+.compoundLifeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 3px solid rgba(132, 147, 150, 0.24);
+}
+
+.compoundLifeCardActive {
+  background: rgba(0, 229, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.14);
+}
+
+.compoundLifeCode,
+.compoundLifeCard strong {
+  font-family: var(--font-racing);
+  line-height: 1;
+}
+
+.compoundLifeCode {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.compoundLifeLabel {
+  min-width: 0;
+}
+
+.compoundLifeCurrent {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.compoundLifeCard strong {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.compoundLifeHint {
+  color: var(--text-muted);
 }
 
 .tyreCard {
@@ -1264,7 +1347,7 @@
 
 .energyContent {
   display: grid;
-  grid-template-columns: minmax(124px, 0.4fr) minmax(0, 1fr);
+  grid-template-columns: 108px minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
   flex: 1;
@@ -1287,22 +1370,22 @@
 
 .energyCompactGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
 .ersDial {
   position: relative;
-  width: clamp(96px, 28vw, 126px);
-  height: clamp(96px, 28vw, 126px);
+  width: clamp(88px, 17vw, 112px);
+  height: clamp(88px, 17vw, 112px);
   margin: auto;
 }
 
 .ersDialRing {
   --ring-fill: 0%;
   position: relative;
-  width: clamp(96px, 28vw, 126px);
-  height: clamp(96px, 28vw, 126px);
+  width: clamp(88px, 17vw, 112px);
+  height: clamp(88px, 17vw, 112px);
   border-radius: 999px;
   background:
     radial-gradient(circle at center, rgba(19, 19, 20, 0.95) 58%, transparent 59%),
@@ -1355,13 +1438,13 @@
 }
 
 .compactMetricTile {
-  min-height: 0;
-  padding: 8px 9px;
+  min-height: 54px;
+  padding: 8px 10px;
   gap: 3px;
 }
 
 .compactMetricTile strong {
-  font-size: 0.84rem;
+  font-size: 0.94rem;
 }
 
 .compactMetricTile span {
@@ -1531,11 +1614,15 @@
   }
 
   .energyContent {
-    grid-template-columns: 150px minmax(0, 1fr);
+    grid-template-columns: 108px minmax(0, 1fr);
   }
 
   .ribbonGrid {
     grid-template-columns: minmax(104px, 0.72fr) minmax(124px, 0.88fr) minmax(0, 1.35fr) minmax(118px, 0.85fr);
+  }
+
+  .compoundLifeGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1582,7 +1669,7 @@
     grid-template-columns: var(--leaderboard-columns-tablet, 48px minmax(0, 1fr) 52px 62px 72px 74px 82px auto minmax(84px, 0.95fr) 60px 62px minmax(160px, 1.1fr) 108px);
   }
 
-  .energyCompactGrid {
+  .compoundLifeGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1600,6 +1687,7 @@
   .metricGrid,
   .splitPills,
   .tyreGrid,
+  .compoundLifeGrid,
   .energyContent {
     grid-template-columns: 1fr;
   }

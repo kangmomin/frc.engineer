@@ -21,6 +21,7 @@ import styles from './CockpitDashboard.module.css';
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEFAULT_PREDICTION_LAPS = 10;
 const SECTOR_LABELS = ['S1', 'S2', 'S3'] as const;
+const STRATEGY_COMPOUND_ORDER = ['soft', 'medium', 'hard', 'inter', 'wet'] as const;
 
 interface PitSettings {
   pitRepeatSpeed: number;
@@ -211,6 +212,15 @@ type StrategyPanelData = {
   detailMeta: string;
   meter: number;
   notes?: string;
+};
+
+type CompoundLifeCard = {
+  key: string;
+  label: string;
+  shortLabel: string;
+  lapsLabel: string;
+  subtitle: string;
+  active: boolean;
 };
 
 interface CockpitDashboardProps {
@@ -486,6 +496,17 @@ export function CockpitDashboard({
     () => buildStrategyPanelData(player, session, strategyGuide, recommendedTyre, pitWindow, trafficStatus),
     [pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
   );
+  const compoundLifeCards = useMemo(
+    () => buildCompoundLifeCards(strategyGuide?.track, player?.tireCompound),
+    [player?.tireCompound, strategyGuide],
+  );
+  const compoundLifeDetail = useMemo(() => {
+    if (!featurePermissions.viewAdvancedStrategy) return 'Advanced strategy locked';
+    if (strategyGuideLoading) return 'Loading track guide...';
+    if (!strategyGuide) return 'Track guide unavailable';
+    return `50% race baseline / ${strategyGuide.track.track_info.laps_50pct}L`;
+  }, [featurePermissions.viewAdvancedStrategy, strategyGuide, strategyGuideLoading]);
+
   useEffect(() => {
     if (!featurePermissions.viewAdvancedStrategy || sessionTrackId == null || sessionTrackId < 0) {
       setStrategyGuide(null);
@@ -1005,6 +1026,41 @@ export function CockpitDashboard({
               );
             })}
           </div>
+          <div className={styles.compoundLifeSection}>
+            <div className={styles.compoundLifeHeader}>
+              <span className={styles.compoundLifeTitle}>Track Compound Life</span>
+              <span className={styles.compoundLifeMeta}>{compoundLifeDetail}</span>
+            </div>
+            {compoundLifeCards.length > 0 ? (
+              <div className={styles.compoundLifeGrid}>
+                {compoundLifeCards.map((compound) => (
+                  <div
+                    key={compound.key}
+                    className={`${styles.compoundLifeCard}${compound.active ? ` ${styles.compoundLifeCardActive}` : ''}`}
+                    style={{ borderLeftColor: getTyreColor(compound.key) }}
+                  >
+                    <div className={styles.compoundLifeTop}>
+                      <span className={styles.compoundLifeCode} style={{ color: getTyreColor(compound.key) }}>
+                        {compound.shortLabel}
+                      </span>
+                      <span className={styles.compoundLifeLabel}>{compound.label}</span>
+                      {compound.active && <span className={styles.compoundLifeCurrent}>Now</span>}
+                    </div>
+                    <strong>{compound.lapsLabel}</strong>
+                    <span className={styles.compoundLifeHint}>{compound.subtitle}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.compoundLifeEmpty}>
+                {featurePermissions.viewAdvancedStrategy
+                  ? strategyGuideLoading
+                    ? 'Loading track guide...'
+                    : 'No compound life data for this track.'
+                  : 'Advanced strategy permission required.'}
+              </div>
+            )}
+          </div>
           <div className={styles.footerStrip}>
             <div className={styles.predictionInput}>
               <label htmlFor="pred-laps">Predict after</label>
@@ -1074,20 +1130,20 @@ export function CockpitDashboard({
             <div className={styles.energyColumn}>
               <div className={styles.energyCompactGrid}>
                 <MetricTile
-                  label="Fuel Finish"
+                  label="Fuel"
                   value={fuelMargin}
                   tone={fuelMargin.startsWith('-') ? 'secondary' : 'tertiary'}
                   className={styles.compactMetricTile}
                 />
                 <MetricTile
-                  label="Brake Bias"
-                  value={player?.brakeBias ? `${player.brakeBias.toFixed(1)}%` : '--'}
+                  label="BB"
+                  value={player?.brakeBias != null ? `${player.brakeBias.toFixed(1)}%` : '--'}
                   tone="tertiary"
                   className={styles.compactMetricTile}
                 />
                 <MetricTile
-                  label="Diff On Throttle"
-                  value={player?.diffOnThrottle ? `${player.diffOnThrottle}%` : '--'}
+                  label="DIFF"
+                  value={player?.diffOnThrottle != null ? `${player.diffOnThrottle}%` : '--'}
                   tone="primary"
                   className={styles.compactMetricTile}
                 />
@@ -2249,6 +2305,37 @@ function buildCompoundSummary(
   return parts.join(' · ') || 'Compound data unavailable';
 }
 
+function buildCompoundLifeCards(
+  track: StrategyGuideResponse['track'] | null | undefined,
+  currentCompound?: string | null,
+): CompoundLifeCard[] {
+  if (!track) return [];
+
+  const activeCompound = normalizeStrategyCompound(currentCompound);
+  const keys = Object.keys(track.tyre_strategy.tyre_life_50pct);
+  keys.sort((left, right) => {
+    const leftIndex = STRATEGY_COMPOUND_ORDER.indexOf(left as typeof STRATEGY_COMPOUND_ORDER[number]);
+    const rightIndex = STRATEGY_COMPOUND_ORDER.indexOf(right as typeof STRATEGY_COMPOUND_ORDER[number]);
+    if (leftIndex === -1 && rightIndex === -1) return left.localeCompare(right);
+    if (leftIndex === -1) return 1;
+    if (rightIndex === -1) return -1;
+    return leftIndex - rightIndex;
+  });
+
+  return keys.map((key) => {
+    const life = track.tyre_strategy.tyre_life_50pct[key];
+    const wear = track.tyre_strategy.wear_per_lap[key];
+    return {
+      key,
+      label: formatCompoundLabel(key),
+      shortLabel: getTyreShortLabel(key),
+      lapsLabel: `${life.laps}L`,
+      subtitle: wear ? `Wear ${wear.display}/lap` : '50% race baseline',
+      active: activeCompound === key,
+    };
+  });
+}
+
 function compoundToStrategyTempKey(track: StrategyGuideResponse['track'], compoundKey: string): string {
   return track.tyre_strategy.compounds[compoundKey] ?? compoundKey;
 }
@@ -2265,6 +2352,11 @@ function normalizeStrategyCompound(compound?: string | null): string | null {
     return normalized;
   }
   return null;
+}
+
+function formatCompoundLabel(compoundKey: string): string {
+  if (!compoundKey) return '--';
+  return compoundKey.charAt(0).toUpperCase() + compoundKey.slice(1);
 }
 
 function getTrafficStatus(carBehind: DriverInfo | null): { label: string; detail: string; meter: number } {
