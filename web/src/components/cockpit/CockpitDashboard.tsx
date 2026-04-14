@@ -1026,78 +1026,6 @@ export function CockpitDashboard({
               );
             })}
           </div>
-          <div className={styles.compoundLifeSection}>
-            <div className={styles.compoundLifeHeader}>
-              <span className={styles.compoundLifeTitle}>Track Compound Life</span>
-              <span className={styles.compoundLifeMeta}>{compoundLifeDetail}</span>
-            </div>
-            {compoundLifeCards.length > 0 ? (
-              <div className={styles.compoundLifeGrid}>
-                {compoundLifeCards.map((compound) => (
-                  <div
-                    key={compound.key}
-                    className={`${styles.compoundLifeCard}${compound.active ? ` ${styles.compoundLifeCardActive}` : ''}`}
-                    style={{ borderLeftColor: getTyreColor(compound.key) }}
-                  >
-                    <div className={styles.compoundLifeTop}>
-                      <span className={styles.compoundLifeCode} style={{ color: getTyreColor(compound.key) }}>
-                        {compound.shortLabel}
-                      </span>
-                      <span className={styles.compoundLifeLabel}>{compound.label}</span>
-                      {compound.active && <span className={styles.compoundLifeCurrent}>Now</span>}
-                    </div>
-                    <strong>{compound.lapsLabel}</strong>
-                    <span className={styles.compoundLifeHint}>{compound.subtitle}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className={styles.compoundLifeEmpty}>
-                {featurePermissions.viewAdvancedStrategy
-                  ? strategyGuideLoading
-                    ? 'Loading track guide...'
-                    : 'No compound life data for this track.'
-                  : 'Advanced strategy permission required.'}
-              </div>
-            )}
-          </div>
-          <div className={styles.footerStrip}>
-            <div className={styles.predictionInput}>
-              <label htmlFor="pred-laps">Predict after</label>
-              <input
-                id="pred-laps"
-                className={styles.lapInput}
-                type="number"
-                min={1}
-                max={99}
-                value={predictionLaps}
-                onChange={(e) => {
-                  const v = parseInt(e.target.value, 10);
-                  if (!isNaN(v) && v >= 1 && v <= 99) setPredictionLaps(v);
-                }}
-              />
-              <span>laps</span>
-            </div>
-            <div className={styles.predictionSummary}>
-              {WHEEL_LABELS.map((label, index) => {
-                const pred = wheelWearPrediction[index];
-                const hasPred = player?.tireAge && player.tireAge > 0;
-                const text = hasPred
-                  ? wearDisplayMode === 'absolute'
-                    ? `${pred.absolute}%`
-                    : `+${pred.delta}%`
-                  : '--';
-                const color = hasPred && wearDisplayMode === 'absolute'
-                  ? getWearStatusColor(pred.absolute)
-                  : undefined;
-                return (
-                  <span key={label} className={styles.predictionChip} style={color ? { color } : undefined}>
-                    {label} {text}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
         </div>
 
         <div className={`${styles.panel} ${styles.energyPanel}`}>
@@ -1149,6 +1077,59 @@ export function CockpitDashboard({
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className={`${styles.panel} ${styles.compoundPanel}`}>
+          <PanelTitle title="Tyre Compounds" tone="tertiary" detail={compoundLifeDetail} />
+          <div className={styles.compoundLifeSection}>
+            <div className={styles.compoundPanelControls}>
+              <div className={`${styles.predictionInput} ${styles.predictionInputCompact}`}>
+                <label htmlFor="pred-laps">Predict</label>
+                <input
+                  id="pred-laps"
+                  className={styles.lapInput}
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={predictionLaps}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 1 && v <= 99) setPredictionLaps(v);
+                  }}
+                />
+                <span>laps</span>
+              </div>
+            </div>
+            {compoundLifeCards.length > 0 ? (
+              <div className={styles.compoundLifeGrid}>
+                {compoundLifeCards.map((compound) => (
+                  <div
+                    key={compound.key}
+                    className={`${styles.compoundLifeCard}${compound.active ? ` ${styles.compoundLifeCardActive}` : ''}`}
+                    style={{ borderLeftColor: getTyreColor(compound.key) }}
+                    title={compound.subtitle}
+                  >
+                    <div className={styles.compoundLifeTop}>
+                      <span className={styles.compoundLifeCode} style={{ color: getTyreColor(compound.key) }}>
+                        {compound.shortLabel}
+                      </span>
+                      <span className={styles.compoundLifeLabel}>{compound.label}</span>
+                      {compound.active && <span className={styles.compoundLifeCurrent}>Now</span>}
+                      <strong className={styles.compoundLifeValue}>{compound.lapsLabel}</strong>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.compoundLifeEmpty}>
+                {featurePermissions.viewAdvancedStrategy
+                  ? strategyGuideLoading
+                    ? 'Loading track guide...'
+                    : 'No compound life data for this track.'
+                  : 'Advanced strategy permission required.'}
+              </div>
+            )}
           </div>
         </div>
 
