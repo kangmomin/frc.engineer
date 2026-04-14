@@ -418,8 +418,16 @@ func (pm *PeerManager) writeSignalingLoop() {
 
 func (pm *PeerManager) readSignalingLoop() {
 	roomClosed := false
+	pm.sigMu.Lock()
+	conn := pm.sigConn
+	pm.sigMu.Unlock()
 	defer func() {
 		close(pm.writeDone)
+		pm.sigMu.Lock()
+		if pm.sigConn == conn {
+			pm.sigConn = nil
+		}
+		pm.sigMu.Unlock()
 		if !roomClosed {
 			pm.scheduleReconnect()
 		}
@@ -434,7 +442,11 @@ func (pm *PeerManager) readSignalingLoop() {
 		}
 
 		var msg signaling.Message
-		if err := pm.sigConn.ReadJSON(&msg); err != nil {
+		if conn == nil {
+			pm.logger.Error("signaling read loop missing connection")
+			return
+		}
+		if err := conn.ReadJSON(&msg); err != nil {
 			select {
 			case <-pm.done:
 				return
@@ -610,6 +622,25 @@ func (pm *PeerManager) reconnectLoop() {
 }
 
 func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permissions) {
+	pm.mu.RLock()
+	existingPC, existingPeer := pm.peers[peerID]
+	existingDC := pm.channels[peerID]
+	alreadyOpen := existingDC != nil && existingDC.ReadyState() == webrtc.DataChannelStateOpen
+	pm.mu.RUnlock()
+
+	if alreadyOpen {
+		pm.logger.Info("ignoring duplicate peer join for active connection", "peerId", peerID)
+		return
+	}
+	if existingPeer {
+		pcState := "nil"
+		if existingPC != nil {
+			pcState = existingPC.ConnectionState().String()
+		}
+		pm.logger.Warn("replacing stale peer state before creating new offer", "peerId", peerID, "pcState", pcState)
+		pm.removePeer(peerID)
+	}
+
 	pm.logger.Info("engineer joined, creating peer connection", "peerId", peerID)
 
 	pm.mu.RLock()
@@ -815,13 +846,17 @@ func (pm *PeerManager) removePeer(peerID string) {
 
 func (pm *PeerManager) sendSignaling(msg signaling.Message) {
 	pm.sigMu.Lock()
-	defer pm.sigMu.Unlock()
-	if pm.sigConn == nil {
+	conn := pm.sigConn
+	if conn == nil {
+		pm.sigMu.Unlock()
 		return
 	}
-	pm.sigConn.SetWriteDeadline(time.Now().Add(sigWriteWait))
-	if err := pm.sigConn.WriteJSON(msg); err != nil {
+	conn.SetWriteDeadline(time.Now().Add(sigWriteWait))
+	err := conn.WriteJSON(msg)
+	pm.sigMu.Unlock()
+	if err != nil {
 		pm.logger.Error("failed to send signaling message", "type", msg.Type, "error", err)
+		_ = conn.Close()
 	}
 }
 

@@ -226,14 +226,31 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 	}
 	roomCode = room.Code
 	engineerCount = len(room.Engineers)
+	roomName := room.Name
 	room.mu.Unlock()
 
 	if driverToNotify != nil {
-		_ = driverToNotify.sendJSON(Message{
+		if err := driverToNotify.sendJSON(Message{
 			Type:        TypePeerJoined,
 			PeerID:      peerID,
 			Permissions: grantedPermissions,
-		})
+		}); err != nil {
+			room.mu.Lock()
+			delete(room.Engineers, peerID)
+			now := time.Now()
+			if room.Driver == driverToNotify && room.DriverLostAt == nil {
+				room.DriverLostAt = &now
+			}
+			room.UpdatedAt = now
+			engineerCount = len(room.Engineers)
+			room.mu.Unlock()
+
+			if driverToNotify.conn != nil {
+				_ = driverToNotify.conn.Close()
+			}
+			rm.logger.Warn("failed to notify driver about engineer join", "roomId", room.ID, "code", room.Code, "peerId", peerID, "engineerCount", engineerCount, "error", err)
+			return "", "", Permissions{}, fmt.Errorf("room %s is offline", roomName)
+		}
 	}
 
 	rm.logger.Info("engineer joined room", "roomId", room.ID, "code", room.Code, "peerId", peerID,
@@ -251,6 +268,7 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 	}
 
 	var oldConn *websocket.Conn
+	existingEngineers := make([]*peer, 0)
 
 	room.mu.Lock()
 	if room.Driver != nil && room.Driver.conn != nil {
@@ -270,10 +288,27 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.UpdatedAt = time.Now()
 	roomCode := room.Code
+	for _, eng := range room.Engineers {
+		existingEngineers = append(existingEngineers, eng)
+	}
 	room.mu.Unlock()
 
 	if oldConn != nil {
 		_ = oldConn.Close()
+	}
+
+	for _, eng := range existingEngineers {
+		if eng == nil {
+			continue
+		}
+		if err := room.Driver.sendJSON(Message{
+			Type:        TypePeerJoined,
+			PeerID:      eng.id,
+			Permissions: eng.permissions,
+		}); err != nil {
+			rm.logger.Warn("failed to replay engineer join to reconnected driver", "roomId", room.ID, "code", roomCode, "peerId", eng.id, "error", err)
+			break
+		}
 	}
 
 	rm.logger.Info("driver rejoined room", "roomId", room.ID, "code", roomCode)
