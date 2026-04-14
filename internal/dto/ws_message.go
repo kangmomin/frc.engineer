@@ -4,19 +4,20 @@ import "encoding/json"
 
 // WebSocket message types
 const (
-	MessageTypeTelemetry          = "telemetry"
-	MessageTypeLapData            = "lapData"
-	MessageTypeGetBestLap         = "getBestLap"
-	MessageTypeGetRaceArchiveList = "getRaceArchiveList"
-	MessageTypeRaceArchiveList    = "raceArchiveList"
-	MessageTypeGetRaceReplay      = "getRaceReplay"
-	MessageTypeRaceReplayMeta     = "raceReplayMeta"
-	MessageTypeRaceReplayChunk    = "raceReplayChunk"
-	MessageTypeRaceReplayDone     = "raceReplayDone"
-	MessageTypePitwallState       = "pitwallState"
-	MessageTypeRaceControl        = "raceControl"
-	MessageTypeRaceResult         = "raceResult"
-	MessageTypePositionUpdate     = "positionUpdate"
+	MessageTypeTelemetry           = "telemetry"
+	MessageTypeLapData             = "lapData"
+	MessageTypeGetBestLap          = "getBestLap"
+	MessageTypeGetRaceArchiveList  = "getRaceArchiveList"
+	MessageTypeRaceArchiveList     = "raceArchiveList"
+	MessageTypeRaceArchiveListDone = "raceArchiveListDone"
+	MessageTypeGetRaceReplay       = "getRaceReplay"
+	MessageTypeRaceReplayMeta      = "raceReplayMeta"
+	MessageTypeRaceReplayChunk     = "raceReplayChunk"
+	MessageTypeRaceReplayDone      = "raceReplayDone"
+	MessageTypePitwallState        = "pitwallState"
+	MessageTypeRaceControl         = "raceControl"
+	MessageTypeRaceResult          = "raceResult"
+	MessageTypePositionUpdate      = "positionUpdate"
 )
 
 // RaceControlNotification represents a race control event sent to clients

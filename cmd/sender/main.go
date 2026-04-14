@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -321,6 +322,7 @@ func main() {
 	var latestRaceSummary *races.RaceSummary
 	var sessionAnalysisCacheMu sync.RWMutex
 	sessionAnalysisCache := make(map[string]sessionAnalysisCacheEntry)
+	const maxRaceArchiveListChunkBytes = 48 * 1024
 	const maxRaceReplayChunkBytes = 48 * 1024
 	const maxRaceReplaySendWait = 5 * time.Second
 
@@ -453,6 +455,92 @@ func main() {
 		}
 	}
 
+	streamRaceArchiveList := func(peerID, requestID string) {
+		rs, err := getRaceArchiveStorage()
+		if err != nil {
+			sendP2PResponse(peerID, dto.WSResponse{
+				Type:      dto.MessageTypeRaceArchiveListDone,
+				RequestID: requestID,
+				Error:     "race archive unavailable",
+			})
+			return
+		}
+
+		list, err := rs.List()
+		if err != nil {
+			logger.Warn("failed to list race archive", "error", err)
+			sendP2PResponse(peerID, dto.WSResponse{
+				Type:      dto.MessageTypeRaceArchiveListDone,
+				RequestID: requestID,
+				Error:     "failed to load race archive",
+			})
+			return
+		}
+
+		sendChunk := func(items []races.RaceListItem) error {
+			if len(items) == 0 {
+				return nil
+			}
+			return sendBufferedP2PResponse(peerID, dto.WSResponse{
+				Type:      dto.MessageTypeRaceArchiveList,
+				RequestID: requestID,
+				Data:      items,
+			})
+		}
+
+		batch := make([]races.RaceListItem, 0, 16)
+		for _, item := range list {
+			tentative := append(batch, item)
+			testPayload := encodeP2PResponse(dto.WSResponse{
+				Type:      dto.MessageTypeRaceArchiveList,
+				RequestID: requestID,
+				Data:      tentative,
+			})
+			if testPayload == nil {
+				sendP2PResponse(peerID, dto.WSResponse{
+					Type:      dto.MessageTypeRaceArchiveListDone,
+					RequestID: requestID,
+					Error:     "failed to encode race archive list",
+				})
+				return
+			}
+			if len(batch) > 0 && len(testPayload) > maxRaceArchiveListChunkBytes {
+				if err := sendChunk(batch); err != nil {
+					logger.Warn("failed to send race archive list chunk", "error", err)
+					sendP2PResponse(peerID, dto.WSResponse{
+						Type:      dto.MessageTypeRaceArchiveListDone,
+						RequestID: requestID,
+						Error:     "failed to send race archive list",
+					})
+					return
+				}
+				batch = append(batch[:0], item)
+				continue
+			}
+			batch = tentative
+		}
+
+		if err := sendChunk(batch); err != nil {
+			logger.Warn("failed to send race archive list chunk", "error", err)
+			sendP2PResponse(peerID, dto.WSResponse{
+				Type:      dto.MessageTypeRaceArchiveListDone,
+				RequestID: requestID,
+				Error:     "failed to send race archive list",
+			})
+			return
+		}
+
+		if err := sendBufferedP2PResponse(peerID, dto.WSResponse{
+			Type:      dto.MessageTypeRaceArchiveListDone,
+			RequestID: requestID,
+			Data: map[string]any{
+				"count": len(list),
+			},
+		}); err != nil {
+			logger.Warn("failed to finish race archive list stream", "error", err)
+		}
+	}
+
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
 	peerManager.SetCountChangeHandler(func(count int) {
 		logger.Info("peer count changed", "connectedEngineers", count)
@@ -490,28 +578,8 @@ func main() {
 			}
 			return responseJSON
 		case dto.MessageTypeGetRaceArchiveList:
-			rs, err := getRaceArchiveStorage()
-			if err != nil {
-				return encodeP2PResponse(dto.WSResponse{
-					Type:      dto.MessageTypeRaceArchiveList,
-					RequestID: req.RequestID,
-					Error:     "race archive unavailable",
-				})
-			}
-			list, err := rs.List()
-			if err != nil {
-				logger.Error("failed to list race archive", "error", err)
-				return encodeP2PResponse(dto.WSResponse{
-					Type:      dto.MessageTypeRaceArchiveList,
-					RequestID: req.RequestID,
-					Error:     "failed to load race archive",
-				})
-			}
-			return encodeP2PResponse(dto.WSResponse{
-				Type:      dto.MessageTypeRaceArchiveList,
-				RequestID: req.RequestID,
-				Data:      list,
-			})
+			go streamRaceArchiveList(peerID, req.RequestID)
+			return nil
 		case dto.MessageTypeGetRaceReplay:
 			var body struct {
 				ID string `json:"id"`
@@ -842,6 +910,95 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(loaded)
+	})
+
+	mux.HandleFunc("GET /api/races", func(w http.ResponseWriter, r *http.Request) {
+		rs, err := getRaceArchiveStorage()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "race archive unavailable"})
+			return
+		}
+
+		list, err := rs.List()
+		if err != nil {
+			logger.Error("failed to list race summaries", "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to list race summaries"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+	})
+
+	mux.HandleFunc("GET /api/replay/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if id == "" || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid race id"})
+			return
+		}
+
+		rs, err := getRaceArchiveStorage()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "race archive unavailable"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Cache-Control", "no-store")
+
+		if err := rs.StreamReplayNDJSON(id, w); err != nil {
+			if errors.Is(err, os.ErrNotExist) || errors.Is(err, races.ErrUnsafeID) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
+				return
+			}
+			logger.Error("failed to stream replay", "id", id, "error", err)
+			_, _ = w.Write([]byte(`{"type":"error","message":"failed to stream replay"}` + "\n"))
+		}
+	})
+
+	mux.HandleFunc("GET /api/races/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		if id == "" || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid race id"})
+			return
+		}
+
+		rs, err := getRaceArchiveStorage()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "race archive unavailable"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := rs.CopyRawJSON(id, w); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
+				return
+			}
+			if errors.Is(err, races.ErrUnsafeID) {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "invalid race id"})
+				return
+			}
+			logger.Error("failed to load race summary", "id", id, "error", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
+		}
 	})
 
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {

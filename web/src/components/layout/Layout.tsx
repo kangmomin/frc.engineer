@@ -131,11 +131,36 @@ export function Layout() {
   useMockTelemetry(false);
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
-  const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView, request, stream } = useWebRTCDataChannel(webrtcOpts);
+  const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView, stream } = useWebRTCDataChannel(webrtcOpts);
 
   const raceArchiveDataSource = useMemo<RaceArchiveDataSource>(() => ({
-    listRaces: (signal?: AbortSignal) =>
-      request<RaceListItem[]>({ type: 'getRaceArchiveList' }, { signal, timeoutMs: RACE_ARCHIVE_LIST_TIMEOUT_MS }),
+    listRaces: async (signal?: AbortSignal) => {
+      const items: RaceListItem[] = [];
+
+      await stream(
+        { type: 'getRaceArchiveList' },
+        {
+          signal,
+          timeoutMs: RACE_ARCHIVE_LIST_TIMEOUT_MS,
+          doneType: 'raceArchiveListDone',
+          onMessage: (response) => {
+            if (response.type !== 'raceArchiveList') {
+              return;
+            }
+            if (Array.isArray(response.data)) {
+              items.push(...(response.data as RaceListItem[]));
+              return;
+            }
+            const chunk = response.data as { items?: RaceListItem[] } | undefined;
+            if (Array.isArray(chunk?.items)) {
+              items.push(...chunk.items);
+            }
+          },
+        },
+      );
+
+      return items;
+    },
     loadReplay: async (id: string, signal?: AbortSignal) => {
       let meta: ReplayStreamMeta | null = null;
       const frames: ReplayFrame[] = [];
@@ -164,7 +189,7 @@ export function Layout() {
 
       return { meta, frames };
     },
-  }), [request, stream]);
+  }), [stream]);
 
   const switchView = useCallback((view: DashboardView) => {
     if (dashboardView === 'races' && view !== 'races') {
