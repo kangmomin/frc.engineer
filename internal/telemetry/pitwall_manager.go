@@ -859,8 +859,12 @@ func (pm *PitwallManager) BuildStrategyOverlayData(pitTimeLossMs int, undercutDi
 	if pm.session == nil || pm.lapData == nil {
 		return nil
 	}
-	// Only produce data during race sessions (15=Race, 16=Race2, 17=Race3)
 	st := pm.session.SessionType
+	if isQualifyingOverlaySession(st) {
+		return pm.buildQualifyingOverlayDataLocked()
+	}
+
+	// Only produce data during race sessions (15=Race, 16=Race2, 17=Race3)
 	if st < 15 || st > 17 {
 		return nil
 	}
@@ -945,6 +949,8 @@ func (pm *PitwallManager) BuildStrategyOverlayData(pitTimeLossMs int, undercutDi
 	}
 
 	data := &dto.StrategyOverlayData{
+		Mode:           "race",
+		SessionType:    sessionTypeString(pm.session.SessionType),
 		PlayerPosition: player.position,
 		PlayerLap:      player.lapNum,
 		TotalLaps:      int(pm.session.TotalLaps),

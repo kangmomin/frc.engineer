@@ -43,8 +43,12 @@ const (
 func (o *strategyOverlay) px(v float64) int32 {
 	return int32(math.Round(v * o.scale * o.dpiScale))
 }
-func (o *strategyOverlay) winW() int { return int(math.Round(float64(stratBaseW) * o.scale * o.dpiScale)) }
-func (o *strategyOverlay) winH() int { return int(math.Round(float64(stratBaseH) * o.scale * o.dpiScale)) }
+func (o *strategyOverlay) winW() int {
+	return int(math.Round(float64(stratBaseW) * o.scale * o.dpiScale))
+}
+func (o *strategyOverlay) winH() int {
+	return int(math.Round(float64(stratBaseH) * o.scale * o.dpiScale))
+}
 
 func (o *strategyOverlay) IsRunning() bool { return o.running.Load() }
 
@@ -253,7 +257,31 @@ func (o *strategyOverlay) paint(hwnd uintptr) {
 		y += o.px(26)
 		gSetTextColor.Call(mem, rgb(80, 80, 80))
 		gSelectObj.Call(mem, fBody)
-		o.drawStr(mem, "Waiting for race...", pad, y+o.px(20), ww-pad, y+o.px(38))
+		o.drawStr(mem, "Waiting for supported session...", pad, y+o.px(20), ww-pad, y+o.px(38))
+		goto cleanup
+	}
+
+	if data.Mode == "qualifying" {
+		hdr := fmt.Sprintf("QUALI TRY   %s   P%d", data.SessionType, data.PlayerPosition)
+		o.drawStr(mem, hdr, pad, y, ww-pad, y+o.px(18))
+		y += o.px(24)
+
+		o.drawSep(mem, pad, ww-pad, y)
+		y += o.px(6)
+
+		gSelectObj.Call(mem, fSmall)
+		gSetTextColor.Call(mem, rgb(132, 147, 150))
+		lapLabel := fmt.Sprintf("TRACK AROUND YOU   L%d", data.PlayerLap)
+		o.drawStr(mem, lapLabel, pad, y, ww-pad, y+o.px(14))
+		y += o.px(20)
+
+		o.drawSep(mem, pad, ww-pad, y)
+		y += o.px(6)
+		y = o.paintQualifyingCar(mem, data.CarAhead, "\u25B2 AHEAD", y, ww, pad)
+
+		o.drawSep(mem, pad, ww-pad, y)
+		y += o.px(6)
+		y = o.paintQualifyingCar(mem, data.CarBehind, "\u25BC BEHIND", y, ww, pad)
 		goto cleanup
 	}
 
@@ -394,6 +422,43 @@ func (o *strategyOverlay) paintCar(mem uintptr, car *dto.StrategyCar, label stri
 	return y
 }
 
+func (o *strategyOverlay) paintQualifyingCar(mem uintptr, car *dto.StrategyCar, label string, y, ww, pad int32) int32 {
+	fBody := o.mkFont(14, 600)
+	fSmall := o.mkFont(11, 600)
+	defer gDeleteObj.Call(fBody)
+	defer gDeleteObj.Call(fSmall)
+
+	gSelectObj.Call(mem, fBody)
+	if car == nil {
+		gSetTextColor.Call(mem, rgb(60, 60, 60))
+		o.drawStr(mem, label+"  ---", pad, y, ww-pad, y+o.px(16))
+		return y + o.px(24)
+	}
+
+	gSetTextColor.Call(mem, rgb(229, 226, 227))
+	line1 := fmt.Sprintf("%s  %s  +%dm", label, abbreviateDriverOverlay(car.Name), car.GapMeters)
+	o.drawStr(mem, line1, pad, y, ww-pad-o.px(54), y+o.px(16))
+
+	gSetTextColor.Call(mem, tryToneColor(car.TryTone, car.TryLabel))
+	o.drawStr(mem, car.TryLabel, ww-pad-o.px(50), y, ww-pad, y+o.px(16))
+	y += o.px(18)
+
+	gSelectObj.Call(mem, fSmall)
+	gSetTextColor.Call(mem, rgb(132, 147, 150))
+	summary := car.TrySummary
+	if summary == "" {
+		summary = "No live push signal"
+	}
+	o.drawStr(mem, summary, pad+o.px(8), y, ww-pad, y+o.px(14))
+	y += o.px(16)
+
+	gSetTextColor.Call(mem, rgb(110, 122, 124))
+	sectorLine := fmt.Sprintf("SPD %dkph  %s  %s", car.SpeedKPH, formatOverlaySectorDelta("S1", car.SectorDelta1), formatOverlaySectorDelta("S2", car.SectorDelta2))
+	o.drawStr(mem, sectorLine, pad+o.px(8), y, ww-pad, y+o.px(14))
+	y += o.px(18)
+	return y
+}
+
 func (o *strategyOverlay) drawStr(mem uintptr, s string, l, t, r, b int32) {
 	txt := utf16Str(s)
 	rc := w32Rect{l, t, r, b}
@@ -426,6 +491,36 @@ func stratVerdictColor(v string) uintptr {
 	default:
 		return rgb(80, 80, 80)
 	}
+}
+
+func tryToneColor(tone string, label string) uintptr {
+	switch tone {
+	case "attack":
+		return rgb(205, 255, 19)
+	case "watch":
+		return rgb(255, 179, 178)
+	default:
+		if label == "TRY" {
+			return rgb(205, 255, 19)
+		}
+		return rgb(80, 80, 80)
+	}
+}
+
+func formatOverlaySectorDelta(label string, delta *int) string {
+	if delta == nil {
+		return label + " --"
+	}
+	return fmt.Sprintf("%s %s", label, formatSignedOverlayDelta(*delta))
+}
+
+func formatSignedOverlayDelta(delta int) string {
+	seconds := math.Abs(float64(delta)) / 1000.0
+	sign := "+"
+	if delta <= 0 {
+		sign = "-"
+	}
+	return fmt.Sprintf("%s%.3f", sign, seconds)
 }
 
 func stratTireColor(compound string) uintptr {

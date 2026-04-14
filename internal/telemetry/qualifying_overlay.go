@@ -1,0 +1,463 @@
+package telemetry
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strings"
+
+	"frc.engineer/internal/dto"
+	"frc.engineer/internal/packets"
+)
+
+const (
+	trySectorMarginMs            = 250
+	tryCombinedMarginMs          = 400
+	recentCompetitiveLapMarginMs = 1_200
+	ersDeployMarginJ             = 120_000
+	tryMinERSPct                 = 18
+	trySpeedSignalFloorKPH       = 240
+	trySpeedSignalTrackFloorKPH  = 220
+	trySpeedSignalTopMarginKPH   = 30
+)
+
+type qualifyingOverlayCar struct {
+	idx                 int
+	position            int
+	lapNum              int
+	lapDistance         float32
+	pitStatus           int
+	driverStatus        int
+	resultStatus        int
+	lapInvalid          bool
+	name                string
+	speedKPH            int
+	topSpeedKPH         int
+	drsActivated        bool
+	lastLapMs           float32
+	bestLapMs           float32
+	tireCompound        string
+	tireAge             int
+	ersDeployMode       int
+	ersDeployedThisLap  float32
+	ersHarvestedThisLap float32
+	ersActualPct        int
+	ersActualReady      bool
+	sector1TimeMs       int
+	sector2TimeMs       int
+	bestSector1Ms       int
+	bestSector2Ms       int
+}
+
+type qualifyingTryState struct {
+	Label          string
+	Tone           string
+	Summary        string
+	Score          int
+	SectorDelta1Ms *int
+	SectorDelta2Ms *int
+}
+
+func isQualifyingOverlaySession(sessionType uint8) bool {
+	return sessionType >= uint8(packets.SessionQ1) && sessionType <= uint8(packets.SessionOSSS)
+}
+
+func buildSectorDelta(currentMs int, bestMs int) *int {
+	if currentMs <= 0 || bestMs <= 0 {
+		return nil
+	}
+	delta := currentMs - bestMs
+	return &delta
+}
+
+func hasCompetitiveSector(deltaMs *int) bool {
+	return deltaMs != nil && *deltaMs <= trySectorMarginMs
+}
+
+func hasStrongSector(deltaMs *int) bool {
+	return deltaMs != nil && *deltaMs <= 100
+}
+
+func formatSignedDelta(deltaMs int) string {
+	seconds := math.Abs(float64(deltaMs)) / 1000.0
+	sign := "+"
+	if deltaMs <= 0 {
+		sign = "-"
+	}
+	return fmt.Sprintf("%s%.3f", sign, seconds)
+}
+
+func buildTrySummary(parts []string) string {
+	if len(parts) == 0 {
+		return "No live push signal"
+	}
+	if len(parts) > 3 {
+		parts = parts[:3]
+	}
+	return strings.Join(parts, " | ")
+}
+
+func overlayERSLabel(car qualifyingOverlayCar) string {
+	switch car.ersDeployMode {
+	case 3:
+		return "ERS OVT"
+	case 2:
+		return "ERS HOT"
+	case 1:
+		return "ERS MED"
+	default:
+		if car.ersActualReady {
+			return fmt.Sprintf("ERS %d%%", car.ersActualPct)
+		}
+		return ""
+	}
+}
+
+func hasSpeedTrySignal(car qualifyingOverlayCar) bool {
+	if car.speedKPH <= 0 {
+		return false
+	}
+
+	threshold := trySpeedSignalFloorKPH
+	if car.topSpeedKPH > 0 {
+		threshold = car.topSpeedKPH - trySpeedSignalTopMarginKPH
+		if threshold < trySpeedSignalTrackFloorKPH {
+			threshold = trySpeedSignalTrackFloorKPH
+		}
+	}
+	return car.speedKPH >= threshold
+}
+
+func evaluateQualifyingTryState(car qualifyingOverlayCar) qualifyingTryState {
+	sectorDelta1Ms := buildSectorDelta(car.sector1TimeMs, car.bestSector1Ms)
+	sectorDelta2Ms := buildSectorDelta(car.sector2TimeMs, car.bestSector2Ms)
+
+	var combinedDeltaMs *int
+	if sectorDelta1Ms != nil && sectorDelta2Ms != nil {
+		combined := *sectorDelta1Ms + *sectorDelta2Ms
+		combinedDeltaMs = &combined
+	}
+
+	competitiveSectorCount := 0
+	strongSectorCount := 0
+	for _, delta := range []*int{sectorDelta1Ms, sectorDelta2Ms} {
+		if hasCompetitiveSector(delta) {
+			competitiveSectorCount++
+		}
+		if hasStrongSector(delta) {
+			strongSectorCount++
+		}
+	}
+
+	isPit := car.pitStatus != 0
+	isInvalid := car.lapInvalid
+	isGarage := car.driverStatus == 0
+	isInLap := car.driverStatus == 2
+	isOutLap := car.driverStatus == 3
+	isFlying := car.driverStatus == 1
+	isTrack := car.driverStatus == 4
+
+	hasDrsSignal := car.drsActivated
+	hasSpeedSignal := hasSpeedTrySignal(car)
+	hasAggressiveErsMode := car.ersDeployMode >= 2
+	isDeployingErs := car.ersDeployedThisLap > 0 && car.ersDeployedThisLap >= car.ersHarvestedThisLap+ersDeployMarginJ
+	hasUsableErs := !car.ersActualReady || car.ersActualPct >= tryMinERSPct
+	recentCompetitiveLap := car.lastLapMs > 0 && car.bestLapMs > 0 && car.lastLapMs <= car.bestLapMs+recentCompetitiveLapMarginMs
+
+	if isPit {
+		return qualifyingTryState{
+			Label:          "COOL",
+			Tone:           "standby",
+			Summary:        "In pit",
+			Score:          -3,
+			SectorDelta1Ms: sectorDelta1Ms,
+			SectorDelta2Ms: sectorDelta2Ms,
+		}
+	}
+	if isInvalid {
+		return qualifyingTryState{
+			Label:          "COOL",
+			Tone:           "standby",
+			Summary:        "Lap invalid",
+			Score:          -3,
+			SectorDelta1Ms: sectorDelta1Ms,
+			SectorDelta2Ms: sectorDelta2Ms,
+		}
+	}
+	if isGarage {
+		return qualifyingTryState{
+			Label:          "COOL",
+			Tone:           "standby",
+			Summary:        "Garage",
+			Score:          -2,
+			SectorDelta1Ms: sectorDelta1Ms,
+			SectorDelta2Ms: sectorDelta2Ms,
+		}
+	}
+	if isInLap {
+		return qualifyingTryState{
+			Label:          "COOL",
+			Tone:           "standby",
+			Summary:        "In lap",
+			Score:          -1,
+			SectorDelta1Ms: sectorDelta1Ms,
+			SectorDelta2Ms: sectorDelta2Ms,
+		}
+	}
+
+	score := 0
+	if isFlying {
+		score += 3
+	} else if isTrack {
+		score++
+	} else if isOutLap {
+		score--
+	}
+
+	if hasAggressiveErsMode && hasUsableErs {
+		score += 2
+	} else if isDeployingErs && hasUsableErs {
+		score++
+	}
+	if hasDrsSignal {
+		score++
+	}
+	if hasSpeedSignal {
+		score++
+	}
+	score += competitiveSectorCount
+	score += strongSectorCount
+	if combinedDeltaMs != nil && *combinedDeltaMs <= tryCombinedMarginMs {
+		score++
+	}
+	if recentCompetitiveLap {
+		score++
+	}
+
+	positiveSignals := make([]string, 0, 5)
+	if isFlying {
+		positiveSignals = append(positiveSignals, "Flying")
+	} else if isOutLap {
+		positiveSignals = append(positiveSignals, "Out lap")
+	}
+	if ersLabel := overlayERSLabel(car); ersLabel != "" {
+		positiveSignals = append(positiveSignals, ersLabel)
+	}
+	if hasDrsSignal {
+		positiveSignals = append(positiveSignals, "DRS")
+	}
+	if hasSpeedSignal {
+		positiveSignals = append(positiveSignals, fmt.Sprintf("%dkph", car.speedKPH))
+	}
+
+	if (isFlying && hasUsableErs && (hasAggressiveErsMode || isDeployingErs || hasDrsSignal || hasSpeedSignal || competitiveSectorCount > 0 || recentCompetitiveLap)) ||
+		competitiveSectorCount >= 2 ||
+		strongSectorCount >= 1 ||
+		(combinedDeltaMs != nil && *combinedDeltaMs <= tryCombinedMarginMs && hasUsableErs && (hasDrsSignal || hasSpeedSignal || hasAggressiveErsMode || isDeployingErs)) {
+		return qualifyingTryState{
+			Label:          "TRY",
+			Tone:           "attack",
+			Summary:        buildTrySummary(positiveSignals),
+			Score:          score,
+			SectorDelta1Ms: sectorDelta1Ms,
+			SectorDelta2Ms: sectorDelta2Ms,
+		}
+	}
+
+	if isOutLap || (score >= 2 && hasUsableErs) {
+		return qualifyingTryState{
+			Label:          "BUILD",
+			Tone:           "watch",
+			Summary:        buildTrySummary(positiveSignals),
+			Score:          score,
+			SectorDelta1Ms: sectorDelta1Ms,
+			SectorDelta2Ms: sectorDelta2Ms,
+		}
+	}
+
+	return qualifyingTryState{
+		Label:          "COOL",
+		Tone:           "standby",
+		Summary:        "No live push signal",
+		Score:          score,
+		SectorDelta1Ms: sectorDelta1Ms,
+		SectorDelta2Ms: sectorDelta2Ms,
+	}
+}
+
+func sessionHistoryBestLapMs(history *packets.PacketSessionHistoryData) float32 {
+	if history == nil {
+		return 0
+	}
+	lapNum := int(history.BestLapTimeLapNum)
+	if lapNum <= 0 || lapNum > int(history.NumLaps) || lapNum > packets.MaxNumLapsInHistory {
+		return 0
+	}
+	lapTime := history.LapHistoryData[lapNum-1].LapTimeInMS
+	if lapTime <= 0 {
+		return 0
+	}
+	return float32(lapTime)
+}
+
+func sessionHistoryBestSectorMs(history *packets.PacketSessionHistoryData, sector int) int {
+	if history == nil {
+		return 0
+	}
+
+	var lapNum int
+	switch sector {
+	case 1:
+		lapNum = int(history.BestSector1LapNum)
+	case 2:
+		lapNum = int(history.BestSector2LapNum)
+	case 3:
+		lapNum = int(history.BestSector3LapNum)
+	default:
+		return 0
+	}
+	if lapNum <= 0 || lapNum > int(history.NumLaps) || lapNum > packets.MaxNumLapsInHistory {
+		return 0
+	}
+
+	lap := history.LapHistoryData[lapNum-1]
+	switch sector {
+	case 1:
+		return lap.Sector1Ms()
+	case 2:
+		return lap.Sector2Ms()
+	case 3:
+		return lap.Sector3Ms()
+	default:
+		return 0
+	}
+}
+
+func (pm *PitwallManager) buildQualifyingOverlayDataLocked() *dto.StrategyOverlayData {
+	playerIdx := int(pm.playerIndex)
+	numCars := pm.effectiveNumCars()
+	playerLap := 0
+	playerPosition := 0
+	if playerIdx >= 0 && playerIdx < numCars {
+		playerLap = int(pm.lapData.LapData[playerIdx].CurrentLapNum)
+		playerPosition = int(pm.lapData.LapData[playerIdx].CarPosition)
+	}
+
+	data := &dto.StrategyOverlayData{
+		Mode:           "qualifying",
+		SessionType:    sessionTypeString(pm.session.SessionType),
+		PlayerPosition: playerPosition,
+		PlayerLap:      playerLap,
+		TotalLaps:      int(pm.session.TotalLaps),
+		TrackID:        pm.session.TrackID,
+	}
+
+	if pm.session.TrackLength == 0 {
+		return data
+	}
+
+	cars := make([]qualifyingOverlayCar, 0, numCars)
+	for i := range numCars {
+		ld := &pm.lapData.LapData[i]
+		if ld.ResultStatus != 2 && ld.ResultStatus != 3 {
+			continue
+		}
+		if ld.PitStatus != 0 || ld.LapDistance < 0 {
+			continue
+		}
+
+		car := qualifyingOverlayCar{
+			idx:           i,
+			position:      int(ld.CarPosition),
+			lapNum:        int(ld.CurrentLapNum),
+			lapDistance:   sanitize(ld.LapDistance),
+			pitStatus:     int(ld.PitStatus),
+			driverStatus:  int(ld.DriverStatus),
+			resultStatus:  int(ld.ResultStatus),
+			lapInvalid:    ld.CurrentLapInvalid == 1,
+			lastLapMs:     float32(ld.LastLapTimeInMS),
+			topSpeedKPH:   int(math.Round(float64(sanitize(ld.SpeedTrapFastestSpeed)))),
+			sector1TimeMs: int(ld.Sector1TimeMinutes)*60000 + int(ld.Sector1TimeInMS),
+			sector2TimeMs: int(ld.Sector2TimeMinutes)*60000 + int(ld.Sector2TimeInMS),
+		}
+
+		if pm.participants != nil {
+			car.name = pm.participants.Participants[i].GetName()
+		}
+		if car.name == "" {
+			car.name = fmt.Sprintf("Driver %d", i)
+		}
+		if pm.telemetry != nil {
+			ct := &pm.telemetry.CarTelemetryData[i]
+			car.speedKPH = int(ct.Speed)
+			car.drsActivated = ct.DRS != 0
+		}
+		if pm.carStatus != nil {
+			cs := &pm.carStatus.CarStatusData[i]
+			car.tireCompound = tireCompoundString(cs.VisualTyreCompound)
+			car.tireAge = int(cs.TyresAgeLaps)
+			car.ersDeployMode = int(cs.ERSDeployMode)
+			car.ersDeployedThisLap = sanitize(cs.ERSDeployedThisLap)
+			car.ersHarvestedThisLap = sanitize(cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH)
+			car.ersActualPct = ersPercent(cs.ERSStoreEnergy)
+			car.ersActualReady = true
+		}
+		if history := pm.sessionHistory[i]; history != nil {
+			car.bestLapMs = sessionHistoryBestLapMs(history)
+			car.bestSector1Ms = sessionHistoryBestSectorMs(history, 1)
+			car.bestSector2Ms = sessionHistoryBestSectorMs(history, 2)
+		}
+		cars = append(cars, car)
+	}
+
+	if len(cars) < 2 {
+		return data
+	}
+
+	sort.Slice(cars, func(i, j int) bool { return cars[i].lapDistance < cars[j].lapDistance })
+
+	playerPos := -1
+	for i := range cars {
+		if cars[i].idx == playerIdx {
+			playerPos = i
+			break
+		}
+	}
+	if playerPos == -1 {
+		return data
+	}
+
+	n := len(cars)
+	trackLength := float64(pm.session.TrackLength)
+	aheadIdx := (playerPos + 1) % n
+	behindIdx := (playerPos - 1 + n) % n
+	if aheadIdx != playerPos {
+		gapMeters := int(math.Round(math.Mod(float64(cars[aheadIdx].lapDistance-cars[playerPos].lapDistance)+trackLength, trackLength)))
+		data.CarAhead = buildQualifyingOverlayStrategyCar(cars[aheadIdx], gapMeters)
+	}
+	if behindIdx != playerPos {
+		gapMeters := int(math.Round(math.Mod(float64(cars[playerPos].lapDistance-cars[behindIdx].lapDistance)+trackLength, trackLength)))
+		data.CarBehind = buildQualifyingOverlayStrategyCar(cars[behindIdx], gapMeters)
+	}
+
+	return data
+}
+
+func buildQualifyingOverlayStrategyCar(car qualifyingOverlayCar, gapMeters int) *dto.StrategyCar {
+	tryState := evaluateQualifyingTryState(car)
+	return &dto.StrategyCar{
+		Name:         car.name,
+		Position:     car.position,
+		GapMeters:    gapMeters,
+		TireCompound: car.tireCompound,
+		TireAge:      car.tireAge,
+		LastLapMs:    car.lastLapMs,
+		SpeedKPH:     car.speedKPH,
+		TryLabel:     tryState.Label,
+		TryTone:      tryState.Tone,
+		TrySummary:   tryState.Summary,
+		TryScore:     tryState.Score,
+		SectorDelta1: tryState.SectorDelta1Ms,
+		SectorDelta2: tryState.SectorDelta2Ms,
+	}
+}

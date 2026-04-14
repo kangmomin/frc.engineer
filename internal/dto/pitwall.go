@@ -234,11 +234,13 @@ type RadarCarData struct {
 
 // StrategyOverlayData is a lightweight payload for the strategy overlay SSE stream.
 type StrategyOverlayData struct {
-	PlayerPosition    int  `json:"playerPosition"`
-	PlayerLap         int  `json:"playerLap"`
-	TotalLaps         int  `json:"totalLaps"`
-	TrackID           int8 `json:"trackId"`
-	PitRejoinPosition int  `json:"pitRejoinPosition"`
+	Mode              string `json:"mode,omitempty"` // race, qualifying
+	SessionType       string `json:"sessionType,omitempty"`
+	PlayerPosition    int    `json:"playerPosition"`
+	PlayerLap         int    `json:"playerLap"`
+	TotalLaps         int    `json:"totalLaps"`
+	TrackID           int8   `json:"trackId"`
+	PitRejoinPosition int    `json:"pitRejoinPosition"`
 
 	CarAhead  *StrategyCar `json:"carAhead,omitempty"`
 	CarBehind *StrategyCar `json:"carBehind,omitempty"`
@@ -255,6 +257,7 @@ type StrategyCar struct {
 	Name         string  `json:"name"`
 	Position     int     `json:"position"`
 	GapMs        int     `json:"gapMs"`
+	GapMeters    int     `json:"gapMeters,omitempty"`
 	TireCompound string  `json:"tireCompound"`
 	TireAge      int     `json:"tireAge"`
 	LastLapMs    float32 `json:"lastLapMs"`
@@ -262,6 +265,13 @@ type StrategyCar struct {
 	PitStops     int     `json:"pitStops"`
 	HasPitted    bool    `json:"hasPitted"`
 	PaceDeltaMs  float32 `json:"paceDeltaMs"` // vs player: negative = faster
+	SpeedKPH     int     `json:"speedKph,omitempty"`
+	TryLabel     string  `json:"tryLabel,omitempty"`
+	TryTone      string  `json:"tryTone,omitempty"`
+	TrySummary   string  `json:"trySummary,omitempty"`
+	TryScore     int     `json:"tryScore,omitempty"`
+	SectorDelta1 *int    `json:"sectorDelta1Ms,omitempty"`
+	SectorDelta2 *int    `json:"sectorDelta2Ms,omitempty"`
 }
 
 // WeatherOverlayData is a lightweight payload for the weather forecast overlay SSE stream.
