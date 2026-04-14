@@ -1,20 +1,46 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  color: var(--text-primary);
+}
+
+.browserPanel {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  bottom: 24px;
+  width: min(560px, calc(100vw - 48px));
+  overflow: auto;
+  pointer-events: auto;
+  background:
+    linear-gradient(180deg, rgba(28, 27, 28, 0.98), rgba(14, 14, 15, 0.98)),
+    repeating-linear-gradient(45deg,
+      rgba(255, 255, 255, 0.016) 0,
+      rgba(255, 255, 255, 0.016) 2px,
+      transparent 2px,
+      transparent 7px);
+  border: 1px solid rgba(59, 73, 76, 0.15);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(22px);
+}
+
 .archive {
   display: flex;
   flex-direction: column;
   gap: 18px;
   min-height: 100%;
   padding: 18px;
-  color: var(--text-primary);
 }
 
-.hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px;
+.hero,
+.section,
+.replayHero,
+.replayHud,
+.modalCard {
   background:
-    linear-gradient(180deg, rgba(53, 52, 54, 0.78), rgba(32, 31, 32, 0.92)),
+    linear-gradient(180deg, rgba(53, 52, 54, 0.8), rgba(32, 31, 32, 0.92)),
     repeating-linear-gradient(45deg,
       rgba(255, 255, 255, 0.018) 0,
       rgba(255, 255, 255, 0.018) 2px,
@@ -23,9 +49,26 @@
   border: 1px solid rgba(59, 73, 76, 0.15);
 }
 
+.hero,
+.replayHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+}
+
+.section,
+.replayHud,
+.modalCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
 .eyebrow,
 .sectionHeader span,
-.statLabel,
 .summaryMeta,
 .label,
 .markerMeta,
@@ -43,20 +86,29 @@
   font-weight: 700;
 }
 
-.title {
+.title,
+.modalTitle {
   margin: 0;
   font-family: var(--font-racing);
-  font-size: 1.7rem;
   font-weight: 800;
   line-height: 1;
 }
 
+.title {
+  font-size: 1.7rem;
+}
+
+.modalTitle {
+  font-size: 1.2rem;
+}
+
 .subtitle {
-  margin-top: 10px;
+  margin: 0;
   color: var(--text-secondary);
 }
 
-.heroActions {
+.heroActions,
+.modalActions {
   display: flex;
   gap: 8px;
 }
@@ -95,21 +147,6 @@
 
 .closeButton {
   color: var(--accent-lime);
-}
-
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  background:
-    linear-gradient(180deg, rgba(53, 52, 54, 0.78), rgba(32, 31, 32, 0.92)),
-    repeating-linear-gradient(45deg,
-      rgba(255, 255, 255, 0.018) 0,
-      rgba(255, 255, 255, 0.018) 2px,
-      transparent 2px,
-      transparent 6px);
-  border: 1px solid rgba(59, 73, 76, 0.15);
 }
 
 .sectionHeader {
@@ -159,8 +196,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 280px;
-  overflow: auto;
 }
 
 .listButton {
@@ -176,9 +211,6 @@
 
 .listTop,
 .listMeta,
-.summaryTop,
-.summaryGrid,
-.frameStats,
 .timelineHeader,
 .controls,
 .markers {
@@ -187,7 +219,6 @@
 }
 
 .listTop,
-.summaryTop,
 .timelineHeader {
   align-items: center;
   justify-content: space-between;
@@ -199,8 +230,7 @@
   gap: 4px;
 }
 
-.listTitle strong,
-.summaryTitle {
+.listTitle strong {
   font-family: var(--font-racing);
   font-weight: 800;
 }
@@ -212,6 +242,13 @@
   font-size: 0.85rem;
 }
 
+.listChips,
+.summaryMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -221,38 +258,38 @@
   color: var(--text-secondary);
 }
 
-.chipAccent {
+.chipAccent,
+.chipReplay {
   color: var(--accent-lime);
 }
 
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.chipSummary {
+  color: var(--accent);
 }
 
-.statCard {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  background: rgba(14, 14, 15, 0.5);
+.chipResult {
+  color: #f7d047;
 }
 
-.statLabel {
-  color: var(--text-secondary);
+.replayHero {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: 24px;
+  pointer-events: auto;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
 }
 
-.statValue {
-  font-family: var(--font-racing);
-  font-size: 1.15rem;
-  font-weight: 800;
-}
-
-.summaryMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+.replayHud {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  width: min(1040px, calc(100vw - 48px));
+  max-height: min(50vh, 460px);
+  overflow: auto;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.36);
 }
 
 .timelineRailWrap {
@@ -322,6 +359,20 @@
   gap: 10px;
 }
 
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(14, 14, 15, 0.5);
+}
+
+.statValue {
+  font-family: var(--font-racing);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
 .label {
   display: block;
   margin-bottom: 4px;
@@ -329,7 +380,7 @@
 
 .markers {
   flex-direction: column;
-  max-height: 200px;
+  max-height: 180px;
   overflow: auto;
 }
 
@@ -359,16 +410,57 @@
   background: rgba(14, 14, 15, 0.5);
 }
 
-.errorState {
+.errorState,
+.modalCardError .subtitle {
   color: var(--accent-red-hover);
 }
 
-@media (max-width: 900px) {
-  .archive {
-    padding: 14px;
+.modalShell {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  background: rgba(10, 10, 11, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.modalCard {
+  width: min(460px, calc(100vw - 40px));
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+}
+
+.modalCardError {
+  border-color: rgba(255, 106, 106, 0.28);
+}
+
+.modalActions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1100px) {
+  .replayHero {
+    left: 16px;
+    right: 16px;
   }
 
-  .hero {
+  .replayHud {
+    width: calc(100vw - 32px);
+    bottom: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .browserPanel {
+    top: 16px;
+    left: 16px;
+    bottom: 16px;
+    width: calc(100vw - 32px);
+  }
+
+  .hero,
+  .replayHero {
     flex-direction: column;
   }
 
@@ -377,8 +469,42 @@
   }
 
   .filters,
-  .summaryGrid,
   .frameStats {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .browserPanel,
+  .replayHero,
+  .replayHud {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  .browserPanel {
+    top: 12px;
+    bottom: 12px;
+  }
+
+  .replayHud {
+    transform: none;
+    bottom: 12px;
+  }
+
+  .archive {
+    padding: 14px;
+  }
+
+  .heroActions,
+  .modalActions {
+    flex-direction: column;
+  }
+
+  .actionButton,
+  .closeButton,
+  .markerButton {
+    width: 100%;
   }
 }

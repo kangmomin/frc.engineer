@@ -10,6 +10,8 @@ const (
 	MessageTypeGetRaceArchiveList  = "getRaceArchiveList"
 	MessageTypeRaceArchiveList     = "raceArchiveList"
 	MessageTypeRaceArchiveListDone = "raceArchiveListDone"
+	MessageTypeGetRaceSummary      = "getRaceSummary"
+	MessageTypeRaceSummary         = "raceSummary"
 	MessageTypeGetRaceReplay       = "getRaceReplay"
 	MessageTypeRaceReplayMeta      = "raceReplayMeta"
 	MessageTypeRaceReplayChunk     = "raceReplayChunk"

@@ -15,11 +15,12 @@ import type { RaceArchiveDataSource } from '../races/replayArchive';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import { F1SetupManager } from '../setup/F1SetupManager';
 import styles from './Layout.module.css';
-import type { RaceListItem, ReplayFrame, ReplayStreamMeta } from '../../types/telemetry';
+import type { RaceListItem, RaceSummary, ReplayFrame, ReplayStreamMeta } from '../../types/telemetry';
 
 type DashboardView = 'cockpit' | 'qualifying' | 'setup' | 'races';
 
 const RACE_ARCHIVE_LIST_TIMEOUT_MS = 60_000;
+const RACE_SUMMARY_TIMEOUT_MS = 60_000;
 const RACE_REPLAY_TIMEOUT_MS = 120_000;
 
 function readInitialView(): DashboardView {
@@ -131,7 +132,13 @@ export function Layout() {
   useMockTelemetry(false);
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
-  const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView, stream } = useWebRTCDataChannel(webrtcOpts);
+  const {
+    connectionState: rtcConnectionState,
+    lastError: rtcLastError,
+    sendView,
+    request,
+    stream,
+  } = useWebRTCDataChannel(webrtcOpts);
 
   const raceArchiveDataSource = useMemo<RaceArchiveDataSource>(() => ({
     listRaces: async (signal?: AbortSignal) => {
@@ -161,6 +168,12 @@ export function Layout() {
 
       return items;
     },
+    loadSummary: (id: string, signal?: AbortSignal) => {
+      return request<RaceSummary>(
+        { type: 'getRaceSummary', data: { id } },
+        { signal, timeoutMs: RACE_SUMMARY_TIMEOUT_MS },
+      );
+    },
     loadReplay: async (id: string, signal?: AbortSignal) => {
       let meta: ReplayStreamMeta | null = null;
       const frames: ReplayFrame[] = [];
@@ -189,7 +202,7 @@ export function Layout() {
 
       return { meta, frames };
     },
-  }), [stream]);
+  }), [request, stream]);
 
   const switchView = useCallback((view: DashboardView) => {
     if (dashboardView === 'races' && view !== 'races') {
@@ -299,32 +312,7 @@ export function Layout() {
         />
       )}
       {dashboardView === 'races' ? (
-        <>
-          <button
-            type="button"
-            className={styles.backdrop}
-            onClick={() => switchView('cockpit')}
-            aria-label="Close race archive"
-          />
-          <aside className={styles.drawer}>
-            <div className={styles.drawerHeader}>
-              <div>
-                <span className={styles.drawerEyebrow}>Archive</span>
-                <h2 className={styles.drawerTitle}>Race Replay</h2>
-              </div>
-              <button
-                type="button"
-                className={styles.closeButton}
-                onClick={() => switchView('cockpit')}
-              >
-                Close
-              </button>
-            </div>
-            <div className={styles.drawerBody}>
-              <RaceArchiveDrawer onClose={() => switchView('cockpit')} dataSource={raceArchiveDataSource} />
-            </div>
-          </aside>
-        </>
+        <RaceArchiveDrawer onClose={() => switchView('cockpit')} dataSource={raceArchiveDataSource} />
       ) : null}
       {raceResult ? <PostRaceDebrief result={raceResult} onClose={clearRaceResult} /> : null}
     </div>

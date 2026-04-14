@@ -5,6 +5,7 @@ import {
   buildReplayMarkers,
   filterRaceArchive,
   formatRaceFileSize,
+  resolveRaceArchiveOpenMode,
   type RaceArchiveFilters,
 } from './replayArchive';
 
@@ -89,6 +90,53 @@ describe('buildReplayMarkers', () => {
 describe('formatRaceFileSize', () => {
   it('formats byte sizes into readable units', () => {
     expect(formatRaceFileSize(1536)).toBe('1.5 KB');
+  });
+});
+
+describe('resolveRaceArchiveOpenMode', () => {
+  it('opens result-only races as result modals', () => {
+    expect(resolveRaceArchiveOpenMode({
+      id: 'race-result',
+      savedAtLocal: '2026-04-03 20:00:00',
+      trackName: 'spa',
+      sessionType: 'Race',
+      playerName: 'Alex',
+      finalPosition: 2,
+      fileSizeBytes: 1024,
+      dataStorageMode: 'resultOnly',
+      hasReplay: false,
+      frameCount: 0,
+    })).toBe('result');
+  });
+
+  it('keeps summary archives in modal mode', () => {
+    expect(resolveRaceArchiveOpenMode({
+      id: 'race-summary',
+      savedAtLocal: '2026-04-03 21:00:00',
+      trackName: 'spa',
+      sessionType: 'Race',
+      playerName: 'Alex',
+      finalPosition: 2,
+      fileSizeBytes: 2048,
+      dataStorageMode: 'summary',
+      hasReplay: true,
+      frameCount: 120,
+    })).toBe('summary');
+  });
+
+  it('opens advanced archives with frames as full replay', () => {
+    expect(resolveRaceArchiveOpenMode({
+      id: 'race-replay',
+      savedAtLocal: '2026-04-03 22:00:00',
+      trackName: 'spa',
+      sessionType: 'Race',
+      playerName: 'Alex',
+      finalPosition: 2,
+      fileSizeBytes: 4096,
+      dataStorageMode: 'advanced',
+      hasReplay: true,
+      frameCount: 220,
+    })).toBe('replay');
   });
 });
 

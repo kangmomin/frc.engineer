@@ -7,6 +7,8 @@ import styles from './PostRaceDebrief.module.css';
 interface PostRaceDebriefProps {
   result: RaceSummary;
   onClose: () => void;
+  eyebrow?: string;
+  closeLabel?: string;
 }
 
 function formatGap(position: number, gapToWinnerMs?: number): string {
@@ -69,7 +71,12 @@ function getTimelineTone(notification: RaceControlNotification): string {
   return styles.timelineInfo;
 }
 
-export function PostRaceDebrief({ result, onClose }: PostRaceDebriefProps) {
+export function PostRaceDebrief({
+  result,
+  onClose,
+  eyebrow = 'Post-Race Debrief',
+  closeLabel = 'Return To Live',
+}: PostRaceDebriefProps) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -109,7 +116,7 @@ export function PostRaceDebrief({ result, onClose }: PostRaceDebriefProps) {
       <section className={styles.panel} role="dialog" aria-modal="true" aria-labelledby="post-race-debrief-title">
         <header className={styles.header}>
           <div>
-            <p className={styles.eyebrow}>Post-Race Debrief</p>
+            <p className={styles.eyebrow}>{eyebrow}</p>
             <h2 id="post-race-debrief-title" className={styles.title}>
               {formatPosition(playerPosition)} · {playerName}
             </h2>
@@ -124,7 +131,7 @@ export function PostRaceDebrief({ result, onClose }: PostRaceDebriefProps) {
               <span>{notificationTotals.info} race control</span>
             </div>
             <button type="button" className={styles.closeButton} onClick={onClose}>
-              Return To Live
+              {closeLabel}
             </button>
           </div>
         </header>

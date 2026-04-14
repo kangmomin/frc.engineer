@@ -429,6 +429,27 @@ func main() {
 		return races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
 	}
 
+	cloneRaceSummaryWithoutReplay := func(summary *races.RaceSummary) *races.RaceSummary {
+		if summary == nil {
+			return nil
+		}
+		cloned := *summary
+		cloned.Replay = nil
+		return &cloned
+	}
+
+	loadRaceSummaryWithoutReplay := func(raceID string) (*races.RaceSummary, error) {
+		rs, err := getRaceArchiveStorage()
+		if err != nil {
+			return nil, err
+		}
+		summary, err := rs.Load(raceID)
+		if err != nil {
+			return nil, err
+		}
+		return cloneRaceSummaryWithoutReplay(summary), nil
+	}
+
 	streamRaceReplay := func(peerID, requestID, raceID string) {
 		logger.Info("race replay stream requested", "peerId", peerID, "requestId", requestID, "raceId", raceID)
 		rs, err := getRaceArchiveStorage()
@@ -626,6 +647,31 @@ func main() {
 		logger.Info("race archive list stream finished", "peerId", peerID, "requestId", requestID, "chunkCount", chunkCount, "count", len(list))
 	}
 
+	sendRaceSummary := func(peerID, requestID, raceID string) []byte {
+		logger.Info("race summary requested", "peerId", peerID, "requestId", requestID, "raceId", raceID)
+		summary, err := loadRaceSummaryWithoutReplay(raceID)
+		if err != nil {
+			logger.Warn("failed to load race summary for p2p response", "peerId", peerID, "requestId", requestID, "raceId", raceID, "error", err)
+			errorMessage := "failed to load race summary"
+			switch {
+			case os.IsNotExist(err):
+				errorMessage = "race summary not found"
+			case errors.Is(err, races.ErrUnsafeID):
+				errorMessage = "invalid race id"
+			}
+			return encodeP2PResponse(dto.WSResponse{
+				Type:      dto.MessageTypeRaceSummary,
+				RequestID: requestID,
+				Error:     errorMessage,
+			})
+		}
+		return encodeP2PResponse(dto.WSResponse{
+			Type:      dto.MessageTypeRaceSummary,
+			RequestID: requestID,
+			Data:      summary,
+		})
+	}
+
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
 	peerManager.SetCountChangeHandler(func(count int) {
 		logger.Info("peer count changed", "connectedEngineers", count)
@@ -667,6 +713,27 @@ func main() {
 			logger.Info("received p2p race archive list request", "peerId", peerID, "requestId", req.RequestID)
 			go streamRaceArchiveList(peerID, req.RequestID)
 			return nil
+		case dto.MessageTypeGetRaceSummary:
+			var body struct {
+				ID string `json:"id"`
+			}
+			if len(req.Data) > 0 && json.Unmarshal(req.Data, &body) != nil {
+				return encodeP2PResponse(dto.WSResponse{
+					Type:      dto.MessageTypeRaceSummary,
+					RequestID: req.RequestID,
+					Error:     "invalid race summary request",
+				})
+			}
+			body.ID = strings.TrimSpace(body.ID)
+			if body.ID == "" {
+				return encodeP2PResponse(dto.WSResponse{
+					Type:      dto.MessageTypeRaceSummary,
+					RequestID: req.RequestID,
+					Error:     "race id is required",
+				})
+			}
+			logger.Info("received p2p race summary request", "peerId", peerID, "requestId", req.RequestID, "raceId", body.ID)
+			return sendRaceSummary(peerID, req.RequestID, body.ID)
 		case dto.MessageTypeGetRaceReplay:
 			var body struct {
 				ID string `json:"id"`
@@ -1096,30 +1163,26 @@ func main() {
 			return
 		}
 
-		rs, err := getRaceArchiveStorage()
+		summary, err := loadRaceSummaryWithoutReplay(id)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "race archive unavailable"})
+			switch {
+			case os.IsNotExist(err):
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
+			case errors.Is(err, races.ErrUnsafeID):
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "invalid race id"})
+			default:
+				logger.Error("failed to load race summary", "id", id, "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
+			}
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if err := rs.CopyRawJSON(id, w); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
-				return
-			}
-			if errors.Is(err, races.ErrUnsafeID) {
-				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]string{"error": "invalid race id"})
-				return
-			}
-			logger.Error("failed to load race summary", "id", id, "error", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
-		}
+		json.NewEncoder(w).Encode(summary)
 	})
 
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {

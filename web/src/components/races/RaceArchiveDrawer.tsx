@@ -3,16 +3,19 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from 'react';
 
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type {
   DataStorageMode,
   RaceListItem,
+  RaceSummary,
   ReplayFrame,
   ReplayStreamMeta,
 } from '../../types/telemetry';
 import { formatLapTime, formatPosition } from '../../utils/formatters';
+import { PostRaceDebrief } from '../debrief/PostRaceDebrief';
 import {
   buildReplayMarkers,
   filterRaceArchive,
@@ -21,10 +24,13 @@ import {
   getBehindGap,
   getPlayerDriver,
   loadRaceArchiveList,
+  loadRaceSummary,
   loadReplayStream,
   mergeReplayTrackMap,
+  resolveRaceArchiveOpenMode,
   type RaceArchiveDataSource,
   type RaceArchiveFilters,
+  type RaceArchiveOpenMode,
   type ReplayMarker,
 } from './replayArchive';
 import styles from './RaceArchiveDrawer.module.css';
@@ -46,6 +52,7 @@ const PLAYBACK_RATES = [0.5, 1, 2, 4];
 
 const httpRaceArchiveDataSource: RaceArchiveDataSource = {
   listRaces: loadRaceArchiveList,
+  loadSummary: loadRaceSummary,
   loadReplay: loadReplayStream,
 };
 
@@ -59,6 +66,11 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
   const [selectedRaceId, setSelectedRaceId] = useState('');
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState('');
+  const [browserOpen, setBrowserOpen] = useState(true);
+  const [activeMode, setActiveMode] = useState<RaceArchiveOpenMode | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+  const [selectedSummary, setSelectedSummary] = useState<RaceSummary | null>(null);
   const [replayLoading, setReplayLoading] = useState(false);
   const [replayError, setReplayError] = useState('');
   const [replayMeta, setReplayMeta] = useState<ReplayStreamMeta | null>(null);
@@ -106,6 +118,11 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     [deferredSearch, filters, races],
   );
 
+  const selectedRace = useMemo(
+    () => races.find((race) => race.id === selectedRaceId) ?? null,
+    [races, selectedRaceId],
+  );
+
   const trackOptions = useMemo(
     () => Array.from(new Set(races.map((race) => race.trackName).filter(Boolean))).sort(),
     [races],
@@ -114,27 +131,78 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     () => Array.from(new Set(races.map((race) => race.sessionType).filter(Boolean))).sort(),
     [races],
   );
-  const storageModes = useMemo(
-    () => Array.from(new Set(races.map((race) => race.dataStorageMode ?? 'resultOnly'))).sort(),
+  const storageModes = useMemo<DataStorageMode[]>(
+    () => Array.from(new Set(races.map((race) => race.dataStorageMode ?? 'resultOnly'))).sort() as DataStorageMode[],
     [races],
   );
 
   useEffect(() => {
-    if (filteredRaces.length === 0) {
+    if (races.length === 0) {
       setSelectedRaceId('');
+      setActiveMode(null);
       return;
     }
-    if (!filteredRaces.some((race) => race.id === selectedRaceId)) {
-      setSelectedRaceId(filteredRaces[0].id);
+    if (selectedRaceId && races.some((race) => race.id === selectedRaceId)) {
+      return;
     }
-  }, [filteredRaces, selectedRaceId]);
+    const nextRace = filteredRaces[0] ?? races[0];
+    if (nextRace) {
+      setSelectedRaceId(nextRace.id);
+    }
+  }, [filteredRaces, races, selectedRaceId]);
 
-  const selectedRace = filteredRaces.find((race) => race.id === selectedRaceId) ?? null;
+  useEffect(() => {
+    if (selectedRaceId && !selectedRace) {
+      setActiveMode(null);
+      setSelectedSummary(null);
+      setSummaryError('');
+      setReplayMeta(null);
+      setReplayFrames([]);
+      setReplayMarkers([]);
+      setFrameIndex(0);
+      setPlaybackActive(false);
+    }
+  }, [selectedRace, selectedRaceId, setPlaybackActive]);
+
+  useEffect(() => {
+    if (!selectedRace || !activeMode || activeMode === 'replay') {
+      setSummaryLoading(false);
+      setSummaryError('');
+      setSelectedSummary(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSummaryLoading(true);
+    setSummaryError('');
+    setSelectedSummary(null);
+
+    source.loadSummary(selectedRace.id, controller.signal)
+      .then((summary) => {
+        setSelectedSummary(summary);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setSummaryError(error instanceof Error ? error.message : 'Failed to load race summary.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setSummaryLoading(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [activeMode, selectedRace, source]);
 
   useEffect(() => {
     setPlaying(false);
 
-    if (!selectedRace?.hasReplay) {
+    if (activeMode !== 'replay' || !selectedRace?.hasReplay) {
+      setReplayLoading(false);
       setReplayMeta(null);
       setReplayFrames([]);
       setReplayMarkers([]);
@@ -188,10 +256,10 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     return () => {
       controller.abort();
     };
-  }, [applyReplayFrame, selectedRace, setPlaybackActive, source]);
+  }, [activeMode, applyReplayFrame, selectedRace, setPlaybackActive, source]);
 
   useEffect(() => {
-    if (replayFrames.length === 0) {
+    if (replayFrames.length === 0 || activeMode !== 'replay') {
       return;
     }
 
@@ -207,10 +275,10 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
       raceControl: frame.raceControl,
     });
     setPlaybackActive(true);
-  }, [applyReplayFrame, frameIndex, replayFrames, setPlaybackActive]);
+  }, [activeMode, applyReplayFrame, frameIndex, replayFrames, setPlaybackActive]);
 
   useEffect(() => {
-    if (!playing || replayFrames.length === 0) {
+    if (!playing || replayFrames.length === 0 || activeMode !== 'replay') {
       return;
     }
     if (frameIndex >= replayFrames.length - 1) {
@@ -224,7 +292,7 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     }, Math.max(baseInterval / playbackRate, 16));
 
     return () => window.clearTimeout(timer);
-  }, [frameIndex, playbackRate, playing, replayFrames.length, replayMeta?.frameIntervalMs]);
+  }, [activeMode, frameIndex, playbackRate, playing, replayFrames.length, replayMeta?.frameIntervalMs]);
 
   useEffect(() => () => setPlaybackActive(false), [setPlaybackActive]);
 
@@ -246,6 +314,26 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     setFilters((current) => ({ ...current, [key]: value }));
   }
 
+  function openRace(race: RaceListItem) {
+    setSelectedRaceId(race.id);
+    setSummaryError('');
+    setSelectedSummary(null);
+    const nextMode = resolveRaceArchiveOpenMode(race);
+    setActiveMode(nextMode);
+    setBrowserOpen(nextMode !== 'replay');
+    if (nextMode !== 'replay') {
+      setPlaying(false);
+      setPlaybackActive(false);
+    }
+  }
+
+  function closeSummaryModal() {
+    setActiveMode(null);
+    setSummaryLoading(false);
+    setSummaryError('');
+    setSelectedSummary(null);
+  }
+
   function jumpToMarker(direction: -1 | 1) {
     if (replayMarkers.length === 0) {
       return;
@@ -263,365 +351,513 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
 
   function closeArchive() {
     setPlaying(false);
+    setActiveMode(null);
+    setBrowserOpen(true);
+    setSummaryLoading(false);
+    setSummaryError('');
+    setSelectedSummary(null);
     setPlaybackActive(false);
     onClose();
   }
 
   return (
-    <div className={styles.archive}>
-      <section className={styles.hero}>
+    <>
+      <div className={styles.overlay}>
+        {activeMode === 'replay' ? (
+          <ReplayStage
+            selectedRace={selectedRace}
+            replayLoading={replayLoading}
+            replayError={replayError}
+            replayFrames={replayFrames}
+            replayMeta={replayMeta}
+            replayMarkers={replayMarkers}
+            frameIndex={frameIndex}
+            currentFrame={currentFrame}
+            player={player}
+            behindGap={behindGap}
+            currentClock={currentClock}
+            totalClock={totalClock}
+            replayStart={replayStart}
+            playing={playing}
+            playbackRate={playbackRate}
+            activeMarkerIds={activeMarkerIds}
+            browserOpen={browserOpen}
+            onOpenArchive={() => setBrowserOpen(true)}
+            onClose={closeArchive}
+            setFrameIndex={setFrameIndex}
+            setPlaying={setPlaying}
+            setPlaybackRate={setPlaybackRate}
+            jumpToMarker={jumpToMarker}
+          />
+        ) : null}
+
+        {browserOpen ? (
+          <ArchiveBrowser
+            filteredRaces={filteredRaces}
+            listError={listError}
+            listLoading={listLoading}
+            trackOptions={trackOptions}
+            sessionOptions={sessionOptions}
+            storageModes={storageModes}
+            filters={filters}
+            selectedRaceId={selectedRaceId}
+            updateFilter={updateFilter}
+            openRace={openRace}
+            replayActive={activeMode === 'replay'}
+            onResumeReplay={() => setBrowserOpen(false)}
+            onClose={closeArchive}
+          />
+        ) : null}
+
+        {activeMode !== 'replay' && summaryLoading ? (
+          <ModalMessage
+            title={activeMode === 'summary' ? 'Loading saved summary...' : 'Loading saved result...'}
+            copy={selectedRace ? `${selectedRace.trackName} · ${selectedRace.sessionType}` : 'Loading archive details.'}
+          />
+        ) : null}
+
+        {activeMode !== 'replay' && summaryError ? (
+          <ModalMessage
+            title="Archive details unavailable"
+            copy={summaryError}
+            tone="error"
+            actions={(
+              <>
+                {selectedRace ? (
+                  <button type="button" className={styles.markerButton} onClick={() => openRace(selectedRace)}>
+                    Retry
+                  </button>
+                ) : null}
+                <button type="button" className={styles.closeButton} onClick={closeSummaryModal}>
+                  Back To Archive
+                </button>
+              </>
+            )}
+          />
+        ) : null}
+      </div>
+
+      {selectedSummary && activeMode && activeMode !== 'replay' ? (
+        <PostRaceDebrief
+          result={selectedSummary}
+          onClose={closeSummaryModal}
+          eyebrow={activeMode === 'summary' ? 'Saved Summary' : 'Saved Result'}
+          closeLabel="Back To Archive"
+        />
+      ) : null}
+    </>
+  );
+}
+
+interface ArchiveBrowserProps {
+  filteredRaces: RaceListItem[];
+  listError: string;
+  listLoading: boolean;
+  trackOptions: string[];
+  sessionOptions: string[];
+  storageModes: DataStorageMode[];
+  filters: RaceArchiveFilters;
+  selectedRaceId: string;
+  updateFilter: <K extends keyof RaceArchiveFilters>(key: K, value: RaceArchiveFilters[K]) => void;
+  openRace: (race: RaceListItem) => void;
+  replayActive: boolean;
+  onResumeReplay: () => void;
+  onClose: () => void;
+}
+
+function ArchiveBrowser({
+  filteredRaces,
+  listError,
+  listLoading,
+  trackOptions,
+  sessionOptions,
+  storageModes,
+  filters,
+  selectedRaceId,
+  updateFilter,
+  openRace,
+  replayActive,
+  onResumeReplay,
+  onClose,
+}: ArchiveBrowserProps) {
+  return (
+    <aside className={styles.browserPanel}>
+      <div className={styles.archive}>
+        <section className={styles.hero}>
+          <div>
+            <span className={styles.eyebrow}>Race Archive</span>
+            <h2 className={styles.title}>Replay Browser</h2>
+            <p className={styles.subtitle}>
+              Result-only saves open a result modal, summary saves open a debrief modal, and advanced saves open full replay mode.
+            </p>
+          </div>
+          <div className={styles.heroActions}>
+            {replayActive ? (
+              <button type="button" className={styles.actionButton} onClick={onResumeReplay}>
+                Resume Replay
+              </button>
+            ) : null}
+            <button type="button" className={styles.actionButton} onClick={() => window.location.reload()}>
+              Refresh
+            </button>
+            <button type="button" className={styles.closeButton} onClick={onClose}>
+              Return Live
+            </button>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h3>Archive Filters</h3>
+            <span>{listLoading ? 'Loading...' : `${filteredRaces.length} visible`}</span>
+          </div>
+          <div className={styles.filters}>
+            <input
+              className={styles.searchInput}
+              type="search"
+              placeholder="Search track, player, date..."
+              value={filters.search}
+              onChange={(event) => updateFilter('search', event.target.value)}
+            />
+            <select
+              className={styles.select}
+              value={filters.track}
+              onChange={(event) => updateFilter('track', event.target.value)}
+            >
+              <option value="all">All Tracks</option>
+              {trackOptions.map((track) => (
+                <option key={track} value={track}>
+                  {track}
+                </option>
+              ))}
+            </select>
+            <select
+              className={styles.select}
+              value={filters.session}
+              onChange={(event) => updateFilter('session', event.target.value)}
+            >
+              <option value="all">All Sessions</option>
+              {sessionOptions.map((session) => (
+                <option key={session} value={session}>
+                  {session}
+                </option>
+              ))}
+            </select>
+            <select
+              className={styles.select}
+              value={filters.storageMode}
+              onChange={(event) => updateFilter('storageMode', event.target.value as RaceArchiveFilters['storageMode'])}
+            >
+              <option value="all">All Storage Modes</option>
+              {storageModes.map((mode) => (
+                <option key={mode} value={mode}>
+                  {formatStorageMode(mode)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className={styles.toggleRow}>
+            <input
+              type="checkbox"
+              checked={filters.replayOnly}
+              onChange={(event) => updateFilter('replayOnly', event.target.checked)}
+            />
+            Replay-ready races only
+          </label>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>
+            <h3>Saved Races</h3>
+            <span>{listError ? 'Unavailable' : 'Tap to open'}</span>
+          </div>
+          {listError ? <div className={styles.errorState}>{listError}</div> : null}
+          {!listError && filteredRaces.length === 0 ? (
+            <div className={styles.emptyState}>No saved races matched the current filters.</div>
+          ) : null}
+          <div className={styles.raceList}>
+            {filteredRaces.map((race) => {
+              const selected = race.id === selectedRaceId;
+              const openMode = resolveRaceArchiveOpenMode(race);
+              return (
+                <button
+                  key={race.id}
+                  type="button"
+                  className={`${styles.listButton} ${selected ? styles.listButtonActive : ''}`}
+                  onClick={() => openRace(race)}
+                >
+                  <div className={styles.listTop}>
+                    <div className={styles.listTitle}>
+                      <strong>{race.trackName} · {race.sessionType}</strong>
+                      <span className={styles.summaryMeta}>{race.savedAtLocal}</span>
+                    </div>
+                    <div className={styles.listChips}>
+                      <span className={`${styles.chip} ${race.hasReplay ? styles.chipAccent : ''}`}>
+                        {race.hasReplay ? `${race.frameCount ?? 0}f` : 'No Replay'}
+                      </span>
+                      <span className={`${styles.chip} ${getOpenModeClass(openMode)}`}>
+                        {formatOpenMode(openMode)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.listMeta}>
+                    <span>{race.playerName}</span>
+                    <span>{formatPosition(race.finalPosition)}</span>
+                    <span>{formatStorageMode(race.dataStorageMode ?? 'resultOnly')}</span>
+                    <span>{formatRaceFileSize(race.fileSizeBytes)}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+interface ReplayStageProps {
+  selectedRace: RaceListItem | null;
+  replayLoading: boolean;
+  replayError: string;
+  replayFrames: ReplayFrame[];
+  replayMeta: ReplayStreamMeta | null;
+  replayMarkers: ReplayMarker[];
+  frameIndex: number;
+  currentFrame: ReplayFrame | null;
+  player: ReturnType<typeof getPlayerDriver>;
+  behindGap: number | null;
+  currentClock: string;
+  totalClock: string;
+  replayStart: number;
+  playing: boolean;
+  playbackRate: number;
+  activeMarkerIds: Set<string>;
+  browserOpen: boolean;
+  onOpenArchive: () => void;
+  onClose: () => void;
+  setFrameIndex: (value: number | ((current: number) => number)) => void;
+  setPlaying: (value: boolean | ((current: boolean) => boolean)) => void;
+  setPlaybackRate: (value: number) => void;
+  jumpToMarker: (direction: -1 | 1) => void;
+}
+
+function ReplayStage({
+  selectedRace,
+  replayLoading,
+  replayError,
+  replayFrames,
+  replayMeta,
+  replayMarkers,
+  frameIndex,
+  currentFrame,
+  player,
+  behindGap,
+  currentClock,
+  totalClock,
+  replayStart,
+  playing,
+  playbackRate,
+  activeMarkerIds,
+  browserOpen,
+  onOpenArchive,
+  onClose,
+  setFrameIndex,
+  setPlaying,
+  setPlaybackRate,
+  jumpToMarker,
+}: ReplayStageProps) {
+  return (
+    <>
+      <section className={styles.replayHero}>
         <div>
-          <span className={styles.eyebrow}>Race Archive</span>
-          <h2 className={styles.title}>Replay Drawer</h2>
-          <p className={styles.subtitle}>
-            Saved races, filters, scrub playback, and SC / penalty / battle markers on top of the cockpit renderer.
-          </p>
+          <span className={styles.eyebrow}>Full Replay</span>
+          <h2 className={styles.title}>{selectedRace ? `${selectedRace.trackName} · ${selectedRace.sessionType}` : 'Replay'}</h2>
+          <div className={styles.summaryMeta}>
+            <span>{selectedRace?.playerName ?? 'Driver'}</span>
+            <span>{selectedRace ? formatPosition(selectedRace.finalPosition) : '--'}</span>
+            <span>{selectedRace?.savedAtLocal ?? '--'}</span>
+            {browserOpen ? <span>Archive open</span> : null}
+          </div>
         </div>
         <div className={styles.heroActions}>
-          <button type="button" className={styles.actionButton} onClick={() => window.location.reload()}>
-            Refresh
+          <button type="button" className={styles.actionButton} onClick={onOpenArchive}>
+            Archive
           </button>
-          <button type="button" className={styles.closeButton} onClick={closeArchive}>
+          <button type="button" className={styles.closeButton} onClick={onClose}>
             Return Live
           </button>
         </div>
       </section>
 
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h3>Archive Filters</h3>
-          <span>{listLoading ? 'Loading...' : `${filteredRaces.length} visible`}</span>
-        </div>
-        <div className={styles.filters}>
-          <input
-            className={styles.searchInput}
-            type="search"
-            placeholder="Search track, player, date..."
-            value={filters.search}
-            onChange={(event) => updateFilter('search', event.target.value)}
-          />
-          <select
-            className={styles.select}
-            value={filters.track}
-            onChange={(event) => updateFilter('track', event.target.value)}
-          >
-            <option value="all">All Tracks</option>
-            {trackOptions.map((track) => (
-              <option key={track} value={track}>
-                {track}
-              </option>
-            ))}
-          </select>
-          <select
-            className={styles.select}
-            value={filters.session}
-            onChange={(event) => updateFilter('session', event.target.value)}
-          >
-            <option value="all">All Sessions</option>
-            {sessionOptions.map((session) => (
-              <option key={session} value={session}>
-                {session}
-              </option>
-            ))}
-          </select>
-          <select
-            className={styles.select}
-            value={filters.storageMode}
-            onChange={(event) => updateFilter('storageMode', event.target.value as RaceArchiveFilters['storageMode'])}
-          >
-            <option value="all">All Storage Modes</option>
-            {storageModes.map((mode) => (
-              <option key={mode} value={mode}>
-                {formatStorageMode(mode)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <label className={styles.toggleRow}>
-          <input
-            type="checkbox"
-            checked={filters.replayOnly}
-            onChange={(event) => updateFilter('replayOnly', event.target.checked)}
-          />
-          Replay-ready races only
-        </label>
-      </section>
+      <section className={styles.replayHud}>
+        {!selectedRace ? (
+          <div className={styles.emptyState}>Select an advanced archive to enter full replay mode.</div>
+        ) : replayLoading ? (
+          <div className={styles.emptyState}>Streaming replay timeline...</div>
+        ) : replayError ? (
+          <div className={styles.errorState}>{replayError}</div>
+        ) : replayFrames.length === 0 ? (
+          <div className={styles.emptyState}>Replay stream contained no frames.</div>
+        ) : (
+          <>
+            <div className={styles.timelineHeader}>
+              <span>{currentClock} / {totalClock}</span>
+              <span>
+                Frame {frameIndex + 1} / {replayFrames.length}
+                {replayMeta?.session?.trackName ? ` · ${replayMeta.session.trackName}` : ''}
+              </span>
+            </div>
 
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h3>Saved Races</h3>
-          <span>{listError ? 'Unavailable' : 'Newest first'}</span>
-        </div>
-        {listError ? <div className={styles.errorState}>{listError}</div> : null}
-        {!listError && filteredRaces.length === 0 ? (
-          <div className={styles.emptyState}>No saved races matched the current filters.</div>
-        ) : null}
-        <div className={styles.raceList}>
-          {filteredRaces.map((race) => {
-            const selected = race.id === selectedRaceId;
-            return (
-              <button
-                key={race.id}
-                type="button"
-                className={`${styles.listButton} ${selected ? styles.listButtonActive : ''}`}
-                onClick={() => setSelectedRaceId(race.id)}
-              >
-                <div className={styles.listTop}>
-                  <div className={styles.listTitle}>
-                    <strong>{race.trackName} · {race.sessionType}</strong>
-                    <span className={styles.summaryMeta}>{race.savedAtLocal}</span>
-                  </div>
-                  <span className={`${styles.chip} ${race.hasReplay ? styles.chipAccent : ''}`}>
-                    {race.hasReplay ? `${race.frameCount ?? 0}f` : 'No Replay'}
-                  </span>
-                </div>
-                <div className={styles.listMeta}>
-                  <span>{race.playerName}</span>
-                  <span>{formatPosition(race.finalPosition)}</span>
-                  <span>{formatStorageMode(race.dataStorageMode ?? 'resultOnly')}</span>
-                  <span>{formatRaceFileSize(race.fileSizeBytes)}</span>
-                </div>
+            <div className={styles.timelineRailWrap}>
+              <div className={styles.markerRail}>
+                {replayMarkers.map((marker) => (
+                  <button
+                    key={marker.id}
+                    type="button"
+                    className={`${styles.markerDot} ${getMarkerClass(marker.type)}`}
+                    style={{ left: `${(marker.frameIndex / Math.max(replayFrames.length - 1, 1)) * 100}%` }}
+                    onClick={() => {
+                      setFrameIndex(marker.frameIndex);
+                      setPlaying(false);
+                    }}
+                    title={`${marker.label}${marker.detail ? ` · ${marker.detail}` : ''}`}
+                  />
+                ))}
+              </div>
+              <input
+                className={styles.timelineInput}
+                type="range"
+                min={0}
+                max={Math.max(replayFrames.length - 1, 0)}
+                value={frameIndex}
+                onChange={(event) => {
+                  setFrameIndex(Number(event.target.value));
+                  setPlaying(false);
+                }}
+              />
+            </div>
+
+            <div className={styles.controls}>
+              <button type="button" className={styles.markerButton} onClick={() => jumpToMarker(-1)}>
+                Prev Marker
               </button>
-            );
-          })}
-        </div>
-      </section>
+              <button
+                type="button"
+                className={styles.markerButton}
+                onClick={() => {
+                  if (frameIndex >= replayFrames.length - 1) {
+                    setFrameIndex(0);
+                  }
+                  setPlaying((current) => !current);
+                }}
+              >
+                {playing ? 'Pause' : 'Play'}
+              </button>
+              <button type="button" className={styles.markerButton} onClick={() => jumpToMarker(1)}>
+                Next Marker
+              </button>
+              {PLAYBACK_RATES.map((rate) => (
+                <button
+                  key={rate}
+                  type="button"
+                  className={`${styles.speedButton} ${playbackRate === rate ? styles.speedButtonActive : ''}`}
+                  onClick={() => setPlaybackRate(rate)}
+                >
+                  {rate}x
+                </button>
+              ))}
+            </div>
 
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h3>Replay Viewer</h3>
-          <span>{selectedRace ? selectedRace.id : 'No race selected'}</span>
-        </div>
-        {renderViewer(
-          selectedRace,
-          replayLoading,
-          replayError,
-          replayFrames,
-          replayMeta,
-          replayMarkers,
-          frameIndex,
-          currentFrame,
-          player,
-          behindGap,
-          currentClock,
-          totalClock,
-          replayStart,
-          playing,
-          playbackRate,
-          activeMarkerIds,
-          setFrameIndex,
-          setPlaying,
-          setPlaybackRate,
-          jumpToMarker,
+            <div className={styles.frameStats}>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Position</span>
+                <strong className={styles.statValue}>{formatPosition(player?.position ?? 0)}</strong>
+              </article>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Lap</span>
+                <strong className={styles.statValue}>{player?.currentLapNum ?? '--'}</strong>
+              </article>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Speed</span>
+                <strong className={styles.statValue}>{player ? `${Math.round(player.speed)} km/h` : '--'}</strong>
+              </article>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Safety Car</span>
+                <strong className={styles.statValue}>{formatSafetyCar(currentFrame?.pitwall.session?.safetyCar)}</strong>
+              </article>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Gap Ahead</span>
+                <strong className={styles.statValue}>{formatGap(player?.deltaToCarInFront)}</strong>
+              </article>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Gap Behind</span>
+                <strong className={styles.statValue}>{formatGap(behindGap)}</strong>
+              </article>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Best Lap</span>
+                <strong className={styles.statValue}>{player ? formatLapTime(player.bestLapTime) : '--:--.---'}</strong>
+              </article>
+              <article className={styles.statCard}>
+                <span className={styles.label}>Weather</span>
+                <strong className={styles.statValue}>{currentFrame?.pitwall.session?.weather ?? '--'}</strong>
+              </article>
+            </div>
+
+            <div className={styles.sectionHeader}>
+              <h3>Markers</h3>
+              <span>{replayMarkers.length} captured</span>
+            </div>
+            <div className={styles.markers}>
+              {replayMarkers.length === 0 ? (
+                <div className={styles.emptyState}>No SC, penalty, or battle markers were detected.</div>
+              ) : (
+                replayMarkers.map((marker) => (
+                  <button
+                    key={marker.id}
+                    type="button"
+                    className={styles.markerButton}
+                    onClick={() => {
+                      setFrameIndex(marker.frameIndex);
+                      setPlaying(false);
+                    }}
+                  >
+                    <span className={styles.markerCopy}>
+                      <strong>{marker.label}</strong>
+                      <span className={styles.summaryMeta}>{marker.detail ?? 'Marker jump'}</span>
+                    </span>
+                    <span className={styles.markerMeta}>
+                      {formatReplayClock(replayStart, marker.timestamp)}
+                      {activeMarkerIds.has(marker.id) ? ' · Now' : ''}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </>
         )}
       </section>
-    </div>
+    </>
   );
 }
 
-function renderViewer(
-  selectedRace: RaceListItem | null,
-  replayLoading: boolean,
-  replayError: string,
-  replayFrames: ReplayFrame[],
-  replayMeta: ReplayStreamMeta | null,
-  replayMarkers: ReplayMarker[],
-  frameIndex: number,
-  currentFrame: ReplayFrame | null,
-  player: ReturnType<typeof getPlayerDriver>,
-  behindGap: number | null,
-  currentClock: string,
-  totalClock: string,
-  replayStart: number,
-  playing: boolean,
-  playbackRate: number,
-  activeMarkerIds: Set<string>,
-  setFrameIndex: (value: number) => void,
-  setPlaying: (value: boolean | ((current: boolean) => boolean)) => void,
-  setPlaybackRate: (value: number) => void,
-  jumpToMarker: (direction: -1 | 1) => void,
-) {
-  if (!selectedRace) {
-    return <div className={styles.emptyState}>Choose a race to inspect its replay timeline.</div>;
-  }
+interface ModalMessageProps {
+  title: string;
+  copy: string;
+  tone?: 'default' | 'error';
+  actions?: ReactNode;
+}
 
+function ModalMessage({ title, copy, tone = 'default', actions }: ModalMessageProps) {
   return (
-    <>
-      <div className={styles.summaryTop}>
-        <div>
-          <div className={styles.summaryTitle}>{selectedRace.trackName} · {selectedRace.sessionType}</div>
-          <div className={styles.summaryMeta}>
-            <span>{selectedRace.playerName}</span>
-            <span>{formatPosition(selectedRace.finalPosition)}</span>
-            <span>{selectedRace.savedAtLocal}</span>
-          </div>
-        </div>
-        <span className={`${styles.chip} ${selectedRace.hasReplay ? styles.chipAccent : ''}`}>
-          {selectedRace.hasReplay ? 'Replay Ready' : 'Summary Only'}
-        </span>
-      </div>
-
-      <div className={styles.summaryGrid}>
-        <article className={styles.statCard}>
-          <span className={styles.statLabel}>Storage</span>
-          <strong className={styles.statValue}>{formatStorageMode(selectedRace.dataStorageMode ?? 'resultOnly')}</strong>
-        </article>
-        <article className={styles.statCard}>
-          <span className={styles.statLabel}>Frames</span>
-          <strong className={styles.statValue}>{selectedRace.frameCount ?? 0}</strong>
-        </article>
-        <article className={styles.statCard}>
-          <span className={styles.statLabel}>File Size</span>
-          <strong className={styles.statValue}>{formatRaceFileSize(selectedRace.fileSizeBytes)}</strong>
-        </article>
-      </div>
-
-      {!selectedRace.hasReplay ? (
-        <div className={styles.emptyState}>This archive was stored without replay snapshots.</div>
-      ) : replayLoading ? (
-        <div className={styles.emptyState}>Streaming replay timeline...</div>
-      ) : replayError ? (
-        <div className={styles.errorState}>{replayError}</div>
-      ) : replayFrames.length === 0 ? (
-        <div className={styles.emptyState}>Replay stream contained no frames.</div>
-      ) : (
-        <>
-          <div className={styles.timelineHeader}>
-            <span>{currentClock} / {totalClock}</span>
-            <span>
-              Frame {frameIndex + 1} / {replayFrames.length}
-              {replayMeta?.session?.trackName ? ` · ${replayMeta.session.trackName}` : ''}
-            </span>
-          </div>
-
-          <div className={styles.timelineRailWrap}>
-            <div className={styles.markerRail}>
-              {replayMarkers.map((marker) => (
-                <button
-                  key={marker.id}
-                  type="button"
-                  className={`${styles.markerDot} ${getMarkerClass(marker.type)}`}
-                  style={{ left: `${(marker.frameIndex / Math.max(replayFrames.length - 1, 1)) * 100}%` }}
-                  onClick={() => {
-                    setFrameIndex(marker.frameIndex);
-                    setPlaying(false);
-                  }}
-                  title={`${marker.label}${marker.detail ? ` · ${marker.detail}` : ''}`}
-                />
-              ))}
-            </div>
-            <input
-              className={styles.timelineInput}
-              type="range"
-              min={0}
-              max={Math.max(replayFrames.length - 1, 0)}
-              value={frameIndex}
-              onChange={(event) => {
-                setFrameIndex(Number(event.target.value));
-                setPlaying(false);
-              }}
-            />
-          </div>
-
-          <div className={styles.controls}>
-            <button type="button" className={styles.markerButton} onClick={() => jumpToMarker(-1)}>
-              Prev Marker
-            </button>
-            <button
-              type="button"
-              className={styles.markerButton}
-              onClick={() => {
-                if (frameIndex >= replayFrames.length - 1) {
-                  setFrameIndex(0);
-                }
-                setPlaying((current) => !current);
-              }}
-            >
-              {playing ? 'Pause' : 'Play'}
-            </button>
-            <button type="button" className={styles.markerButton} onClick={() => jumpToMarker(1)}>
-              Next Marker
-            </button>
-            {PLAYBACK_RATES.map((rate) => (
-              <button
-                key={rate}
-                type="button"
-                className={`${styles.speedButton} ${playbackRate === rate ? styles.speedButtonActive : ''}`}
-                onClick={() => setPlaybackRate(rate)}
-              >
-                {rate}x
-              </button>
-            ))}
-          </div>
-
-          <div className={styles.frameStats}>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Position</span>
-              <strong className={styles.statValue}>{formatPosition(player?.position ?? 0)}</strong>
-            </article>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Lap</span>
-              <strong className={styles.statValue}>{player?.currentLapNum ?? '--'}</strong>
-            </article>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Speed</span>
-              <strong className={styles.statValue}>{player ? `${Math.round(player.speed)} km/h` : '--'}</strong>
-            </article>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Safety Car</span>
-              <strong className={styles.statValue}>{formatSafetyCar(currentFrame?.pitwall.session?.safetyCar)}</strong>
-            </article>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Gap Ahead</span>
-              <strong className={styles.statValue}>{formatGap(player?.deltaToCarInFront)}</strong>
-            </article>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Gap Behind</span>
-              <strong className={styles.statValue}>{formatGap(behindGap)}</strong>
-            </article>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Best Lap</span>
-              <strong className={styles.statValue}>{player ? formatLapTime(player.bestLapTime) : '--:--.---'}</strong>
-            </article>
-            <article className={styles.statCard}>
-              <span className={styles.label}>Weather</span>
-              <strong className={styles.statValue}>{currentFrame?.pitwall.session?.weather ?? '--'}</strong>
-            </article>
-          </div>
-
-          <div className={styles.sectionHeader}>
-            <h3>Markers</h3>
-            <span>{replayMarkers.length} captured</span>
-          </div>
-          <div className={styles.markers}>
-            {replayMarkers.length === 0 ? (
-              <div className={styles.emptyState}>No SC, penalty, or battle markers were detected.</div>
-            ) : (
-              replayMarkers.map((marker) => (
-                <button
-                  key={marker.id}
-                  type="button"
-                  className={styles.markerButton}
-                  onClick={() => {
-                    setFrameIndex(marker.frameIndex);
-                    setPlaying(false);
-                  }}
-                >
-                  <span className={styles.markerCopy}>
-                    <strong>{marker.label}</strong>
-                    <span className={styles.summaryMeta}>{marker.detail ?? 'Marker jump'}</span>
-                  </span>
-                  <span className={styles.markerMeta}>
-                    {formatReplayClock(replayStart, marker.timestamp)}
-                    {activeMarkerIds.has(marker.id) ? ' · Now' : ''}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </>
-      )}
-    </>
+    <div className={styles.modalShell}>
+      <section className={`${styles.modalCard} ${tone === 'error' ? styles.modalCardError : ''}`}>
+        <span className={styles.eyebrow}>Archive Detail</span>
+        <h3 className={styles.modalTitle}>{title}</h3>
+        <p className={styles.subtitle}>{copy}</p>
+        {actions ? <div className={styles.modalActions}>{actions}</div> : null}
+      </section>
+    </div>
   );
 }
 
@@ -633,6 +869,26 @@ function formatStorageMode(mode: DataStorageMode): string {
     return 'Summary';
   }
   return 'Result Only';
+}
+
+function formatOpenMode(mode: RaceArchiveOpenMode): string {
+  if (mode === 'replay') {
+    return 'Replay';
+  }
+  if (mode === 'summary') {
+    return 'Summary';
+  }
+  return 'Result';
+}
+
+function getOpenModeClass(mode: RaceArchiveOpenMode): string {
+  if (mode === 'replay') {
+    return styles.chipReplay;
+  }
+  if (mode === 'summary') {
+    return styles.chipSummary;
+  }
+  return styles.chipResult;
 }
 
 function formatSafetyCar(value?: string): string {

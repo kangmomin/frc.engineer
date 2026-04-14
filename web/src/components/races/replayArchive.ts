@@ -3,6 +3,7 @@ import type {
   DriverInfo,
   RaceControlNotification,
   RaceListItem,
+  RaceSummary,
   ReplayFrame,
   ReplayStreamFrame,
   ReplayStreamMeta,
@@ -33,8 +34,11 @@ export interface ReplayMarker {
 
 export interface RaceArchiveDataSource {
   listRaces: (signal?: AbortSignal) => Promise<RaceListItem[]>;
+  loadSummary: (id: string, signal?: AbortSignal) => Promise<RaceSummary>;
   loadReplay: (id: string, signal?: AbortSignal) => Promise<ReplayBundle>;
 }
+
+export type RaceArchiveOpenMode = 'result' | 'summary' | 'replay';
 
 const BATTLE_GAP_MS = 1_250;
 const MIN_BATTLE_FRAMES = 8;
@@ -118,6 +122,14 @@ export async function loadRaceArchiveList(signal?: AbortSignal): Promise<RaceLis
   return Array.isArray(items) ? items : [];
 }
 
+export async function loadRaceSummary(id: string, signal?: AbortSignal): Promise<RaceSummary> {
+  const response = await fetch(`/api/races/${encodeURIComponent(id)}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Race summary request failed: ${response.status}`);
+  }
+  return response.json() as Promise<RaceSummary>;
+}
+
 export async function loadReplayStream(id: string, signal?: AbortSignal): Promise<ReplayBundle> {
   const response = await fetch(`/api/replay/${encodeURIComponent(id)}`, { signal });
   if (!response.ok) {
@@ -163,6 +175,18 @@ export async function loadReplayStream(id: string, signal?: AbortSignal): Promis
   }
 
   return { meta: metaRef.current, frames };
+}
+
+export function resolveRaceArchiveOpenMode(race: RaceListItem): RaceArchiveOpenMode {
+  const storageMode = race.dataStorageMode ?? 'resultOnly';
+
+  if (storageMode === 'advanced' && race.hasReplay) {
+    return 'replay';
+  }
+  if (storageMode === 'summary' || storageMode === 'advanced') {
+    return 'summary';
+  }
+  return 'result';
 }
 
 function parseReplayChunk(

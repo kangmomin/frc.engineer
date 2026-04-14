@@ -522,8 +522,7 @@ func main() {
 
 		switch r.Method {
 		case http.MethodGet:
-			w.Header().Set("Content-Type", "application/json")
-			err := raceStorage.CopyRawJSON(id, w)
+			summary, err := raceStorage.Load(id)
 			if err != nil {
 				if errors.Is(err, os.ErrNotExist) {
 					http.Error(w, "race summary not found", http.StatusNotFound)
@@ -537,6 +536,9 @@ func main() {
 				http.Error(w, "failed to load race summary", http.StatusInternalServerError)
 				return
 			}
+			summary.Replay = nil
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(summary)
 
 		case http.MethodDelete:
 			if err := raceStorage.Delete(id); err != nil {
