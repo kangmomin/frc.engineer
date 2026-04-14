@@ -336,10 +336,11 @@ export function CockpitDashboard({
   const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
   const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
   const tireAge = Math.max(player?.tireAge ?? 0, 1);
+  const targetTireAge = Math.max(predictionLaps, 1);
   const wheelWearPrediction = wheelWear.map((wear) => {
     const wearPerLap = player?.tireAge ? wear / tireAge : 0;
-    const delta = wearPerLap * predictionLaps;
-    const absolute = Math.min(wear + delta, 100);
+    const absolute = Math.min(wearPerLap * targetTireAge, 100);
+    const delta = absolute - wear;
     return { delta: Math.round(delta), absolute: Math.round(absolute) };
   });
   const pitWindow = getPitWindow(session, player);
@@ -1085,7 +1086,7 @@ export function CockpitDashboard({
           <div className={styles.compoundLifeSection}>
             <div className={styles.compoundPanelControls}>
               <div className={`${styles.predictionInput} ${styles.predictionInputCompact}`}>
-                <label htmlFor="pred-laps">Predict</label>
+                <label htmlFor="pred-laps">At Lap</label>
                 <input
                   id="pred-laps"
                   className={styles.lapInput}
