@@ -43,6 +43,7 @@ import { fetchJsonWithSenderDebug } from "./senderDebug";
 type SectionId = "setup-manager" | "sender" | "overlay";
 type SetupWorkspaceId = "builder" | "analysis";
 type Severity = "high" | "med" | "low";
+type SenderStorageMode = "resultOnly" | "summary" | "advanced";
 
 interface DriverPermissions {
   pitwall?: boolean;
@@ -86,6 +87,7 @@ interface SenderStatus {
   connectedEngineers?: number;
   udpPort?: number;
   saveFiles?: boolean;
+  raceStorageMode?: SenderStorageMode | "off";
   invite?: SenderInvite;
   peers?: SenderPeer[];
 }
@@ -165,6 +167,7 @@ interface SenderForwardTargetDraft {
 interface SenderConfigResponse {
   udpPort?: number;
   saveFiles?: boolean;
+  dataStorageMode?: SenderStorageMode;
   trackRecording?: boolean;
   roomName?: string;
   roomPassword?: string;
@@ -184,6 +187,7 @@ interface SenderConfigConflictResponse {
 interface SenderConfigDraft {
   udpPort: string;
   saveFiles: boolean;
+  dataStorageMode: SenderStorageMode;
   trackRecording: boolean;
   roomName: string;
   roomPassword: string;
@@ -223,12 +227,34 @@ const DEFAULT_OVERLAY_HOTKEYS: OverlayHotkeys = {
 const DEFAULT_SENDER_CONFIG: SenderConfigDraft = {
   udpPort: "20777",
   saveFiles: true,
+  dataStorageMode: "resultOnly",
   trackRecording: false,
   roomName: "Sender Room",
   roomPassword: "",
   frcAccountKey: "",
   forwardTargets: [],
 };
+const SENDER_STORAGE_MODE_OPTIONS: Array<{
+  value: SenderStorageMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "resultOnly",
+    label: "Result Only",
+    description: "Save race result summary only.",
+  },
+  {
+    value: "summary",
+    label: "Summary Replay",
+    description: "Save race result plus replay timeline snapshots.",
+  },
+  {
+    value: "advanced",
+    label: "Advanced",
+    description: "Save race result, replay timeline, and raw packet logs.",
+  },
+];
 const DRIVER_PERMISSION_LABELS: Record<string, string> = {
   pitwall: "Pitwall",
   overlay: "Overlay",
@@ -305,12 +331,17 @@ function normalizeSenderForwardTargetsResponse(targets: SenderForwardTargetRespo
 }
 
 function buildSenderConfigDraft(data: SenderConfigResponse | null | undefined): SenderConfigDraft {
+  const dataStorageMode =
+    data?.dataStorageMode === "advanced" || data?.dataStorageMode === "summary" || data?.dataStorageMode === "resultOnly"
+      ? data.dataStorageMode
+      : DEFAULT_SENDER_CONFIG.dataStorageMode;
   return {
     udpPort:
       typeof data?.udpPort === "number" && Number.isFinite(data.udpPort)
         ? String(data.udpPort)
         : DEFAULT_SENDER_CONFIG.udpPort,
     saveFiles: typeof data?.saveFiles === "boolean" ? data.saveFiles : DEFAULT_SENDER_CONFIG.saveFiles,
+    dataStorageMode,
     trackRecording: typeof data?.trackRecording === "boolean" ? data.trackRecording : DEFAULT_SENDER_CONFIG.trackRecording,
     roomName: typeof data?.roomName === "string" ? data.roomName : DEFAULT_SENDER_CONFIG.roomName,
     roomPassword: typeof data?.roomPassword === "string" ? data.roomPassword : DEFAULT_SENDER_CONFIG.roomPassword,
@@ -323,6 +354,21 @@ function severityColor(severity: Severity): string {
   if (severity === "high") return P.danger;
   if (severity === "med") return P.accent;
   return P.dim;
+}
+
+function formatSenderStorageModeLabel(mode?: SenderStorageMode | "off" | null): string {
+  switch (mode) {
+    case "advanced":
+      return "Advanced";
+    case "summary":
+      return "Summary Replay";
+    case "resultOnly":
+      return "Result Only";
+    case "off":
+      return "Off";
+    default:
+      return "--";
+  }
 }
 
 function formatLapTime(value?: number | null): string {
@@ -1128,6 +1174,7 @@ export function F1SetupManager() {
         body: JSON.stringify({
           udpPort,
           saveFiles: senderConfig.saveFiles,
+          dataStorageMode: senderConfig.dataStorageMode,
           trackRecording: senderConfig.trackRecording,
           trackRecordingOverwriteApprovedFor: trackRecordingOverwriteFilename,
           roomName: senderConfig.roomName,
@@ -1976,6 +2023,7 @@ export function F1SetupManager() {
                 <StatTile label="Track Temp" value={typeof liveSession?.trackTemp === "number" ? `${liveSession.trackTemp.toFixed(0)}C` : "--"} />
                 <StatTile label="Best Lap" value={formatLapTime(livePlayer?.bestLapTime)} />
                 <StatTile label="Save Files" value={typeof senderStatus?.saveFiles === "boolean" ? (senderStatus.saveFiles ? "Enabled" : "Disabled") : "--"} />
+                <StatTile label="Save Mode" value={formatSenderStorageModeLabel(senderStatus?.raceStorageMode)} />
                 <StatTile label="Connected Engineers" value={typeof senderStatus?.connectedEngineers === "number" ? String(senderStatus.connectedEngineers) : "--"} />
               </div>
             </Panel>
@@ -2061,6 +2109,50 @@ export function F1SetupManager() {
                 </div>
 
                 <div style={{ display: "grid", gap: 8, padding: 12, borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono, marginBottom: 4 }}>Save File Mode</div>
+                    <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
+                      Choose what gets persisted when file saving is enabled.
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                    {SENDER_STORAGE_MODE_OPTIONS.map((option) => {
+                      const selected = senderConfig.dataStorageMode === option.value;
+                      const enabled = senderConfig.saveFiles;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          disabled={!enabled}
+                          onClick={() => setSenderConfig((current) => ({ ...current, dataStorageMode: option.value }))}
+                          style={{
+                            display: "grid",
+                            gap: 6,
+                            textAlign: "left",
+                            padding: "10px 12px",
+                            borderRadius: 4,
+                            border: `1px solid ${selected ? P.accent : P.border}`,
+                            background: selected ? "rgba(0,229,255,0.08)" : P.bg,
+                            color: enabled ? P.text : P.dim,
+                            cursor: enabled ? "pointer" : "not-allowed",
+                          }}
+                        >
+                          <span style={{ fontSize: 11, fontFamily: P.mono }}>{option.label}</span>
+                          <span style={{ fontSize: 10, color: enabled ? P.muted : P.dim, lineHeight: 1.5 }}>{option.description}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {!senderConfig.saveFiles ? (
+                    <div style={{ fontSize: 10, color: P.muted, lineHeight: 1.6 }}>
+                      File saving is currently off. Re-enable Save Files to persist the selected mode.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ display: "grid", gap: 8, padding: 12, borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                     <div>
                       <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono, marginBottom: 4 }}>Storage Location</div>
@@ -2105,7 +2197,7 @@ export function F1SetupManager() {
 
                   <div style={{ fontSize: 10, color: P.muted, lineHeight: 1.6 }}>
                     Current root: {senderStorageInfo.effective || "Default app folder"}
-                    {senderStorageInfo.selected ? " / custom folder saved in desktop settings." : " / using the packaged sender folder."}
+                    {senderStorageInfo.selected ? " / custom folder saved in desktop settings." : " / using the app data folder."}
                   </div>
                 </div>
 

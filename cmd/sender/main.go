@@ -50,6 +50,7 @@ type senderConfig struct {
 	FRCAccountKey        string                   `json:"frcAccountKey,omitempty"`
 	EngineerDashboardURL string                   `json:"engineerDashboardUrl,omitempty"`
 	SaveFiles            bool                     `json:"saveFiles"`
+	DataStorageMode      rtconfig.DataStorageMode `json:"dataStorageMode,omitempty"`
 	TrackRecording       bool                     `json:"trackRecording"`
 	ForwardTargets       []rtconfig.ForwardTarget `json:"forwardTargets"`
 	OverlayPresets       []overlayPreset          `json:"overlayPresets,omitempty"`
@@ -145,11 +146,10 @@ func saveSenderConfig(cfg senderConfig) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-func buildSenderState(saveFiles, trackRecording bool) dto.SenderState {
+func buildSenderState(saveFiles, trackRecording bool, dataStorageMode rtconfig.DataStorageMode) dto.SenderState {
 	raceStorageMode := "off"
 	if saveFiles {
-		// Sender currently persists race archives in result-only mode.
-		raceStorageMode = string(rtconfig.DataStorageModeResultOnly)
+		raceStorageMode = string(rtconfig.NormalizeDataStorageMode(dataStorageMode))
 	}
 	return dto.SenderState{
 		SaveFiles:       saveFiles,
@@ -266,6 +266,7 @@ func main() {
 	}
 	embeddedDriverPack := os.Getenv("DRIVER_PACK_EMBEDDED") == "1"
 	saveFiles := strings.EqualFold(os.Getenv("SAVE_FILES"), "true") || os.Getenv("SAVE_FILES") == "1"
+	dataStorageMode := rtconfig.DataStorageModeResultOnly
 	trackRecording := saveFiles
 	savedConfig := loadSenderConfig()
 
@@ -282,10 +283,8 @@ func main() {
 			frcAccountKey = saved.FRCAccountKey
 		}
 		saveFiles = saved.SaveFiles
+		dataStorageMode = rtconfig.NormalizeDataStorageMode(saved.DataStorageMode)
 		trackRecording = saved.TrackRecording
-	}
-	if embeddedDriverPack {
-		saveFiles = true
 	}
 
 	// Create UDP listener & parser
@@ -297,7 +296,7 @@ func main() {
 	parser := udp.NewParser(logger)
 	packetLogDir := resolveSenderStoragePath("data", "packets")
 	var packetLogger *udp.PacketLogger
-	if saveFiles {
+	if saveFiles && dataStorageMode == rtconfig.DataStorageModeAdvanced {
 		packetLogger = udp.NewPacketLogger(packetLogDir, logger)
 		parser.SetPacketLogger(packetLogger)
 		logger.Info("packet logging enabled", "dir", packetLogDir)
@@ -343,6 +342,7 @@ func main() {
 	var cfgMu sync.Mutex
 	cfgUDPPort := udpPort
 	cfgSaveFiles := saveFiles
+	cfgDataStorageMode := dataStorageMode
 	cfgTrackRecording := trackRecording
 	cfgRoomName := roomName
 	cfgRoomPassword := roomPassword
@@ -375,7 +375,7 @@ func main() {
 		}
 		return defaultStrategyConfig
 	}
-	processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording))
+	processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording, cfgDataStorageMode))
 	var raceStorage *races.FileStorage
 	if saveFiles {
 		rs, err := races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
@@ -388,6 +388,8 @@ func main() {
 	var latestRaceSummary *races.RaceSummary
 	var sessionAnalysisCacheMu sync.RWMutex
 	sessionAnalysisCache := make(map[string]sessionAnalysisCacheEntry)
+	processor.SetRaceSummaryRecording(saveFiles)
+	processor.SetReplayRecording(saveFiles && (dataStorageMode == rtconfig.DataStorageModeSummary || dataStorageMode == rtconfig.DataStorageModeAdvanced))
 	const maxRaceArchiveListChunkBytes = 48 * 1024
 	const maxRaceReplayChunkBytes = 48 * 1024
 	const maxRaceReplaySendWait = 5 * time.Second
@@ -739,27 +741,49 @@ func main() {
 	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState) error {
 		cfgMu.Lock()
 		rs := raceStorage
+		saveEnabled := cfgSaveFiles
+		storageMode := cfgDataStorageMode
 		cfgMu.Unlock()
+		if !saveEnabled || rs == nil {
+			return nil
+		}
 
 		summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
 			Penalty: counts.Penalty,
 			Warning: counts.Warning,
 			Info:    counts.Info,
 		}, timeline, time.Now())
+		summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(storageMode)
+		if summary.DataStorageMode == rtconfig.DataStorageModeSummary || summary.DataStorageMode == rtconfig.DataStorageModeAdvanced {
+			if replay := processor.GetReplayTimeline(sessionUID); replay != nil {
+				frames := make([]races.ReplayFrame, len(replay.Frames))
+				for i := range replay.Frames {
+					frame := replay.Frames[i]
+					frames[i] = races.ReplayFrame{
+						Timestamp:   frame.Timestamp,
+						Pitwall:     frame.Pitwall,
+						RaceControl: append([]dto.RaceControlNotification(nil), frame.RaceControl...),
+					}
+				}
+				summary.Replay = &races.ReplayTimeline{
+					FrameIntervalMS: replay.FrameIntervalMS,
+					TrackMap:        replay.TrackMap,
+					Session:         replay.Session,
+					Frames:          frames,
+				}
+			}
+		}
 		raceSummaryMu.Lock()
 		latestRaceSummary = summary
 		raceSummaryMu.Unlock()
 
-		if rs != nil {
-			if _, err := rs.Save(summary); err != nil {
-				logger.Error("failed to save race summary", "error", err)
-			}
+		if _, err := rs.Save(summary); err != nil {
+			logger.Error("failed to save race summary", "error", err)
 		}
 
 		broadcaster.BroadcastRaceResult(summary)
 		return nil
 	})
-	processor.SetRaceSummaryRecording(true)
 
 	// Start components
 	go udpListener.Start(ctx)
@@ -777,6 +801,7 @@ func main() {
 			FRCAccountKey:        cfgFRCAccountKey,
 			EngineerDashboardURL: cfgEngineerDashboardURL,
 			SaveFiles:            cfgSaveFiles,
+			DataStorageMode:      cfgDataStorageMode,
 			TrackRecording:       cfgTrackRecording,
 			ForwardTargets:       forwardTargets,
 			OverlayPresets:       presets,
@@ -905,13 +930,14 @@ func main() {
 		cfgMu.Lock()
 		port := cfgUDPPort
 		sf := cfgSaveFiles
+		mode := cfgDataStorageMode
 		tr := cfgTrackRecording
 		rn := cfgRoomName
 		rp := cfgRoomPassword
 		dp := cachedDriverPerms
 		dashboardURL := cfgEngineerDashboardURL
 		cfgMu.Unlock()
-		senderState := buildSenderState(sf, tr)
+		senderState := buildSenderState(sf, tr, mode)
 
 		invite := buildInviteInfo(dashboardURL, signalingURL, peerManager.RoomID(), peerManager.RoomCode(), rp != "")
 		peers := peerManager.DebugPeers()
@@ -1148,6 +1174,7 @@ func main() {
 		cfgMu.Lock()
 		port := cfgUDPPort
 		sf := cfgSaveFiles
+		mode := cfgDataStorageMode
 		tr := cfgTrackRecording
 		rn := cfgRoomName
 		rp := cfgRoomPassword
@@ -1163,6 +1190,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]any{
 			"udpPort":              port,
 			"saveFiles":            sf,
+			"dataStorageMode":      mode,
 			"trackRecording":       tr,
 			"roomName":             rn,
 			"roomPassword":         rp,
@@ -1269,6 +1297,7 @@ func main() {
 		var body struct {
 			UDPPort                            int                      `json:"udpPort"`
 			SaveFiles                          bool                     `json:"saveFiles"`
+			DataStorageMode                    rtconfig.DataStorageMode `json:"dataStorageMode"`
 			TrackRecording                     bool                     `json:"trackRecording"`
 			TrackRecordingOverwriteApprovedFor string                   `json:"trackRecordingOverwriteApprovedFor"`
 			RoomName                           string                   `json:"roomName"`
@@ -1347,11 +1376,19 @@ func main() {
 			cfgUDPPort = body.UDPPort
 		}
 
-		// Toggle save files (race storage) if changed
-		effectiveSaveFiles := body.SaveFiles || embeddedDriverPack
-		if effectiveSaveFiles != cfgSaveFiles {
-			cfgSaveFiles = effectiveSaveFiles
-			if effectiveSaveFiles {
+		nextDataStorageMode := cfgDataStorageMode
+		if body.DataStorageMode != "" {
+			nextDataStorageMode = rtconfig.NormalizeDataStorageMode(body.DataStorageMode)
+		}
+
+		// Toggle save files and storage mode.
+		saveFilesChanged := body.SaveFiles != cfgSaveFiles
+		storageModeChanged := nextDataStorageMode != cfgDataStorageMode
+		if saveFilesChanged || storageModeChanged {
+			cfgSaveFiles = body.SaveFiles
+			cfgDataStorageMode = nextDataStorageMode
+
+			if cfgSaveFiles {
 				if raceStorage == nil {
 					rs, err := races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
 					if err != nil {
@@ -1360,12 +1397,17 @@ func main() {
 						raceStorage = rs
 					}
 				}
-				if packetLogger == nil {
-					packetLogger = udp.NewPacketLogger(packetLogDir, logger)
-					parser.SetPacketLogger(packetLogger)
-				}
 			} else {
 				raceStorage = nil
+			}
+
+			wantPacketLogging := cfgSaveFiles && cfgDataStorageMode == rtconfig.DataStorageModeAdvanced
+			if wantPacketLogging {
+				if packetLogger == nil {
+					packetLogger = udp.NewPacketLogger(packetLogDir, logger)
+				}
+				parser.SetPacketLogger(packetLogger)
+			} else {
 				parser.SetPacketLogger(nil)
 				if packetLogger != nil {
 					packetLogger.Close()
@@ -1375,7 +1417,10 @@ func main() {
 				sessionAnalysisCache = make(map[string]sessionAnalysisCacheEntry)
 				sessionAnalysisCacheMu.Unlock()
 			}
-			logger.Info("save files changed", "requested", body.SaveFiles, "effective", effectiveSaveFiles, "embeddedDriverPack", embeddedDriverPack)
+
+			processor.SetRaceSummaryRecording(cfgSaveFiles)
+			processor.SetReplayRecording(cfgSaveFiles && (cfgDataStorageMode == rtconfig.DataStorageModeSummary || cfgDataStorageMode == rtconfig.DataStorageModeAdvanced))
+			logger.Info("save storage changed", "saveFiles", cfgSaveFiles, "dataStorageMode", cfgDataStorageMode, "packetLogging", wantPacketLogging)
 		}
 
 		// Toggle track recording independently
@@ -1384,7 +1429,7 @@ func main() {
 			recorder.SetEnabled(body.TrackRecording)
 			logger.Info("track recording changed", "enabled", body.TrackRecording)
 		}
-		processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording))
+		processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording, cfgDataStorageMode))
 
 		prevFRCKey := cfgFRCAccountKey
 		cfgFRCAccountKey = strings.TrimSpace(body.FRCAccountKey)
@@ -1432,6 +1477,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]any{
 			"udpPort":              cfgUDPPort,
 			"saveFiles":            cfgSaveFiles,
+			"dataStorageMode":      cfgDataStorageMode,
 			"trackRecording":       cfgTrackRecording,
 			"roomName":             cfgRoomName,
 			"roomPassword":         cfgRoomPassword,
