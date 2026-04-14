@@ -20,6 +20,7 @@ import {
   type ComparisonLap,
   type SessionAnalysisResult,
 } from "./sessionAnalysis";
+import { fetchJsonWithSenderDebug } from "./senderDebug";
 
 interface DriverPackTheme {
   bg: string;
@@ -73,11 +74,8 @@ export function SessionAnalysisSection({
       setSessionsLoading(true);
       setSessionsError(null);
       try {
-        const response = await fetch(`${normalized}/api/sessions`);
-        if (!response.ok) {
-          throw new Error(`Session list request failed (${response.status})`);
-        }
-        const nextSessions = normalizeSessionList(await response.json());
+        const { data } = await fetchJsonWithSenderDebug<unknown[]>(normalized, "/api/sessions", "session-list");
+        const nextSessions = normalizeSessionList(data);
         if (!active) {
           return;
         }
@@ -347,11 +345,12 @@ export function SessionAnalysisSection({
     setAnalysisErrors((current) => ({ ...current, [dir]: null }));
 
     try {
-      const response = await fetch(`${normalized}/api/sessions/${encodeURIComponent(dir)}/analysis`);
-      if (!response.ok) {
-        throw new Error(`Analysis request failed (${response.status})`);
-      }
-      const next = normalizeSessionAnalysisResult(await response.json());
+      const { data } = await fetchJsonWithSenderDebug(
+        normalized,
+        `/api/sessions/${encodeURIComponent(dir)}/analysis`,
+        "session-analysis",
+      );
+      const next = normalizeSessionAnalysisResult(data);
       setAnalysisCache((current) => ({ ...current, [dir]: next }));
     } catch (error) {
       setAnalysisErrors((current) => ({

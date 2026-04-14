@@ -38,6 +38,7 @@ import { SessionAnalysisSection } from "./SessionAnalysisSection";
 import {
   normalizeAnalysisServerUrl,
 } from "./sessionAnalysis";
+import { fetchJsonWithSenderDebug } from "./senderDebug";
 
 type SectionId = "setup-manager" | "sender" | "overlay";
 type SetupWorkspaceId = "builder" | "analysis";
@@ -656,8 +657,8 @@ function useSenderConnection(senderUrl: string) {
 
     const poll = async () => {
       try {
-        const statusRes = await fetch(`${normalized}/api/status`);
-        const nextStatus = (await statusRes.json()) as SenderStatus;
+        const { data } = await fetchJsonWithSenderDebug<SenderStatus>(normalized, "/api/status", "sender-status");
+        const nextStatus = data as SenderStatus;
         if (!active) return;
         setStatus(nextStatus);
         setConnected(true);
@@ -668,8 +669,10 @@ function useSenderConnection(senderUrl: string) {
       }
 
       try {
-        const debugRes = await fetch(`${normalized}/api/debug`);
-        const debugData = (await debugRes.json()) as {
+        const { data } = await fetchJsonWithSenderDebug<{
+          pitwallState?: { session?: SenderSession; drivers?: SenderPlayer[]; playerIndex?: number };
+        }>(normalized, "/api/debug", "sender-debug");
+        const debugData = data as {
           pitwallState?: { session?: SenderSession; drivers?: SenderPlayer[]; playerIndex?: number };
         };
         if (!active) return;
@@ -684,13 +687,18 @@ function useSenderConnection(senderUrl: string) {
       }
 
       try {
-        const resultRes = await fetch(`${normalized}/api/races/latest`);
-        if (resultRes.status === 404) {
+        const { status, data } = await fetchJsonWithSenderDebug<SenderRaceResult | { error?: string }>(
+          normalized,
+          "/api/races/latest",
+          "latest-race-result",
+          { allowStatuses: [404] },
+        );
+        if (status === 404) {
           if (!active) return;
           setLatestRaceResult(null);
           return;
         }
-        const nextResult = (await resultRes.json()) as SenderRaceResult;
+        const nextResult = data as SenderRaceResult;
         if (!active) return;
         setLatestRaceResult(nextResult);
       } catch {

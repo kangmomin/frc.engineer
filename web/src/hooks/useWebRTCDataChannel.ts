@@ -43,6 +43,7 @@ type PendingRequest =
     timeoutMs: number;
     abortSignal?: AbortSignal;
     abortHandler?: () => void;
+    debugCount: number;
   }
   | {
     kind: 'stream';
@@ -54,7 +55,54 @@ type PendingRequest =
     timeoutMs: number;
     abortSignal?: AbortSignal;
     abortHandler?: () => void;
+    debugCount: number;
   };
+
+type P2PDebugLevel = 'info' | 'warn' | 'error';
+
+interface P2PDebugEntry {
+  ts: string;
+  level: P2PDebugLevel;
+  scope: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+const P2P_DEBUG_RING_LIMIT = 200;
+
+function describeDebugValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return { kind: 'array', length: value.length };
+  }
+  if (typeof value === 'string') {
+    return { kind: 'string', length: value.length, preview: value.slice(0, 120) };
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (Array.isArray(candidate.frames)) {
+    return { kind: 'frames', count: candidate.frames.length };
+  }
+  if (typeof candidate.count === 'number') {
+    return { kind: 'count', count: candidate.count };
+  }
+  if (typeof candidate.frameCount === 'number') {
+    return { kind: 'frameCount', frameCount: candidate.frameCount };
+  }
+
+  return { kind: 'object', keys: Object.keys(candidate).slice(0, 8) };
+}
+
+function appendP2PDebug(entry: P2PDebugEntry): void {
+  const method = entry.level === 'error' ? console.error : entry.level === 'warn' ? console.warn : console.info;
+  method(`[p2p][${entry.scope}] ${entry.message}`, entry.details ?? {});
+
+  const target = window as Window & { __frcP2PDebugLog?: P2PDebugEntry[] };
+  const next = target.__frcP2PDebugLog ? [...target.__frcP2PDebugLog, entry] : [entry];
+  target.__frcP2PDebugLog = next.slice(-P2P_DEBUG_RING_LIMIT);
+}
 
 function makeRequestId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -161,6 +209,56 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const actionsRef = useRef({ setPitwallState, updatePositions, addRaceControlNotification, setRaceResult });
   actionsRef.current = { setPitwallState, updatePositions, addRaceControlNotification, setRaceResult };
 
+  const emitP2PDebug = useCallback((
+    level: P2PDebugLevel,
+    scope: string,
+    message: string,
+    details?: Record<string, unknown>,
+    forward = true,
+  ) => {
+    const entry: P2PDebugEntry = {
+      ts: new Date().toISOString(),
+      level,
+      scope,
+      message,
+      details,
+    };
+    appendP2PDebug(entry);
+
+    if (!forward) {
+      return;
+    }
+
+    const channel = dcRef.current;
+    if (!channel || channel.readyState !== 'open') {
+      return;
+    }
+
+    try {
+      channel.send(JSON.stringify({
+        type: 'clientDebugLog',
+        data: {
+          source: 'remote-web',
+          scope,
+          level,
+          message,
+          details,
+        },
+      }));
+    } catch (error) {
+      appendP2PDebug({
+        ts: new Date().toISOString(),
+        level: 'warn',
+        scope: 'client-log',
+        message: 'Failed to forward debug log to sender.',
+        details: {
+          scope,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }, []);
+
   const clearStageTimeout = useCallback(() => {
     if (stageTimeoutRef.current) {
       clearTimeout(stageTimeoutRef.current);
@@ -183,11 +281,17 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   }, []);
 
   const rejectAllPendingRequests = useCallback((message: string) => {
+    if (pendingRequestsRef.current.size > 0) {
+      emitP2PDebug('warn', 'pending-requests', 'Rejecting pending P2P requests.', {
+        count: pendingRequestsRef.current.size,
+        message,
+      });
+    }
     for (const [requestId, pending] of pendingRequestsRef.current.entries()) {
       clearPendingRequest(requestId);
       pending.reject(toError(message));
     }
-  }, [clearPendingRequest]);
+  }, [clearPendingRequest, emitP2PDebug]);
 
   const refreshPendingTimeout = useCallback((requestId: string) => {
     const pending = pendingRequestsRef.current.get(requestId);
@@ -202,10 +306,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       if (!active) {
         return;
       }
+      emitP2PDebug('error', 'request-timeout', 'Timed out waiting for a P2P response.', {
+        requestId,
+        kind: active.kind,
+        timeoutMs: active.timeoutMs,
+      });
       clearPendingRequest(requestId);
       active.reject(toError('Timed out waiting for a P2P response.'));
     }, pending.timeoutMs);
-  }, [clearPendingRequest]);
+  }, [clearPendingRequest, emitP2PDebug]);
 
   const cleanup = useCallback(() => {
     clearStageTimeout();
@@ -283,6 +392,14 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     const requestId = nextRequest.requestId || makeRequestId();
     const payload = JSON.stringify({ ...nextRequest, requestId });
+    const timeoutMs = options?.timeoutMs ?? DATA_REQUEST_TIMEOUT_MS;
+
+    emitP2PDebug('info', 'request', 'Sending P2P request.', {
+      requestId,
+      type: nextRequest.type,
+      timeoutMs,
+      data: describeDebugValue(nextRequest.data),
+    });
 
     return new Promise<T>((resolve, reject) => {
       const pending: PendingRequest = {
@@ -290,11 +407,16 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         resolve: (data) => resolve(data as T),
         reject,
         timeoutId: null,
-        timeoutMs: options?.timeoutMs ?? DATA_REQUEST_TIMEOUT_MS,
+        timeoutMs,
         abortSignal: options?.signal,
+        debugCount: 0,
       };
       if (options?.signal) {
         pending.abortHandler = () => {
+          emitP2PDebug('warn', 'request', 'P2P request aborted.', {
+            requestId,
+            type: nextRequest.type,
+          });
           clearPendingRequest(requestId);
           reject(toError('P2P request aborted.'));
         };
@@ -307,11 +429,16 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       try {
         channel.send(payload);
       } catch (error) {
+        emitP2PDebug('error', 'request', 'Failed to send P2P request.', {
+          requestId,
+          type: nextRequest.type,
+          error: error instanceof Error ? error.message : String(error),
+        });
         clearPendingRequest(requestId);
         reject(error instanceof Error ? error : toError('Failed to send P2P request.'));
       }
     });
-  }, [clearPendingRequest, refreshPendingTimeout]);
+  }, [clearPendingRequest, emitP2PDebug, refreshPendingTimeout]);
 
   const stream = useCallback((
     nextRequest: WSRequest,
@@ -332,6 +459,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     const requestId = nextRequest.requestId || makeRequestId();
     const payload = JSON.stringify({ ...nextRequest, requestId });
+    const timeoutMs = options.timeoutMs ?? DATA_REQUEST_TIMEOUT_MS;
+
+    emitP2PDebug('info', 'stream', 'Sending P2P stream request.', {
+      requestId,
+      type: nextRequest.type,
+      doneType: options.doneType,
+      timeoutMs,
+      data: describeDebugValue(nextRequest.data),
+    });
 
     return new Promise<void>((resolve, reject) => {
       const pending: PendingRequest = {
@@ -341,11 +477,17 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         resolve,
         reject,
         timeoutId: null,
-        timeoutMs: options.timeoutMs ?? DATA_REQUEST_TIMEOUT_MS,
+        timeoutMs,
         abortSignal: options.signal,
+        debugCount: 0,
       };
       if (options.signal) {
         pending.abortHandler = () => {
+          emitP2PDebug('warn', 'stream', 'P2P stream aborted.', {
+            requestId,
+            type: nextRequest.type,
+            doneType: options.doneType,
+          });
           clearPendingRequest(requestId);
           reject(toError('P2P stream aborted.'));
         };
@@ -358,11 +500,17 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       try {
         channel.send(payload);
       } catch (error) {
+        emitP2PDebug('error', 'stream', 'Failed to send P2P stream request.', {
+          requestId,
+          type: nextRequest.type,
+          doneType: options.doneType,
+          error: error instanceof Error ? error.message : String(error),
+        });
         clearPendingRequest(requestId);
         reject(error instanceof Error ? error : toError('Failed to send P2P request.'));
       }
     });
-  }, [clearPendingRequest, refreshPendingTimeout]);
+  }, [clearPendingRequest, emitP2PDebug, refreshPendingTimeout]);
 
   // Main connection effect — runs when signalingUrl or room selection changes.
   useEffect(() => {
@@ -402,6 +550,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     const handleOffer = (offerPayload: unknown) => {
       const offer = offerPayload as RTCSessionDescriptionInit;
+      emitP2PDebug('info', 'signaling', 'Received WebRTC offer from sender.', undefined, false);
       clearStageTimeout();
       setConnectionState('negotiating');
       armStageTimeout('Timed out while establishing the peer connection.', PEER_CONNECTION_TIMEOUT_MS);
@@ -465,19 +614,45 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           if (response?.requestId) {
             const pending = pendingRequestsRef.current.get(response.requestId);
             if (pending) {
+              pending.debugCount += 1;
               if (response.error) {
+                emitP2PDebug('error', 'response', 'Received P2P error response.', {
+                  requestId: response.requestId,
+                  type: response.type,
+                  kind: pending.kind,
+                  error: response.error,
+                });
                 clearPendingRequest(response.requestId);
                 pending.reject(toError(response.error));
                 return;
               }
               if (pending.kind === 'single') {
+                emitP2PDebug('info', 'response', 'Received P2P response.', {
+                  requestId: response.requestId,
+                  type: response.type,
+                  data: describeDebugValue(response.data),
+                });
                 clearPendingRequest(response.requestId);
                 pending.resolve(response.data);
                 return;
               }
+              if (pending.debugCount <= 3 || response.type === pending.doneType || pending.debugCount % 25 === 0) {
+                emitP2PDebug('info', 'stream', 'Received P2P stream message.', {
+                  requestId: response.requestId,
+                  type: response.type,
+                  doneType: pending.doneType,
+                  index: pending.debugCount,
+                  data: describeDebugValue(response.data),
+                }, response.type === pending.doneType);
+              }
               try {
                 pending.onMessage(response);
               } catch (error) {
+                emitP2PDebug('error', 'stream', 'Failed to process P2P stream message.', {
+                  requestId: response.requestId,
+                  type: response.type,
+                  error: error instanceof Error ? error.message : String(error),
+                });
                 clearPendingRequest(response.requestId);
                 pending.reject(error instanceof Error ? error : toError('Failed to process P2P stream message.'));
                 return;
@@ -508,9 +683,14 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         // Only the reliable "data" channel governs connection state
         if (dc.label === 'data') {
           dcRef.current = dc;
+          emitP2PDebug('info', 'connection', 'P2P data channel opened.', { label: dc.label });
           dc.onclose = () => {
             if (!isMountedRef.current) return;
             if (terminalFailureRef.current) return;
+            emitP2PDebug('warn', 'connection', 'P2P data channel closed.', {
+              label: dc.label,
+              pendingRequests: pendingRequestsRef.current.size,
+            }, false);
             setConnectionState('disconnected');
             setFeaturePermissions(NO_FEATURE_PERMISSIONS);
             setRtcState('disconnected');
@@ -530,12 +710,19 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         })
         .catch((err) => {
           console.error('WebRTC offer/answer failed:', err);
+          emitP2PDebug('error', 'connection', 'WebRTC offer/answer negotiation failed.', {
+            error: err instanceof Error ? err.message : String(err),
+          }, false);
           failConnection('error', 'WebRTC offer/answer negotiation failed.');
         });
     };
 
     ws.onopen = () => {
       if (!isMountedRef.current) { ws.close(); return; }
+      emitP2PDebug('info', 'signaling', 'Joining sender room.', {
+        roomId: roomId ?? null,
+        roomCode: roomCode ?? null,
+      }, false);
       ws.send(JSON.stringify({
         type: 'room_join',
         roomId,
@@ -547,6 +734,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     ws.onclose = () => {
       if (!isMountedRef.current) return;
       if (terminalFailureRef.current) return;
+      emitP2PDebug('warn', 'signaling', 'Signaling connection closed.', undefined, false);
       setConnectionState('disconnected');
       setFeaturePermissions(NO_FEATURE_PERMISSIONS);
       setRtcState('disconnected');
@@ -555,6 +743,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     ws.onerror = () => {
       if (!isMountedRef.current) return;
       if (terminalFailureRef.current) return;
+      emitP2PDebug('error', 'signaling', 'Signaling server connection failed.', undefined, false);
       failConnection('error', 'Signaling server connection failed.');
     };
 
@@ -570,6 +759,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
       switch (msg.type) {
         case 'room_joined':
+          emitP2PDebug('info', 'signaling', 'Joined sender room.', {
+            roomId: roomId ?? null,
+            roomCode: roomCode ?? null,
+          }, false);
           clearStageTimeout();
           setFeaturePermissions(msg.permissions ?? NO_FEATURE_PERMISSIONS);
           setConnectionState('waiting-offer');
@@ -582,10 +775,14 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           handleICECandidate(msg.payload);
           break;
         case 'room_closed':
+          emitP2PDebug('error', 'signaling', 'Sender room was closed.', undefined, false);
           failConnection('error', 'The sender room was closed.');
           break;
         case 'error':
           console.error('Signaling error:', msg.error);
+          emitP2PDebug('error', 'signaling', 'Received signaling error.', {
+            error: msg.error ?? 'Unknown signaling error.',
+          }, false);
           failConnection('error', msg.error ?? 'Unknown signaling error.');
           break;
       }

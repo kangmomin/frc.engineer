@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +58,15 @@ type senderConfig struct {
 }
 
 const senderConfigPath = "data/sender-config.json"
+const senderLogTailMaxBytes int64 = 64 * 1024
+
+type clientDebugPayload struct {
+	Source  string         `json:"source"`
+	Scope   string         `json:"scope"`
+	Level   string         `json:"level"`
+	Message string         `json:"message"`
+	Details map[string]any `json:"details"`
+}
 
 func resolveSenderStorageRoot() string {
 	root := strings.TrimSpace(os.Getenv("FRC_STORAGE_DIR"))
@@ -143,6 +154,56 @@ func buildSenderState(saveFiles, trackRecording bool) dto.SenderState {
 	}
 }
 
+func logClientDebug(logger *slog.Logger, peerID string, payload clientDebugPayload) {
+	level := strings.ToLower(strings.TrimSpace(payload.Level))
+	if level == "" {
+		level = "info"
+	}
+
+	attrs := []any{
+		"source", strings.TrimSpace(payload.Source),
+		"scope", strings.TrimSpace(payload.Scope),
+		"message", strings.TrimSpace(payload.Message),
+	}
+	if peerID != "" {
+		attrs = append(attrs, "peerId", peerID)
+	}
+	if len(payload.Details) > 0 {
+		attrs = append(attrs, "details", payload.Details)
+	}
+
+	switch level {
+	case "warn", "warning":
+		logger.Warn("client debug log", attrs...)
+	case "error":
+		logger.Error("client debug log", attrs...)
+	default:
+		logger.Info("client debug log", attrs...)
+	}
+}
+
+func readFileTail(path string, maxBytes int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	start := int64(0)
+	if info.Size() > maxBytes {
+		start = info.Size() - maxBytes
+	}
+	if _, err := f.Seek(start, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(f)
+}
+
 func main() {
 	// Log to file so the cmd banner stays clean
 	logDir := resolveSenderStoragePath("logs")
@@ -150,7 +211,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create logs dir: %v\n", err)
 		os.Exit(1)
 	}
-	logFile, err := os.OpenFile(filepath.Join(logDir, "sender.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFilePath := filepath.Join(logDir, "sender.log")
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open log file: %v\n", err)
 		os.Exit(1)
@@ -362,8 +424,10 @@ func main() {
 	}
 
 	streamRaceReplay := func(peerID, requestID, raceID string) {
+		logger.Info("race replay stream requested", "peerId", peerID, "requestId", requestID, "raceId", raceID)
 		rs, err := getRaceArchiveStorage()
 		if err != nil {
+			logger.Warn("race replay storage unavailable", "peerId", peerID, "requestId", requestID, "raceId", raceID, "error", err)
 			sendP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceReplayDone,
 				RequestID: requestID,
@@ -372,10 +436,13 @@ func main() {
 			return
 		}
 
+		chunkCount := 0
 		sendChunk := func(frames []races.ReplayFrame) error {
 			if len(frames) == 0 {
 				return nil
 			}
+			chunkCount++
+			logger.Info("sending race replay chunk", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkIndex", chunkCount, "frames", len(frames))
 			return sendBufferedP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceReplayChunk,
 				RequestID: requestID,
@@ -390,6 +457,7 @@ func main() {
 		err = rs.WalkReplay(
 			raceID,
 			func(meta races.ReplayStreamMeta) error {
+				logger.Info("race replay meta ready", "peerId", peerID, "requestId", requestID, "raceId", raceID, "frameIntervalMs", meta.FrameIntervalMS)
 				return sendBufferedP2PResponse(peerID, dto.WSResponse{
 					Type:      dto.MessageTypeRaceReplayMeta,
 					RequestID: requestID,
@@ -421,7 +489,7 @@ func main() {
 			},
 		)
 		if err != nil {
-			logger.Warn("failed to stream race replay", "raceId", raceID, "error", err)
+			logger.Warn("failed to stream race replay", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount, "error", err)
 			errorMessage := "failed to stream race replay"
 			if os.IsNotExist(err) {
 				errorMessage = "race replay not found"
@@ -435,7 +503,7 @@ func main() {
 		}
 
 		if err := sendChunk(batch); err != nil {
-			logger.Warn("failed to send race replay chunk", "raceId", raceID, "error", err)
+			logger.Warn("failed to send race replay chunk", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount, "error", err)
 			sendP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceReplayDone,
 				RequestID: requestID,
@@ -451,13 +519,17 @@ func main() {
 				"frameCount": frameCount,
 			},
 		}); err != nil {
-			logger.Warn("failed to finish race replay stream", "raceId", raceID, "error", err)
+			logger.Warn("failed to finish race replay stream", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount, "error", err)
+			return
 		}
+		logger.Info("race replay stream finished", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount)
 	}
 
 	streamRaceArchiveList := func(peerID, requestID string) {
+		logger.Info("race archive list stream requested", "peerId", peerID, "requestId", requestID)
 		rs, err := getRaceArchiveStorage()
 		if err != nil {
+			logger.Warn("race archive storage unavailable", "peerId", peerID, "requestId", requestID, "error", err)
 			sendP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceArchiveListDone,
 				RequestID: requestID,
@@ -468,7 +540,7 @@ func main() {
 
 		list, err := rs.List()
 		if err != nil {
-			logger.Warn("failed to list race archive", "error", err)
+			logger.Warn("failed to list race archive", "peerId", peerID, "requestId", requestID, "error", err)
 			sendP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceArchiveListDone,
 				RequestID: requestID,
@@ -476,11 +548,15 @@ func main() {
 			})
 			return
 		}
+		logger.Info("race archive list loaded", "peerId", peerID, "requestId", requestID, "count", len(list))
 
+		chunkCount := 0
 		sendChunk := func(items []races.RaceListItem) error {
 			if len(items) == 0 {
 				return nil
 			}
+			chunkCount++
+			logger.Info("sending race archive list chunk", "peerId", peerID, "requestId", requestID, "chunkIndex", chunkCount, "items", len(items))
 			return sendBufferedP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceArchiveList,
 				RequestID: requestID,
@@ -497,6 +573,7 @@ func main() {
 				Data:      tentative,
 			})
 			if testPayload == nil {
+				logger.Warn("failed to encode race archive list chunk", "peerId", peerID, "requestId", requestID, "items", len(tentative))
 				sendP2PResponse(peerID, dto.WSResponse{
 					Type:      dto.MessageTypeRaceArchiveListDone,
 					RequestID: requestID,
@@ -506,7 +583,7 @@ func main() {
 			}
 			if len(batch) > 0 && len(testPayload) > maxRaceArchiveListChunkBytes {
 				if err := sendChunk(batch); err != nil {
-					logger.Warn("failed to send race archive list chunk", "error", err)
+					logger.Warn("failed to send race archive list chunk", "peerId", peerID, "requestId", requestID, "chunkCount", chunkCount, "error", err)
 					sendP2PResponse(peerID, dto.WSResponse{
 						Type:      dto.MessageTypeRaceArchiveListDone,
 						RequestID: requestID,
@@ -521,7 +598,7 @@ func main() {
 		}
 
 		if err := sendChunk(batch); err != nil {
-			logger.Warn("failed to send race archive list chunk", "error", err)
+			logger.Warn("failed to send race archive list chunk", "peerId", peerID, "requestId", requestID, "chunkCount", chunkCount, "error", err)
 			sendP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceArchiveListDone,
 				RequestID: requestID,
@@ -537,8 +614,10 @@ func main() {
 				"count": len(list),
 			},
 		}); err != nil {
-			logger.Warn("failed to finish race archive list stream", "error", err)
+			logger.Warn("failed to finish race archive list stream", "peerId", peerID, "requestId", requestID, "chunkCount", chunkCount, "count", len(list), "error", err)
+			return
 		}
+		logger.Info("race archive list stream finished", "peerId", peerID, "requestId", requestID, "chunkCount", chunkCount, "count", len(list))
 	}
 
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks
@@ -552,6 +631,7 @@ func main() {
 	peerManager.SetRequestHandler(func(peerID string, msg []byte) []byte {
 		var req dto.WSRequest
 		if err := json.Unmarshal(msg, &req); err != nil {
+			logger.Warn("failed to decode peer request", "peerId", peerID, "bytes", len(msg), "error", err)
 			return nil
 		}
 
@@ -578,6 +658,7 @@ func main() {
 			}
 			return responseJSON
 		case dto.MessageTypeGetRaceArchiveList:
+			logger.Info("received p2p race archive list request", "peerId", peerID, "requestId", req.RequestID)
 			go streamRaceArchiveList(peerID, req.RequestID)
 			return nil
 		case dto.MessageTypeGetRaceReplay:
@@ -599,9 +680,19 @@ func main() {
 					Error:     "race id is required",
 				})
 			}
+			logger.Info("received p2p race replay request", "peerId", peerID, "requestId", req.RequestID, "raceId", body.ID)
 			go streamRaceReplay(peerID, req.RequestID, body.ID)
 			return nil
+		case dto.MessageTypeClientDebugLog:
+			var payload clientDebugPayload
+			if len(req.Data) > 0 && json.Unmarshal(req.Data, &payload) != nil {
+				logger.Warn("failed to decode client debug log payload", "peerId", peerID, "requestId", req.RequestID)
+				return nil
+			}
+			logClientDebug(logger, peerID, payload)
+			return nil
 		default:
+			logger.Info("unhandled peer request", "peerId", peerID, "requestId", req.RequestID, "type", req.Type)
 			return nil
 		}
 	})
@@ -1395,6 +1486,50 @@ func main() {
 			"pitwallStateBytes":  len(stateJSON),
 			"pitwallState":       json.RawMessage(stateJSON),
 		})
+	})
+
+	mux.HandleFunc("POST /api/debug/client-log", func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+
+		var payload clientDebugPayload
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&payload); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid debug log payload"})
+			return
+		}
+
+		logClientDebug(logger, "", payload)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	mux.HandleFunc("GET /api/debug/logs", func(w http.ResponseWriter, r *http.Request) {
+		maxBytes := senderLogTailMaxBytes
+		if raw := strings.TrimSpace(r.URL.Query().Get("bytes")); raw != "" {
+			if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				switch {
+				case parsed <= 0:
+					maxBytes = senderLogTailMaxBytes
+				case parsed > 256*1024:
+					maxBytes = 256 * 1024
+				default:
+					maxBytes = parsed
+				}
+			}
+		}
+
+		data, err := readFileTail(logFilePath, maxBytes)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "failed to read sender log"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(data)
 	})
 
 	// Try settingsPort, then auto-increment up to 10 times on conflict.
