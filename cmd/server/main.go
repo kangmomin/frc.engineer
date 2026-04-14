@@ -627,7 +627,7 @@ func main() {
 	newHTTPServer := func(port int) *http.Server {
 		return &http.Server{
 			Addr:              fmt.Sprintf(":%d", port),
-			Handler:           mux,
+			Handler:           allowRemotePitwallAPI(mux),
 			ReadTimeout:       15 * time.Second,
 			ReadHeaderTimeout: 10 * time.Second,
 			WriteTimeout:      3 * time.Minute,
@@ -707,6 +707,26 @@ func main() {
 	}
 
 	logger.Info("server shutdown complete")
+}
+
+func allowRemotePitwallAPI(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Allow-Private-Network", "true")
+			}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func cleanF32(v float32) float32 {

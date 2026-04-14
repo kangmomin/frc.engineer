@@ -14,6 +14,7 @@ import type {
   TireWearDisplayMode,
   WeatherForecast,
 } from '../../types/telemetry';
+import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { clamp, formatDelta, formatLapTime } from '../../utils/formatters';
 import styles from './CockpitDashboard.module.css';
@@ -523,7 +524,7 @@ export function CockpitDashboard({
       params.set('trackName', sessionTrackName);
     }
 
-    fetch(`/api/strategy/guide?${params.toString()}`)
+    fetch(getApiUrl(`/api/strategy/guide?${params.toString()}`))
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(`strategy guide request failed: ${response.status}`);

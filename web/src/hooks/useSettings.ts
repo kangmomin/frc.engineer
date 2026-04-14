@@ -2,10 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { mockConfig, mockTracks } from '../mock/mockData';
 import { isMockMode } from '../runtimeFlags';
 import type { AppConfig, TrackListItem } from '../types/telemetry';
-
-function getApiBase(): string {
-  return '';
-}
+import { getApiBase, getApiUrl, setStoredApiBase } from '../utils/apiBase';
 
 export function useSettings() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -21,7 +18,7 @@ export function useSettings() {
       return;
     }
     try {
-      const res = await fetch(`${base}/api/config`);
+      const res = await fetch(getApiUrl('/api/config'));
       if (res.ok) {
         const data = await res.json();
         const cfg: AppConfig = {
@@ -44,7 +41,7 @@ export function useSettings() {
       return;
     }
     try {
-      const res = await fetch(`${base}/api/tracks`);
+      const res = await fetch(getApiUrl('/api/tracks'));
       if (res.ok) {
         const data = await res.json();
         setTracks(data ?? []);
@@ -68,7 +65,7 @@ export function useSettings() {
 
       const backendPortChanged = config && newConfig.backendPort !== config.backendPort;
 
-      const res = await fetch(`${base}/api/config`, {
+      const res = await fetch(getApiUrl('/api/config'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newConfig),
@@ -85,9 +82,13 @@ export function useSettings() {
         setConfig(saved);
 
         if (backendPortChanged) {
-          setTimeout(() => {
-            window.location.href = `${window.location.protocol}//${window.location.hostname}:${saved.backendPort}${window.location.pathname}`;
-          }, 500);
+          if (base) {
+            setStoredApiBase(`http://localhost:${saved.backendPort}`);
+          } else {
+            setTimeout(() => {
+              window.location.href = `${window.location.protocol}//${window.location.hostname}:${saved.backendPort}${window.location.pathname}`;
+            }, 500);
+          }
         }
       }
     } catch (e) {

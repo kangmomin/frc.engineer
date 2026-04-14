@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  /** Optional API base URL for sender/backend REST calls. */
+  readonly VITE_API_URL?: string;
   /** Signaling server WebSocket URL. When set at build time, the app defaults to remote mode. */
   readonly VITE_SIGNALING_URL?: string;
   /** Optional JSON array of RTCIceServer objects used for WebRTC, including TURN relays. */
