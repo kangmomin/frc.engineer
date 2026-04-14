@@ -1,3 +1,5 @@
+import type { DataStorageMode } from '../types/telemetry';
+
 /**
  * Format milliseconds to lap time string (M:SS.mmm)
  */
@@ -53,4 +55,17 @@ export function toPercentage(value: number): number {
  */
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+export function formatRaceStorageModeBadge(mode: DataStorageMode | 'off' | undefined): string {
+  switch (mode) {
+    case 'advanced':
+      return 'Race Adv';
+    case 'summary':
+      return 'Race Sum';
+    case 'resultOnly':
+      return 'Race Result';
+    default:
+      return 'Race Off';
+  }
 }

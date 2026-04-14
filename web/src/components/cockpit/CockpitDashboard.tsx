@@ -16,7 +16,7 @@ import type {
 } from '../../types/telemetry';
 import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
-import { clamp, formatDelta, formatLapTime } from '../../utils/formatters';
+import { clamp, formatDelta, formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
 import styles from './CockpitDashboard.module.css';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
@@ -663,6 +663,11 @@ export function CockpitDashboard({
         {senderState && (
           <span className={`${styles.remoteButton} ${senderState.trackRecording ? styles.remoteActive : ''}`}>
             {senderState.trackRecording ? 'Track Rec' : 'Track Idle'}
+          </span>
+        )}
+        {senderState && (
+          <span className={`${styles.remoteButton} ${senderState.raceStorageMode && senderState.raceStorageMode !== 'off' ? styles.remoteActive : ''}`}>
+            {formatRaceStorageModeBadge(senderState.raceStorageMode)}
           </span>
         )}
         {playbackActive && <span className={`${styles.remoteButton} ${styles.remoteActive}`}>Replay</span>}

@@ -129,6 +129,19 @@ func saveSenderConfig(cfg senderConfig) error {
 	return os.WriteFile(senderConfigPath, data, 0644)
 }
 
+func buildSenderState(saveFiles, trackRecording bool) dto.SenderState {
+	raceStorageMode := "off"
+	if saveFiles {
+		// Sender currently persists race archives in result-only mode.
+		raceStorageMode = string(rtconfig.DataStorageModeResultOnly)
+	}
+	return dto.SenderState{
+		SaveFiles:       saveFiles,
+		TrackRecording:  trackRecording,
+		RaceStorageMode: raceStorageMode,
+	}
+}
+
 func main() {
 	// Log to file so the cmd banner stays clean
 	logDir := resolveSenderStoragePath("logs")
@@ -295,10 +308,7 @@ func main() {
 		}
 		return defaultStrategyConfig
 	}
-	processor.PitwallManager().SetSenderState(dto.SenderState{
-		SaveFiles:      cfgSaveFiles,
-		TrackRecording: cfgTrackRecording,
-	})
+	processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording))
 	var raceStorage *races.FileStorage
 	if saveFiles {
 		rs, err := races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
@@ -557,11 +567,13 @@ func main() {
 		cfgMu.Lock()
 		port := cfgUDPPort
 		sf := cfgSaveFiles
+		tr := cfgTrackRecording
 		rn := cfgRoomName
 		rp := cfgRoomPassword
 		dp := cachedDriverPerms
 		dashboardURL := cfgEngineerDashboardURL
 		cfgMu.Unlock()
+		senderState := buildSenderState(sf, tr)
 
 		invite := buildInviteInfo(dashboardURL, signalingURL, peerManager.RoomID(), peerManager.RoomCode(), rp != "")
 		peers := peerManager.DebugPeers()
@@ -574,6 +586,8 @@ func main() {
 			"connectedEngineers": peerManager.ConnectedCount(),
 			"udpPort":            port,
 			"saveFiles":          sf,
+			"trackRecording":     tr,
+			"raceStorageMode":    senderState.RaceStorageMode,
 			"ersCompareMetrics":  compareMonitor.Snapshot(),
 			"currentTrack":       getCurrentTrack(trackState, trackStore),
 			"radarActive":        radarOv.IsRunning(),
@@ -943,10 +957,7 @@ func main() {
 			recorder.SetEnabled(body.TrackRecording)
 			logger.Info("track recording changed", "enabled", body.TrackRecording)
 		}
-		processor.PitwallManager().SetSenderState(dto.SenderState{
-			SaveFiles:      cfgSaveFiles,
-			TrackRecording: cfgTrackRecording,
-		})
+		processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording))
 
 		prevFRCKey := cfgFRCAccountKey
 		cfgFRCAccountKey = strings.TrimSpace(body.FRCAccountKey)

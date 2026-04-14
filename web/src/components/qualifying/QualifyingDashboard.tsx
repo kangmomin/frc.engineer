@@ -8,7 +8,7 @@ import { useTrackGaps } from '../../hooks/useTrackGaps';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo } from '../../types/telemetry';
 import { getConnectionBadgeLabel } from '../../utils/connectionStatus';
-import { formatLapTime } from '../../utils/formatters';
+import { formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
 import { sortQualifyingDrivers } from './leaderboardOrder';
 import {
   evaluateDriverTryState,
@@ -267,6 +267,11 @@ export function QualifyingDashboard({
         {senderState && (
           <span className={`${styles.dockButton} ${senderState.trackRecording ? styles.dockButtonActive : ''}`}>
             {senderState.trackRecording ? 'Track Rec' : 'Track Idle'}
+          </span>
+        )}
+        {senderState && (
+          <span className={`${styles.dockButton} ${senderState.raceStorageMode && senderState.raceStorageMode !== 'off' ? styles.dockButtonActive : ''}`}>
+            {formatRaceStorageModeBadge(senderState.raceStorageMode)}
           </span>
         )}
       </div>

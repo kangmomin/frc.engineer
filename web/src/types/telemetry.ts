@@ -324,6 +324,7 @@ export interface PitwallState {
 export interface SenderState {
   saveFiles: boolean;
   trackRecording: boolean;
+  raceStorageMode?: DataStorageMode | 'off';
 }
 
 export interface WeatherForecast {

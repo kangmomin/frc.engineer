@@ -253,6 +253,11 @@ export function buildMockFrame(tick: number): {
     positions: buildPositions(driverFrames),
     playerIndex: PLAYER_INDEX,
     trackMap: TRACK_MAP,
+    senderState: {
+      saveFiles: true,
+      trackRecording: mockConfig.trackRecording,
+      raceStorageMode: mockConfig.dataStorageMode,
+    },
     ersEstimateEnabled: true,
     ersComparisonEnabled: true,
   };

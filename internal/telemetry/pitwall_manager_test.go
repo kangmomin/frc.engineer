@@ -9,8 +9,9 @@ import (
 func TestPitwallManagerBuildStateIncludesSenderState(t *testing.T) {
 	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
 	pm.SetSenderState(dto.SenderState{
-		SaveFiles:      true,
-		TrackRecording: false,
+		SaveFiles:       true,
+		TrackRecording:  false,
+		RaceStorageMode: "resultOnly",
 	})
 
 	state := pm.BuildState()
@@ -25,5 +26,8 @@ func TestPitwallManagerBuildStateIncludesSenderState(t *testing.T) {
 	}
 	if state.SenderState.TrackRecording {
 		t.Fatal("expected trackRecording to be false")
+	}
+	if state.SenderState.RaceStorageMode != "resultOnly" {
+		t.Fatalf("expected raceStorageMode to be resultOnly, got %q", state.SenderState.RaceStorageMode)
 	}
 }

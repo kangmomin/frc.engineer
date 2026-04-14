@@ -14,8 +14,9 @@ type PitwallState struct {
 
 // SenderState exposes sender-owned runtime flags that remote engineers should read over P2P.
 type SenderState struct {
-	SaveFiles      bool `json:"saveFiles"`
-	TrackRecording bool `json:"trackRecording"`
+	SaveFiles       bool   `json:"saveFiles"`
+	TrackRecording  bool   `json:"trackRecording"`
+	RaceStorageMode string `json:"raceStorageMode,omitempty"`
 }
 
 // TrackMapDTO holds the full track outline with bounds
