@@ -1065,11 +1065,11 @@ export function CockpitDashboard({
 
               <div className={styles.splitPills}>
                 <div className={styles.splitPill}>
-                  <span>Deploy</span>
+                  <span>D</span>
                   <strong>{ersActualReady ? `${deploySplit.deploy}%` : '--'}</strong>
                 </div>
                 <div className={styles.splitPill}>
-                  <span>Harvest</span>
+                  <span>H</span>
                   <strong>{ersActualReady ? `${deploySplit.harvest}%` : '--'}</strong>
                 </div>
               </div>
