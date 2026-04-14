@@ -3,11 +3,11 @@ module frc.engineer
 go 1.24.0
 
 require (
-	frc.pitwall.parser/telemetry-go v0.0.0
+	frc.pitwall.parser/telemetry-go v0.0.0-20260414033605-9ce9091d20ce
 	github.com/energye/systray v1.0.3
 	github.com/gorilla/websocket v1.5.3
-	github.com/lib/pq v1.12.0
 	github.com/pion/webrtc/v4 v4.2.9
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
@@ -29,7 +29,6 @@ require (
 	github.com/pion/stun/v3 v3.1.1 // indirect
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.1.4 // indirect
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
@@ -38,4 +37,4 @@ require (
 	golang.org/x/time v0.10.0 // indirect
 )
 
-replace frc.pitwall.parser/telemetry-go => ./third_party/f1-25-parser-go
+replace frc.pitwall.parser/telemetry-go => github.com/kangmomin/f1-25-parser/go v0.0.0-20260414033605-9ce9091d20ce

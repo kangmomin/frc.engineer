@@ -47,10 +47,12 @@ type Snapshot struct {
 // ParseSnapshot adapts the local snapshot into the external parser envelope and applies visibility rules.
 func ParseSnapshot(snapshot Snapshot, mode Mode) extmodel.FullTelemetryEnvelope {
 	env := BuildEnvelope(snapshot)
-	return extmodel.ParseEnvelope(env, extmodel.ParseOptions{
+	parsed := extmodel.GetVisibleEnvelope(env, extmodel.ParseOptions{
 		Mode:           toExternalMode(mode),
 		PlayerCarIndex: snapshot.PlayerCarIndex,
 	})
+	restoreAppDerivedVisibility(&parsed, snapshot)
+	return parsed
 }
 
 // BuildEnvelope adapts the local snapshot into the external parser envelope without applying visibility rules.
@@ -110,6 +112,41 @@ func detectCarCount(snapshot Snapshot) int {
 		maxCount = packets.MaxCars
 	}
 	return maxCount
+}
+
+func restoreAppDerivedVisibility(parsed *extmodel.FullTelemetryEnvelope, snapshot Snapshot) {
+	if parsed == nil || len(parsed.Cars) == 0 {
+		return
+	}
+
+	driversByIndex := make(map[int]dto.DriverInfo, len(snapshot.Drivers))
+	for _, driver := range snapshot.Drivers {
+		driversByIndex[driver.Index] = driver
+	}
+
+	for i := range parsed.Cars {
+		car := &parsed.Cars[i]
+		if driver, ok := driversByIndex[car.CarIndex]; ok {
+			car.Normalized.ERSEstimatePct = driver.ERSEstimatePct
+			car.Normalized.ERSEstimateReady = driver.ERSEstimateReady
+		}
+		if snapshot.CarTelemetry != nil && car.CarIndex >= 0 && car.CarIndex < packets.MaxCars {
+			car.Normalized.DRSActivated = snapshot.CarTelemetry.CarTelemetryData[car.CarIndex].DRS != 0
+		}
+		if !shouldExposeAppSetup(snapshot, car.CarIndex) {
+			car.Setup = nil
+		}
+	}
+}
+
+func shouldExposeAppSetup(snapshot Snapshot, carIndex int) bool {
+	if snapshot.PlayerCarIndex != nil && carIndex == int(*snapshot.PlayerCarIndex) {
+		return true
+	}
+	if snapshot.Participants == nil || carIndex < 0 || carIndex >= len(snapshot.Participants.Participants) {
+		return false
+	}
+	return snapshot.Participants.Participants[carIndex].AIControlled == 1
 }
 
 func convertHeader(in *packets.PacketHeader) *extpackets.PacketHeader {

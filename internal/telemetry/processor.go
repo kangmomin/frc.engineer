@@ -612,7 +612,12 @@ func (p *Processor) recordReplayFrame(sessionUID uint64, ts int64, pitwallState 
 	}
 	p.replayLastFrameTS = ts
 
-	pitwallCopy := copyPitwallForReplay(pitwallState)
+	replayState := p.pitwallManager.BuildReplayState()
+	if replayState == nil {
+		replayState = pitwallState
+	}
+
+	pitwallCopy := copyPitwallForReplay(replayState)
 
 	frame := ReplayFrame{
 		Timestamp: ts,

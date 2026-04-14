@@ -232,6 +232,18 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
+	return pm.buildStateLocked(pm.sourceVisibilityMode(), true)
+}
+
+// BuildReplayState constructs a replay-friendly PitwallState with public visibility.
+func (pm *PitwallManager) BuildReplayState() *dto.PitwallState {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	return pm.buildStateLocked(telemetryvisibility.ModePublic, false)
+}
+
+func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mode, includeTrackMap bool) *dto.PitwallState {
 	state := &dto.PitwallState{
 		PlayerIndex:          int(pm.playerIndex),
 		ERSEstimateEnabled:   true, // broadcaster filters per-peer via ViewERSEstimate
@@ -318,7 +330,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 	}
 
 	// Track map from pre-loaded CSV data (included for first 8 broadcasts per track change)
-	if pm.session != nil && pm.trackStore != nil {
+	if includeTrackMap && pm.session != nil && pm.trackStore != nil {
 		currentTrackID := pm.session.TrackID
 		if int8(currentTrackID) != pm.lastTrackID {
 			pm.lastTrackID = int8(currentTrackID)
@@ -436,7 +448,7 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 				d.ERSDeployedThisLap = sanitize(cs.ERSDeployedThisLap)
 				d.ERSHarvestedThisLap = sanitize(cs.ERSHarvestedThisLapMGUK + cs.ERSHarvestedThisLapMGUH)
 				d.BrakeBias = int(cs.FrontBrakeBias)
-				if pm.ersActualEnabled && ersActualAvailable(pm.participants, pm.playerIndex, i) {
+				if pm.ersActualEnabled && (visibilityMode == telemetryvisibility.ModePublic || ersActualAvailable(pm.participants, pm.playerIndex, i)) {
 					d.ERSActualPct = ersPercent(cs.ERSStoreEnergy)
 					d.ERSActualReady = true
 				}
@@ -578,13 +590,13 @@ func (pm *PitwallManager) BuildState() *dto.PitwallState {
 			}
 		}
 
-		pm.applySourceVisibility(state)
+		pm.applySourceVisibility(state, visibilityMode)
 	}
 
 	return state
 }
 
-func (pm *PitwallManager) applySourceVisibility(state *dto.PitwallState) {
+func (pm *PitwallManager) applySourceVisibility(state *dto.PitwallState, visibilityMode telemetryvisibility.Mode) {
 	if state == nil || len(state.Drivers) == 0 {
 		return
 	}
@@ -618,7 +630,7 @@ func (pm *PitwallManager) applySourceVisibility(state *dto.PitwallState) {
 		Drivers:             append([]dto.DriverInfo(nil), state.Drivers...),
 	}
 
-	parsed := telemetryvisibility.ParseSnapshot(snapshot, pm.sourceVisibilityMode())
+	parsed := telemetryvisibility.ParseSnapshot(snapshot, visibilityMode)
 	limit := min(len(state.Drivers), len(parsed.Cars))
 	for i := range limit {
 		driver := &state.Drivers[i]
@@ -674,7 +686,7 @@ func (pm *PitwallManager) applySourceVisibility(state *dto.PitwallState) {
 			driver.TireWear = normalized.TireWear
 		}
 
-		if !ersActualAvailable(pm.participants, pm.playerIndex, i) {
+		if visibilityMode != telemetryvisibility.ModePublic && !ersActualAvailable(pm.participants, pm.playerIndex, i) {
 			driver.FuelInTank = 0
 			driver.FuelRemainingLaps = 0
 			driver.FuelMix = 0
