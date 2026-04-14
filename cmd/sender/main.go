@@ -29,7 +29,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-var appVersion = "v4.30.0"
+var appVersion = "v4.30.1"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
@@ -322,6 +322,7 @@ func main() {
 	var sessionAnalysisCacheMu sync.RWMutex
 	sessionAnalysisCache := make(map[string]sessionAnalysisCacheEntry)
 	const maxRaceReplayChunkBytes = 48 * 1024
+	const maxRaceReplaySendWait = 5 * time.Second
 
 	encodeP2PResponse := func(response dto.WSResponse) []byte {
 		payload, err := dto.MsgpackMarshal(response)
@@ -338,6 +339,14 @@ func main() {
 			return
 		}
 		peerManager.SendTo(peerID, payload)
+	}
+
+	sendBufferedP2PResponse := func(peerID string, response dto.WSResponse) error {
+		payload := encodeP2PResponse(response)
+		if payload == nil {
+			return fmt.Errorf("encode p2p response")
+		}
+		return peerManager.SendToBuffered(peerID, payload, maxRaceReplaySendWait)
 	}
 
 	getRaceArchiveStorage := func() (*races.FileStorage, error) {
@@ -361,93 +370,70 @@ func main() {
 			return
 		}
 
-		summary, err := rs.Load(raceID)
-		if err != nil {
-			sendP2PResponse(peerID, dto.WSResponse{
-				Type:      dto.MessageTypeRaceReplayDone,
-				RequestID: requestID,
-				Error:     "race replay not found",
-			})
-			return
-		}
-
-		meta := races.ReplayStreamMeta{
-			Type: "meta",
-		}
-		if summary.Replay != nil {
-			meta.FrameIntervalMS = summary.Replay.FrameIntervalMS
-			meta.TrackMap = summary.Replay.TrackMap
-			meta.Session = summary.Replay.Session
-		}
-		sendP2PResponse(peerID, dto.WSResponse{
-			Type:      dto.MessageTypeRaceReplayMeta,
-			RequestID: requestID,
-			Data:      meta,
-		})
-
-		if summary.Replay == nil || len(summary.Replay.Frames) == 0 {
-			sendP2PResponse(peerID, dto.WSResponse{
-				Type:      dto.MessageTypeRaceReplayDone,
-				RequestID: requestID,
-				Data: map[string]any{
-					"frameCount": 0,
-				},
-			})
-			return
-		}
-
-		sendChunk := func(frames []races.ReplayFrame) bool {
+		sendChunk := func(frames []races.ReplayFrame) error {
 			if len(frames) == 0 {
-				return true
+				return nil
 			}
-			payload := encodeP2PResponse(dto.WSResponse{
+			return sendBufferedP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceReplayChunk,
 				RequestID: requestID,
 				Data: map[string]any{
 					"frames": frames,
 				},
 			})
-			if payload == nil {
-				return false
-			}
-			peerManager.SendTo(peerID, payload)
-			return true
 		}
 
+		frameCount := 0
 		batch := make([]races.ReplayFrame, 0, 8)
-		for _, frame := range summary.Replay.Frames {
-			tentative := append(batch, frame)
-			testPayload := encodeP2PResponse(dto.WSResponse{
-				Type:      dto.MessageTypeRaceReplayChunk,
-				RequestID: requestID,
-				Data: map[string]any{
-					"frames": tentative,
-				},
-			})
-			if testPayload == nil {
-				sendP2PResponse(peerID, dto.WSResponse{
-					Type:      dto.MessageTypeRaceReplayDone,
+		err = rs.WalkReplay(
+			raceID,
+			func(meta races.ReplayStreamMeta) error {
+				return sendBufferedP2PResponse(peerID, dto.WSResponse{
+					Type:      dto.MessageTypeRaceReplayMeta,
 					RequestID: requestID,
-					Error:     "failed to encode race replay chunk",
+					Data:      meta,
 				})
-				return
-			}
-			if len(batch) > 0 && len(testPayload) > maxRaceReplayChunkBytes {
-				if !sendChunk(batch) {
-					sendP2PResponse(peerID, dto.WSResponse{
-						Type:      dto.MessageTypeRaceReplayDone,
-						RequestID: requestID,
-						Error:     "failed to send race replay chunk",
-					})
-					return
+			},
+			func(frame races.ReplayFrame) error {
+				tentative := append(batch, frame)
+				testPayload := encodeP2PResponse(dto.WSResponse{
+					Type:      dto.MessageTypeRaceReplayChunk,
+					RequestID: requestID,
+					Data: map[string]any{
+						"frames": tentative,
+					},
+				})
+				if testPayload == nil {
+					return fmt.Errorf("encode race replay chunk")
 				}
-				batch = []races.ReplayFrame{frame}
-				continue
+				if len(batch) > 0 && len(testPayload) > maxRaceReplayChunkBytes {
+					if err := sendChunk(batch); err != nil {
+						return err
+					}
+					batch = append(batch[:0], frame)
+				} else {
+					batch = tentative
+				}
+				frameCount++
+				return nil
+			},
+		)
+		if err != nil {
+			logger.Warn("failed to stream race replay", "raceId", raceID, "error", err)
+			errorMessage := "failed to stream race replay"
+			if os.IsNotExist(err) {
+				errorMessage = "race replay not found"
 			}
-			batch = tentative
+			sendP2PResponse(peerID, dto.WSResponse{
+				Type:      dto.MessageTypeRaceReplayDone,
+				RequestID: requestID,
+				Error:     errorMessage,
+			})
+			return
 		}
 
-		if !sendChunk(batch) {
+		if err := sendChunk(batch); err != nil {
+			logger.Warn("failed to send race replay chunk", "raceId", raceID, "error", err)
 			sendP2PResponse(peerID, dto.WSResponse{
 				Type:      dto.MessageTypeRaceReplayDone,
 				RequestID: requestID,
@@ -456,13 +442,15 @@ func main() {
 			return
 		}
 
-		sendP2PResponse(peerID, dto.WSResponse{
+		if err := sendBufferedP2PResponse(peerID, dto.WSResponse{
 			Type:      dto.MessageTypeRaceReplayDone,
 			RequestID: requestID,
 			Data: map[string]any{
-				"frameCount": len(summary.Replay.Frames),
+				"frameCount": frameCount,
 			},
-		})
+		}); err != nil {
+			logger.Warn("failed to finish race replay stream", "raceId", raceID, "error", err)
+		}
 	}
 
 	// Set handlers BEFORE Connect() to avoid races with pion callbacks

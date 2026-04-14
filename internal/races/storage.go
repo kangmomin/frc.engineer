@@ -223,10 +223,12 @@ func (s *FileStorage) CopyRawJSON(id string, w io.Writer) error {
 	return err
 }
 
-// StreamReplayNDJSON streams replay metadata and frames as newline-delimited JSON.
-// First line: {"type":"meta",...}
-// Following lines: {"type":"frame","frame":{...}}
-func (s *FileStorage) StreamReplayNDJSON(id string, w io.Writer) error {
+// WalkReplay incrementally parses one replay and emits metadata before frames.
+func (s *FileStorage) WalkReplay(
+	id string,
+	onMeta func(ReplayStreamMeta) error,
+	onFrame func(ReplayFrame) error,
+) error {
 	if !isSafeID(id) {
 		return ErrUnsafeID
 	}
@@ -241,7 +243,6 @@ func (s *FileStorage) StreamReplayNDJSON(id string, w io.Writer) error {
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
-	enc := json.NewEncoder(w)
 
 	rootTok, err := dec.Token()
 	if err != nil {
@@ -254,6 +255,16 @@ func (s *FileStorage) StreamReplayNDJSON(id string, w io.Writer) error {
 
 	meta := ReplayStreamMeta{Type: "meta"}
 	metaWritten := false
+	emitMeta := func() error {
+		if metaWritten {
+			return nil
+		}
+		metaWritten = true
+		if onMeta != nil {
+			return onMeta(meta)
+		}
+		return nil
+	}
 
 	for dec.More() {
 		keyTok, err := dec.Token()
@@ -311,14 +322,8 @@ func (s *FileStorage) StreamReplayNDJSON(id string, w io.Writer) error {
 					return err
 				}
 			case "frames":
-				if !metaWritten {
-					if err := enc.Encode(meta); err != nil {
-						return err
-					}
-					if flusher, ok := w.(interface{ Flush() }); ok {
-						flusher.Flush()
-					}
-					metaWritten = true
+				if err := emitMeta(); err != nil {
+					return err
 				}
 
 				framesTok, err := dec.Token()
@@ -341,11 +346,10 @@ func (s *FileStorage) StreamReplayNDJSON(id string, w io.Writer) error {
 					if err := dec.Decode(&frame); err != nil {
 						return err
 					}
-					if err := enc.Encode(ReplayStreamFrame{Type: "frame", Frame: frame}); err != nil {
-						return err
-					}
-					if flusher, ok := w.(interface{ Flush() }); ok {
-						flusher.Flush()
+					if onFrame != nil {
+						if err := onFrame(frame); err != nil {
+							return err
+						}
 					}
 				}
 				if _, err := dec.Token(); err != nil {
@@ -367,13 +371,40 @@ func (s *FileStorage) StreamReplayNDJSON(id string, w io.Writer) error {
 		return err
 	}
 
-	if !metaWritten {
-		if err := enc.Encode(meta); err != nil {
-			return err
-		}
+	if err := emitMeta(); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+// StreamReplayNDJSON streams replay metadata and frames as newline-delimited JSON.
+// First line: {"type":"meta",...}
+// Following lines: {"type":"frame","frame":{...}}
+func (s *FileStorage) StreamReplayNDJSON(id string, w io.Writer) error {
+	enc := json.NewEncoder(w)
+
+	return s.WalkReplay(
+		id,
+		func(meta ReplayStreamMeta) error {
+			if err := enc.Encode(meta); err != nil {
+				return err
+			}
+			if flusher, ok := w.(interface{ Flush() }); ok {
+				flusher.Flush()
+			}
+			return nil
+		},
+		func(frame ReplayFrame) error {
+			if err := enc.Encode(ReplayStreamFrame{Type: "frame", Frame: frame}); err != nil {
+				return err
+			}
+			if flusher, ok := w.(interface{ Flush() }); ok {
+				flusher.Flush()
+			}
+			return nil
+		},
+	)
 }
 
 func (s *FileStorage) filePath(id string) string {

@@ -302,6 +302,32 @@ func (pm *PeerManager) SendTo(peerID string, message []byte) {
 	_ = ch.Send(message)
 }
 
+// SendToBuffered sends a message to a specific peer while waiting for channel backpressure to drain.
+func (pm *PeerManager) SendToBuffered(peerID string, message []byte, wait time.Duration) error {
+	pm.mu.RLock()
+	ch, ok := pm.channels[peerID]
+	pm.mu.RUnlock()
+	if !ok || ch.ReadyState() != webrtc.DataChannelStateOpen {
+		return fmt.Errorf("peer data channel not open")
+	}
+
+	deadline := time.Now().Add(wait)
+	for ch.BufferedAmount() > maxBufferedAmount {
+		if ch.ReadyState() != webrtc.DataChannelStateOpen {
+			return fmt.Errorf("peer data channel closed")
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("peer data channel congested")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err := ch.Send(message); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ConnectedCount returns the number of peers with open DataChannels.
 func (pm *PeerManager) ConnectedCount() int {
 	pm.mu.RLock()

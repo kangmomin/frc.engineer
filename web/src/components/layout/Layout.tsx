@@ -19,6 +19,9 @@ import type { RaceListItem, ReplayFrame, ReplayStreamMeta } from '../../types/te
 
 type DashboardView = 'cockpit' | 'qualifying' | 'setup' | 'races';
 
+const RACE_ARCHIVE_LIST_TIMEOUT_MS = 60_000;
+const RACE_REPLAY_TIMEOUT_MS = 120_000;
+
 function readInitialView(): DashboardView {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
@@ -132,7 +135,7 @@ export function Layout() {
 
   const raceArchiveDataSource = useMemo<RaceArchiveDataSource>(() => ({
     listRaces: (signal?: AbortSignal) =>
-      request<RaceListItem[]>({ type: 'getRaceArchiveList' }, { signal }),
+      request<RaceListItem[]>({ type: 'getRaceArchiveList' }, { signal, timeoutMs: RACE_ARCHIVE_LIST_TIMEOUT_MS }),
     loadReplay: async (id: string, signal?: AbortSignal) => {
       let meta: ReplayStreamMeta | null = null;
       const frames: ReplayFrame[] = [];
@@ -141,6 +144,7 @@ export function Layout() {
         { type: 'getRaceReplay', data: { id } },
         {
           signal,
+          timeoutMs: RACE_REPLAY_TIMEOUT_MS,
           doneType: 'raceReplayDone',
           onMessage: (response) => {
             if (response.type === 'raceReplayMeta') {

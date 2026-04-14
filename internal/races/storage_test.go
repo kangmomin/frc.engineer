@@ -4,8 +4,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
+
+	"frc.engineer/internal/dto"
 )
 
 func TestFileStorageSaveAndLoad(t *testing.T) {
@@ -150,5 +153,72 @@ func TestFileStorageDeleteRejectsUnsafeID(t *testing.T) {
 
 	if err := store.Delete("../escape"); err != ErrUnsafeID {
 		t.Fatalf("Delete() unsafe id error = %v, want %v", err, ErrUnsafeID)
+	}
+}
+
+func TestFileStorageWalkReplayEmitsMetaBeforeFrames(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewFileStorage(t.TempDir(), nil)
+	if err != nil {
+		t.Fatalf("NewFileStorage() error = %v", err)
+	}
+
+	_, err = store.Save(&RaceSummary{
+		ID: "race_walk_replay",
+		Replay: &ReplayTimeline{
+			FrameIntervalMS: 500,
+			TrackMap: &dto.TrackMapDTO{
+				MinX: 1,
+				MaxX: 2,
+			},
+			Frames: []ReplayFrame{
+				{Timestamp: 1000, Pitwall: &dto.PitwallState{PlayerIndex: 1}},
+				{Timestamp: 1500, Pitwall: &dto.PitwallState{PlayerIndex: 2}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	order := make([]string, 0, 3)
+	var meta ReplayStreamMeta
+	frames := make([]ReplayFrame, 0, 2)
+
+	err = store.WalkReplay(
+		"race_walk_replay",
+		func(nextMeta ReplayStreamMeta) error {
+			order = append(order, "meta")
+			meta = nextMeta
+			return nil
+		},
+		func(frame ReplayFrame) error {
+			order = append(order, "frame")
+			frames = append(frames, frame)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("WalkReplay() error = %v", err)
+	}
+
+	if !reflect.DeepEqual(order, []string{"meta", "frame", "frame"}) {
+		t.Fatalf("WalkReplay() order = %v, want meta before frames", order)
+	}
+	if meta.Type != "meta" {
+		t.Fatalf("WalkReplay() meta.Type = %q, want meta", meta.Type)
+	}
+	if meta.FrameIntervalMS != 500 {
+		t.Fatalf("WalkReplay() meta.FrameIntervalMS = %d, want 500", meta.FrameIntervalMS)
+	}
+	if meta.TrackMap == nil || meta.TrackMap.MinX != 1 || meta.TrackMap.MaxX != 2 {
+		t.Fatalf("WalkReplay() meta.TrackMap = %#v, want populated track map", meta.TrackMap)
+	}
+	if len(frames) != 2 {
+		t.Fatalf("WalkReplay() frame count = %d, want 2", len(frames))
+	}
+	if frames[0].Timestamp != 1000 || frames[1].Timestamp != 1500 {
+		t.Fatalf("WalkReplay() frame timestamps = [%d %d], want [1000 1500]", frames[0].Timestamp, frames[1].Timestamp)
 	}
 }

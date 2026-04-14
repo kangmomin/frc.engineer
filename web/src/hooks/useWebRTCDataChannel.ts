@@ -14,9 +14,10 @@ interface UseWebRTCOptions {
 interface UseWebRTCReturn {
   disconnect: () => void;
   sendView: (view: string) => void;
-  request: <T = unknown>(request: WSRequest, options?: { signal?: AbortSignal }) => Promise<T>;
+  request: <T = unknown>(request: WSRequest, options?: { signal?: AbortSignal; timeoutMs?: number }) => Promise<T>;
   stream: (request: WSRequest, options: {
     signal?: AbortSignal;
+    timeoutMs?: number;
     doneType: string;
     onMessage: (response: WSResponse) => void;
   }) => Promise<void>;
@@ -39,6 +40,7 @@ type PendingRequest =
     resolve: (data: unknown) => void;
     reject: (error: Error) => void;
     timeoutId: ReturnType<typeof window.setTimeout> | null;
+    timeoutMs: number;
     abortSignal?: AbortSignal;
     abortHandler?: () => void;
   }
@@ -49,6 +51,7 @@ type PendingRequest =
     resolve: () => void;
     reject: (error: Error) => void;
     timeoutId: ReturnType<typeof window.setTimeout> | null;
+    timeoutMs: number;
     abortSignal?: AbortSignal;
     abortHandler?: () => void;
   };
@@ -201,7 +204,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       }
       clearPendingRequest(requestId);
       active.reject(toError('Timed out waiting for a P2P response.'));
-    }, DATA_REQUEST_TIMEOUT_MS);
+    }, pending.timeoutMs);
   }, [clearPendingRequest]);
 
   const cleanup = useCallback(() => {
@@ -268,7 +271,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
   const request = useCallback(<T = unknown>(
     nextRequest: WSRequest,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; timeoutMs?: number },
   ): Promise<T> => {
     const channel = dcRef.current;
     if (!channel || channel.readyState !== 'open') {
@@ -287,6 +290,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         resolve: (data) => resolve(data as T),
         reject,
         timeoutId: null,
+        timeoutMs: options?.timeoutMs ?? DATA_REQUEST_TIMEOUT_MS,
         abortSignal: options?.signal,
       };
       if (options?.signal) {
@@ -313,6 +317,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     nextRequest: WSRequest,
     options: {
       signal?: AbortSignal;
+      timeoutMs?: number;
       doneType: string;
       onMessage: (response: WSResponse) => void;
     },
@@ -336,6 +341,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         resolve,
         reject,
         timeoutId: null,
+        timeoutMs: options.timeoutMs ?? DATA_REQUEST_TIMEOUT_MS,
         abortSignal: options.signal,
       };
       if (options.signal) {
