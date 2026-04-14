@@ -275,6 +275,7 @@ export interface LapDataResponse {
 export interface WSRequest {
   type: string;
   requestId?: string;
+  data?: unknown;
 }
 
 /**

@@ -31,6 +31,11 @@ export interface ReplayMarker {
   timestamp: number;
 }
 
+export interface RaceArchiveDataSource {
+  listRaces: (signal?: AbortSignal) => Promise<RaceListItem[]>;
+  loadReplay: (id: string, signal?: AbortSignal) => Promise<ReplayBundle>;
+}
+
 const BATTLE_GAP_MS = 1_250;
 const MIN_BATTLE_FRAMES = 8;
 
@@ -102,6 +107,15 @@ export function formatReplayClock(startTimestamp: number, currentTimestamp: numb
   const milliseconds = delta % 1000;
 
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+}
+
+export async function loadRaceArchiveList(signal?: AbortSignal): Promise<RaceListItem[]> {
+  const response = await fetch('/api/races', { signal });
+  if (!response.ok) {
+    throw new Error(`Race archive request failed: ${response.status}`);
+  }
+  const items = await response.json() as RaceListItem[];
+  return Array.isArray(items) ? items : [];
 }
 
 export async function loadReplayStream(id: string, signal?: AbortSignal): Promise<ReplayBundle> {

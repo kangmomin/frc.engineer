@@ -1,14 +1,22 @@
 package dto
 
+import "encoding/json"
+
 // WebSocket message types
 const (
-	MessageTypeTelemetry      = "telemetry"
-	MessageTypeLapData        = "lapData"
-	MessageTypeGetBestLap     = "getBestLap"
-	MessageTypePitwallState   = "pitwallState"
-	MessageTypeRaceControl    = "raceControl"
-	MessageTypeRaceResult     = "raceResult"
-	MessageTypePositionUpdate = "positionUpdate"
+	MessageTypeTelemetry          = "telemetry"
+	MessageTypeLapData            = "lapData"
+	MessageTypeGetBestLap         = "getBestLap"
+	MessageTypeGetRaceArchiveList = "getRaceArchiveList"
+	MessageTypeRaceArchiveList    = "raceArchiveList"
+	MessageTypeGetRaceReplay      = "getRaceReplay"
+	MessageTypeRaceReplayMeta     = "raceReplayMeta"
+	MessageTypeRaceReplayChunk    = "raceReplayChunk"
+	MessageTypeRaceReplayDone     = "raceReplayDone"
+	MessageTypePitwallState       = "pitwallState"
+	MessageTypeRaceControl        = "raceControl"
+	MessageTypeRaceResult         = "raceResult"
+	MessageTypePositionUpdate     = "positionUpdate"
 )
 
 // RaceControlNotification represents a race control event sent to clients
@@ -23,8 +31,9 @@ type RaceControlNotification struct {
 
 // WSRequest represents a client request message
 type WSRequest struct {
-	Type      string `json:"type"`
-	RequestID string `json:"requestId,omitempty"`
+	Type      string          `json:"type"`
+	RequestID string          `json:"requestId,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
 }
 
 // WSResponse represents a server response message

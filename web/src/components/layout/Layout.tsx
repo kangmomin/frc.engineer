@@ -11,9 +11,11 @@ import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { PostRaceDebrief } from '../debrief/PostRaceDebrief';
 import { QualifyingDashboard } from '../qualifying/QualifyingDashboard';
 import { RaceArchiveDrawer } from '../races/RaceArchiveDrawer';
+import type { RaceArchiveDataSource } from '../races/replayArchive';
 import { RemoteConnect } from '../remote/RemoteConnect';
 import { F1SetupManager } from '../setup/F1SetupManager';
 import styles from './Layout.module.css';
+import type { RaceListItem, ReplayFrame, ReplayStreamMeta } from '../../types/telemetry';
 
 type DashboardView = 'cockpit' | 'qualifying' | 'setup' | 'races';
 
@@ -103,8 +105,7 @@ export function Layout() {
   const showQualifying = viewQualifying && isQualiSession;
 
   const [dashboardView, setDashboardView] = useState<DashboardView>(() => {
-    const initialView = readInitialView();
-    return initialView === 'races' ? 'cockpit' : initialView;
+    return readInitialView();
   });
 
   useEffect(() => {
@@ -127,7 +128,39 @@ export function Layout() {
   useMockTelemetry(false);
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
-  const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView } = useWebRTCDataChannel(webrtcOpts);
+  const { connectionState: rtcConnectionState, lastError: rtcLastError, sendView, request, stream } = useWebRTCDataChannel(webrtcOpts);
+
+  const raceArchiveDataSource = useMemo<RaceArchiveDataSource>(() => ({
+    listRaces: (signal?: AbortSignal) =>
+      request<RaceListItem[]>({ type: 'getRaceArchiveList' }, { signal }),
+    loadReplay: async (id: string, signal?: AbortSignal) => {
+      let meta: ReplayStreamMeta | null = null;
+      const frames: ReplayFrame[] = [];
+
+      await stream(
+        { type: 'getRaceReplay', data: { id } },
+        {
+          signal,
+          doneType: 'raceReplayDone',
+          onMessage: (response) => {
+            if (response.type === 'raceReplayMeta') {
+              const nextMeta = response.data as Omit<ReplayStreamMeta, 'type'> & { type?: 'meta' };
+              meta = { ...nextMeta, type: 'meta' };
+              return;
+            }
+            if (response.type === 'raceReplayChunk') {
+              const chunk = response.data as { frames?: ReplayFrame[] } | undefined;
+              if (Array.isArray(chunk?.frames)) {
+                frames.push(...chunk.frames);
+              }
+            }
+          },
+        },
+      );
+
+      return { meta, frames };
+    },
+  }), [request, stream]);
 
   const switchView = useCallback((view: DashboardView) => {
     if (dashboardView === 'races' && view !== 'races') {
@@ -221,6 +254,7 @@ export function Layout() {
       {dashboardView === 'qualifying' && showQualifying ? (
         <QualifyingDashboard
           onSwitchToCockpit={() => switchView('cockpit')}
+          onSwitchToRaces={() => switchView('races')}
           onGoHome={goToMainScreen}
           remoteAction={remoteAction}
         />
@@ -231,6 +265,7 @@ export function Layout() {
           enableStrategyGuide={false}
           remoteAction={remoteAction}
           onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
+          onSwitchToRaces={() => switchView('races')}
           onGoHome={goToMainScreen}
         />
       )}
@@ -257,7 +292,7 @@ export function Layout() {
               </button>
             </div>
             <div className={styles.drawerBody}>
-              <RaceArchiveDrawer onClose={() => switchView('cockpit')} />
+              <RaceArchiveDrawer onClose={() => switchView('cockpit')} dataSource={raceArchiveDataSource} />
             </div>
           </aside>
         </>

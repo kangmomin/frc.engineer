@@ -1,5 +1,6 @@
+import { decode } from '@msgpack/msgpack';
 import { useEffect, useCallback, useRef, useState } from 'react';
-import type { ConnectionState, FeaturePermissions, PitwallState } from '../types/telemetry';
+import type { ConnectionState, FeaturePermissions, PitwallState, WSRequest, WSResponse } from '../types/telemetry';
 import { NO_FEATURE_PERMISSIONS, useTelemetryStore } from '../store/telemetryStore';
 import { routeMessage } from './useMessageRouter';
 
@@ -13,6 +14,12 @@ interface UseWebRTCOptions {
 interface UseWebRTCReturn {
   disconnect: () => void;
   sendView: (view: string) => void;
+  request: <T = unknown>(request: WSRequest, options?: { signal?: AbortSignal }) => Promise<T>;
+  stream: (request: WSRequest, options: {
+    signal?: AbortSignal;
+    doneType: string;
+    onMessage: (response: WSResponse) => void;
+  }) => Promise<void>;
   connectionState: RTCPeerConnectionState | 'new';
   lastError: string;
 }
@@ -24,6 +31,54 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 const SIGNALING_RESPONSE_TIMEOUT_MS = 6_000;
 const OFFER_TIMEOUT_MS = 8_000;
 const PEER_CONNECTION_TIMEOUT_MS = 12_000;
+const DATA_REQUEST_TIMEOUT_MS = 30_000;
+
+type PendingRequest =
+  | {
+    kind: 'single';
+    resolve: (data: unknown) => void;
+    reject: (error: Error) => void;
+    timeoutId: ReturnType<typeof window.setTimeout> | null;
+    abortSignal?: AbortSignal;
+    abortHandler?: () => void;
+  }
+  | {
+    kind: 'stream';
+    doneType: string;
+    onMessage: (response: WSResponse) => void;
+    resolve: () => void;
+    reject: (error: Error) => void;
+    timeoutId: ReturnType<typeof window.setTimeout> | null;
+    abortSignal?: AbortSignal;
+    abortHandler?: () => void;
+  };
+
+function makeRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function toError(message: string): Error {
+  return new Error(message);
+}
+
+function decodeResponseEnvelope(raw: string | ArrayBuffer): WSResponse | null {
+  try {
+    if (raw instanceof ArrayBuffer) {
+      try {
+        return decode(new Uint8Array(raw)) as WSResponse;
+      } catch {
+        const text = new TextDecoder().decode(new Uint8Array(raw));
+        return JSON.parse(text) as WSResponse;
+      }
+    }
+    return JSON.parse(raw) as WSResponse;
+  } catch {
+    return null;
+  }
+}
 
 function normalizeIceServer(server: RTCIceServer): RTCIceServer | null {
   const urls = Array.isArray(server.urls)
@@ -90,6 +145,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const isMountedRef = useRef(true);
   const stageTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const terminalFailureRef = useRef<ConnectionState | null>(null);
+  const pendingRequestsRef = useRef(new Map<string, PendingRequest>());
 
   // Refs for routeMessage batching
   const pendingPitwallRef = useRef<PitwallState | null>(null);
@@ -109,8 +165,48 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     }
   }, []);
 
+  const clearPendingRequest = useCallback((requestId: string) => {
+    const pending = pendingRequestsRef.current.get(requestId);
+    if (!pending) {
+      return;
+    }
+    if (pending.timeoutId) {
+      clearTimeout(pending.timeoutId);
+    }
+    if (pending.abortSignal && pending.abortHandler) {
+      pending.abortSignal.removeEventListener('abort', pending.abortHandler);
+    }
+    pendingRequestsRef.current.delete(requestId);
+  }, []);
+
+  const rejectAllPendingRequests = useCallback((message: string) => {
+    for (const [requestId, pending] of pendingRequestsRef.current.entries()) {
+      clearPendingRequest(requestId);
+      pending.reject(toError(message));
+    }
+  }, [clearPendingRequest]);
+
+  const refreshPendingTimeout = useCallback((requestId: string) => {
+    const pending = pendingRequestsRef.current.get(requestId);
+    if (!pending) {
+      return;
+    }
+    if (pending.timeoutId) {
+      clearTimeout(pending.timeoutId);
+    }
+    pending.timeoutId = window.setTimeout(() => {
+      const active = pendingRequestsRef.current.get(requestId);
+      if (!active) {
+        return;
+      }
+      clearPendingRequest(requestId);
+      active.reject(toError('Timed out waiting for a P2P response.'));
+    }, DATA_REQUEST_TIMEOUT_MS);
+  }, [clearPendingRequest]);
+
   const cleanup = useCallback(() => {
     clearStageTimeout();
+    rejectAllPendingRequests('P2P connection closed.');
     if (dcRef.current) {
       dcRef.current.close();
       dcRef.current = null;
@@ -131,7 +227,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       cancelAnimationFrame(positionsRafRef.current);
       positionsRafRef.current = 0;
     }
-  }, [clearStageTimeout]);
+  }, [clearStageTimeout, rejectAllPendingRequests]);
 
   const failConnection = useCallback((
     state: Extract<ConnectionState, 'timeout' | 'ice-failed' | 'error'>,
@@ -169,6 +265,98 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       dcRef.current.send(JSON.stringify({ type: 'setView', view }));
     }
   }, []);
+
+  const request = useCallback(<T = unknown>(
+    nextRequest: WSRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<T> => {
+    const channel = dcRef.current;
+    if (!channel || channel.readyState !== 'open') {
+      return Promise.reject(toError('P2P data channel is not connected.'));
+    }
+    if (options?.signal?.aborted) {
+      return Promise.reject(toError('P2P request aborted.'));
+    }
+
+    const requestId = nextRequest.requestId || makeRequestId();
+    const payload = JSON.stringify({ ...nextRequest, requestId });
+
+    return new Promise<T>((resolve, reject) => {
+      const pending: PendingRequest = {
+        kind: 'single',
+        resolve: (data) => resolve(data as T),
+        reject,
+        timeoutId: null,
+        abortSignal: options?.signal,
+      };
+      if (options?.signal) {
+        pending.abortHandler = () => {
+          clearPendingRequest(requestId);
+          reject(toError('P2P request aborted.'));
+        };
+        options.signal.addEventListener('abort', pending.abortHandler, { once: true });
+      }
+
+      pendingRequestsRef.current.set(requestId, pending);
+      refreshPendingTimeout(requestId);
+
+      try {
+        channel.send(payload);
+      } catch (error) {
+        clearPendingRequest(requestId);
+        reject(error instanceof Error ? error : toError('Failed to send P2P request.'));
+      }
+    });
+  }, [clearPendingRequest, refreshPendingTimeout]);
+
+  const stream = useCallback((
+    nextRequest: WSRequest,
+    options: {
+      signal?: AbortSignal;
+      doneType: string;
+      onMessage: (response: WSResponse) => void;
+    },
+  ): Promise<void> => {
+    const channel = dcRef.current;
+    if (!channel || channel.readyState !== 'open') {
+      return Promise.reject(toError('P2P data channel is not connected.'));
+    }
+    if (options.signal?.aborted) {
+      return Promise.reject(toError('P2P stream aborted.'));
+    }
+
+    const requestId = nextRequest.requestId || makeRequestId();
+    const payload = JSON.stringify({ ...nextRequest, requestId });
+
+    return new Promise<void>((resolve, reject) => {
+      const pending: PendingRequest = {
+        kind: 'stream',
+        doneType: options.doneType,
+        onMessage: options.onMessage,
+        resolve,
+        reject,
+        timeoutId: null,
+        abortSignal: options.signal,
+      };
+      if (options.signal) {
+        pending.abortHandler = () => {
+          clearPendingRequest(requestId);
+          reject(toError('P2P stream aborted.'));
+        };
+        options.signal.addEventListener('abort', pending.abortHandler, { once: true });
+      }
+
+      pendingRequestsRef.current.set(requestId, pending);
+      refreshPendingTimeout(requestId);
+
+      try {
+        channel.send(payload);
+      } catch (error) {
+        clearPendingRequest(requestId);
+        reject(error instanceof Error ? error : toError('Failed to send P2P request.'));
+      }
+    });
+  }, [clearPendingRequest, refreshPendingTimeout]);
 
   // Main connection effect — runs when signalingUrl or room selection changes.
   useEffect(() => {
@@ -265,6 +453,38 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         dc.binaryType = 'arraybuffer';
         dc.onmessage = (e) => {
           if (!isMountedRef.current) return;
+          const response = pendingRequestsRef.current.size > 0
+            ? decodeResponseEnvelope(e.data as ArrayBuffer | string)
+            : null;
+          if (response?.requestId) {
+            const pending = pendingRequestsRef.current.get(response.requestId);
+            if (pending) {
+              if (response.error) {
+                clearPendingRequest(response.requestId);
+                pending.reject(toError(response.error));
+                return;
+              }
+              if (pending.kind === 'single') {
+                clearPendingRequest(response.requestId);
+                pending.resolve(response.data);
+                return;
+              }
+              try {
+                pending.onMessage(response);
+              } catch (error) {
+                clearPendingRequest(response.requestId);
+                pending.reject(error instanceof Error ? error : toError('Failed to process P2P stream message.'));
+                return;
+              }
+              if (response.type === pending.doneType) {
+                clearPendingRequest(response.requestId);
+                pending.resolve();
+              } else {
+                refreshPendingTimeout(response.requestId);
+              }
+              return;
+            }
+          }
           const actions = actionsRef.current;
           routeMessage(
             e.data as ArrayBuffer | string,
@@ -373,5 +593,5 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options?.signalingUrl, options?.roomId, options?.roomCode, options?.password]);
 
-  return { disconnect, sendView, connectionState: rtcState, lastError };
+  return { disconnect, sendView, request, stream, connectionState: rtcState, lastError };
 }

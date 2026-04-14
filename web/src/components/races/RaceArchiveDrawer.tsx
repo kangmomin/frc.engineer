@@ -20,8 +20,10 @@ import {
   formatReplayClock,
   getBehindGap,
   getPlayerDriver,
+  loadRaceArchiveList,
   loadReplayStream,
   mergeReplayTrackMap,
+  type RaceArchiveDataSource,
   type RaceArchiveFilters,
   type ReplayMarker,
 } from './replayArchive';
@@ -29,6 +31,7 @@ import styles from './RaceArchiveDrawer.module.css';
 
 interface RaceArchiveDrawerProps {
   onClose: () => void;
+  dataSource?: RaceArchiveDataSource;
 }
 
 const DEFAULT_FILTERS: RaceArchiveFilters = {
@@ -41,9 +44,15 @@ const DEFAULT_FILTERS: RaceArchiveFilters = {
 
 const PLAYBACK_RATES = [0.5, 1, 2, 4];
 
-export function RaceArchiveDrawer({ onClose }: RaceArchiveDrawerProps) {
+const httpRaceArchiveDataSource: RaceArchiveDataSource = {
+  listRaces: loadRaceArchiveList,
+  loadReplay: loadReplayStream,
+};
+
+export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProps) {
   const applyReplayFrame = useTelemetryStore((state) => state.applyReplayFrame);
   const setPlaybackActive = useTelemetryStore((state) => state.setPlaybackActive);
+  const source = dataSource ?? httpRaceArchiveDataSource;
 
   const [races, setRaces] = useState<RaceListItem[]>([]);
   const [filters, setFilters] = useState<RaceArchiveFilters>(DEFAULT_FILTERS);
@@ -63,16 +72,11 @@ export function RaceArchiveDrawer({ onClose }: RaceArchiveDrawerProps) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setListLoading(true);
     setListError('');
 
-    fetch('/api/races')
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Race archive request failed: ${response.status}`);
-        }
-        return response.json() as Promise<RaceListItem[]>;
-      })
+    source.listRaces(controller.signal)
       .then((items) => {
         if (cancelled) {
           return;
@@ -93,8 +97,9 @@ export function RaceArchiveDrawer({ onClose }: RaceArchiveDrawerProps) {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, []);
+  }, [source]);
 
   const filteredRaces = useMemo(
     () => filterRaceArchive(races, { ...filters, search: deferredSearch }),
@@ -143,7 +148,7 @@ export function RaceArchiveDrawer({ onClose }: RaceArchiveDrawerProps) {
     setReplayLoading(true);
     setReplayError('');
 
-    loadReplayStream(selectedRace.id, controller.signal)
+    source.loadReplay(selectedRace.id, controller.signal)
       .then(({ meta, frames }) => {
         const mergedFrames = meta?.trackMap
           ? frames.map((frame) => mergeReplayTrackMap(frame, meta.trackMap))
@@ -183,7 +188,7 @@ export function RaceArchiveDrawer({ onClose }: RaceArchiveDrawerProps) {
     return () => {
       controller.abort();
     };
-  }, [applyReplayFrame, selectedRace, setPlaybackActive]);
+  }, [applyReplayFrame, selectedRace, setPlaybackActive, source]);
 
   useEffect(() => {
     if (replayFrames.length === 0) {
