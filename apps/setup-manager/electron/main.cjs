@@ -1,8 +1,14 @@
 const { app, BrowserWindow, Menu, dialog, globalShortcut, ipcMain } = require('electron');
-const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require('electron-updater'));
+} catch (error) {
+  console.warn('[updater] electron-updater unavailable:', error.message);
+}
 
 const distIndex = path.join(__dirname, '..', 'dist', 'index.html');
 const isDev = !app.isPackaged && !fs.existsSync(distIndex);
@@ -361,6 +367,18 @@ ipcMain.handle('restart-sender', async () => {
 
 // ─── Auto-updater ───
 function setupAutoUpdater(win) {
+  if (!autoUpdater) {
+    console.warn('[updater] Auto updates disabled because electron-updater is unavailable.');
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.send('update-status', { status: 'unavailable' });
+    });
+    ipcMain.removeAllListeners('install-update');
+    ipcMain.on('install-update', () => {
+      console.warn('[updater] Install update requested while updater is unavailable.');
+    });
+    return;
+  }
+
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
