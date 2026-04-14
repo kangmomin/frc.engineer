@@ -278,6 +278,7 @@
   right: 24px;
   pointer-events: auto;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
+  transition: opacity 0.24s ease, transform 0.24s ease;
 }
 
 .replayHud {
@@ -290,6 +291,44 @@
   pointer-events: auto;
   transform: translateX(-50%);
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.36);
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.replayChromeHidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.replayHero.replayChromeHidden {
+  transform: translateY(-18px);
+}
+
+.replayHud.replayChromeHidden {
+  transform: translate(-50%, 24px);
+}
+
+.replayPeekButton {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1;
+  padding: 10px 14px;
+  border: 1px solid rgba(59, 73, 76, 0.2);
+  background: rgba(14, 14, 15, 0.72);
+  color: var(--text-primary);
+  font-family: var(--font-racing);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+}
+
+.replayPeekButton:hover {
+  border-color: rgba(0, 229, 255, 0.35);
+  background: rgba(0, 229, 255, 0.12);
 }
 
 .timelineRailWrap {
@@ -449,6 +488,11 @@
     width: calc(100vw - 32px);
     bottom: 16px;
   }
+
+  .replayPeekButton {
+    right: 16px;
+    bottom: 16px;
+  }
 }
 
 @media (max-width: 900px) {
@@ -493,8 +537,17 @@
     bottom: 12px;
   }
 
+  .replayHud.replayChromeHidden {
+    transform: translateY(24px);
+  }
+
   .archive {
     padding: 14px;
+  }
+
+  .replayPeekButton {
+    right: 12px;
+    bottom: 12px;
   }
 
   .heroActions,

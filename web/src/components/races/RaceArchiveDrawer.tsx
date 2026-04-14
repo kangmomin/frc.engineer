@@ -1,7 +1,9 @@
 import {
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -49,6 +51,7 @@ const DEFAULT_FILTERS: RaceArchiveFilters = {
 };
 
 const PLAYBACK_RATES = [0.5, 1, 2, 4];
+const REPLAY_CHROME_IDLE_MS = 2600;
 
 const httpRaceArchiveDataSource: RaceArchiveDataSource = {
   listRaces: loadRaceArchiveList,
@@ -79,8 +82,21 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [replayChromeVisible, setReplayChromeVisible] = useState(true);
+  const replayChromeHideTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const deferredSearch = useDeferredValue(filters.search);
+
+  const clearReplayChromeHideTimer = useCallback(() => {
+    if (replayChromeHideTimerRef.current) {
+      window.clearTimeout(replayChromeHideTimerRef.current);
+      replayChromeHideTimerRef.current = null;
+    }
+  }, []);
+
+  const showReplayChrome = useCallback(() => {
+    setReplayChromeVisible(true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -296,6 +312,63 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
 
   useEffect(() => () => setPlaybackActive(false), [setPlaybackActive]);
 
+  useEffect(() => () => clearReplayChromeHideTimer(), [clearReplayChromeHideTimer]);
+
+  const canAutoHideReplayChrome = activeMode === 'replay'
+    && !browserOpen
+    && !replayLoading
+    && !replayError
+    && replayFrames.length > 0;
+
+  useEffect(() => {
+    clearReplayChromeHideTimer();
+
+    if (!canAutoHideReplayChrome) {
+      setReplayChromeVisible(true);
+      return;
+    }
+
+    replayChromeHideTimerRef.current = window.setTimeout(() => {
+      setReplayChromeVisible(false);
+    }, REPLAY_CHROME_IDLE_MS);
+
+    return () => clearReplayChromeHideTimer();
+  }, [canAutoHideReplayChrome, clearReplayChromeHideTimer]);
+
+  useEffect(() => {
+    if (activeMode !== 'replay') {
+      setReplayChromeVisible(true);
+      return;
+    }
+
+    const revealReplayChrome = () => {
+      setReplayChromeVisible(true);
+      clearReplayChromeHideTimer();
+
+      if (!canAutoHideReplayChrome) {
+        return;
+      }
+
+      replayChromeHideTimerRef.current = window.setTimeout(() => {
+        setReplayChromeVisible(false);
+      }, REPLAY_CHROME_IDLE_MS);
+    };
+
+    revealReplayChrome();
+
+    window.addEventListener('mousemove', revealReplayChrome);
+    window.addEventListener('mousedown', revealReplayChrome);
+    window.addEventListener('touchstart', revealReplayChrome, { passive: true });
+    window.addEventListener('keydown', revealReplayChrome);
+
+    return () => {
+      window.removeEventListener('mousemove', revealReplayChrome);
+      window.removeEventListener('mousedown', revealReplayChrome);
+      window.removeEventListener('touchstart', revealReplayChrome);
+      window.removeEventListener('keydown', revealReplayChrome);
+    };
+  }, [activeMode, canAutoHideReplayChrome, clearReplayChromeHideTimer]);
+
   const currentFrame = replayFrames[frameIndex] ?? null;
   const player = currentFrame ? getPlayerDriver(currentFrame) : null;
   const behindGap = currentFrame ? getBehindGap(currentFrame, player) : null;
@@ -382,7 +455,13 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
             playbackRate={playbackRate}
             activeMarkerIds={activeMarkerIds}
             browserOpen={browserOpen}
+            replayChromeVisible={replayChromeVisible}
             onOpenArchive={() => setBrowserOpen(true)}
+            onShowChrome={showReplayChrome}
+            onHideChrome={() => {
+              clearReplayChromeHideTimer();
+              setReplayChromeVisible(false);
+            }}
             onClose={closeArchive}
             setFrameIndex={setFrameIndex}
             setPlaying={setPlaying}
@@ -634,7 +713,10 @@ interface ReplayStageProps {
   playbackRate: number;
   activeMarkerIds: Set<string>;
   browserOpen: boolean;
+  replayChromeVisible: boolean;
   onOpenArchive: () => void;
+  onShowChrome: () => void;
+  onHideChrome: () => void;
   onClose: () => void;
   setFrameIndex: (value: number | ((current: number) => number)) => void;
   setPlaying: (value: boolean | ((current: boolean) => boolean)) => void;
@@ -660,7 +742,10 @@ function ReplayStage({
   playbackRate,
   activeMarkerIds,
   browserOpen,
+  replayChromeVisible,
   onOpenArchive,
+  onShowChrome,
+  onHideChrome,
   onClose,
   setFrameIndex,
   setPlaying,
@@ -669,7 +754,17 @@ function ReplayStage({
 }: ReplayStageProps) {
   return (
     <>
-      <section className={styles.replayHero}>
+      {!replayChromeVisible ? (
+        <button
+          type="button"
+          className={styles.replayPeekButton}
+          onClick={onShowChrome}
+        >
+          Show Replay HUD
+        </button>
+      ) : null}
+
+      <section className={`${styles.replayHero} ${!replayChromeVisible ? styles.replayChromeHidden : ''}`}>
         <div>
           <span className={styles.eyebrow}>Full Replay</span>
           <h2 className={styles.title}>{selectedRace ? `${selectedRace.trackName} · ${selectedRace.sessionType}` : 'Replay'}</h2>
@@ -681,6 +776,11 @@ function ReplayStage({
           </div>
         </div>
         <div className={styles.heroActions}>
+          {!browserOpen ? (
+            <button type="button" className={styles.actionButton} onClick={onHideChrome}>
+              Hide HUD
+            </button>
+          ) : null}
           <button type="button" className={styles.actionButton} onClick={onOpenArchive}>
             Archive
           </button>
@@ -690,7 +790,7 @@ function ReplayStage({
         </div>
       </section>
 
-      <section className={styles.replayHud}>
+      <section className={`${styles.replayHud} ${!replayChromeVisible ? styles.replayChromeHidden : ''}`}>
         {!selectedRace ? (
           <div className={styles.emptyState}>Select an advanced archive to enter full replay mode.</div>
         ) : replayLoading ? (
