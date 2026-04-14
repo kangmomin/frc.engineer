@@ -240,18 +240,56 @@ function getSelectedSenderStorageRoot() {
 }
 
 function getDefaultSenderStorageRoot() {
-  const bin = findSenderBinary();
-  if (bin) {
-    return path.dirname(bin);
-  }
   return path.join(app.getPath('userData'), 'sender');
+}
+
+function getLegacyPackagedSenderStorageRoot() {
+  if (!app.isPackaged) {
+    return null;
+  }
+  const bin = findSenderBinary();
+  if (!bin) {
+    return null;
+  }
+  const root = path.dirname(bin);
+  return root === getDefaultSenderStorageRoot() ? null : root;
+}
+
+function migrateSenderStorageIfNeeded(targetRoot) {
+  const selected = getSelectedSenderStorageRoot();
+  if (selected || !targetRoot) {
+    return;
+  }
+
+  const legacyRoot = getLegacyPackagedSenderStorageRoot();
+  if (!legacyRoot) {
+    return;
+  }
+
+  const names = ['data', 'logs'];
+  const hasLegacyData = names.some((name) => fs.existsSync(path.join(legacyRoot, name)));
+  if (!hasLegacyData) {
+    return;
+  }
+
+  fs.mkdirSync(targetRoot, { recursive: true });
+  for (const name of names) {
+    const source = path.join(legacyRoot, name);
+    const destination = path.join(targetRoot, name);
+    if (!fs.existsSync(source) || fs.existsSync(destination)) {
+      continue;
+    }
+    fs.cpSync(source, destination, { recursive: true });
+    console.log(`[sender] Migrated ${name} from legacy storage:`, source, '->', destination);
+  }
 }
 
 function getSenderStorageInfo() {
   const selected = getSelectedSenderStorageRoot();
+  const effective = selected || getDefaultSenderStorageRoot();
   return {
     selected,
-    effective: selected || getDefaultSenderStorageRoot(),
+    effective,
     usingCustom: Boolean(selected),
   };
 }
@@ -284,7 +322,8 @@ function startSender() {
 
   console.log('[sender] Starting:', bin);
   const cwd = path.dirname(bin);
-  const senderStorageRoot = getSelectedSenderStorageRoot();
+  const senderStorageRoot = getSenderStorageInfo().effective;
+  migrateSenderStorageIfNeeded(senderStorageRoot);
   const env = {
     ...process.env,
     SETTINGS_PORT: '8099',
@@ -292,10 +331,8 @@ function startSender() {
     DRIVER_PACK_EMBEDDED: '1',
     SAVE_FILES: 'true',
   };
-  if (senderStorageRoot) {
-    env.FRC_STORAGE_DIR = senderStorageRoot;
-    console.log('[sender] Using storage root:', senderStorageRoot);
-  }
+  env.FRC_STORAGE_DIR = senderStorageRoot;
+  console.log('[sender] Using storage root:', senderStorageRoot);
 
   senderProcess = spawn(bin, [], {
     cwd,

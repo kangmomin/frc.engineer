@@ -57,7 +57,6 @@ type senderConfig struct {
 	OverlayWindows       *overlayWindowSettings   `json:"overlayWindows,omitempty"`
 }
 
-const senderConfigPath = "data/sender-config.json"
 const senderLogTailMaxBytes int64 = 64 * 1024
 
 type clientDebugPayload struct {
@@ -86,6 +85,10 @@ func resolveSenderStoragePath(parts ...string) string {
 	joined = append(joined, root)
 	joined = append(joined, parts...)
 	return filepath.Join(joined...)
+}
+
+func senderConfigFilePath() string {
+	return resolveSenderStoragePath("data", "sender-config.json")
 }
 
 func loadICEServers(raw string) ([]webrtc.ICEServer, error) {
@@ -118,7 +121,7 @@ func loadICEServers(raw string) ([]webrtc.ICEServer, error) {
 }
 
 func loadSenderConfig() *senderConfig {
-	data, err := os.ReadFile(senderConfigPath)
+	data, err := os.ReadFile(senderConfigFilePath())
 	if err != nil {
 		return nil
 	}
@@ -130,7 +133,8 @@ func loadSenderConfig() *senderConfig {
 }
 
 func saveSenderConfig(cfg senderConfig) error {
-	dir := filepath.Dir(senderConfigPath)
+	path := senderConfigFilePath()
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -138,7 +142,7 @@ func saveSenderConfig(cfg senderConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(senderConfigPath, data, 0644)
+	return os.WriteFile(path, data, 0644)
 }
 
 func buildSenderState(saveFiles, trackRecording bool) dto.SenderState {
