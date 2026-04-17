@@ -32,7 +32,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-var appVersion = "v4.30.7"
+var appVersion = "v4.31.0"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
@@ -773,18 +773,24 @@ func main() {
 	// Check driver permissions before connecting to signaling
 	frcClient := frcapi.NewClient("https://f1-rivals-cup-production.up.railway.app")
 	resolveDriverPerms := func(accountKey string) *signaling.DriverPermissions {
-		if accountKey == "" || !frcapi.IsAccountKey(accountKey) {
-			return nil
+		accountKey = strings.TrimSpace(accountKey)
+		full := signaling.FullDriverPermissions()
+		if accountKey == "" {
+			return &full
+		}
+		if !frcapi.IsAccountKey(accountKey) {
+			logger.Warn("invalid FRC account key format, granting full driver permissions")
+			return &full
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		result, err := frcClient.CheckPermissions(ctx, accountKey, signaling.FRCDriverPermissionKeys())
 		if err != nil {
-			logger.Warn("failed to check driver permissions", "error", err)
-			return nil
+			logger.Warn("failed to check driver permissions, granting full access", "error", err)
+			return &full
 		}
 		if result == nil {
-			return nil
+			return &full
 		}
 		dp := signaling.MapFRCDriverPermissions(result)
 		return &dp

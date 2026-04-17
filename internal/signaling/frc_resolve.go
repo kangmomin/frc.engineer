@@ -4,6 +4,32 @@ import "strings"
 
 const frcProductPrefix = "product.c6da03fd-4b88-48ac-87af-592776ef8dbf."
 
+// FullPermissions grants every engineer-facing capability. This is used as a
+// temporary fail-open fallback while account keys are optional.
+func FullPermissions() Permissions {
+	return Permissions{
+		ViewERSEstimate:      true,
+		ViewERSActual:        true,
+		ViewAdvancedStrategy: true,
+		ViewPitStatus:        true,
+		ViewTopSpeed:         true,
+		ViewPlayerDelta:      true,
+		ViewQualifying:       true,
+		Pitwall:              true,
+		Overlay:              true,
+		SetupSupport:         true,
+	}
+}
+
+// FullDriverPermissions grants every driver-side capability.
+func FullDriverPermissions() DriverPermissions {
+	return DriverPermissions{
+		Pitwall:      true,
+		Overlay:      true,
+		SetupSupport: true,
+	}
+}
+
 // FRCPermissionKeys returns the full FRC permission key list for all supported feature flags.
 func FRCPermissionKeys() []string {
 	features := []string{

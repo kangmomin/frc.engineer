@@ -28,3 +28,26 @@ func TestMapFRCPermissionsERSExplicitOverride(t *testing.T) {
 		t.Fatal("expected explicit ers_estimate permission to override ers fallback")
 	}
 }
+
+func TestFullPermissionsEnablesEverything(t *testing.T) {
+	perms := FullPermissions()
+	if !perms.ViewERSEstimate ||
+		!perms.ViewERSActual ||
+		!perms.ViewAdvancedStrategy ||
+		!perms.ViewPitStatus ||
+		!perms.ViewTopSpeed ||
+		!perms.ViewPlayerDelta ||
+		!perms.ViewQualifying ||
+		!perms.Pitwall ||
+		!perms.Overlay ||
+		!perms.SetupSupport {
+		t.Fatal("expected full permissions to enable every feature")
+	}
+}
+
+func TestFullDriverPermissionsEnablesEverything(t *testing.T) {
+	perms := FullDriverPermissions()
+	if !perms.Pitwall || !perms.Overlay || !perms.SetupSupport {
+		t.Fatal("expected full driver permissions to enable every feature")
+	}
+}

@@ -161,7 +161,7 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 		return "", "", Permissions{}, fmt.Errorf("room not found")
 	}
 
-	grantedPermissions := Permissions{Pitwall: true, Overlay: true, SetupSupport: true}
+	grantedPermissions := FullPermissions()
 	var frcKey string
 
 	room.mu.Lock()
@@ -184,7 +184,7 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 		defer cancel()
 		result, err := rm.frcAPI.CheckPermissions(ctx, frcKey, FRCPermissionKeys())
 		if err != nil {
-			rm.logger.Warn("FRC API error, granting no permissions", "error", err)
+			rm.logger.Warn("FRC API error, granting full permissions", "error", err)
 		}
 		if result != nil {
 			grantedPermissions = MapFRCPermissions(result)
