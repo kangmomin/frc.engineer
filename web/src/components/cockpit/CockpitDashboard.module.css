@@ -388,6 +388,11 @@
   z-index: 2;
 }
 
+.columnResizeHandleEdge {
+  right: -6px;
+  width: 16px;
+}
+
 .columnResizeHandle::after {
   content: '';
   position: absolute;
@@ -837,6 +842,14 @@
   border-bottom: 1px solid rgba(59, 73, 76, 0.15);
 }
 
+.panelTitleAside {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
 .panelEyebrow {
   display: block;
   margin-bottom: 4px;
@@ -1166,11 +1179,6 @@
   height: 100%;
 }
 
-.compoundPanelControls {
-  display: flex;
-  justify-content: flex-end;
-}
-
 .compoundLifeHeader,
 .compoundLifeTop {
   display: flex;
@@ -1318,10 +1326,6 @@
   gap: 6px;
   font-size: 0.75rem;
   white-space: nowrap;
-}
-
-.predictionInputCompact {
-  flex: 0 0 auto;
 }
 
 .lapInput {

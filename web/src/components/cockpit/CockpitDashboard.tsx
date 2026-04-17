@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
@@ -83,6 +83,8 @@ const DEFAULT_LEADERBOARD_COLUMN_WIDTHS: LeaderboardColumnWidths = {
   damage: 128,
 };
 
+const MAX_LEADERBOARD_COLUMN_WIDTH = 420;
+
 const LEADERBOARD_COLUMN_MIN_WIDTHS: LeaderboardColumnWidths = {
   position: 44,
   driver: 120,
@@ -127,7 +129,7 @@ function parseLeaderboardColumnWidths(parsed: unknown): LeaderboardColumnWidths 
       continue;
     }
     next[key] = Math.round(
-      clamp(source[key] as number, LEADERBOARD_COLUMN_MIN_WIDTHS[key], 420),
+      clamp(source[key] as number, LEADERBOARD_COLUMN_MIN_WIDTHS[key], MAX_LEADERBOARD_COLUMN_WIDTH),
     );
   }
   return next;
@@ -455,10 +457,11 @@ export function CockpitDashboard({
   const startColumnResize = useCallback((
     event: React.PointerEvent<HTMLButtonElement>,
     index: number,
+    mode: 'between' | 'edge' = 'between',
   ) => {
     const leftColumn = renderedLeaderboardColumns[index];
-    const rightColumn = renderedLeaderboardColumns[index + 1];
-    if (!leftColumn || !rightColumn) {
+    const rightColumn = mode === 'between' ? renderedLeaderboardColumns[index + 1] : null;
+    if (!leftColumn || (mode === 'between' && !rightColumn)) {
       return;
     }
 
@@ -467,11 +470,10 @@ export function CockpitDashboard({
 
     const startX = event.clientX;
     const leftKey = leftColumn.key;
-    const rightKey = rightColumn.key;
     const startLeftWidth = leaderboardColumnWidths[leftKey];
-    const startRightWidth = leaderboardColumnWidths[rightKey];
     const minLeftWidth = LEADERBOARD_COLUMN_MIN_WIDTHS[leftKey];
-    const minRightWidth = LEADERBOARD_COLUMN_MIN_WIDTHS[rightKey];
+    const startRightWidth = rightColumn ? leaderboardColumnWidths[rightColumn.key] : 0;
+    const minRightWidth = rightColumn ? LEADERBOARD_COLUMN_MIN_WIDTHS[rightColumn.key] : 0;
     const combinedWidth = startLeftWidth + startRightWidth;
 
     const originalUserSelect = document.body.style.userSelect;
@@ -479,16 +481,34 @@ export function CockpitDashboard({
 
     const handleMove = (moveEvent: PointerEvent) => {
       const rawNextLeftWidth = startLeftWidth + (moveEvent.clientX - startX);
-      const nextLeftWidth = Math.round(clamp(rawNextLeftWidth, minLeftWidth, combinedWidth - minRightWidth));
-      const nextRightWidth = combinedWidth - nextLeftWidth;
+      const nextLeftWidth = Math.round(clamp(
+        rawNextLeftWidth,
+        minLeftWidth,
+        mode === 'between' ? combinedWidth - minRightWidth : MAX_LEADERBOARD_COLUMN_WIDTH,
+      ));
       setLeaderboardColumnWidths((prev) => {
-        if (prev[leftKey] === nextLeftWidth && prev[rightKey] === nextRightWidth) {
+        if (mode === 'edge') {
+          if (prev[leftKey] === nextLeftWidth) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [leftKey]: nextLeftWidth,
+          };
+        }
+
+        if (!rightColumn) {
+          return prev;
+        }
+
+        const nextRightWidth = combinedWidth - nextLeftWidth;
+        if (prev[leftKey] === nextLeftWidth && prev[rightColumn.key] === nextRightWidth) {
           return prev;
         }
         return {
           ...prev,
           [leftKey]: nextLeftWidth,
-          [rightKey]: nextRightWidth,
+          [rightColumn.key]: nextRightWidth,
         };
       });
     };
@@ -776,12 +796,19 @@ export function CockpitDashboard({
                 {renderedLeaderboardColumns.map((column, index) => (
                   <div key={column.key} className={styles.tableHeaderCell}>
                     <span className={styles.tableHeaderLabel}>{column.label}</span>
-                    {index < renderedLeaderboardColumns.length - 1 && (
+                    {index < renderedLeaderboardColumns.length - 1 ? (
                       <button
                         type="button"
                         className={styles.columnResizeHandle}
                         aria-label={`Resize ${column.label} column`}
                         onPointerDown={(event) => startColumnResize(event, index)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${styles.columnResizeHandle} ${styles.columnResizeHandleEdge}`}
+                        aria-label={`Resize ${column.label} column width`}
+                        onPointerDown={(event) => startColumnResize(event, index, 'edge')}
                       />
                     )}
                   </div>
@@ -1054,6 +1081,24 @@ export function CockpitDashboard({
             title="Tyre Telemetry"
             tone="tertiary"
             detail={`AVG WEAR/LAP: ${averageWearPerLap.toFixed(1)}%`}
+            endContent={(
+              <div className={styles.predictionInput}>
+                <label htmlFor="pred-laps">At Lap</label>
+                <input
+                  id="pred-laps"
+                  className={styles.lapInput}
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={predictionLaps}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 1 && v <= 99) setPredictionLaps(v);
+                  }}
+                />
+                <span>laps</span>
+              </div>
+            )}
           />
           <div className={styles.tyreGrid}>
             {WHEEL_LABELS.map((label, index) => {
@@ -1150,24 +1195,6 @@ export function CockpitDashboard({
         <div className={`${styles.panel} ${styles.compoundPanel}`}>
           <PanelTitle title="Tyre Compounds" tone="tertiary" detail={compoundLifeDetail} />
           <div className={styles.compoundLifeSection}>
-            <div className={styles.compoundPanelControls}>
-              <div className={`${styles.predictionInput} ${styles.predictionInputCompact}`}>
-                <label htmlFor="pred-laps">At Lap</label>
-                <input
-                  id="pred-laps"
-                  className={styles.lapInput}
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={predictionLaps}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v) && v >= 1 && v <= 99) setPredictionLaps(v);
-                  }}
-                />
-                <span>laps</span>
-              </div>
-            </div>
             {compoundLifeCards.length > 0 ? (
               <div className={styles.compoundLifeGrid}>
                 {compoundLifeCards.map((compound) => (
@@ -1470,10 +1497,12 @@ function PanelTitle({
   title,
   tone,
   detail,
+  endContent,
 }: {
   title: string;
   tone: 'primary' | 'tertiary' | 'secondary' | 'neutral';
   detail?: string;
+  endContent?: ReactNode;
 }) {
   return (
     <div className={styles.panelTitle}>
@@ -1481,7 +1510,10 @@ function PanelTitle({
         <span className={`${styles.panelEyebrow} ${styles[tone]}`}>{title}</span>
         {detail && <span className={styles.panelDetail}>{detail}</span>}
       </div>
-      <span className={`${styles.panelMarker} ${styles[tone]}`} />
+      <div className={styles.panelTitleAside}>
+        {endContent}
+        <span className={`${styles.panelMarker} ${styles[tone]}`} />
+      </div>
     </div>
   );
 }
