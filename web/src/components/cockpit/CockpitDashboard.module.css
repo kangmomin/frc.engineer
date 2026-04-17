@@ -1191,6 +1191,10 @@
   flex-wrap: wrap;
 }
 
+.compoundLifeTop {
+  justify-content: space-between;
+}
+
 .compoundLifeHeaderCopy {
   display: flex;
   flex-direction: column;
@@ -1204,7 +1208,7 @@
 
 .compoundLifeGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 6px;
 }
 
@@ -1236,9 +1240,57 @@
   font-weight: 800;
 }
 
+.compoundLifeIdentity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .compoundLifeLabel {
   min-width: 0;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compoundBenchmarkField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.compoundBenchmarkLabel {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.compoundBenchmarkInput {
+  width: 78px;
+  padding: 3px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-family: var(--font-racing);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.compoundBenchmarkInput:focus {
+  outline: none;
+  border-color: var(--color-accent-primary, #00e5ff);
+}
+
+.compoundBenchmarkInputInvalid {
+  border-color: rgba(255, 82, 92, 0.42);
+  color: var(--accent-soft);
 }
 
 .compoundLifeCard strong {
@@ -1248,6 +1300,8 @@
 
 .compoundLifeHint {
   color: var(--text-muted);
+  display: block;
+  margin-top: 8px;
 }
 
 .tyreCard {

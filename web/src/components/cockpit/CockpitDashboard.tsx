@@ -135,6 +135,21 @@ function parseLeaderboardColumnWidths(parsed: unknown): LeaderboardColumnWidths 
   return next;
 }
 
+function parseCompoundLapBenchmarks(parsed: unknown): CompoundLapBenchmarkStore | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const source = parsed as Record<string, unknown>;
+  const next: CompoundLapBenchmarkStore = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'string') {
+      next[key] = value.slice(0, 12);
+    }
+  }
+  return next;
+}
+
 function buildLeaderboardGridTemplate(
   visibleColumns: LeaderboardGridColumnKey[],
   widths: LeaderboardColumnWidths,
@@ -170,6 +185,7 @@ type SectorTimes = [number, number, number];
 type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSlow';
 type StrategyWindowStatus = 'open' | 'soon' | 'complete';
 type BattleTrend = 'closing' | 'opening' | 'stable' | 'unknown';
+type PanelTone = 'primary' | 'secondary' | 'tertiary' | 'neutral';
 type LeaderboardColumnKey =
   | 'drs'
   | 'ers'
@@ -205,11 +221,18 @@ type StrategyPanelData = {
   targetTyre: string;
   targetTyreReason?: string;
   pitWindowLabel: string;
-  pitWindowTone: 'primary' | 'secondary' | 'tertiary' | 'neutral';
+  pitWindowTone: PanelTone;
   primaryMetric: {
     label: string;
     value: string;
-    tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';
+    tone: PanelTone;
+  };
+  strategyCall?: {
+    label: string;
+    value: string;
+    meta: string;
+    tone: PanelTone;
+    meter: number;
   };
   detailLabel: string;
   detailValue: string;
@@ -224,7 +247,11 @@ type CompoundLifeCard = {
   shortLabel: string;
   subtitle: string;
   active: boolean;
+  benchmarkInput: string;
+  benchmarkMs: number | null;
 };
+
+type CompoundLapBenchmarkStore = Record<string, string>;
 
 interface CockpitDashboardProps {
   onOpenSettings: () => void;
@@ -346,8 +373,23 @@ export function CockpitDashboard({
     parseLeaderboardColumnWidths,
   );
   const [predictionLaps, setPredictionLaps] = useState(DEFAULT_PREDICTION_LAPS);
+  const [compoundLapBenchmarks, setCompoundLapBenchmarks] = useLocalStorage<CompoundLapBenchmarkStore>(
+    'pitwallCompoundLapBenchmarks',
+    {},
+    parseCompoundLapBenchmarks,
+  );
   const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
   const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
+  const parsedCompoundLapBenchmarks = useMemo(() => {
+    const next: Record<string, number> = {};
+    for (const [key, value] of Object.entries(compoundLapBenchmarks)) {
+      const parsed = parseLapBenchmarkInput(value);
+      if (parsed != null) {
+        next[key] = parsed;
+      }
+    }
+    return next;
+  }, [compoundLapBenchmarks]);
   const tireAge = Math.max(player?.tireAge ?? 0, 1);
   const targetTireAge = Math.max(predictionLaps, 1);
   const wheelWearPrediction = wheelWear.map((wear) => {
@@ -435,6 +477,25 @@ export function CockpitDashboard({
   const toggleLeaderboardColumn = useCallback((key: LeaderboardColumnKey) => {
     setLeaderboardColumns((prev) => ({ ...prev, [key]: !prev[key] }));
   }, [setLeaderboardColumns]);
+  const updateCompoundLapBenchmark = useCallback((compoundKey: string, value: string) => {
+    setCompoundLapBenchmarks((prev) => ({
+      ...prev,
+      [compoundKey]: value.slice(0, 12),
+    }));
+  }, [setCompoundLapBenchmarks]);
+  const normalizeCompoundLapBenchmark = useCallback((compoundKey: string) => {
+    setCompoundLapBenchmarks((prev) => {
+      const raw = prev[compoundKey] ?? '';
+      const normalized = normalizeLapBenchmarkInput(raw);
+      if (normalized === raw) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [compoundKey]: normalized,
+      };
+    });
+  }, [setCompoundLapBenchmarks]);
   const syncHeaderScroll = useCallback(() => {
     if (!headerScrollRef.current || !bodyScrollRef.current) return;
     if (syncScrollRef.current === 'header') return;
@@ -525,12 +586,26 @@ export function CockpitDashboard({
   }, [leaderboardColumnWidths, renderedLeaderboardColumns, setLeaderboardColumnWidths]);
   const trainStatus = useMemo(() => getTrainStatus(drivers, player), [drivers, player]);
   const strategyPanel = useMemo(
-    () => buildStrategyPanelData(player, session, strategyGuide, recommendedTyre, pitWindow, trafficStatus),
-    [pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
+    () => buildStrategyPanelData(
+      player,
+      session,
+      strategyGuide,
+      recommendedTyre,
+      pitWindow,
+      trafficStatus,
+      parsedCompoundLapBenchmarks,
+      pitSettings.pitStopTime,
+    ),
+    [parsedCompoundLapBenchmarks, pitSettings.pitStopTime, pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
   );
   const compoundLifeCards = useMemo(
-    () => buildCompoundLifeCards(strategyGuide?.track, player?.tireCompound),
-    [player?.tireCompound, strategyGuide],
+    () => buildCompoundLifeCards(
+      strategyGuide?.track,
+      player?.tireCompound,
+      compoundLapBenchmarks,
+      parsedCompoundLapBenchmarks,
+    ),
+    [compoundLapBenchmarks, parsedCompoundLapBenchmarks, player?.tireCompound, strategyGuide],
   );
   const compoundLifeDetail = useMemo(() => {
     if (!featurePermissions.viewAdvancedStrategy) return 'Advanced strategy locked';
@@ -1020,6 +1095,23 @@ export function CockpitDashboard({
               tone="neutral"
             />
           </div>
+          {strategyPanel.strategyCall && (
+            <div className={styles.trafficCard}>
+              <span className={styles.trafficLabel}>{strategyPanel.strategyCall.label}</span>
+              <div className={styles.trafficValueRow}>
+                <strong className={`${styles.trafficValue} ${styles[strategyPanel.strategyCall.tone]}`}>
+                  {strategyPanel.strategyCall.value}
+                </strong>
+                <span>{strategyPanel.strategyCall.meta}</span>
+              </div>
+              <div className={styles.trafficMeter}>
+                <div
+                  className={styles.trafficMeterFill}
+                  style={{ width: `${strategyPanel.strategyCall.meter}%` }}
+                />
+              </div>
+            </div>
+          )}
           <div className={styles.trafficCard}>
             <span className={styles.trafficLabel}>{strategyPanel.detailLabel}</span>
             <div className={styles.trafficValueRow}>
@@ -1204,11 +1296,32 @@ export function CockpitDashboard({
                     title={compound.subtitle}
                   >
                     <div className={styles.compoundLifeTop}>
-                      <span className={styles.compoundLifeCode} style={{ color: getTyreColor(compound.key) }}>
-                        {compound.shortLabel}
-                      </span>
-                      <span className={styles.compoundLifeLabel}>{compound.label}</span>
+                      <div className={styles.compoundLifeIdentity}>
+                        <span className={styles.compoundLifeCode} style={{ color: getTyreColor(compound.key) }}>
+                          {compound.shortLabel}
+                        </span>
+                        <span className={styles.compoundLifeLabel}>{compound.label}</span>
+                      </div>
+                      <label className={styles.compoundBenchmarkField}>
+                        <span className={styles.compoundBenchmarkLabel}>Lap</span>
+                        <input
+                          className={`${styles.compoundBenchmarkInput}${compound.benchmarkInput && compound.benchmarkMs == null ? ` ${styles.compoundBenchmarkInputInvalid}` : ''}`}
+                          type="text"
+                          inputMode="decimal"
+                          maxLength={12}
+                          placeholder="1:23.456"
+                          value={compound.benchmarkInput}
+                          onChange={(event) => updateCompoundLapBenchmark(compound.key, event.target.value)}
+                          onBlur={() => normalizeCompoundLapBenchmark(compound.key)}
+                          aria-label={`${compound.label} lap time benchmark`}
+                        />
+                      </label>
                     </div>
+                    <span className={styles.compoundLifeHint}>
+                      {compound.benchmarkInput && compound.benchmarkMs == null
+                        ? 'Use M:SS.mmm'
+                        : compound.subtitle}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -2212,12 +2325,21 @@ function buildStrategyPanelData(
   recommendedTyre: string,
   pitWindow: { label: string; tone: 'tertiary' | 'secondary' | 'primary' },
   trafficStatus: { label: string; detail: string; meter: number },
+  compoundLapBenchmarks: Record<string, number>,
+  fallbackPitLossSeconds: number,
 ): StrategyPanelData {
   const guideTrack = strategyGuide?.track;
   const raceStrategy = guideTrack?.race_strategy;
   const primaryPlan = guideTrack ? getPrimaryStrategyPlan(guideTrack, session?.totalLaps ?? 0) : null;
   const nextPit = primaryPlan && player ? getNextPitWindow(primaryPlan, player.currentLapNum) : null;
   const targetTyre = getStrategyTargetTyre(primaryPlan, nextPit, recommendedTyre);
+  const strategyCall = buildCompoundStrategyCall(
+    normalizeStrategyCompound(player?.tireCompound),
+    normalizeStrategyCompound(targetTyre),
+    compoundLapBenchmarks,
+    raceStrategy?.pit_stop_time_lost_s ?? fallbackPitLossSeconds,
+    session && player ? Math.max((session.totalLaps ?? 0) - player.currentLapNum, 0) : 0,
+  );
 
   if (guideTrack && raceStrategy?.available) {
     const pitWindowLabel = nextPit
@@ -2239,6 +2361,7 @@ function buildStrategyPanelData(
         value: primaryPlan ? primaryPlan.tyres.map((tyre) => getTyreShortLabel(tyre)).join(' - ') : '--',
         tone: 'primary',
       },
+      strategyCall,
       detailLabel: 'Data Guide',
       detailValue: formatStrategyGuideHeadline(raceStrategy),
       detailMeta: compoundSummary,
@@ -2266,6 +2389,7 @@ function buildStrategyPanelData(
         value: raceStrategy?.starting_fuel_50pct_kg ? `${raceStrategy.starting_fuel_50pct_kg.toFixed(1)}kg` : '--',
         tone: 'primary',
       },
+      strategyCall,
       detailLabel: 'Tyre Data',
       detailValue: compoundSummary.split(' · ')[0] ?? '--',
       detailMeta: compoundSummary.split(' · ').slice(1).join(' · ') || 'Race plan unavailable for this track.',
@@ -2284,6 +2408,7 @@ function buildStrategyPanelData(
       value: session?.pitStopRejoinPosition ? `P${session.pitStopRejoinPosition}` : '--',
       tone: 'primary',
     },
+    strategyCall,
     detailLabel: 'Traffic Status',
     detailValue: trafficStatus.label,
     detailMeta: trafficStatus.detail,
@@ -2385,6 +2510,8 @@ function buildCompoundSummary(
 function buildCompoundLifeCards(
   track: StrategyGuideResponse['track'] | null | undefined,
   currentCompound?: string | null,
+  compoundLapBenchmarks?: CompoundLapBenchmarkStore,
+  parsedCompoundLapBenchmarks?: Record<string, number>,
 ): CompoundLifeCard[] {
   if (!track) return [];
 
@@ -2407,8 +2534,152 @@ function buildCompoundLifeCards(
       shortLabel: getTyreShortLabel(key),
       subtitle: wear ? `Wear ${wear.display}/lap` : '50% race baseline',
       active: activeCompound === key,
+      benchmarkInput: compoundLapBenchmarks?.[key] ?? '',
+      benchmarkMs: parsedCompoundLapBenchmarks?.[key] ?? null,
     };
   });
+}
+
+function buildCompoundStrategyCall(
+  currentCompound: string | null,
+  targetCompound: string | null,
+  compoundLapBenchmarks: Record<string, number>,
+  pitLossSeconds: number | null | undefined,
+  lapsRemaining: number,
+): StrategyPanelData['strategyCall'] | undefined {
+  if (!currentCompound || !targetCompound) {
+    return undefined;
+  }
+
+  const currentMs = compoundLapBenchmarks[currentCompound];
+  const targetMs = compoundLapBenchmarks[targetCompound];
+  const currentLabel = getTyreShortLabel(currentCompound);
+  const targetLabel = getTyreShortLabel(targetCompound);
+  const pitLossMs = pitLossSeconds && pitLossSeconds > 0 ? Math.round(pitLossSeconds * 1000) : null;
+
+  if (currentMs == null || targetMs == null) {
+    const missing: string[] = [];
+    if (currentMs == null) missing.push(currentLabel);
+    if (targetMs == null && targetCompound !== currentCompound) missing.push(targetLabel);
+    return {
+      label: 'Undercut / Overcut',
+      value: 'ADD LAP TIMES',
+      meta: `Save ${missing.join(' + ')} pace in Tyre Compounds to unlock custom pit calls.`,
+      tone: 'neutral',
+      meter: 0,
+    };
+  }
+
+  if (currentCompound === targetCompound) {
+    return {
+      label: 'Undercut / Overcut',
+      value: 'STAY OUT',
+      meta: `${currentLabel} benchmark ${formatLapTime(currentMs)}. Target tyre already matches current compound.`,
+      tone: 'neutral',
+      meter: 0,
+    };
+  }
+
+  const deltaMs = currentMs - targetMs;
+  const absDeltaMs = Math.abs(deltaMs);
+  const pairMeta = `${currentLabel} ${formatLapTime(currentMs)} -> ${targetLabel} ${formatLapTime(targetMs)}`;
+
+  if (absDeltaMs < 100) {
+    return {
+      label: 'Undercut / Overcut',
+      value: 'NO CLEAR EDGE',
+      meta: `${pairMeta} / Delta ${formatPerLapDelta(deltaMs)}/lap`,
+      tone: 'neutral',
+      meter: 50,
+    };
+  }
+
+  if (deltaMs > 0) {
+    const breakEvenLaps = pitLossMs ? pitLossMs / deltaMs : null;
+    const isRecoverable = breakEvenLaps == null || lapsRemaining >= breakEvenLaps;
+    return {
+      label: 'Undercut / Overcut',
+      value: isRecoverable ? 'UNDERCUT FAVORED' : 'UNDERCUT TOO LATE',
+      meta: [
+        `Gain ${formatPerLapDelta(deltaMs)}/lap`,
+        pairMeta,
+        pitLossMs != null ? `Pit Loss ${(pitLossMs / 1000).toFixed(1)}s` : null,
+        breakEvenLaps != null ? `Break-even ${formatLapsValue(breakEvenLaps)}` : null,
+      ].filter(Boolean).join(' / '),
+      tone: isRecoverable ? 'tertiary' : 'secondary',
+      meter: isRecoverable
+        ? clamp((deltaMs / 700) * 100, 12, 100)
+        : breakEvenLaps != null && breakEvenLaps > 0
+          ? clamp((lapsRemaining / breakEvenLaps) * 100, 0, 45)
+          : 20,
+    };
+  }
+
+  const overcutWindowLaps = pitLossMs ? pitLossMs / absDeltaMs : null;
+  return {
+    label: 'Undercut / Overcut',
+    value: 'OVERCUT FAVORED',
+    meta: [
+      `Stay out ${formatPerLapDelta(absDeltaMs)}/lap`,
+      pairMeta,
+      pitLossMs != null ? `Pit Loss ${(pitLossMs / 1000).toFixed(1)}s` : null,
+      overcutWindowLaps != null ? `Pressure Window ${formatLapsValue(overcutWindowLaps)}` : null,
+    ].filter(Boolean).join(' / '),
+    tone: 'primary',
+    meter: clamp((absDeltaMs / 700) * 100, 12, 100),
+  };
+}
+
+function parseLapBenchmarkInput(value: string | null | undefined): number | null {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) {
+    return null;
+  }
+
+  const minuteMatch = trimmed.match(/^(\d+):(\d{1,2})(?:\.(\d{1,3}))?$/);
+  if (minuteMatch) {
+    const minutes = Number.parseInt(minuteMatch[1], 10);
+    const seconds = Number.parseInt(minuteMatch[2], 10);
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds) || seconds >= 60) {
+      return null;
+    }
+    return (minutes * 60_000) + (seconds * 1000) + parseLapBenchmarkMillis(minuteMatch[3]);
+  }
+
+  const secondsMatch = trimmed.match(/^(\d+)(?:\.(\d{1,3}))?$/);
+  if (secondsMatch) {
+    const totalSeconds = Number.parseInt(secondsMatch[1], 10);
+    if (!Number.isFinite(totalSeconds)) {
+      return null;
+    }
+    return (totalSeconds * 1000) + parseLapBenchmarkMillis(secondsMatch[2]);
+  }
+
+  return null;
+}
+
+function parseLapBenchmarkMillis(raw: string | undefined): number {
+  if (!raw) {
+    return 0;
+  }
+  return Number.parseInt(raw.padEnd(3, '0').slice(0, 3), 10);
+}
+
+function normalizeLapBenchmarkInput(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const parsed = parseLapBenchmarkInput(trimmed);
+  return parsed == null ? trimmed : formatLapTime(parsed);
+}
+
+function formatPerLapDelta(ms: number): string {
+  return `${(Math.abs(ms) / 1000).toFixed(3)}s`;
+}
+
+function formatLapsValue(value: number): string {
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)}L`;
 }
 
 function compoundToStrategyTempKey(track: StrategyGuideResponse['track'], compoundKey: string): string {
