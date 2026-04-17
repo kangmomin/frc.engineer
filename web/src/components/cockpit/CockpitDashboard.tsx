@@ -18,7 +18,7 @@ import type {
 import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { clamp, formatDelta, formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
-import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from '../../../../shared/strategyAccess';
+import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from '../../utils/strategyAccess';
 import styles from './CockpitDashboard.module.css';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;

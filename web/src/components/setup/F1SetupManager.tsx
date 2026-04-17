@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from "../../../../shared/strategyAccess";
+import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from "../../utils/strategyAccess";
 
 import {
   SETUP_FIELDS,
