@@ -1241,14 +1241,6 @@
   white-space: nowrap;
 }
 
-.compoundLifeCurrent {
-  color: var(--accent);
-}
-
-.compoundLifeValue {
-  margin-left: auto;
-}
-
 .compoundLifeCard strong {
   font-size: 0.92rem;
   font-weight: 800;

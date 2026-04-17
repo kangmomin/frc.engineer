@@ -222,7 +222,6 @@ type CompoundLifeCard = {
   key: string;
   label: string;
   shortLabel: string;
-  lapsLabel: string;
   subtitle: string;
   active: boolean;
 };
@@ -1209,8 +1208,6 @@ export function CockpitDashboard({
                         {compound.shortLabel}
                       </span>
                       <span className={styles.compoundLifeLabel}>{compound.label}</span>
-                      {compound.active && <span className={styles.compoundLifeCurrent}>Now</span>}
-                      <strong className={styles.compoundLifeValue}>{compound.lapsLabel}</strong>
                     </div>
                   </div>
                 ))}
@@ -2403,13 +2400,11 @@ function buildCompoundLifeCards(
   });
 
   return keys.map((key) => {
-    const life = track.tyre_strategy.tyre_life_50pct[key];
     const wear = track.tyre_strategy.wear_per_lap[key];
     return {
       key,
       label: formatCompoundLabel(key),
       shortLabel: getTyreShortLabel(key),
-      lapsLabel: `${life.laps}L`,
       subtitle: wear ? `Wear ${wear.display}/lap` : '50% race baseline',
       active: activeCompound === key,
     };
