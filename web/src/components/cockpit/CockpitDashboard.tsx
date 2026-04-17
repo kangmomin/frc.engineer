@@ -250,6 +250,7 @@ export function CockpitDashboard({
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
   const syncScrollRef = useRef<'header' | 'body' | null>(null);
+  const trackLogKeyRef = useRef('');
   const {
     pitwallState,
     raceControlNotifications,
@@ -313,6 +314,7 @@ export function CockpitDashboard({
   const raceStatus = getRaceStatus(session, recentNotifications);
   const sessionTrackId = session?.trackId ?? null;
   const sessionTrackName = session?.trackName ?? '';
+  const sessionType = session?.sessionType ?? '';
   const ersActualReady = player?.ersActualReady ?? false;
   const ersPct = clamp(player?.ersActualPct ?? 0, 0, 100);
   const deploySplit = getErsSplit(player);
@@ -511,6 +513,25 @@ export function CockpitDashboard({
     if (!strategyGuide) return 'Track guide unavailable';
     return `50% race baseline / ${strategyGuide.track.track_info.laps_50pct}L`;
   }, [featurePermissions.viewAdvancedStrategy, strategyGuide, strategyGuideLoading]);
+
+  useEffect(() => {
+    if (sessionTrackId == null || sessionTrackId < 0 || !sessionTrackName.trim()) {
+      trackLogKeyRef.current = '';
+      return;
+    }
+
+    const nextTrackKey = `${sessionTrackId}|${sessionTrackName}|${sessionType}`;
+    if (trackLogKeyRef.current === nextTrackKey) {
+      return;
+    }
+    trackLogKeyRef.current = nextTrackKey;
+
+    console.info('[cockpit] active track', {
+      trackId: sessionTrackId,
+      trackName: sessionTrackName,
+      sessionType,
+    });
+  }, [sessionTrackId, sessionTrackName, sessionType]);
 
   useEffect(() => {
     if (!enableStrategyGuide || !featurePermissions.viewAdvancedStrategy || sessionTrackId == null || sessionTrackId < 0) {
