@@ -1,4 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from "../../../../shared/strategyAccess";
 
 import {
   SETUP_FIELDS,
@@ -16,6 +18,10 @@ type WeatherMode = "dry" | "rain" | null;
 
 interface F1SetupManagerProps {
   onBack?: () => void;
+}
+
+function parseStoredString(parsed: unknown): string | null {
+  return typeof parsed === "string" ? parsed : null;
 }
 
 function MetricBar({ value, min, max }: { value: number; min: number; max: number }) {
@@ -58,6 +64,12 @@ export function F1SetupManager({ onBack }: F1SetupManagerProps) {
   const [group, setGroup] = useState("all");
   const [selectedKey, setSelectedKey] = useState<SetupKey | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [strategyAccessKey, setStrategyAccessKey] = useLocalStorage<string>(
+    STRATEGY_ACCESS_STORAGE_KEY,
+    "",
+    parseStoredString,
+  );
+  const strategyAccessGranted = hasStrategyAccessKey(strategyAccessKey);
 
   const catalog = useMemo(() => getTrackCatalog(track), [track]);
   const selectedMeta = useMemo(
@@ -138,6 +150,31 @@ export function F1SetupManager({ onBack }: F1SetupManagerProps) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 14 }}>
         <section style={panelStyle}>
+          <div style={panelHeaderStyle}>Strategy Key</div>
+          <div style={{ padding: 12 }}>
+            <input
+              type="password"
+              value={strategyAccessKey}
+              onChange={(event) => setStrategyAccessKey(normalizeStrategyAccessKey(event.target.value))}
+              placeholder="Enter strategy key"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${strategyAccessGranted ? "#22c55e" : "rgba(255,255,255,0.08)"}`,
+                background: "rgba(255,255,255,0.03)",
+                color: "#e2e8f0",
+              }}
+            />
+            <div style={{ marginTop: 8, fontSize: 11, color: strategyAccessGranted ? "#22c55e" : "#64748b" }}>
+              {strategyAccessGranted
+                ? "Strategy data unlocked."
+                : "Enter the strategy key to unlock tyre life, pit window, and track strategy notes."}
+            </div>
+          </div>
+        </section>
+
+        <section style={panelStyle}>
           <div style={panelHeaderStyle}>1. Track</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {TRACKS.map((item) => {
@@ -200,31 +237,37 @@ export function F1SetupManager({ onBack }: F1SetupManagerProps) {
         {weather && catalog ? (
           <section style={panelStyle}>
             <div style={panelHeaderStyle}>3. Setup</div>
-            <div style={{ marginBottom: 12, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{catalog.track.notes}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {[
-                  `Soft ${catalog.track.softLife}`,
-                  `Medium ${catalog.track.medLife}`,
-                  `Hard ${catalog.track.hardLife}`,
-                  catalog.track.pitWindow50,
-                  catalog.track.strategy,
-                ].map((item) => (
-                  <span
-                    key={item}
-                    style={{
-                      fontSize: 10,
-                      padding: "3px 8px",
-                      borderRadius: 999,
-                      background: "rgba(0,229,255,0.08)",
-                      color: "#bae6fd",
-                    }}
-                  >
-                    {item}
-                  </span>
-                ))}
+            {strategyAccessGranted ? (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{catalog.track.notes}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {[
+                    `Soft ${catalog.track.softLife}`,
+                    `Medium ${catalog.track.medLife}`,
+                    `Hard ${catalog.track.hardLife}`,
+                    catalog.track.pitWindow50,
+                    catalog.track.strategy,
+                  ].map((item) => (
+                    <span
+                      key={item}
+                      style={{
+                        fontSize: 10,
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        background: "rgba(0,229,255,0.08)",
+                        color: "#bae6fd",
+                      }}
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div style={{ marginBottom: 12, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)", color: "#94a3b8", fontSize: 11 }}>
+                Strategy track notes are locked until the strategy key is entered.
+              </div>
+            )}
 
             {weather === "dry" ? (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
@@ -390,10 +433,10 @@ export function F1SetupManager({ onBack }: F1SetupManagerProps) {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
               {[
-                { label: "Pit Window", value: catalog.track.pitWindow50 },
-                { label: "Strategy", value: catalog.track.strategy },
-                { label: "Quali Fuel", value: catalog.track.qualiFuel || "N/A" },
-                { label: "ERS Trigger", value: catalog.track.ersEnable || "N/A" },
+                { label: "Pit Window", value: strategyAccessGranted ? catalog.track.pitWindow50 : "Locked" },
+                { label: "Strategy", value: strategyAccessGranted ? catalog.track.strategy : "Locked" },
+                { label: "Quali Fuel", value: strategyAccessGranted ? (catalog.track.qualiFuel || "N/A") : "Locked" },
+                { label: "ERS Trigger", value: strategyAccessGranted ? (catalog.track.ersEnable || "N/A") : "Locked" },
               ].map((item) => (
                 <div key={item.label} style={{ padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.03)" }}>
                   <div style={{ fontSize: 10, color: "#64748b", marginBottom: 4 }}>{item.label}</div>

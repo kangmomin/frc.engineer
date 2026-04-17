@@ -590,6 +590,11 @@ func main() {
 			return
 		}
 		trackName := strings.TrimSpace(r.URL.Query().Get("trackName"))
+		accessKey := strings.TrimSpace(r.URL.Query().Get("accessKey"))
+		if !strategydata.HasAccessKey(accessKey) {
+			http.Error(w, "strategy guide locked", http.StatusForbidden)
+			return
+		}
 
 		trackGuide := strategyStore.TrackBySession(int8(trackIDValue), trackName)
 		if trackGuide == nil {

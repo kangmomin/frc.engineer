@@ -813,6 +813,7 @@ func main() {
 			var body struct {
 				TrackID   int8   `json:"trackId"`
 				TrackName string `json:"trackName"`
+				AccessKey string `json:"accessKey"`
 			}
 			if len(req.Data) > 0 && json.Unmarshal(req.Data, &body) != nil {
 				return encodeP2PResponse(dto.WSResponse{
@@ -826,6 +827,13 @@ func main() {
 					Type:      dto.MessageTypeStrategyGuide,
 					RequestID: req.RequestID,
 					Error:     "strategy guide unavailable",
+				})
+			}
+			if !strategydata.HasAccessKey(body.AccessKey) {
+				return encodeP2PResponse(dto.WSResponse{
+					Type:      dto.MessageTypeStrategyGuide,
+					RequestID: req.RequestID,
+					Error:     "strategy guide locked",
 				})
 			}
 			trackGuide := strategyStore.TrackBySession(body.TrackID, body.TrackName)

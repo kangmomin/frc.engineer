@@ -18,6 +18,7 @@ import type {
 import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { clamp, formatDelta, formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
+import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from '../../../../shared/strategyAccess';
 import styles from './CockpitDashboard.module.css';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
@@ -148,6 +149,10 @@ function parseCompoundLapBenchmarks(parsed: unknown): CompoundLapBenchmarkStore 
     }
   }
   return next;
+}
+
+function parseStoredString(parsed: unknown): string | null {
+  return typeof parsed === 'string' ? parsed : null;
 }
 
 function buildLeaderboardGridTemplate(
@@ -373,6 +378,11 @@ export function CockpitDashboard({
     parseLeaderboardColumnWidths,
   );
   const [predictionLaps, setPredictionLaps] = useState(DEFAULT_PREDICTION_LAPS);
+  const [strategyAccessKey, setStrategyAccessKey] = useLocalStorage<string>(
+    STRATEGY_ACCESS_STORAGE_KEY,
+    '',
+    parseStoredString,
+  );
   const [compoundLapBenchmarks, setCompoundLapBenchmarks] = useLocalStorage<CompoundLapBenchmarkStore>(
     'pitwallCompoundLapBenchmarks',
     {},
@@ -380,6 +390,7 @@ export function CockpitDashboard({
   );
   const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
   const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
+  const strategyDataUnlocked = featurePermissions.viewAdvancedStrategy && hasStrategyAccessKey(strategyAccessKey);
   const parsedCompoundLapBenchmarks = useMemo(() => {
     const next: Record<string, number> = {};
     for (const [key, value] of Object.entries(compoundLapBenchmarks)) {
@@ -609,10 +620,11 @@ export function CockpitDashboard({
   );
   const compoundLifeDetail = useMemo(() => {
     if (!featurePermissions.viewAdvancedStrategy) return 'Advanced strategy locked';
+    if (!strategyDataUnlocked) return 'Strategy key required';
     if (strategyGuideLoading) return 'Loading track guide...';
     if (!strategyGuide) return 'Track guide unavailable';
     return `50% race baseline / ${strategyGuide.track.track_info.laps_50pct}L`;
-  }, [featurePermissions.viewAdvancedStrategy, strategyGuide, strategyGuideLoading]);
+  }, [featurePermissions.viewAdvancedStrategy, strategyDataUnlocked, strategyGuide, strategyGuideLoading]);
 
   useEffect(() => {
     if (sessionTrackId == null || sessionTrackId < 0 || !sessionTrackName.trim()) {
@@ -634,7 +646,7 @@ export function CockpitDashboard({
   }, [sessionTrackId, sessionTrackName, sessionType]);
 
   useEffect(() => {
-    if (!enableStrategyGuide || !featurePermissions.viewAdvancedStrategy || sessionTrackId == null || sessionTrackId < 0) {
+    if (!enableStrategyGuide || !strategyDataUnlocked || sessionTrackId == null || sessionTrackId < 0) {
       setStrategyGuide(null);
       setStrategyGuideLoading(false);
       return;
@@ -651,6 +663,7 @@ export function CockpitDashboard({
             data: {
               trackId: sessionTrackId,
               trackName: sessionTrackName,
+              accessKey: strategyAccessKey,
             },
           },
           {
@@ -664,6 +677,7 @@ export function CockpitDashboard({
       if (sessionTrackName.trim()) {
         params.set('trackName', sessionTrackName);
       }
+      params.set('accessKey', strategyAccessKey);
 
       const response = await fetch(getApiUrl(`/api/strategy/guide?${params.toString()}`), {
         signal: controller.signal,
@@ -699,7 +713,7 @@ export function CockpitDashboard({
     return () => {
       controller.abort();
     };
-  }, [enableStrategyGuide, featurePermissions.viewAdvancedStrategy, requestP2P, sessionTrackId, sessionTrackName]);
+  }, [enableStrategyGuide, requestP2P, sessionTrackId, sessionTrackName, strategyAccessKey, strategyDataUnlocked]);
 
   // Seed optimal temp from strategy guide peak_temps_c when available and no manual override in query
   useEffect(() => {
@@ -817,7 +831,9 @@ export function CockpitDashboard({
       {settingsOpen && (
         <PitSettingsModal
           current={pitSettings}
+          currentStrategyAccessKey={strategyAccessKey}
           onApply={applyPitSettings}
+          onChangeStrategyAccessKey={setStrategyAccessKey}
           onClose={closeSettings}
         />
       )}
@@ -1151,6 +1167,13 @@ export function CockpitDashboard({
                 Join with a permissions code that grants advanced strategy access to use numeric track data here.
               </span>
             </div>
+          ) : !strategyDataUnlocked ? (
+            <div className={styles.strategyUnlockCard}>
+              <span className={styles.strategyUnlockLabel}>Strategy Key Required</span>
+              <span className={styles.strategySupportText}>
+                Open pit settings and enter the strategy key to unlock track guide data.
+              </span>
+            </div>
           ) : (
             <div className={styles.strategyUnlockMeta}>
               <span className={styles.strategyUnlockStatus}>
@@ -1160,7 +1183,7 @@ export function CockpitDashboard({
                     ? 'Numeric strategy guide active'
                     : 'Guide unavailable, using heuristic fallback'}
               </span>
-              <span className={styles.strategySupportText}>Permission Granted</span>
+              <span className={styles.strategySupportText}>Permission Granted / Key Accepted</span>
             </div>
           )}
         </div>
@@ -1327,11 +1350,13 @@ export function CockpitDashboard({
               </div>
             ) : (
               <div className={styles.compoundLifeEmpty}>
-                {featurePermissions.viewAdvancedStrategy
-                  ? strategyGuideLoading
-                    ? 'Loading track guide...'
-                    : 'No compound life data for this track.'
-                  : 'Advanced strategy permission required.'}
+                {!featurePermissions.viewAdvancedStrategy
+                  ? 'Advanced strategy permission required.'
+                  : !strategyDataUnlocked
+                    ? 'Enter the strategy key in settings to unlock track guide data.'
+                    : strategyGuideLoading
+                      ? 'Loading track guide...'
+                      : 'No compound life data for this track.'}
               </div>
             )}
           </div>
@@ -1368,17 +1393,22 @@ export function CockpitDashboard({
 
 function PitSettingsModal({
   current,
+  currentStrategyAccessKey,
   onApply,
+  onChangeStrategyAccessKey,
   onClose,
 }: {
   current: PitSettings;
+  currentStrategyAccessKey: string;
   onApply: (s: PitSettings) => void;
+  onChangeStrategyAccessKey: (value: string) => void;
   onClose: () => void;
 }) {
   const speedRef = useRef<HTMLInputElement>(null);
   const timeRef = useRef<HTMLInputElement>(null);
   const tempLowRef = useRef<HTMLInputElement>(null);
   const tempHighRef = useRef<HTMLInputElement>(null);
+  const strategyKeyRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     speedRef.current?.focus();
@@ -1489,6 +1519,24 @@ function PitSettingsModal({
         <span className={styles.modalFieldHint}>
           Core temperature range for &quot;CORE OK&quot; status. Auto-filled from strategy guide when available.
         </span>
+
+        <div className={styles.modalField}>
+          <label className={styles.modalFieldLabel} htmlFor="strategy-access-key">
+            Strategy Access Key
+          </label>
+          <input
+            id="strategy-access-key"
+            ref={strategyKeyRef}
+            className={styles.modalInput}
+            type="password"
+            defaultValue={currentStrategyAccessKey}
+            placeholder="Enter strategy key"
+            onChange={(event) => onChangeStrategyAccessKey(normalizeStrategyAccessKey(event.target.value))}
+          />
+          <span className={styles.modalFieldHint}>
+            Saved locally and required before numeric track strategy data is used.
+          </span>
+        </div>
 
         <button type="submit" className={styles.modalApply}>
           Apply
