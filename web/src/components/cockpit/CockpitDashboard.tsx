@@ -191,6 +191,12 @@ type SectorDeltaTone = 'sectorPending' | 'sectorBest' | 'sectorGood' | 'sectorSl
 type StrategyWindowStatus = 'open' | 'soon' | 'complete';
 type BattleTrend = 'closing' | 'opening' | 'stable' | 'unknown';
 type PanelTone = 'primary' | 'secondary' | 'tertiary' | 'neutral';
+type StrategyPanelMetric = {
+  label: string;
+  value: string;
+  tone: PanelTone;
+  note?: string;
+};
 type LeaderboardColumnKey =
   | 'drs'
   | 'ers'
@@ -227,11 +233,8 @@ type StrategyPanelData = {
   targetTyreReason?: string;
   pitWindowLabel: string;
   pitWindowTone: PanelTone;
-  primaryMetric: {
-    label: string;
-    value: string;
-    tone: PanelTone;
-  };
+  primaryMetric: StrategyPanelMetric;
+  exitMetric?: StrategyPanelMetric;
   strategyCall?: {
     label: string;
     value: string;
@@ -598,6 +601,7 @@ export function CockpitDashboard({
   const trainStatus = useMemo(() => getTrainStatus(drivers, player), [drivers, player]);
   const strategyPanel = useMemo(
     () => buildStrategyPanelData(
+      drivers,
       player,
       session,
       strategyGuide,
@@ -607,7 +611,7 @@ export function CockpitDashboard({
       parsedCompoundLapBenchmarks,
       pitSettings.pitStopTime,
     ),
-    [parsedCompoundLapBenchmarks, pitSettings.pitStopTime, pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
+    [drivers, parsedCompoundLapBenchmarks, pitSettings.pitStopTime, pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
   );
   const compoundLifeCards = useMemo(
     () => buildCompoundLifeCards(
@@ -1094,7 +1098,16 @@ export function CockpitDashboard({
               label={strategyPanel.primaryMetric.label}
               value={strategyPanel.primaryMetric.value}
               tone={strategyPanel.primaryMetric.tone}
+              note={strategyPanel.primaryMetric.note}
             />
+            {strategyPanel.exitMetric && (
+              <MetricTile
+                label={strategyPanel.exitMetric.label}
+                value={strategyPanel.exitMetric.value}
+                tone={strategyPanel.exitMetric.tone}
+                note={strategyPanel.exitMetric.note}
+              />
+            )}
             <MetricTile
               label="Pit Window"
               value={strategyPanel.pitWindowLabel}
@@ -1680,17 +1693,20 @@ function MetricTile({
   label,
   value,
   tone,
+  note,
   className,
 }: {
   label: string;
   value: string;
   tone: 'primary' | 'tertiary' | 'secondary' | 'neutral';
+  note?: string;
   className?: string;
 }) {
   return (
     <div className={className ? `${styles.metricTile} ${className}` : styles.metricTile}>
       <span>{label}</span>
       <strong className={styles[tone]}>{value}</strong>
+      {note && <small className={styles.metricNote}>{note}</small>}
     </div>
   );
 }
@@ -2367,6 +2383,7 @@ function getPitWindow(
 }
 
 function buildStrategyPanelData(
+  drivers: DriverInfo[],
   player: DriverInfo | null,
   session: SessionInfo | null,
   strategyGuide: StrategyGuideResponse | null,
@@ -2381,12 +2398,22 @@ function buildStrategyPanelData(
   const primaryPlan = guideTrack ? getPrimaryStrategyPlan(guideTrack, session?.totalLaps ?? 0) : null;
   const nextPit = primaryPlan && player ? getNextPitWindow(primaryPlan, player.currentLapNum) : null;
   const targetTyre = getStrategyTargetTyre(primaryPlan, nextPit, recommendedTyre);
+  const pitLossSeconds = raceStrategy?.pit_stop_time_lost_s ?? fallbackPitLossSeconds;
   const strategyCall = buildCompoundStrategyCall(
     normalizeStrategyCompound(player?.tireCompound),
     normalizeStrategyCompound(targetTyre),
     compoundLapBenchmarks,
-    raceStrategy?.pit_stop_time_lost_s ?? fallbackPitLossSeconds,
+    pitLossSeconds,
     session && player ? Math.max((session.totalLaps ?? 0) - player.currentLapNum, 0) : 0,
+  );
+  const exitMetric = buildPitExitMetric(
+    drivers,
+    player,
+    session,
+    targetTyre,
+    compoundLapBenchmarks,
+    pitLossSeconds,
+    pitWindow,
   );
 
   if (guideTrack && raceStrategy?.available) {
@@ -2409,6 +2436,7 @@ function buildStrategyPanelData(
         value: primaryPlan ? primaryPlan.tyres.map((tyre) => getTyreShortLabel(tyre)).join(' - ') : '--',
         tone: 'primary',
       },
+      exitMetric,
       strategyCall,
       detailLabel: 'Data Guide',
       detailValue: formatStrategyGuideHeadline(raceStrategy),
@@ -2437,6 +2465,7 @@ function buildStrategyPanelData(
         value: raceStrategy?.starting_fuel_50pct_kg ? `${raceStrategy.starting_fuel_50pct_kg.toFixed(1)}kg` : '--',
         tone: 'primary',
       },
+      exitMetric,
       strategyCall,
       detailLabel: 'Tyre Data',
       detailValue: compoundSummary.split(' · ')[0] ?? '--',
@@ -2451,7 +2480,7 @@ function buildStrategyPanelData(
     targetTyre: recommendedTyre,
     pitWindowLabel: pitWindow.label,
     pitWindowTone: pitWindow.tone,
-    primaryMetric: {
+    primaryMetric: exitMetric ?? {
       label: 'Est. Exit Pos',
       value: session?.pitStopRejoinPosition ? `P${session.pitStopRejoinPosition}` : '--',
       tone: 'primary',
@@ -2530,6 +2559,146 @@ function formatStrategyGuideHeadline(raceStrategy: NonNullable<StrategyGuideResp
     parts.push(`Pit Loss ${raceStrategy.pit_stop_time_lost_s.toFixed(1)}s`);
   }
   return parts.join(' · ') || 'Guide ready';
+}
+
+function buildPitExitMetric(
+  drivers: DriverInfo[],
+  player: DriverInfo | null,
+  session: SessionInfo | null,
+  targetTyre: string,
+  compoundLapBenchmarks: Record<string, number>,
+  pitLossSeconds: number | null | undefined,
+  pitWindow: { label: string },
+): StrategyPanelMetric | undefined {
+  const prediction = getAggressivePitExitPrediction(
+    drivers,
+    player,
+    session,
+    targetTyre,
+    compoundLapBenchmarks,
+    pitLossSeconds,
+    pitWindow,
+  );
+  if (!prediction) return undefined;
+
+  const noteParts: string[] = [];
+  const gameLabel = formatPitPosition(prediction.gamePosition);
+  if (gameLabel !== '--') {
+    noteParts.push(`Game ${gameLabel}`);
+  }
+  if (prediction.aggressivePitLossMs != null) {
+    noteParts.push(`${(prediction.aggressivePitLossMs / 1000).toFixed(1)}s model`);
+  }
+  if (prediction.creditMs > 0) {
+    noteParts.push(`Credit ${(prediction.creditMs / 1000).toFixed(1)}s`);
+  }
+
+  let tone: PanelTone = 'primary';
+  if (prediction.gamePosition != null && prediction.aggressivePosition < prediction.gamePosition) {
+    tone = 'tertiary';
+  } else if (prediction.gamePosition != null && prediction.aggressivePosition > prediction.gamePosition) {
+    tone = 'secondary';
+  }
+
+  return {
+    label: 'Aggressive Exit',
+    value: formatPitPosition(prediction.aggressivePosition),
+    tone,
+    note: noteParts.join(' 쨌 '),
+  };
+}
+
+function getAggressivePitExitPrediction(
+  drivers: DriverInfo[],
+  player: DriverInfo | null,
+  session: SessionInfo | null,
+  targetTyre: string,
+  compoundLapBenchmarks: Record<string, number>,
+  pitLossSeconds: number | null | undefined,
+  pitWindow: { label: string },
+): {
+  aggressivePosition: number;
+  gamePosition: number | null;
+  aggressivePitLossMs: number | null;
+  creditMs: number;
+} | null {
+  if (!player || !drivers.length) return null;
+
+  const playerGapToLeader = getComparableGapToLeader(player, 0);
+  if (playerGapToLeader == null) return null;
+
+  const basePitLossMs = pitLossSeconds && pitLossSeconds > 0 ? Math.round(pitLossSeconds * 1000) : null;
+  const currentCompound = normalizeStrategyCompound(player.tireCompound);
+  const nextCompound = normalizeStrategyCompound(targetTyre) ?? currentCompound;
+  const currentBenchmarkMs = currentCompound ? compoundLapBenchmarks[currentCompound] ?? null : null;
+  const nextBenchmarkMs = nextCompound ? compoundLapBenchmarks[nextCompound] ?? null : null;
+  const benchmarkGainMs = currentBenchmarkMs != null && nextBenchmarkMs != null
+    ? Math.max(currentBenchmarkMs - nextBenchmarkMs, 0)
+    : 0;
+  const averageWear = player.tireWear.length
+    ? player.tireWear.reduce((sum, wear) => sum + wear, 0) / player.tireWear.length
+    : 0;
+  const wearCreditMs = clamp(Math.round(Math.max(averageWear - 38, 0) * 45), 0, 2400);
+  const ageCreditMs = clamp(Math.max(player.tireAge - 8, 0) * 110, 0, 1800);
+  const windowCreditMs = pitWindow.label === 'LATE'
+    ? 900
+    : pitWindow.label === 'OPEN'
+      ? 450
+      : 0;
+  const benchmarkCreditMs = clamp(Math.round(benchmarkGainMs * 1.35), 0, 3600);
+  const totalCreditMs = benchmarkCreditMs + wearCreditMs + ageCreditMs + windowCreditMs;
+  const aggressivePitLossMs = basePitLossMs == null
+    ? null
+    : Math.max(
+        Math.round(basePitLossMs * 0.72),
+        basePitLossMs - Math.min(totalCreditMs, 6500),
+      );
+  const projectedGapToLeader = playerGapToLeader + (aggressivePitLossMs ?? 0);
+
+  let aggressivePosition = 1;
+  for (const driver of drivers) {
+    if (driver.index === player.index || driver.position <= 0) {
+      continue;
+    }
+    if (driver.pitStatus > 0) {
+      continue;
+    }
+    const otherGapToLeader = getComparableGapToLeader(driver, playerGapToLeader);
+    if (otherGapToLeader == null) {
+      continue;
+    }
+    if (otherGapToLeader < projectedGapToLeader) {
+      aggressivePosition += 1;
+    }
+  }
+
+  return {
+    aggressivePosition,
+    gamePosition: session?.pitStopRejoinPosition && session.pitStopRejoinPosition > 0
+      ? session.pitStopRejoinPosition
+      : null,
+    aggressivePitLossMs,
+    creditMs: basePitLossMs != null && aggressivePitLossMs != null
+      ? Math.max(basePitLossMs - aggressivePitLossMs, 0)
+      : 0,
+  };
+}
+
+function getComparableGapToLeader(driver: DriverInfo, playerGapToLeader: number): number | null {
+  if (driver.deltaToRaceLeader != null && driver.deltaToRaceLeader >= 0) {
+    return driver.deltaToRaceLeader;
+  }
+  if (driver.deltaToPlayer != null) {
+    return playerGapToLeader + driver.deltaToPlayer;
+  }
+  if (driver.position === 1) {
+    return 0;
+  }
+  return null;
+}
+
+function formatPitPosition(position: number | null | undefined): string {
+  return position != null && position > 0 ? `P${position}` : '--';
 }
 
 function buildCompoundSummary(

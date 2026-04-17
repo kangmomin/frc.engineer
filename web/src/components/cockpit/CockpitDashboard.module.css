@@ -1082,6 +1082,14 @@
   gap: 6px;
 }
 
+.metricNote {
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 .metricTile strong,
 .battleHeader strong,
 .strategyRow strong,
