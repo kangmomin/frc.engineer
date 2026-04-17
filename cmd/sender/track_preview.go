@@ -26,12 +26,12 @@ func getCurrentTrack(processorState trackSessionProvider, trackStore *tracks.Tra
 	if session == nil {
 		return nil
 	}
-	name := tracks.NormalizeRecordedTrackName(session.TrackName)
+	name := tracks.TrackDisplayName(session.TrackName)
 	current := &senderCurrentTrack{
 		ID:   session.TrackID,
 		Name: name,
 	}
-	if info, _, ok := trackStore.FindRecordedFile(name); ok {
+	if info, _, ok := trackStore.FindRecordedFile(session.TrackName); ok {
 		current.Filename = info.Filename
 		current.HasRecordedPreview = true
 	}

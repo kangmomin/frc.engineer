@@ -143,10 +143,13 @@ func (r *TrackRecorder) saveLap(trackID int8, trackName string, buffer []recordP
 		return
 	}
 
-	// Sanitize track name to prevent path traversal
-	safeName := safeNameRe.ReplaceAllString(trackName, "_")
-	safeName = tracks.NormalizeRecordedTrackName(safeName)
-	if safeName == "" {
+	safeName := tracks.TrackStorageKey(trackID)
+	if safeName == "unknown" {
+		// Fall back to the current session label when a track ID mapping is unavailable.
+		safeName = safeNameRe.ReplaceAllString(trackName, "_")
+		safeName = tracks.NormalizeRecordedTrackName(safeName)
+	}
+	if safeName == "" || safeName == "unknown" {
 		safeName = fmt.Sprintf("track_%d", trackID)
 	}
 

@@ -126,9 +126,13 @@ func LoadStore(root string) (*Store, error) {
 
 	for trackID, slug := range strategyTrackSlugByID {
 		store.aliases[normalizeTrackLookupKey(slug)] = slug
-		telemetryName := tracks.TrackName(trackID)
-		if telemetryName != "unknown" {
-			store.aliases[normalizeTrackLookupKey(telemetryName)] = slug
+		displayName := tracks.TrackName(trackID)
+		if displayName != "Unknown" {
+			store.aliases[normalizeTrackLookupKey(displayName)] = slug
+		}
+		storageKey := tracks.TrackStorageKey(trackID)
+		if storageKey != "unknown" {
+			store.aliases[normalizeTrackLookupKey(storageKey)] = slug
 		}
 	}
 	for alias, slug := range strategyTrackAliases {
@@ -219,6 +223,8 @@ func normalizeTrackLookupKey(name string) string {
 		"/", " ",
 		".", " ",
 		",", " ",
+		"(", " ",
+		")", " ",
 	)
 	normalized = replacer.Replace(normalized)
 	return strings.Join(strings.Fields(normalized), " ")

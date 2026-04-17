@@ -22,7 +22,7 @@ describe('filterRaceArchive', () => {
     {
       id: 'race-1',
       savedAtLocal: '2026-04-01 20:00:00',
-      trackName: 'spa',
+      trackName: 'Belgium',
       sessionType: 'Race',
       playerName: 'Alex',
       finalPosition: 3,
@@ -34,7 +34,7 @@ describe('filterRaceArchive', () => {
     {
       id: 'race-2',
       savedAtLocal: '2026-04-02 20:00:00',
-      trackName: 'monza',
+      trackName: 'Italy (Monza)',
       sessionType: 'Q1',
       playerName: 'Jordan',
       finalPosition: 11,
@@ -48,7 +48,7 @@ describe('filterRaceArchive', () => {
   it('filters by search and replay availability', () => {
     const filtered = filterRaceArchive(races, {
       ...DEFAULT_FILTERS,
-      search: 'spa alex',
+      search: 'belgium alex',
       replayOnly: true,
     });
 
@@ -98,7 +98,7 @@ describe('resolveRaceArchiveOpenMode', () => {
     expect(resolveRaceArchiveOpenMode({
       id: 'race-result',
       savedAtLocal: '2026-04-03 20:00:00',
-      trackName: 'spa',
+      trackName: 'Belgium',
       sessionType: 'Race',
       playerName: 'Alex',
       finalPosition: 2,
@@ -113,7 +113,7 @@ describe('resolveRaceArchiveOpenMode', () => {
     expect(resolveRaceArchiveOpenMode({
       id: 'race-summary',
       savedAtLocal: '2026-04-03 21:00:00',
-      trackName: 'spa',
+      trackName: 'Belgium',
       sessionType: 'Race',
       playerName: 'Alex',
       finalPosition: 2,
@@ -128,7 +128,7 @@ describe('resolveRaceArchiveOpenMode', () => {
     expect(resolveRaceArchiveOpenMode({
       id: 'race-replay',
       savedAtLocal: '2026-04-03 22:00:00',
-      trackName: 'spa',
+      trackName: 'Belgium',
       sessionType: 'Race',
       playerName: 'Alex',
       finalPosition: 2,
@@ -152,7 +152,7 @@ function createFrame(index: number): ReplayFrame {
         sessionType: 'Race',
         totalLaps: 10,
         trackId: 1,
-        trackName: 'spa',
+        trackName: 'Belgium',
         trackLength: 7000,
       },
       drivers: [

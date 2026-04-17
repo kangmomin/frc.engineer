@@ -36,54 +36,20 @@ type TrackStore struct {
 	dataDir string
 }
 
-// trackID → file name prefix mapping (F1 25 track IDs)
-// F1 25 track IDs
-var trackFileMap = map[int8]string{
-	0:  "melbourne",
-	2:  "shanghai",
-	3:  "sakhir",
-	4:  "catalunya",
-	5:  "monaco",
-	6:  "montreal",
-	7:  "silverstone",
-	8:  "hungaroring",
-	9:  "spa",
-	10: "monza",
-	11: "singapore",
-	12: "suzuka",
-	13: "abu_dhabi",
-	14: "texas",
-	16: "brazil",
-	17: "austria",
-	19: "mexico",
-	20: "baku",
-	23: "zandvoort",
-	24: "imola",
-	25: "jeddah",
-	26: "miami",
-	27: "losail",
-	28: "las_vegas",
-}
-
-// TrackName returns the name for a given trackID, or "unknown"
-func TrackName(trackID int8) string {
-	if name, ok := trackFileMap[trackID]; ok {
-		return name
-	}
-	return "unknown"
-}
-
 // NewTrackStore loads all CSV racing line files from dataDir
 func NewTrackStore(dataDir string) *TrackStore {
 	ts := &TrackStore{tracks: make(map[int8]*TrackMapData), dataDir: dataDir}
 
-	for id, name := range trackFileMap {
-		// Try both naming patterns
-		patterns := []string{
-			filepath.Join(dataDir, name+"_2020_racingline.txt"),
-			filepath.Join(dataDir, name+"_racingline.txt"),
-			filepath.Join(dataDir, name+recordedFileSuffix),
-			filepath.Join(dataDir, name+legacyRecordedFileSuffix),
+	for _, desc := range trackDescriptors {
+		id := desc.id
+		patterns := make([]string, 0, 8)
+		for _, key := range trackFileKeys(id) {
+			patterns = append(patterns,
+				filepath.Join(dataDir, key+"_2020_racingline.txt"),
+				filepath.Join(dataDir, key+"_racingline.txt"),
+				filepath.Join(dataDir, key+recordedFileSuffix),
+				filepath.Join(dataDir, key+legacyRecordedFileSuffix),
+			)
 		}
 
 		var loaded bool
@@ -93,12 +59,12 @@ func NewTrackStore(dataDir string) *TrackStore {
 				continue
 			}
 			ts.tracks[id] = data
-			slog.Info("loaded track", "id", id, "name", name, "points", len(data.Points))
+			slog.Info("loaded track", "id", id, "name", desc.displayName, "points", len(data.Points))
 			loaded = true
 			break
 		}
 		if !loaded {
-			slog.Warn("track file not found", "id", id, "name", name)
+			slog.Warn("track file not found", "id", id, "name", desc.displayName)
 		}
 	}
 
@@ -125,8 +91,8 @@ func (ts *TrackStore) LoadSingle(trackID int8, path string) {
 // ListLoaded returns info about all loaded tracks
 func (ts *TrackStore) ListLoaded() []TrackInfo {
 	var result []TrackInfo
-	for id, name := range trackFileMap {
-		info := TrackInfo{ID: int(id), Name: name, HasData: ts.tracks[id] != nil}
+	for _, desc := range trackDescriptors {
+		info := TrackInfo{ID: int(desc.id), Name: desc.displayName, HasData: ts.tracks[desc.id] != nil}
 		result = append(result, info)
 	}
 	return result
@@ -163,8 +129,7 @@ const (
 // - "losail_record"   -> "losail"
 // - "losail"          -> "losail"
 func NormalizeRecordedTrackName(name string) string {
-	normalized := strings.TrimSpace(name)
-	normalized = strings.Trim(normalized, "_")
+	normalized := normalizeTrackKey(name)
 	for {
 		changed := false
 		if strings.HasSuffix(normalized, "_recorded") {
@@ -190,27 +155,26 @@ func NormalizeRecordedTrackName(name string) string {
 }
 
 func recordedFileCandidates(name string) []string {
-	normalized := NormalizeRecordedTrackName(name)
-	if normalized == "unknown" {
-		return nil
+	var candidates []string
+	for _, key := range recordedFileKeysForName(name) {
+		candidates = append(candidates,
+			key+recordedFileSuffix,
+			key+legacyRecordedFileSuffix,
+		)
 	}
-	return []string{
-		normalized + recordedFileSuffix,
-		normalized + legacyRecordedFileSuffix,
-	}
+	return candidates
 }
 
 // FindRecordedFile returns the first matching recorded file for a track name.
 func (ts *TrackStore) FindRecordedFile(trackName string) (RecordedFileInfo, string, bool) {
-	normalized := NormalizeRecordedTrackName(trackName)
-	for _, candidate := range recordedFileCandidates(normalized) {
+	for _, candidate := range recordedFileCandidates(trackName) {
 		path := filepath.Join(ts.dataDir, candidate)
 		info, err := os.Stat(path)
 		if err != nil || info.IsDir() {
 			continue
 		}
 		return RecordedFileInfo{
-			Name:     normalized,
+			Name:     TrackDisplayName(trackName),
 			Filename: candidate,
 		}, path, true
 	}
@@ -266,7 +230,7 @@ func (ts *TrackStore) ListRecordedFiles() []RecordedFileInfo {
 			default:
 				name = strings.TrimSuffix(base, filepath.Ext(base))
 			}
-			name = NormalizeRecordedTrackName(name)
+			name = TrackDisplayName(name)
 
 			result = append(result, RecordedFileInfo{
 				Name:     name,
@@ -283,6 +247,30 @@ func (ts *TrackStore) ListRecordedFiles() []RecordedFileInfo {
 	})
 
 	return result
+}
+
+func normalizeTrackKey(name string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(name))
+	if trimmed == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range trimmed {
+		isAlphaNum := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if isAlphaNum {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+
+	return strings.Trim(b.String(), "_")
 }
 
 // loadCSV parses a racing line CSV file

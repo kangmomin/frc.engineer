@@ -102,7 +102,7 @@ const BASE_SESSION: SessionInfo = {
   sessionType: 'Race',
   totalLaps: TOTAL_LAPS,
   trackId: 12,
-  trackName: 'suzuka',
+  trackName: 'Japan',
   trackLength: TRACK_LENGTH,
   pitStopWindowIdealLap: 44,
   pitStopWindowLatestLap: 47,
@@ -220,9 +220,9 @@ export const mockConfig: AppConfig = {
 };
 
 export const mockTracks: TrackListItem[] = [
-  { name: 'monza', filename: 'monza_recorded.txt' },
-  { name: 'singapore', filename: 'singapore_recorded.txt' },
-  { name: 'austria', filename: 'austria_recorded.txt' },
+  { name: 'Italy (Monza)', filename: 'monza_recorded.txt' },
+  { name: 'Singapore', filename: 'singapore_recorded.txt' },
+  { name: 'Austria', filename: 'austria_recorded.txt' },
 ];
 
 export function buildMockMessages(tick: number): string[] {

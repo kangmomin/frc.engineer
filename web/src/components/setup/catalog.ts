@@ -197,26 +197,26 @@ const trackSources: TrackSource[] = [
   { name: "China", badge: "CN", round: 2, sprint: true, normalizedKey: "china", brendonTrack: "China" },
   { name: "Japan", badge: "JP", round: 3, normalizedKey: "japan", brendonTrack: "Japan" },
   { name: "Bahrain", badge: "BH", round: 4, normalizedKey: "bahrain", brendonTrack: "Bahrain" },
-  { name: "Jeddah", badge: "SA", round: 5, normalizedKey: "saudi-arabia", brendonTrack: "Jeddah" },
-  { name: "Miami", badge: "MI", round: 6, sprint: true, normalizedKey: "miami", brendonTrack: "Miami" },
-  { name: "Imola", badge: "IM", round: 7, normalizedKey: "imola", brendonTrack: "Imola" },
+  { name: "Saudi Arabia", badge: "SA", round: 5, normalizedKey: "saudi-arabia", brendonTrack: "Jeddah" },
+  { name: "United States (Miami)", badge: "US", round: 6, sprint: true, normalizedKey: "miami", brendonTrack: "Miami" },
+  { name: "Italy (Imola)", badge: "IT", round: 7, normalizedKey: "imola", brendonTrack: "Imola" },
   { name: "Monaco", badge: "MC", round: 8, normalizedKey: "monaco", brendonTrack: "Monaco" },
   { name: "Spain", badge: "ES", round: 9, normalizedKey: "spain", brendonTrack: "Spain" },
   { name: "Canada", badge: "CA", round: 10, normalizedKey: "canada", brendonTrack: "Canada" },
   { name: "Austria", badge: "AT", round: 11, normalizedKey: "austria", brendonTrack: "Austria + Reverse" },
-  { name: "Silverstone", badge: "UK", round: 12, normalizedKey: "britain", brendonTrack: "Silverstone + Reverse" },
-  { name: "Spa", badge: "BE", round: 13, sprint: true, normalizedKey: "belgium", brendonTrack: "Spa" },
+  { name: "United Kingdom", badge: "UK", round: 12, normalizedKey: "britain", brendonTrack: "Silverstone + Reverse" },
+  { name: "Belgium", badge: "BE", round: 13, sprint: true, normalizedKey: "belgium", brendonTrack: "Spa" },
   { name: "Hungary", badge: "HU", round: 14, normalizedKey: "hungary", brendonTrack: "Hungary" },
-  { name: "Zandvoort", badge: "NL", round: 15, normalizedKey: "netherlands", brendonTrack: "Zandvoort + Reverse" },
-  { name: "Monza", badge: "IT", round: 16, normalizedKey: "italy", brendonTrack: "Monza" },
-  { name: "Baku", badge: "AZ", round: 17, normalizedKey: "azerbaijan", brendonTrack: "Baku" },
+  { name: "Netherlands", badge: "NL", round: 15, normalizedKey: "netherlands", brendonTrack: "Zandvoort + Reverse" },
+  { name: "Italy (Monza)", badge: "IT", round: 16, normalizedKey: "italy", brendonTrack: "Monza" },
+  { name: "Azerbaijan", badge: "AZ", round: 17, normalizedKey: "azerbaijan", brendonTrack: "Baku" },
   { name: "Singapore", badge: "SG", round: 18, normalizedKey: "singapore", brendonTrack: "Singapore" },
-  { name: "COTA", badge: "US", round: 19, sprint: true, normalizedKey: "texas", brendonTrack: "COTA (Texas)" },
+  { name: "United States (Austin)", badge: "US", round: 19, sprint: true, normalizedKey: "texas", brendonTrack: "COTA (Texas)" },
   { name: "Mexico", badge: "MX", round: 20, normalizedKey: "mexico", brendonTrack: "Mexico" },
   { name: "Brazil", badge: "BR", round: 21, sprint: true, normalizedKey: "brazil", brendonTrack: "Brazil" },
-  { name: "Vegas", badge: "LV", round: 22, normalizedKey: "las-vegas", brendonTrack: "Vegas" },
+  { name: "United States (Las Vegas)", badge: "US", round: 22, normalizedKey: "las-vegas", brendonTrack: "Vegas" },
   { name: "Qatar", badge: "QA", round: 23, sprint: true, normalizedKey: "qatar", brendonTrack: "Qatar" },
-  { name: "Abu Dhabi", badge: "AE", round: 24, normalizedKey: "abu-dhabi", brendonTrack: "Abu Dhabi" },
+  { name: "United Arab Emirates", badge: "AE", round: 24, normalizedKey: "abu-dhabi", brendonTrack: "Abu Dhabi" },
 ];
 
 export const TRACKS: TrackOption[] = trackSources.map(({ name, badge, round, sprint }) => ({
@@ -320,26 +320,34 @@ export const SENDER_TRACK_MAP: Record<string, string> = {
   shanghai: "China",
   suzuka: "Japan",
   sakhir: "Bahrain",
-  jeddah: "Jeddah",
-  miami: "Miami",
-  imola: "Imola",
+  jeddah: "Saudi Arabia",
+  saudi_arabia: "Saudi Arabia",
+  miami: "United States (Miami)",
+  united_states_miami: "United States (Miami)",
+  imola: "Italy (Imola)",
+  italy_imola: "Italy (Imola)",
   monaco: "Monaco",
   catalunya: "Spain",
   montreal: "Canada",
   austria: "Austria",
-  silverstone: "Silverstone",
-  spa: "Spa",
+  silverstone: "United Kingdom",
+  britain: "United Kingdom",
+  spa: "Belgium",
   hungaroring: "Hungary",
-  zandvoort: "Zandvoort",
-  monza: "Monza",
-  baku: "Baku",
+  zandvoort: "Netherlands",
+  monza: "Italy (Monza)",
+  italy_monza: "Italy (Monza)",
+  baku: "Azerbaijan",
   singapore: "Singapore",
-  texas: "COTA",
+  texas: "United States (Austin)",
+  united_states_austin: "United States (Austin)",
   mexico: "Mexico",
   brazil: "Brazil",
-  las_vegas: "Vegas",
+  las_vegas: "United States (Las Vegas)",
+  united_states_las_vegas: "United States (Las Vegas)",
   losail: "Qatar",
-  abu_dhabi: "Abu Dhabi",
+  abu_dhabi: "United Arab Emirates",
+  united_arab_emirates: "United Arab Emirates",
 };
 
 const normalizedTracks = Object.fromEntries(
@@ -366,18 +374,127 @@ const setupCatalogs = Object.fromEntries(
   trackSources.map((track) => [track.name, buildTrackCatalog(track)]),
 ) as Record<string, TrackCatalog>;
 
-export function getTrackCatalog(trackName: string | null | undefined): TrackCatalog | null {
+const trackAliasEntries: Record<string, string> = {
+  australia: "Australia",
+  melbourne: "Australia",
+  albert_park: "Australia",
+  china: "China",
+  shanghai: "China",
+  japan: "Japan",
+  suzuka: "Japan",
+  bahrain: "Bahrain",
+  sakhir: "Bahrain",
+  bahrain_international: "Bahrain",
+  bahrain_international_circuit: "Bahrain",
+  saudi_arabia: "Saudi Arabia",
+  "saudi-arabia": "Saudi Arabia",
+  jeddah: "Saudi Arabia",
+  jeddah_corniche: "Saudi Arabia",
+  jeddah_corniche_circuit: "Saudi Arabia",
+  miami: "United States (Miami)",
+  united_states_miami: "United States (Miami)",
+  miami_international_autodrome: "United States (Miami)",
+  imola: "Italy (Imola)",
+  italy_imola: "Italy (Imola)",
+  emilia_romagna: "Italy (Imola)",
+  autodromo_enzo_e_dino_ferrari: "Italy (Imola)",
+  monaco: "Monaco",
+  monte_carlo: "Monaco",
+  spain: "Spain",
+  catalunya: "Spain",
+  barcelona: "Spain",
+  canada: "Canada",
+  montreal: "Canada",
+  circuit_gilles_villeneuve: "Canada",
+  austria: "Austria",
+  red_bull_ring: "Austria",
+  britain: "United Kingdom",
+  great_britain: "United Kingdom",
+  united_kingdom: "United Kingdom",
+  silverstone: "United Kingdom",
+  silverstone_circuit: "United Kingdom",
+  belgium: "Belgium",
+  spa: "Belgium",
+  spa_francorchamps: "Belgium",
+  spa_francorchamps_circuit: "Belgium",
+  hungary: "Hungary",
+  hungaroring: "Hungary",
+  netherlands: "Netherlands",
+  zandvoort: "Netherlands",
+  italy_monza: "Italy (Monza)",
+  monza: "Italy (Monza)",
+  autodromo_nazionale_monza: "Italy (Monza)",
+  azerbaijan: "Azerbaijan",
+  baku: "Azerbaijan",
+  baku_city_circuit: "Azerbaijan",
+  singapore: "Singapore",
+  marina_bay: "Singapore",
+  marina_bay_street_circuit: "Singapore",
+  texas: "United States (Austin)",
+  cota: "United States (Austin)",
+  circuit_of_the_americas: "United States (Austin)",
+  united_states_austin: "United States (Austin)",
+  mexico: "Mexico",
+  autodromo_hermanos_rodriguez: "Mexico",
+  brazil: "Brazil",
+  interlagos: "Brazil",
+  las_vegas: "United States (Las Vegas)",
+  "las-vegas": "United States (Las Vegas)",
+  vegas: "United States (Las Vegas)",
+  las_vegas_strip_circuit: "United States (Las Vegas)",
+  united_states_las_vegas: "United States (Las Vegas)",
+  qatar: "Qatar",
+  losail: "Qatar",
+  lusail: "Qatar",
+  lusail_international_circuit: "Qatar",
+  uae: "United Arab Emirates",
+  united_arab_emirates: "United Arab Emirates",
+  abu_dhabi: "United Arab Emirates",
+  "abu-dhabi": "United Arab Emirates",
+  yas_marina: "United Arab Emirates",
+  yas_marina_circuit: "United Arab Emirates",
+};
+
+function normalizeTrackLookupKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[_\-\/.,()]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+const trackSourceByLookupKey = new Map<string, TrackSource>(
+  trackSources.flatMap((track) => {
+    const entries: Array<[string, TrackSource]> = [
+      [normalizeTrackLookupKey(track.name), track],
+      [normalizeTrackLookupKey(track.normalizedKey), track],
+      [normalizeTrackLookupKey(track.brendonTrack), track],
+    ];
+    for (const [alias, name] of Object.entries(trackAliasEntries)) {
+      if (name !== track.name) {
+        continue;
+      }
+      entries.push([normalizeTrackLookupKey(alias), track]);
+    }
+    return entries;
+  }),
+);
+
+function resolveTrackSource(trackName: string | null | undefined): TrackSource | null {
   if (!trackName) {
     return null;
   }
-  return setupCatalogs[trackName] ?? null;
+  return trackSourceByLookupKey.get(normalizeTrackLookupKey(trackName)) ?? null;
+}
+
+export function getTrackCatalog(trackName: string | null | undefined): TrackCatalog | null {
+  const source = resolveTrackSource(trackName);
+  return source ? setupCatalogs[source.name] ?? null : null;
 }
 
 export function getTrackOption(trackName: string | null | undefined): TrackOption | null {
-  if (!trackName) {
-    return null;
-  }
-  return TRACKS.find((track) => track.name === trackName) ?? null;
+  const source = resolveTrackSource(trackName);
+  return source ? TRACKS.find((track) => track.name === source.name) ?? null : null;
 }
 
 export function getSetupTags(setup: SetupValues): SetupTag[] {

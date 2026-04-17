@@ -16,6 +16,8 @@ func TestNormalizeRecordedTrackName(t *testing.T) {
 		{in: "losail_recorded", want: "losail"},
 		{in: "losail_record_recorded", want: "losail"},
 		{in: "__losail_record__", want: "losail"},
+		{in: "Italy (Monza)", want: "italy_monza"},
+		{in: "United Arab Emirates", want: "united_arab_emirates"},
 		{in: "_record", want: "unknown"},
 		{in: "", want: "unknown"},
 	}
@@ -46,10 +48,10 @@ func TestListRecordedFilesSupportsLegacySuffix(t *testing.T) {
 		found[f.Filename] = f.Name
 	}
 
-	if got := found["losail_recorded.txt"]; got != "losail" {
+	if got := found["losail_recorded.txt"]; got != "Qatar" {
 		t.Fatalf("losail name mismatch: got %q", got)
 	}
-	if got := found["monza_record.txt"]; got != "monza" {
+	if got := found["monza_record.txt"]; got != "Italy (Monza)" {
 		t.Fatalf("monza name mismatch: got %q", got)
 	}
 }
@@ -60,22 +62,25 @@ func TestFindRecordedFileAndLoadPreview(t *testing.T) {
 
 	store := &TrackStore{dataDir: dir}
 
-	info, path, ok := store.FindRecordedFile("monza")
+	info, path, ok := store.FindRecordedFile("Italy (Monza)")
 	if !ok {
 		t.Fatal("expected recorded file to be found")
 	}
 	if info.Filename != "monza_recorded.txt" {
 		t.Fatalf("unexpected filename: %s", info.Filename)
 	}
+	if info.Name != "Italy (Monza)" {
+		t.Fatalf("unexpected display name: %s", info.Name)
+	}
 	if path != filepath.Join(dir, "monza_recorded.txt") {
 		t.Fatalf("unexpected path: %s", path)
 	}
 
-	preview, err := store.LoadRecordedPreview("monza_recorded")
+	preview, err := store.LoadRecordedPreview("Italy (Monza)")
 	if err != nil {
 		t.Fatalf("LoadRecordedPreview failed: %v", err)
 	}
-	if preview.Name != "monza" {
+	if preview.Name != "Italy (Monza)" {
 		t.Fatalf("unexpected preview name: %s", preview.Name)
 	}
 	if preview.TrackMap == nil || len(preview.TrackMap.Points) != 1 {
