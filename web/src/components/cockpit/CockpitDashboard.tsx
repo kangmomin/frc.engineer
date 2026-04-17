@@ -13,6 +13,7 @@ import type {
   StrategyRacePlan,
   TireWearDisplayMode,
   WeatherForecast,
+  WSRequest,
 } from '../../types/telemetry';
 import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
@@ -228,6 +229,10 @@ interface CockpitDashboardProps {
   onOpenSettings: () => void;
   showSettingsButton: boolean;
   enableStrategyGuide?: boolean;
+  requestP2P?: <T = unknown>(
+    request: WSRequest,
+    options?: { signal?: AbortSignal; timeoutMs?: number },
+  ) => Promise<T>;
   remoteAction?: {
     label: string;
     onClick: () => void;
@@ -242,6 +247,7 @@ export function CockpitDashboard({
   onOpenSettings,
   showSettingsButton,
   enableStrategyGuide = true,
+  requestP2P,
   remoteAction,
   onSwitchToQualifying,
   onSwitchToRaces,
@@ -540,46 +546,66 @@ export function CockpitDashboard({
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
     setStrategyGuideLoading(true);
 
-    const params = new URLSearchParams({ trackId: String(sessionTrackId) });
-    if (sessionTrackName.trim()) {
-      params.set('trackName', sessionTrackName);
-    }
+    const loadStrategyGuide = async () => {
+      if (requestP2P) {
+        return requestP2P<StrategyGuideResponse>(
+          {
+            type: 'getStrategyGuide',
+            data: {
+              trackId: sessionTrackId,
+              trackName: sessionTrackName,
+            },
+          },
+          {
+            signal: controller.signal,
+            timeoutMs: 15_000,
+          },
+        );
+      }
 
-    fetch(getApiUrl(`/api/strategy/guide?${params.toString()}`))
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`strategy guide request failed: ${response.status}`);
-        }
-        const ct = response.headers.get('content-type') ?? '';
-        if (!ct.includes('application/json')) {
-          // Not a JSON endpoint (e.g. SPA fallback on remote deployment)
-          throw new Error('not json');
-        }
-        return response.json() as Promise<StrategyGuideResponse>;
-      })
+      const params = new URLSearchParams({ trackId: String(sessionTrackId) });
+      if (sessionTrackName.trim()) {
+        params.set('trackName', sessionTrackName);
+      }
+
+      const response = await fetch(getApiUrl(`/api/strategy/guide?${params.toString()}`), {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`strategy guide request failed: ${response.status}`);
+      }
+      const ct = response.headers.get('content-type') ?? '';
+      if (!ct.includes('application/json')) {
+        // Not a JSON endpoint (e.g. SPA fallback on remote deployment)
+        throw new Error('not json');
+      }
+      return response.json() as Promise<StrategyGuideResponse>;
+    };
+
+    loadStrategyGuide()
       .then((data) => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setStrategyGuide(data);
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setStrategyGuide(null);
         }
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setStrategyGuideLoading(false);
         }
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [enableStrategyGuide, featurePermissions.viewAdvancedStrategy, sessionTrackId, sessionTrackName]);
+  }, [enableStrategyGuide, featurePermissions.viewAdvancedStrategy, requestP2P, sessionTrackId, sessionTrackName]);
 
   // Seed optimal temp from strategy guide peak_temps_c when available and no manual override in query
   useEffect(() => {

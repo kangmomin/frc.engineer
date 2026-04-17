@@ -33,6 +33,10 @@
       {
         "from": "../../build/artifacts/frc-pitwall-sender.exe",
         "to": "sender/frc-pitwall-sender.exe"
+      },
+      {
+        "from": "../../data/strategy/normalized",
+        "to": "sender/data/strategy/normalized"
       }
     ],
     "win": {

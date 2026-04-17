@@ -304,7 +304,7 @@ export function Layout() {
         <CockpitDashboard
           onOpenSettings={() => {}}
           showSettingsButton={false}
-          enableStrategyGuide={false}
+          requestP2P={request}
           remoteAction={remoteAction}
           onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
           onSwitchToRaces={() => switchView('races')}

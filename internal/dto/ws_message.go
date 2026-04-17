@@ -16,6 +16,8 @@ const (
 	MessageTypeRaceReplayMeta      = "raceReplayMeta"
 	MessageTypeRaceReplayChunk     = "raceReplayChunk"
 	MessageTypeRaceReplayDone      = "raceReplayDone"
+	MessageTypeGetStrategyGuide    = "getStrategyGuide"
+	MessageTypeStrategyGuide       = "strategyGuide"
 	MessageTypeClientDebugLog      = "clientDebugLog"
 	MessageTypePitwallState        = "pitwallState"
 	MessageTypeRaceControl         = "raceControl"

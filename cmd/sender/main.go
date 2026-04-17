@@ -26,6 +26,7 @@ import (
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rtc"
 	"frc.engineer/internal/signaling"
+	"frc.engineer/internal/strategydata"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
 	"frc.engineer/internal/udp"
@@ -86,6 +87,52 @@ func resolveSenderStoragePath(parts ...string) string {
 	joined = append(joined, root)
 	joined = append(joined, parts...)
 	return filepath.Join(joined...)
+}
+
+func resolveSenderAssetPaths(parts ...string) []string {
+	paths := make([]string, 0, 4)
+
+	paths = append(paths, resolveSenderStoragePath(parts...))
+	paths = append(paths, filepath.Join(parts...))
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return paths
+	}
+
+	exeDir := filepath.Dir(exePath)
+	paths = append(paths,
+		filepath.Join(append([]string{exeDir}, parts...)...),
+		filepath.Join(append([]string{exeDir, "..", ".."}, parts...)...),
+	)
+
+	return paths
+}
+
+func loadSenderStrategyStore() (*strategydata.Store, string, error) {
+	var lastErr error
+	seen := make(map[string]struct{})
+	for _, candidate := range resolveSenderAssetPaths("data", "strategy", "normalized") {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		candidate = filepath.Clean(candidate)
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+
+		store, err := strategydata.LoadStore(candidate)
+		if err == nil {
+			return store, candidate, nil
+		}
+		lastErr = err
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("strategy data path not found")
+	}
+	return nil, "", lastErr
 }
 
 func senderConfigFilePath() string {
@@ -309,6 +356,12 @@ func main() {
 	// Load track data (for delta calculations)
 	trackDataDir := resolveSenderStoragePath("data", "tracks")
 	trackStore := tracks.NewTrackStore(trackDataDir)
+	strategyStore, strategyStorePath, err := loadSenderStrategyStore()
+	if err != nil {
+		logger.Warn("failed to load strategy guide data", "error", err)
+	} else {
+		logger.Info("strategy guide data loaded", "path", strategyStorePath, "tracks", strategyStore.TrackCount())
+	}
 
 	// Create peer manager
 	peerManager := rtc.NewPeerManager(signalingURL, logger)
@@ -756,6 +809,51 @@ func main() {
 			logger.Info("received p2p race replay request", "peerId", peerID, "requestId", req.RequestID, "raceId", body.ID)
 			go streamRaceReplay(peerID, req.RequestID, body.ID)
 			return nil
+		case dto.MessageTypeGetStrategyGuide:
+			var body struct {
+				TrackID   int8   `json:"trackId"`
+				TrackName string `json:"trackName"`
+			}
+			if len(req.Data) > 0 && json.Unmarshal(req.Data, &body) != nil {
+				return encodeP2PResponse(dto.WSResponse{
+					Type:      dto.MessageTypeStrategyGuide,
+					RequestID: req.RequestID,
+					Error:     "invalid strategy guide request",
+				})
+			}
+			if strategyStore == nil {
+				return encodeP2PResponse(dto.WSResponse{
+					Type:      dto.MessageTypeStrategyGuide,
+					RequestID: req.RequestID,
+					Error:     "strategy guide unavailable",
+				})
+			}
+			trackGuide := strategyStore.TrackBySession(body.TrackID, body.TrackName)
+			if trackGuide == nil {
+				return encodeP2PResponse(dto.WSResponse{
+					Type:      dto.MessageTypeStrategyGuide,
+					RequestID: req.RequestID,
+					Error:     "strategy guide not found",
+				})
+			}
+			logger.Info("received p2p strategy guide request",
+				"peerId", peerID,
+				"requestId", req.RequestID,
+				"trackId", body.TrackID,
+				"trackName", strings.TrimSpace(body.TrackName),
+				"track", trackGuide.Track,
+			)
+			return encodeP2PResponse(dto.WSResponse{
+				Type:      dto.MessageTypeStrategyGuide,
+				RequestID: req.RequestID,
+				Data: struct {
+					Track     *strategydata.NormalizedTrackFile       `json:"track"`
+					TyreTemps *strategydata.NormalizedTyreTempDataset `json:"tyreTemps"`
+				}{
+					Track:     trackGuide,
+					TyreTemps: strategyStore.TyreTemps(),
+				},
+			})
 		case dto.MessageTypeClientDebugLog:
 			var payload clientDebugPayload
 			if len(req.Data) > 0 && json.Unmarshal(req.Data, &payload) != nil {
