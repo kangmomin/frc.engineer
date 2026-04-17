@@ -1,7 +1,18 @@
 import type { DriverInfo } from '../../types/telemetry';
 
+export function getQualifyingBestLapTime(driver: DriverInfo | null | undefined): number {
+  if (!driver) return 0;
+  if (Number.isFinite(driver.bestLapTime) && driver.bestLapTime > 0) {
+    return driver.bestLapTime;
+  }
+  if (Number.isFinite(driver.lastLapTime) && driver.lastLapTime > 0) {
+    return driver.lastLapTime;
+  }
+  return 0;
+}
+
 function hasRecordedBestLap(driver: DriverInfo): boolean {
-  return Number.isFinite(driver.bestLapTime) && driver.bestLapTime > 0;
+  return getQualifyingBestLapTime(driver) > 0;
 }
 
 function compareDriversByBestLap(a: DriverInfo, b: DriverInfo): number {
@@ -11,7 +22,7 @@ function compareDriversByBestLap(a: DriverInfo, b: DriverInfo): number {
   if (!hasRecordedBestLap(a)) return 1;
   if (!hasRecordedBestLap(b)) return -1;
 
-  const lapDiff = a.bestLapTime - b.bestLapTime;
+  const lapDiff = getQualifyingBestLapTime(a) - getQualifyingBestLapTime(b);
   if (lapDiff !== 0) return lapDiff;
   return a.position - b.position;
 }

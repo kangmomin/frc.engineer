@@ -100,4 +100,14 @@ describe('sortQualifyingDrivers', () => {
 
     expect(sorted.map((driver) => driver.position)).toEqual([2, 18, 5]);
   });
+
+  it('uses last lap as a temporary best when session history best is missing', () => {
+    const sorted = sortQualifyingDrivers([
+      makeDriver({ index: 0, position: 8, bestLapTime: 0, lastLapTime: 81_500 }),
+      makeDriver({ index: 1, position: 5, bestLapTime: 82_100, lastLapTime: 82_100 }),
+      makeDriver({ index: 2, position: 2, bestLapTime: 80_900, lastLapTime: 81_200 }),
+    ], 'Q1');
+
+    expect(sorted.map((driver) => driver.position)).toEqual([2, 8, 5]);
+  });
 });

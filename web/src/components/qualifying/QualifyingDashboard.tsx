@@ -9,7 +9,7 @@ import { useTelemetryStore } from '../../store/telemetryStore';
 import type { DriverInfo, SessionInfo } from '../../types/telemetry';
 import { getConnectionBadgeLabel } from '../../utils/connectionStatus';
 import { formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
-import { sortQualifyingDrivers } from './leaderboardOrder';
+import { getQualifyingBestLapTime, sortQualifyingDrivers } from './leaderboardOrder';
 import {
   evaluateDriverTryState,
   type DriverTryState,
@@ -194,7 +194,8 @@ export function QualifyingDashboard({
   }, [allDrivers, session?.sessionType]);
 
   const player = allDrivers.find((d) => d.index === playerIndex) ?? null;
-  const leaderBest = sortedDrivers.length > 0 && sortedDrivers[0].bestLapTime > 0 ? sortedDrivers[0].bestLapTime : 0;
+  const playerBestLap = getQualifyingBestLapTime(player);
+  const leaderBest = sortedDrivers.length > 0 ? getQualifyingBestLapTime(sortedDrivers[0]) : 0;
 
   // Sector accumulator
   const accMap = useSectorAccumulator(allDrivers, session);
@@ -291,8 +292,12 @@ export function QualifyingDashboard({
           <strong>{formatTimeLeft(session?.sessionTimeLeft)}</strong>
         </div>
         <div className={`${styles.stripCard} ${styles.tertiary}`}>
-          <span className={styles.stripLabel}>Best</span>
-          <strong>{player ? formatLapTime(player.bestLapTime) : '--:--.---'}</strong>
+          <span className={styles.stripLabel}>Best Lap</span>
+          <strong>{formatLapTime(playerBestLap)}</strong>
+        </div>
+        <div className={`${styles.stripCard} ${styles.primary}`}>
+          <span className={styles.stripLabel}>Last Lap</span>
+          <strong>{formatLapTime(player?.lastLapTime ?? 0)}</strong>
         </div>
         <div className={`${styles.stripCard} ${styles.secondary}`}>
           <span className={styles.stripLabel}>Connection</span>
@@ -308,6 +313,7 @@ export function QualifyingDashboard({
               <th>Pos</th>
               <th>Driver</th>
               <th>Best Lap</th>
+              <th>Last Lap</th>
               <th>S1</th>
               <th>S2</th>
               <th>S3</th>
@@ -322,6 +328,7 @@ export function QualifyingDashboard({
             {sortedDrivers.map((d, i) => {
               const acc = accMap.get(d.index);
               const driverTryState = driverTryStateMap.get(d.index);
+              const displayBestLap = getQualifyingBestLapTime(d);
               const isPlayer = d.index === playerIndex;
               return (
                 <tr key={d.index} className={isPlayer ? styles.playerRow : undefined}>
@@ -333,8 +340,11 @@ export function QualifyingDashboard({
                       {d.aiControlled && <span className={styles.driverBadge}>AI</span>}
                     </div>
                   </td>
-                  <td className={d.bestLapTime === leaderBest && leaderBest > 0 ? styles.fastestCell : undefined}>
-                    {d.bestLapTime > 0 ? formatLapTime(d.bestLapTime) : '--:--.---'}
+                  <td className={displayBestLap === leaderBest && leaderBest > 0 ? styles.fastestCell : undefined}>
+                    {formatLapTime(displayBestLap)}
+                  </td>
+                  <td>
+                    {formatLapTime(d.lastLapTime)}
                   </td>
                   <td className={`${styles.sectorCell} ${acc?.bestS1 === overallBestSectors.s1 && acc?.bestS1 > 0 ? styles.sectorBest : ''}`}>
                     {formatSectorTime(acc?.bestS1 ?? 0)}
@@ -346,7 +356,7 @@ export function QualifyingDashboard({
                     {formatSectorTime(acc?.bestS3 ?? 0)}
                   </td>
                   <td className={styles.gapCell}>
-                    {formatGapToLeader(d.bestLapTime, leaderBest)}
+                    {formatGapToLeader(displayBestLap, leaderBest)}
                   </td>
                   <td>
                     <span className={styles.tyreBadge}>
