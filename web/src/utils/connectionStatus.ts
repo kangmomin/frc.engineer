@@ -1,7 +1,7 @@
 import type { ConnectionState } from '../types/telemetry';
 
 export function isConnectionPending(state: ConnectionState): boolean {
-  return state === 'connecting' || state === 'waiting-offer' || state === 'negotiating';
+  return state === 'connecting' || state === 'waiting-offer' || state === 'negotiating' || state === 'reconnecting';
 }
 
 export function isConnectionFailure(state: ConnectionState): boolean {
@@ -16,6 +16,8 @@ export function getConnectionLabel(state: ConnectionState): string {
       return 'Waiting for sender offer';
     case 'negotiating':
       return 'Negotiating telemetry link';
+    case 'reconnecting':
+      return 'Reconnecting';
     case 'connected':
       return 'Live feed connected';
     case 'timeout':
@@ -37,6 +39,8 @@ export function getConnectionDetail(state: ConnectionState): string {
       return 'Room joined. Waiting for the sender to publish a WebRTC offer.';
     case 'negotiating':
       return 'Offer received. Exchanging ICE candidates and opening the telemetry data channel.';
+    case 'reconnecting':
+      return 'Connection dropped. Attempting to reconnect automatically...';
     case 'connected':
       return 'Telemetry is streaming normally.';
     case 'timeout':
@@ -58,6 +62,8 @@ export function getConnectionBadgeLabel(state: ConnectionState): string {
       return 'WAIT OFFER';
     case 'negotiating':
       return 'NEGOTIATING';
+    case 'reconnecting':
+      return 'RECONNECTING';
     case 'connected':
       return 'LIVE';
     case 'timeout':

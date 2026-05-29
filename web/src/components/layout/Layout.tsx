@@ -138,6 +138,7 @@ export function Layout() {
     sendView,
     request,
     stream,
+    forceReconnect,
   } = useWebRTCDataChannel(webrtcOpts);
 
   const raceArchiveDataSource = useMemo<RaceArchiveDataSource>(() => ({
@@ -222,7 +223,10 @@ export function Layout() {
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
+    // Bump the hook's nonce so reconnecting to the SAME room after a terminal
+    // failure (auto-retries exhausted) still re-runs the connection effect.
+    forceReconnect();
+  }, [clearNotifications, clearRaceResult, forceReconnect, setConnectionState, setFeaturePermissions, setPitwallState]);
 
   const openRoomPicker = useCallback(() => {
     setRtcOptions(null);
@@ -269,9 +273,10 @@ export function Layout() {
   }
 
   if (
-    rtcConnectionState === 'failed' ||
-    isConnectionFailure(connectionState) ||
-    (connectAttempted && connectionState === 'disconnected' && rtcConnectionState !== 'new')
+    connectionState !== 'reconnecting' &&
+    (rtcConnectionState === 'failed' ||
+      isConnectionFailure(connectionState) ||
+      (connectAttempted && connectionState === 'disconnected' && rtcConnectionState !== 'new'))
   ) {
     return (
       <RemoteConnect

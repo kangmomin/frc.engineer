@@ -39,6 +39,7 @@ export type ConnectionState =
   | 'connecting'
   | 'waiting-offer'
   | 'negotiating'
+  | 'reconnecting'
   | 'connected'
   | 'disconnected'
   | 'timeout'

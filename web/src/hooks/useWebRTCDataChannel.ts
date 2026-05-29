@@ -13,6 +13,7 @@ interface UseWebRTCOptions {
 
 interface UseWebRTCReturn {
   disconnect: () => void;
+  forceReconnect: () => void;
   sendView: (view: string) => void;
   request: <T = unknown>(request: WSRequest, options?: { signal?: AbortSignal; timeoutMs?: number }) => Promise<T>;
   stream: (request: WSRequest, options: {
@@ -33,6 +34,11 @@ const SIGNALING_RESPONSE_TIMEOUT_MS = 6_000;
 const OFFER_TIMEOUT_MS = 8_000;
 const PEER_CONNECTION_TIMEOUT_MS = 12_000;
 const DATA_REQUEST_TIMEOUT_MS = 30_000;
+
+// Auto-reconnect: bounded exponential backoff (1s, 2s, 4s, 8s, 16s) before
+// falling back to the manual reconnect screen. Caps retry storms across peers.
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY_MS = 1_000;
 
 type PendingRequest =
   | {
@@ -189,6 +195,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
   const [rtcState, setRtcState] = useState<RTCPeerConnectionState | 'new'>('new');
   const [lastError, setLastError] = useState('');
+  const [reconnectNonce, setReconnectNonce] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -196,6 +203,9 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const isMountedRef = useRef(true);
   const stageTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const terminalFailureRef = useRef<ConnectionState | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const lastTargetRef = useRef('');
   const pendingRequestsRef = useRef(new Map<string, PendingRequest>());
 
   // Refs for routeMessage batching
@@ -266,6 +276,13 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     }
   }, []);
 
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
+
   const clearPendingRequest = useCallback((requestId: string) => {
     const pending = pendingRequestsRef.current.get(requestId);
     if (!pending) {
@@ -318,16 +335,30 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
   const cleanup = useCallback(() => {
     clearStageTimeout();
+    clearReconnectTimer();
     rejectAllPendingRequests('P2P connection closed.');
+    // Detach handlers before close() so the resulting onclose/onstatechange
+    // events do not re-trigger scheduleReconnect during an intentional teardown.
     if (dcRef.current) {
+      dcRef.current.onopen = null;
+      dcRef.current.onclose = null;
+      dcRef.current.onmessage = null;
       dcRef.current.close();
       dcRef.current = null;
     }
     if (pcRef.current) {
+      pcRef.current.onconnectionstatechange = null;
+      pcRef.current.oniceconnectionstatechange = null;
+      pcRef.current.onicecandidate = null;
+      pcRef.current.ondatachannel = null;
       pcRef.current.close();
       pcRef.current = null;
     }
     if (wsRef.current) {
+      wsRef.current.onopen = null;
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onmessage = null;
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -339,7 +370,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       cancelAnimationFrame(positionsRafRef.current);
       positionsRafRef.current = 0;
     }
-  }, [clearStageTimeout, rejectAllPendingRequests]);
+  }, [clearStageTimeout, clearReconnectTimer, rejectAllPendingRequests]);
 
   const failConnection = useCallback((
     state: Extract<ConnectionState, 'timeout' | 'ice-failed' | 'error'>,
@@ -355,22 +386,75 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     cleanup();
   }, [cleanup, clearStageTimeout, setConnectionState, setFeaturePermissions]);
 
+  // scheduleReconnect drives bounded auto-reconnect. Each drop bumps the attempt
+  // counter and schedules a backoff timer; on fire it increments reconnectNonce,
+  // which re-runs the main connection effect (a clean full reconnect: ws + PC).
+  // After MAX attempts it delegates to failConnection (the manual fallback screen).
+  const scheduleReconnect = useCallback((message: string) => {
+    if (!isMountedRef.current) return;
+    if (terminalFailureRef.current) return;
+    // Already a reconnect pending — don't stack timers.
+    if (reconnectTimeoutRef.current) return;
+
+    const attempt = reconnectAttemptsRef.current;
+    if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+      emitP2PDebug('error', 'reconnect', 'Giving up after reaching the max reconnect attempts.', {
+        attempts: attempt,
+        message,
+      }, false);
+      failConnection('error', `${message} Reconnection failed after ${MAX_RECONNECT_ATTEMPTS} attempts.`);
+      return;
+    }
+
+    const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt); // 1s, 2s, 4s, 8s, 16s
+    reconnectAttemptsRef.current = attempt + 1;
+
+    emitP2PDebug('warn', 'reconnect', 'Scheduling automatic reconnect.', {
+      attempt: attempt + 1,
+      maxAttempts: MAX_RECONNECT_ATTEMPTS,
+      delayMs: delay,
+      message,
+    }, false);
+
+    clearStageTimeout();
+    setLastError('');
+    setConnectionState('reconnecting');
+    setRtcState('connecting');
+
+    reconnectTimeoutRef.current = window.setTimeout(() => {
+      reconnectTimeoutRef.current = null;
+      if (!isMountedRef.current || terminalFailureRef.current) return;
+      setReconnectNonce((n) => n + 1);
+    }, delay);
+  }, [emitP2PDebug, failConnection, clearStageTimeout, setConnectionState]);
+
   const armStageTimeout = useCallback((message: string, ms: number) => {
     clearStageTimeout();
     stageTimeoutRef.current = window.setTimeout(() => {
-      failConnection('timeout', message);
+      scheduleReconnect(message);
     }, ms);
-  }, [clearStageTimeout, failConnection]);
+  }, [clearStageTimeout, scheduleReconnect]);
 
   const disconnect = useCallback(() => {
     terminalFailureRef.current = null;
+    reconnectAttemptsRef.current = 0;
     clearStageTimeout();
+    clearReconnectTimer();
     setLastError('');
     cleanup();
     setConnectionState('disconnected');
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setRtcState('new');
-  }, [cleanup, clearStageTimeout, setConnectionState, setFeaturePermissions]);
+  }, [cleanup, clearStageTimeout, clearReconnectTimer, setConnectionState, setFeaturePermissions]);
+
+  // forceReconnect clears any terminal failure and bumps the nonce so the main
+  // effect re-runs even when the connection target is unchanged (e.g. the user
+  // hits Connect on the same room after auto-retries were exhausted).
+  const forceReconnect = useCallback(() => {
+    terminalFailureRef.current = null;
+    reconnectAttemptsRef.current = 0;
+    setReconnectNonce((n) => n + 1);
+  }, []);
 
   const sendView = useCallback((view: string) => {
     if (dcRef.current?.readyState === 'open') {
@@ -519,6 +603,14 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     const { signalingUrl, roomId, roomCode, password } = options;
     if (!signalingUrl || (!roomId && !roomCode)) return;
 
+    // Reset the reconnect attempt counter only when the connection target itself
+    // changes (new room/url) — not on reconnect re-runs, which must keep backing off.
+    const connectionTarget = `${signalingUrl}|${roomId ?? ''}|${roomCode ?? ''}`;
+    if (lastTargetRef.current !== connectionTarget) {
+      lastTargetRef.current = connectionTarget;
+      reconnectAttemptsRef.current = 0;
+    }
+
     isMountedRef.current = true;
     terminalFailureRef.current = null;
 
@@ -573,15 +665,31 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         if (!isMountedRef.current) return;
         if (terminalFailureRef.current) return;
         const state = pc.connectionState;
-        setRtcState(state);
 
         if (state === 'connected') {
+          setRtcState('connected');
           clearStageTimeout();
+          clearReconnectTimer();
+          // A clean connected state resets the backoff counter by design: each fresh
+          // drop earns a full retry budget (rapid connect/drop ping-pong is rare).
+          reconnectAttemptsRef.current = 0;
           setConnectionState('connected');
           setLastError('');
-        } else if (state === 'disconnected' || state === 'closed') {
-          setConnectionState('disconnected');
+        } else if (state === 'failed' || state === 'closed') {
+          // Leave rtcState to scheduleReconnect (it sets 'connecting') so Layout's
+          // `rtcConnectionState === 'failed'` gate isn't tripped mid-retry.
           setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+          scheduleReconnect('Peer connection lost.');
+        } else if (state === 'disconnected') {
+          // Transient; WebRTC may self-heal. Surface as reconnecting, but arm a
+          // watchdog: if it neither recovers to 'connected' nor degrades to 'failed'
+          // within the window, force a reconnect so the UI can't stall here forever.
+          setRtcState('disconnected');
+          setConnectionState('reconnecting');
+          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+          armStageTimeout('Peer connection stalled in disconnected state.', PEER_CONNECTION_TIMEOUT_MS);
+        } else {
+          setRtcState(state);
         }
       };
 
@@ -589,7 +697,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         if (!isMountedRef.current) return;
         if (terminalFailureRef.current) return;
         if (pc.iceConnectionState === 'failed') {
-          failConnection('ice-failed', 'ICE negotiation failed. A TURN relay is likely required on one side of this connection.');
+          scheduleReconnect('ICE negotiation failed. A TURN relay may be required for this network path.');
         }
       };
 
@@ -691,9 +799,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
               label: dc.label,
               pendingRequests: pendingRequestsRef.current.size,
             }, false);
-            setConnectionState('disconnected');
             setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-            setRtcState('disconnected');
+            scheduleReconnect('Data channel closed.');
           };
         }
       };
@@ -713,7 +820,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           emitP2PDebug('error', 'connection', 'WebRTC offer/answer negotiation failed.', {
             error: err instanceof Error ? err.message : String(err),
           }, false);
-          failConnection('error', 'WebRTC offer/answer negotiation failed.');
+          scheduleReconnect('WebRTC offer/answer negotiation failed.');
         });
     };
 
@@ -735,16 +842,20 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       if (!isMountedRef.current) return;
       if (terminalFailureRef.current) return;
       emitP2PDebug('warn', 'signaling', 'Signaling connection closed.', undefined, false);
-      setConnectionState('disconnected');
-      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-      setRtcState('disconnected');
+      // Signaling is only needed for the initial handshake. If the peer connection
+      // is already live, a signaling drop (e.g. the ~110s proxy cap) does not affect
+      // the P2P link — so only reconnect if the handshake hadn't completed yet.
+      if (pcRef.current?.connectionState === 'connected') {
+        return;
+      }
+      scheduleReconnect('Signaling connection closed before the peer link was established.');
     };
 
     ws.onerror = () => {
       if (!isMountedRef.current) return;
       if (terminalFailureRef.current) return;
       emitP2PDebug('error', 'signaling', 'Signaling server connection failed.', undefined, false);
-      failConnection('error', 'Signaling server connection failed.');
+      // The reconnect decision is made in ws.onclose, which fires right after onerror.
     };
 
     ws.onmessage = (event) => {
@@ -794,7 +905,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     };
     // Re-run when connection params change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options?.signalingUrl, options?.roomId, options?.roomCode, options?.password]);
+  }, [options?.signalingUrl, options?.roomId, options?.roomCode, options?.password, reconnectNonce]);
 
-  return { disconnect, sendView, request, stream, connectionState: rtcState, lastError };
+  return { disconnect, forceReconnect, sendView, request, stream, connectionState: rtcState, lastError };
 }
