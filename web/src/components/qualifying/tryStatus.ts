@@ -86,7 +86,8 @@ export function evaluateDriverTryState(
   const isFlying = driver.driverStatus === 1;
   const isTrack = driver.driverStatus === 4;
 
-  const hasDrsSignal = driver.drsActivated;
+  // 2026 모드에서는 overtakeActive가 DRS 신호를 대체한다 (omitempty라 false면 생략).
+  const hasDrsSignal = driver.drsActivated || driver.overtakeActive === true;
   const hasAggressiveErsMode = driver.ersDeployMode >= 2;
   const isDeployingErs =
     driver.ersDeployedThisLap > 0

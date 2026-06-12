@@ -317,6 +317,8 @@ export interface PitwallState {
   drivers: DriverInfo[];
   positions: CarPosition[];
   playerIndex: number;
+  /** packetFormat: 2025 / 2026 (2026 = Season Pack 모드, DRS 대신 Overtake) */
+  gameFormat?: number;
   trackMap?: TrackMapData;
   senderState?: SenderState | null;
   ersEstimateEnabled: boolean;
@@ -389,6 +391,12 @@ export interface DriverInfo {
   gear: number;
   steering: number;
   drsActivated: boolean;
+  /** 2026 Season Pack 전용: Overtake(Manual Override) 활성 */
+  overtakeActive?: boolean;
+  /** 2026 Season Pack 전용: Overtake 사용 가능 */
+  overtakeAvailable?: boolean;
+  /** 2026 Season Pack 전용: 0=corner(Z-mode), 1=straight(X-mode) */
+  activeAeroMode?: number;
   lastLapTime: number;
   bestLapTime: number;
   tireCompound: string;

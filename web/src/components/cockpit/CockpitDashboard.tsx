@@ -323,6 +323,9 @@ export function CockpitDashboard({
   const session = pitwallState?.session ?? null;
   const senderState = pitwallState?.senderState ?? null;
   const playerIndex = pitwallState?.playerIndex ?? -1;
+  // 2026 Season Pack: DRS 폐지 → Overtake(Manual Override)가 부스트 표시를 대체
+  const is2026 = pitwallState?.gameFormat === 2026;
+  const boostLabel = is2026 ? 'OVT' : 'DRS';
   const ersVisible = featurePermissions.viewERSActual;
   const ersEstimateVisible = pitwallState?.ersEstimateEnabled ?? false;
   const ersComparisonEnabled = ersVisible && ersEstimateVisible && (pitwallState?.ersComparisonEnabled ?? false);
@@ -419,7 +422,7 @@ export function CockpitDashboard({
   const tyreColumnLabel = featurePermissions.viewAdvancedStrategy ? 'Tyre / Life' : 'Tyre Age';
   const leaderboardColumnOptions = useMemo(
     () => [
-      { key: 'drs' as const, label: 'DRS' },
+      { key: 'drs' as const, label: boostLabel },
       { key: 'ers' as const, label: 'ERS' },
       { key: 'gap' as const, label: gapColumnLabel },
       { key: 'interval' as const, label: 'Interval' },
@@ -431,7 +434,7 @@ export function CockpitDashboard({
       { key: 'sector' as const, label: 'Sector' },
       { key: 'damage' as const, label: 'DMG' },
     ],
-    [gapColumnLabel, tyreColumnLabel],
+    [boostLabel, gapColumnLabel, tyreColumnLabel],
   );
   const visibleLeaderboardColumns = useMemo(
     () => LEADERBOARD_COLUMN_ORDER.filter((key) => leaderboardColumns[key]),
@@ -935,9 +938,9 @@ export function CockpitDashboard({
                         {driver.aiControlled && <span className={styles.driverBadge}>AI</span>}
                       </span>
                       {leaderboardColumns.drs && (
-                        <span className={`${styles.drsCell} ${styles.mobileLabeledCell}`} data-mobile-label="DRS">
-                          <span className={styles[getDrsTone(driver)]}>
-                            DRS
+                        <span className={`${styles.drsCell} ${styles.mobileLabeledCell}`} data-mobile-label={boostLabel}>
+                          <span className={styles[getDrsTone(driver, is2026)]}>
+                            {boostLabel}
                           </span>
                         </span>
                       )}
@@ -2177,20 +2180,30 @@ function useCompletedSectorHistory(drivers: DriverInfo[], session: SessionInfo |
   return historyMap;
 }
 
-function driverCanArmDrs(driver: DriverInfo | null): boolean {
+function driverCanArmDrs(driver: DriverInfo | null, is2026: boolean): boolean {
+  if (is2026) {
+    // 2026: Overtake는 갭 조건이 아니라 게임이 주는 가용 플래그를 따른다.
+    // omitempty라 false면 필드 자체가 생략된다.
+    return driver?.overtakeAvailable === true;
+  }
   return (driver?.deltaToCarInFront ?? 0) > 0 && (driver?.deltaToCarInFront ?? 0) <= 1000;
 }
 
-function driverHasDrs(driver: DriverInfo): boolean {
+function driverHasDrs(driver: DriverInfo, is2026: boolean): boolean {
+  if (is2026) {
+    // OR-merge: 2026 모드에도 pre-2026 규정 차량(classic 등)은 DRS를 쓸 수 있어
+    // 다른 소비처(tryStatus, qualifying_overlay)와 같은 의미론을 유지한다.
+    return driver.overtakeActive === true || driver.drsActivated === true;
+  }
   if (driver.drsActivated !== undefined) {
     return driver.drsActivated;
   }
-  return driverCanArmDrs(driver);
+  return driverCanArmDrs(driver, is2026);
 }
 
-function getDrsTone(driver: DriverInfo): 'drsActive' | 'drsArmed' | 'drsInactive' {
-  if (driverHasDrs(driver)) return 'drsActive';
-  if (driverCanArmDrs(driver)) return 'drsArmed';
+function getDrsTone(driver: DriverInfo, is2026: boolean): 'drsActive' | 'drsArmed' | 'drsInactive' {
+  if (driverHasDrs(driver, is2026)) return 'drsActive';
+  if (driverCanArmDrs(driver, is2026)) return 'drsArmed';
   return 'drsInactive';
 }
 

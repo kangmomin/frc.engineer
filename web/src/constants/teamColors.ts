@@ -1,6 +1,7 @@
 /**
- * F1 2025 Team Colors
- * Team ID to color mapping based on official team colors
+ * F1 Team Colors
+ * Team ID to color mapping based on official team colors.
+ * 0-10: F1 25 (2025 season) / 476-486: 2026 Season Pack ('26 teams)
  */
 export const TEAM_COLORS: Record<number, string> = {
   0: '#27f4d2',   // Mercedes
@@ -15,6 +16,18 @@ export const TEAM_COLORS: Record<number, string> = {
   9: '#52e252',   // Kick Sauber
   10: '#f50537',  // Audi
   255: '#6f7070', // Unknown/Safety Car
+  // 2026 Season Pack team IDs
+  476: '#27f4d2', // Mercedes '26
+  477: '#e8002d', // Ferrari '26
+  478: '#3671c6', // Red Bull Racing '26
+  479: '#64c4ff', // Williams '26
+  480: '#229971', // Aston Martin '26
+  481: '#ff87bc', // Alpine '26
+  482: '#6692ff', // RB '26
+  483: '#b6babd', // Haas '26
+  484: '#ff8000', // McLaren '26
+  485: '#f50537', // Audi '26
+  486: '#c8a25f', // Cadillac '26 (gold)
 };
 
 /**
@@ -41,6 +54,18 @@ export const TEAM_NAMES: Record<number, string> = {
   9: 'Kick Sauber',
   10: 'Audi',
   255: 'Unknown',
+  // 2026 Season Pack team IDs
+  476: 'Mercedes',
+  477: 'Ferrari',
+  478: 'Red Bull',
+  479: 'Williams',
+  480: 'Aston Martin',
+  481: 'Alpine',
+  482: 'RB',
+  483: 'Haas',
+  484: 'McLaren',
+  485: 'Audi',
+  486: 'Cadillac',
 };
 
 export function getTeamName(teamId: number): string {
