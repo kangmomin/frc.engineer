@@ -814,9 +814,9 @@ func main() {
 			return nil
 		case dto.MessageTypeGetStrategyGuide:
 			var body struct {
-				TrackID   int8   `json:"trackId"`
-				TrackName string `json:"trackName"`
-				AccessKey string `json:"accessKey"`
+				TrackID    int8   `json:"trackId"`
+				TrackName  string `json:"trackName"`
+				GameFormat int    `json:"gameFormat"`
 			}
 			if len(req.Data) > 0 && json.Unmarshal(req.Data, &body) != nil {
 				return encodeP2PResponse(dto.WSResponse{
@@ -832,11 +832,12 @@ func main() {
 					Error:     "strategy guide unavailable",
 				})
 			}
-			if !strategydata.HasAccessKey(body.AccessKey) {
+			// 2026 Season Pack(F1 26)은 전략 트랙 데이터가 없으므로 차단.
+			if body.GameFormat == 2026 {
 				return encodeP2PResponse(dto.WSResponse{
 					Type:      dto.MessageTypeStrategyGuide,
 					RequestID: req.RequestID,
-					Error:     "strategy guide locked",
+					Error:     "strategy guide unavailable for this season",
 				})
 			}
 			trackGuide := strategyStore.TrackBySession(body.TrackID, body.TrackName)
