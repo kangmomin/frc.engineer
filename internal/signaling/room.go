@@ -180,7 +180,8 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 	frcKey = strings.TrimSpace(room.DefaultPermissionsCode)
 	room.mu.Unlock()
 	if frcKey != "" && frcapi.IsAccountKey(frcKey) && rm.frcAPI != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// viewer의 join ack 타임아웃이 6초라 그보다 짧아야 정상 응답이 도달한다.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		result, err := rm.frcAPI.CheckPermissions(ctx, frcKey, FRCPermissionKeys())
 		if err != nil {
@@ -256,6 +257,57 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 	rm.logger.Info("engineer joined room", "roomId", room.ID, "code", room.Code, "peerId", peerID,
 		"engineerCount", engineerCount)
 	return peerID, roomCode, grantedPermissions, nil
+}
+
+// RebindEngineer reattaches a new WebSocket connection to an existing engineer
+// session after a transient signaling drop. The live P2P link is untouched and
+// the driver is intentionally NOT notified (no peer_joined) — the engineer keeps
+// its peerID and permissions. Returns an error when the session is unknown, so
+// the caller can fall back to a fresh JoinRoom.
+func (rm *RoomManager) RebindEngineer(roomID, code, peerID, password string, conn *websocket.Conn, writeMu *sync.Mutex) (string, string, Permissions, error) {
+	rm.mu.RLock()
+	room, ok := rm.lookupRoomLocked(roomID, code)
+	rm.mu.RUnlock()
+	if !ok {
+		return "", "", Permissions{}, fmt.Errorf("room not found")
+	}
+
+	var oldConn *websocket.Conn
+
+	room.mu.Lock()
+	if room.Password != "" && subtle.ConstantTimeCompare([]byte(room.Password), []byte(password)) != 1 {
+		room.mu.Unlock()
+		return "", "", Permissions{}, fmt.Errorf("invalid room password")
+	}
+	eng, ok := room.Engineers[peerID]
+	if !ok {
+		room.mu.Unlock()
+		return "", "", Permissions{}, fmt.Errorf("engineer session not found")
+	}
+	oldConn = eng.conn
+	// 새 peer 구조체로 교체한다. 구 핸들러의 RemovePeer가 포인터 정체성 가드에
+	// 걸려 재바인딩된 세션을 지우지 못하게 하기 위함.
+	room.Engineers[peerID] = &peer{
+		conn:        conn,
+		role:        roleEngineer,
+		roomID:      room.ID,
+		roomCode:    room.Code,
+		permissions: eng.permissions,
+		id:          peerID,
+		writeMu:     writeMu,
+	}
+	room.UpdatedAt = time.Now()
+	resolvedRoomID := room.ID
+	resolvedCode := room.Code
+	permissions := eng.permissions
+	room.mu.Unlock()
+
+	if oldConn != nil && oldConn != conn {
+		_ = oldConn.Close()
+	}
+
+	rm.logger.Info("engineer rebound to room", "roomId", resolvedRoomID, "code", resolvedCode, "peerId", peerID)
+	return resolvedRoomID, resolvedCode, permissions, nil
 }
 
 // RejoinRoom reconnects a driver to an existing room after a transient disconnect.
@@ -422,6 +474,13 @@ func (rm *RoomManager) RemovePeer(p *peer) {
 		rm.mu.Unlock()
 
 		room.mu.Lock()
+		// 포인터 정체성 가드: rejoin으로 이미 새 peer가 바인딩됐다면 구 연결의
+		// read 에러가 살아있는 room을 offline으로 마킹(→2분 뒤 만료)하면 안 된다.
+		if room.Driver != p {
+			room.mu.Unlock()
+			rm.logger.Info("ignoring stale driver disconnect after rejoin", "roomId", p.roomID, "code", p.roomCode)
+			return
+		}
 		now := time.Now()
 		room.DriverLostAt = &now
 		room.UpdatedAt = now
@@ -435,6 +494,12 @@ func (rm *RoomManager) RemovePeer(p *peer) {
 	rm.mu.Unlock()
 
 	room.mu.Lock()
+	// 재바인딩된 세션 보호: 다른 peer 구조체가 이미 등록돼 있으면 건드리지 않는다.
+	if existing, ok := room.Engineers[p.id]; !ok || existing != p {
+		room.mu.Unlock()
+		rm.logger.Info("ignoring stale engineer disconnect after rebind", "roomId", p.roomID, "peerId", p.id)
+		return
+	}
 	delete(room.Engineers, p.id)
 	engineerCount := len(room.Engineers)
 	driverLost := room.DriverLostAt != nil
@@ -676,6 +741,28 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 		if msg.RoomID == "" && msg.RoomCode == "" {
 			sendErrorRaw(conn, "roomId or roomCode required", writeMu)
 			return currentPeer
+		}
+		// peerId가 있으면 시그널링 재바인딩 시도: 살아있는 P2P를 유지한 채
+		// WebSocket만 교체한다 (driver에게 peer_joined를 보내지 않음).
+		// 실패하면 일반 join으로 폴백해 새 peerID를 발급한다.
+		if msg.PeerID != "" {
+			roomID, roomCode, permissions, err := rm.RebindEngineer(msg.RoomID, msg.RoomCode, msg.PeerID, msg.Password, conn, writeMu)
+			if err == nil {
+				p := rm.FindPeer(conn, roomID)
+				if p == nil {
+					sendErrorRaw(conn, "internal error: peer not found after rebind", writeMu)
+					return currentPeer
+				}
+				_ = p.sendJSON(Message{
+					Type:        TypeRoomJoined,
+					PeerID:      msg.PeerID,
+					RoomID:      roomID,
+					RoomCode:    roomCode,
+					Permissions: permissions,
+				})
+				return p
+			}
+			rm.logger.Info("engineer rebind failed, falling back to fresh join", "peerId", msg.PeerID, "error", err)
 		}
 		peerID, roomCode, permissions, err := rm.JoinRoom(msg.RoomID, msg.RoomCode, msg.Password, conn, writeMu)
 		if err != nil {
