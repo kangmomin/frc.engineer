@@ -59,7 +59,12 @@ var ErrLapDataPacketTooSmall = errors.New("lap data packet too small")
 
 // ParseLapDataPacket parses a lap data packet from raw bytes
 func ParseLapDataPacket(data []byte, header *PacketHeader) (*PacketLapData, error) {
-	expectedSize := PacketHeaderSize + (LapDataSize * MaxCars) + 2
+	spec, ok := SpecFor(header.PacketFormat)
+	if !ok {
+		return nil, ErrLapDataPacketTooSmall
+	}
+
+	expectedSize := PacketHeaderSize + (LapDataSize * spec.NumCars) + 2
 	if len(data) < expectedSize {
 		return nil, ErrLapDataPacketTooSmall
 	}
@@ -69,7 +74,7 @@ func ParseLapDataPacket(data []byte, header *PacketHeader) (*PacketLapData, erro
 	}
 
 	offset := PacketHeaderSize
-	for i := 0; i < MaxCars; i++ {
+	for i := 0; i < spec.NumCars; i++ {
 		lap := parseLapData(data[offset:])
 		packet.LapData[i] = lap
 		offset += LapDataSize

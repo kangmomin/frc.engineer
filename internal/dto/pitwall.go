@@ -6,6 +6,7 @@ type PitwallState struct {
 	Drivers              []DriverInfo  `json:"drivers"`
 	Positions            []CarPosition `json:"positions"`
 	PlayerIndex          int           `json:"playerIndex"`
+	GameFormat           int           `json:"gameFormat,omitempty"` // packetFormat: 2025 / 2026 (2026 = Season Pack 모드)
 	TrackMap             *TrackMapDTO  `json:"trackMap,omitempty"`
 	SenderState          *SenderState  `json:"senderState,omitempty"`
 	ERSEstimateEnabled   bool          `json:"ersEstimateEnabled"`
@@ -106,6 +107,10 @@ type DriverInfo struct {
 	Gear            int8    `json:"gear,omitempty"`
 	Steering        float32 `json:"steering,omitempty"`
 	DRSActivated    bool    `json:"drsActivated"`
+	// 2026 Season Pack 전용 (F1 25에서는 항상 zero-value로 omit)
+	OvertakeActive    bool `json:"overtakeActive,omitempty"`
+	OvertakeAvailable bool `json:"overtakeAvailable,omitempty"`
+	ActiveAeroMode    int  `json:"activeAeroMode,omitempty"` // 0=corner(Z), 1=straight(X)
 	LastLapTime     float32 `json:"lastLapTime"`
 	BestLapTime     float32 `json:"bestLapTime"`
 	TireCompound    string  `json:"tireCompound"`

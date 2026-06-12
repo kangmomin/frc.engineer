@@ -26,7 +26,8 @@ type CarTelemetryData struct {
 	SurfaceType             [4]uint8   // Driving surface type per wheel
 }
 
-// CarTelemetryDataSize is the size of a single CarTelemetryData in bytes
+// CarTelemetryDataSize is the F1 25 wire size of a single CarTelemetryData in
+// bytes. Use SpecFor(format).CarTelemetrySize for format-aware code.
 const CarTelemetryDataSize = 60
 
 // PacketCarTelemetryData is the full telemetry packet
@@ -43,7 +44,13 @@ var ErrTelemetryPacketTooSmall = errors.New("telemetry packet too small")
 
 // ParseCarTelemetryPacket parses a car telemetry packet from raw bytes
 func ParseCarTelemetryPacket(data []byte, header *PacketHeader) (*PacketCarTelemetryData, error) {
-	expectedSize := PacketHeaderSize + (CarTelemetryDataSize * MaxCars) + 3
+	spec, ok := SpecFor(header.PacketFormat)
+	if !ok {
+		return nil, ErrTelemetryPacketTooSmall
+	}
+	is2026 := header.PacketFormat == PacketFormat2026
+
+	expectedSize := PacketHeaderSize + (spec.CarTelemetrySize * spec.NumCars) + 3
 	if len(data) < expectedSize {
 		return nil, ErrTelemetryPacketTooSmall
 	}
@@ -53,10 +60,10 @@ func ParseCarTelemetryPacket(data []byte, header *PacketHeader) (*PacketCarTelem
 	}
 
 	offset := PacketHeaderSize
-	for i := 0; i < MaxCars; i++ {
-		car := parseCarTelemetryData(data[offset:])
+	for i := 0; i < spec.NumCars; i++ {
+		car := parseCarTelemetryData(data[offset:], is2026)
 		packet.CarTelemetryData[i] = car
-		offset += CarTelemetryDataSize
+		offset += spec.CarTelemetrySize
 	}
 
 	packet.MFDPanelIndex = data[offset]
@@ -67,7 +74,7 @@ func ParseCarTelemetryPacket(data []byte, header *PacketHeader) (*PacketCarTelem
 }
 
 // parseCarTelemetryData parses a single car's telemetry data
-func parseCarTelemetryData(data []byte) CarTelemetryData {
+func parseCarTelemetryData(data []byte, is2026 bool) CarTelemetryData {
 	car := CarTelemetryData{}
 	offset := 0
 
@@ -119,8 +126,14 @@ func parseCarTelemetryData(data []byte) CarTelemetryData {
 		offset++
 	}
 
-	car.EngineTemperature = binary.LittleEndian.Uint16(data[offset:])
-	offset += 2
+	if is2026 {
+		// 2026 Season Pack: engine temperature narrowed to uint8.
+		car.EngineTemperature = uint16(data[offset])
+		offset++
+	} else {
+		car.EngineTemperature = binary.LittleEndian.Uint16(data[offset:])
+		offset += 2
+	}
 
 	// Tyres pressure (4 x float32)
 	for i := 0; i < 4; i++ {

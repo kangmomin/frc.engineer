@@ -34,6 +34,12 @@ var trackDescriptors = []trackDescriptor{
 	{id: 26, displayName: "United States (Miami)", storageKey: "united_states_miami", aliases: []string{"usa_miami", "miami", "miami_international_autodrome"}},
 	{id: 27, displayName: "Qatar", storageKey: "qatar", aliases: []string{"losail", "lusail", "lusail_international_circuit"}},
 	{id: 28, displayName: "United States (Las Vegas)", storageKey: "united_states_las_vegas", aliases: []string{"usa_las_vegas", "las_vegas", "las-vegas", "las_vegas_strip_circuit"}},
+	// 2026 Season Pack 신규 트랙. ID는 packets.CanonicalTrackID 변환 후의 값
+	// (2026 wire enum과 동일 — F1 25 공간과 충돌 없음).
+	{id: 39, displayName: "United Kingdom (Reverse)", storageKey: "britain_reverse", aliases: []string{"silverstone_reverse"}},
+	{id: 40, displayName: "Austria (Reverse)", storageKey: "austria_reverse", aliases: []string{"red_bull_ring_reverse"}},
+	{id: 41, displayName: "Netherlands (Reverse)", storageKey: "netherlands_reverse", aliases: []string{"zandvoort_reverse"}},
+	{id: 42, displayName: "Spain (Madrid)", storageKey: "madrid", aliases: []string{"madring", "circuito_de_madring", "madrid_circuit"}},
 }
 
 var (

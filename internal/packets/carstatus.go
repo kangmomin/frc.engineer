@@ -32,10 +32,12 @@ type CarStatusData struct {
 	ERSHarvestedThisLapMGUK float32 // ERS harvested this lap by MGU-K
 	ERSHarvestedThisLapMGUH float32 // ERS harvested this lap by MGU-H
 	ERSDeployedThisLap    float32 // ERS deployed this lap
+	ERSHarvestLimitPerLap float32 // ERS harvest limit per lap (2026 Season Pack only; 0 on F1 25)
 	NetworkPaused         uint8   // Whether car is paused in a network game
 }
 
-// CarStatusDataSize is the size of a single CarStatusData in bytes
+// CarStatusDataSize is the F1 25 wire size of a single CarStatusData in bytes.
+// Use SpecFor(format).CarStatusSize for format-aware code.
 const CarStatusDataSize = 55
 
 // PacketCarStatusData is the full car status packet
@@ -49,7 +51,13 @@ var ErrCarStatusPacketTooSmall = errors.New("car status packet too small")
 
 // ParseCarStatusPacket parses a car status packet from raw bytes
 func ParseCarStatusPacket(data []byte, header *PacketHeader) (*PacketCarStatusData, error) {
-	expectedSize := PacketHeaderSize + (CarStatusDataSize * MaxCars)
+	spec, ok := SpecFor(header.PacketFormat)
+	if !ok {
+		return nil, ErrCarStatusPacketTooSmall
+	}
+	is2026 := header.PacketFormat == PacketFormat2026
+
+	expectedSize := PacketHeaderSize + (spec.CarStatusSize * spec.NumCars)
 	if len(data) < expectedSize {
 		return nil, ErrCarStatusPacketTooSmall
 	}
@@ -59,16 +67,16 @@ func ParseCarStatusPacket(data []byte, header *PacketHeader) (*PacketCarStatusDa
 	}
 
 	offset := PacketHeaderSize
-	for i := range MaxCars {
-		packet.CarStatusData[i] = parseCarStatusData(data[offset:])
-		offset += CarStatusDataSize
+	for i := range spec.NumCars {
+		packet.CarStatusData[i] = parseCarStatusData(data[offset:], is2026)
+		offset += spec.CarStatusSize
 	}
 
 	return packet, nil
 }
 
 // parseCarStatusData parses a single car's status data
-func parseCarStatusData(data []byte) CarStatusData {
+func parseCarStatusData(data []byte, is2026 bool) CarStatusData {
 	s := CarStatusData{}
 	offset := 0
 
@@ -143,6 +151,12 @@ func parseCarStatusData(data []byte) CarStatusData {
 
 	s.ERSDeployedThisLap = math.Float32frombits(binary.LittleEndian.Uint32(data[offset:]))
 	offset += 4
+
+	if is2026 {
+		// 2026 Season Pack inserts the per-lap harvest limit before networkPaused.
+		s.ERSHarvestLimitPerLap = math.Float32frombits(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+	}
 
 	s.NetworkPaused = data[offset]
 

@@ -47,7 +47,12 @@ var ErrCarDamagePacketTooSmall = errors.New("car damage packet too small")
 
 // ParseCarDamagePacket parses a car damage packet from raw bytes
 func ParseCarDamagePacket(data []byte, header *PacketHeader) (*PacketCarDamageData, error) {
-	expectedSize := PacketHeaderSize + (CarDamageDataSize * MaxCars)
+	spec, ok := SpecFor(header.PacketFormat)
+	if !ok {
+		return nil, ErrCarDamagePacketTooSmall
+	}
+
+	expectedSize := PacketHeaderSize + (CarDamageDataSize * spec.NumCars)
 	if len(data) < expectedSize {
 		return nil, ErrCarDamagePacketTooSmall
 	}
@@ -57,7 +62,7 @@ func ParseCarDamagePacket(data []byte, header *PacketHeader) (*PacketCarDamageDa
 	}
 
 	offset := PacketHeaderSize
-	for i := range MaxCars {
+	for i := range spec.NumCars {
 		packet.CarDamageData[i] = parseCarDamageData(data[offset:])
 		offset += CarDamageDataSize
 	}
