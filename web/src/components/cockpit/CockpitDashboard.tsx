@@ -410,6 +410,8 @@ export function CockpitDashboard({
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
+  const boostStatus = buildBoostStatus(player, is2026);
+  const activeAero = formatActiveAero(player, is2026);
   const gapColumnLabel = playerDeltaVisible ? 'To You' : 'Gap';
   const tyreColumnLabel = strategyAvailable ? 'Tyre / Life' : 'Tyre Age';
   const leaderboardColumnOptions = useMemo(
@@ -1050,20 +1052,20 @@ export function CockpitDashboard({
           />
           <div className={styles.progressCard}>
             <div className={styles.progressHeader}>
-              <span>DRS Status</span>
+              <span>{boostStatus.title}</span>
               <span className={styles.progressStatus}>
-                {getDrsWindowStatus(player)}
+                {boostStatus.statusText}
               </span>
             </div>
             <div className={styles.progressTrack}>
               <div
                 className={styles.progressFill}
-                style={{ width: `${getDrsProgress(player)}%` }}
+                style={{ width: `${boostStatus.progressPct}%` }}
               />
             </div>
             <div className={styles.progressFooter}>
-              <span>{getDrsWindowLabel(player)}</span>
-              <strong>{formatDrsWindow(player)}</strong>
+              <span>{boostStatus.footerLabel}</span>
+              <strong>{boostStatus.footerValue}</strong>
             </div>
           </div>
           <BattleTarget
@@ -1300,6 +1302,15 @@ export function CockpitDashboard({
                   tone="primary"
                   className={styles.compactMetricTile}
                 />
+                {is2026 && (
+                  <MetricTile
+                    label="AERO"
+                    value={activeAero.value}
+                    note={activeAero.note}
+                    tone="primary"
+                    className={styles.compactMetricTile}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -1994,6 +2005,46 @@ function formatDrsWindow(player: DriverInfo | null): string {
     return `${(player.deltaToCarInFront / 1000).toFixed(2)}s`;
   }
   return `${((player.deltaToCarInFront - 1000) / 1000).toFixed(2)}s`;
+}
+
+type BoostStatusView = {
+  title: string;
+  statusText: string;
+  progressPct: number;
+  footerLabel: string;
+  footerValue: string;
+};
+
+// 25는 DRS(갭 기반), 2026 Season Pack은 Overtake(Manual Override) 상태를 표시한다.
+// 4개 DRS 헬퍼를 흩뿌리는 대신 표시용 뷰 모델 하나로 모은다.
+function buildBoostStatus(player: DriverInfo | null, is2026: boolean): BoostStatusView {
+  if (is2026) {
+    const active = player?.overtakeActive === true;
+    const available = player?.overtakeAvailable === true;
+    return {
+      title: 'Overtake',
+      statusText: active ? 'ACTIVE' : available ? 'READY' : 'UNAVAILABLE',
+      progressPct: active ? 100 : available ? 60 : 0,
+      footerLabel: 'Manual Override',
+      footerValue: active ? 'DEPLOYING' : available ? 'AVAILABLE' : '--',
+    };
+  }
+  return {
+    title: 'DRS Status',
+    statusText: getDrsWindowStatus(player),
+    progressPct: getDrsProgress(player),
+    footerLabel: getDrsWindowLabel(player),
+    footerValue: formatDrsWindow(player),
+  };
+}
+
+// 2026 Season Pack Active Aero: activeAeroMode 1=직선(X, low drag), 0=코너(Z, downforce).
+// 0은 Go DTO의 omitempty로 생략되므로 26 세션에서 1이 아니면 코너(Z)로 간주한다.
+function formatActiveAero(player: DriverInfo | null, is2026: boolean): { value: string; note?: string } {
+  if (!is2026 || !player) return { value: '--' };
+  return player.activeAeroMode === 1
+    ? { value: 'X', note: 'Straight' }
+    : { value: 'Z', note: 'Corner' };
 }
 
 function formatGap(driver: DriverInfo): string {
