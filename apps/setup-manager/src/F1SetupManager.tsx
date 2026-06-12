@@ -39,7 +39,6 @@ import {
   normalizeAnalysisServerUrl,
 } from "./sessionAnalysis";
 import { fetchJsonWithSenderDebug } from "./senderDebug";
-import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from "../../../shared/strategyAccess";
 
 type SectionId = "setup-manager" | "sender" | "overlay";
 type SetupWorkspaceId = "builder" | "analysis";
@@ -930,7 +929,6 @@ export function F1SetupManager() {
   const [recordedSnaps, setRecordedSnaps] = useState<TelemetrySnapshot[]>([]);
   const [savedRecommendations, setSavedRecommendations] = useState<SavedRecommendation[]>([]);
   const [lapComparison, setLapComparison] = useState<LapComparisonState>({ before: null, after: null });
-  const [strategyAccessKey, setStrategyAccessKey] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -938,7 +936,6 @@ export function F1SetupManager() {
     const loadPersistedState = async () => {
       const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
       const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
-      const storedStrategyAccessKey = await readStoredValue<string>(STRATEGY_ACCESS_STORAGE_KEY, "");
       const nextStorageInfo = window.electronAPI?.getSenderStorageInfo
         ? normalizeSenderStorageInfo(await window.electronAPI.getSenderStorageInfo())
         : EMPTY_SENDER_STORAGE_INFO;
@@ -947,7 +944,6 @@ export function F1SetupManager() {
       if (!active) return;
       setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
       setLapComparison(normalizeLapComparisonState(storedComparison));
-      setStrategyAccessKey(normalizeStrategyAccessKey(storedStrategyAccessKey));
       setSenderStorageInfo(nextStorageInfo);
     };
 
@@ -956,7 +952,6 @@ export function F1SetupManager() {
       active = false;
     };
   }, []);
-  const strategyAccessGranted = hasStrategyAccessKey(strategyAccessKey);
 
   const refreshSenderStorageInfo = async () => {
     if (!window.electronAPI?.getSenderStorageInfo) {
@@ -1882,34 +1877,9 @@ export function F1SetupManager() {
               </Panel>
             ) : null}
 
-            <Panel title="STRATEGY KEY">
-              <input
-                type="password"
-                value={strategyAccessKey}
-                onChange={(event) => {
-                  const nextValue = normalizeStrategyAccessKey(event.target.value);
-                  setStrategyAccessKey(nextValue);
-                  void writeStoredValue(STRATEGY_ACCESS_STORAGE_KEY, nextValue);
-                }}
-                placeholder="Enter strategy key"
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${strategyAccessGranted ? P.accent2 : P.border}`, background: P.surface2, color: P.text }}
-              />
-              <div style={{ marginTop: 8, fontSize: 10, color: strategyAccessGranted ? P.accent2 : P.muted, fontFamily: P.mono }}>
-                {strategyAccessGranted
-                  ? "Strategy data unlocked."
-                  : "Enter the strategy key to unlock tyre life, pit window, and strategy notes."}
-              </div>
-            </Panel>
-
             {weather && catalog ? (
               <Panel title="SETUPS">
-                {strategyAccessGranted ? (
-                  <div style={{ fontSize: 11, color: P.muted, marginBottom: 10, lineHeight: 1.6 }}>{catalog.track.notes}</div>
-                ) : (
-                  <div style={{ fontSize: 11, color: P.muted, marginBottom: 10, lineHeight: 1.6 }}>
-                    Strategy track notes are locked until the strategy key is entered.
-                  </div>
-                )}
+                <div style={{ fontSize: 11, color: P.muted, marginBottom: 10, lineHeight: 1.6 }}>{catalog.track.notes}</div>
                 {weather === "dry" ? (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                     {["all", "Istvan Puki", "Brendon Leigh"].map((item) => (
@@ -1996,7 +1966,7 @@ export function F1SetupManager() {
                   ) : null}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {[{ label: "Strategy", value: strategyAccessGranted ? catalog.track.strategy : "Locked" }, { label: "Pit Window", value: strategyAccessGranted ? catalog.track.pitWindow50 : "Locked" }, { label: "Quali Fuel", value: strategyAccessGranted ? (catalog.track.qualiFuel ?? "N/A") : "Locked" }, { label: "ERS Trigger", value: strategyAccessGranted ? (catalog.track.ersEnable ?? "N/A") : "Locked" }].map((item) => (
+                  {[{ label: "Strategy", value: catalog.track.strategy }, { label: "Pit Window", value: catalog.track.pitWindow50 }, { label: "Quali Fuel", value: catalog.track.qualiFuel ?? "N/A" }, { label: "ERS Trigger", value: catalog.track.ersEnable ?? "N/A" }].map((item) => (
                     <div key={item.label} style={{ padding: 10, borderRadius: 4, background: P.surface2 }}>
                       <div style={{ fontSize: 10, color: P.muted, marginBottom: 4 }}>{item.label}</div>
                       <div style={{ fontSize: 12, fontWeight: 700 }}>{item.value}</div>

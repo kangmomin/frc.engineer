@@ -590,9 +590,9 @@ func main() {
 			return
 		}
 		trackName := strings.TrimSpace(r.URL.Query().Get("trackName"))
-		accessKey := strings.TrimSpace(r.URL.Query().Get("accessKey"))
-		if !strategydata.HasAccessKey(accessKey) {
-			http.Error(w, "strategy guide locked", http.StatusForbidden)
+		// 2026 Season Pack(F1 26)은 전략 트랙 데이터가 없으므로 차단. 그 외(F1 25/미상)는 key 없이 허용.
+		if gameFormat, convErr := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("gameFormat"))); convErr == nil && gameFormat == 2026 {
+			http.Error(w, "strategy guide unavailable for this season", http.StatusNotFound)
 			return
 		}
 

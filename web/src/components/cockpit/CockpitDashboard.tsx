@@ -18,7 +18,6 @@ import type {
 import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { clamp, formatDelta, formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
-import { hasStrategyAccessKey, normalizeStrategyAccessKey, STRATEGY_ACCESS_STORAGE_KEY } from '../../utils/strategyAccess';
 import styles from './CockpitDashboard.module.css';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
@@ -149,10 +148,6 @@ function parseCompoundLapBenchmarks(parsed: unknown): CompoundLapBenchmarkStore 
     }
   }
   return next;
-}
-
-function parseStoredString(parsed: unknown): string | null {
-  return typeof parsed === 'string' ? parsed : null;
 }
 
 function buildLeaderboardGridTemplate(
@@ -384,11 +379,6 @@ export function CockpitDashboard({
     parseLeaderboardColumnWidths,
   );
   const [predictionLaps, setPredictionLaps] = useState(DEFAULT_PREDICTION_LAPS);
-  const [strategyAccessKey, setStrategyAccessKey] = useLocalStorage<string>(
-    STRATEGY_ACCESS_STORAGE_KEY,
-    '',
-    parseStoredString,
-  );
   const [compoundLapBenchmarks, setCompoundLapBenchmarks] = useLocalStorage<CompoundLapBenchmarkStore>(
     'pitwallCompoundLapBenchmarks',
     {},
@@ -396,7 +386,9 @@ export function CockpitDashboard({
   );
   const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
   const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
-  const strategyDataUnlocked = featurePermissions.viewAdvancedStrategy && hasStrategyAccessKey(strategyAccessKey);
+  // 전략 트랙 데이터는 F1 25만 존재한다. 26(Season Pack)은 데이터가 없어 차단하고,
+  // 그 외(25/미상)는 별도 key·권한 없이 기본 노출한다.
+  const strategyAvailable = !is2026;
   const parsedCompoundLapBenchmarks = useMemo(() => {
     const next: Record<string, number> = {};
     for (const [key, value] of Object.entries(compoundLapBenchmarks)) {
@@ -418,8 +410,10 @@ export function CockpitDashboard({
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
+  const boostStatus = buildBoostStatus(player, is2026);
+  const activeAero = formatActiveAero(player, is2026);
   const gapColumnLabel = playerDeltaVisible ? 'To You' : 'Gap';
-  const tyreColumnLabel = featurePermissions.viewAdvancedStrategy ? 'Tyre / Life' : 'Tyre Age';
+  const tyreColumnLabel = strategyAvailable ? 'Tyre / Life' : 'Tyre Age';
   const leaderboardColumnOptions = useMemo(
     () => [
       { key: 'drs' as const, label: boostLabel },
@@ -626,12 +620,11 @@ export function CockpitDashboard({
     [compoundLapBenchmarks, parsedCompoundLapBenchmarks, player?.tireCompound, strategyGuide],
   );
   const compoundLifeDetail = useMemo(() => {
-    if (!featurePermissions.viewAdvancedStrategy) return 'Advanced strategy locked';
-    if (!strategyDataUnlocked) return 'Strategy key required';
+    if (is2026) return '2026 Season Pack — no strategy data';
     if (strategyGuideLoading) return 'Loading track guide...';
     if (!strategyGuide) return 'Track guide unavailable';
     return `50% race baseline / ${strategyGuide.track.track_info.laps_50pct}L`;
-  }, [featurePermissions.viewAdvancedStrategy, strategyDataUnlocked, strategyGuide, strategyGuideLoading]);
+  }, [is2026, strategyGuide, strategyGuideLoading]);
 
   useEffect(() => {
     if (sessionTrackId == null || sessionTrackId < 0 || !sessionTrackName.trim()) {
@@ -653,7 +646,7 @@ export function CockpitDashboard({
   }, [sessionTrackId, sessionTrackName, sessionType]);
 
   useEffect(() => {
-    if (!enableStrategyGuide || !strategyDataUnlocked || sessionTrackId == null || sessionTrackId < 0) {
+    if (!enableStrategyGuide || !strategyAvailable || sessionTrackId == null || sessionTrackId < 0) {
       setStrategyGuide(null);
       setStrategyGuideLoading(false);
       return;
@@ -670,7 +663,7 @@ export function CockpitDashboard({
             data: {
               trackId: sessionTrackId,
               trackName: sessionTrackName,
-              accessKey: strategyAccessKey,
+              gameFormat: pitwallState?.gameFormat,
             },
           },
           {
@@ -684,7 +677,9 @@ export function CockpitDashboard({
       if (sessionTrackName.trim()) {
         params.set('trackName', sessionTrackName);
       }
-      params.set('accessKey', strategyAccessKey);
+      if (pitwallState?.gameFormat != null) {
+        params.set('gameFormat', String(pitwallState.gameFormat));
+      }
 
       const response = await fetch(getApiUrl(`/api/strategy/guide?${params.toString()}`), {
         signal: controller.signal,
@@ -720,7 +715,7 @@ export function CockpitDashboard({
     return () => {
       controller.abort();
     };
-  }, [enableStrategyGuide, requestP2P, sessionTrackId, sessionTrackName, strategyAccessKey, strategyDataUnlocked]);
+  }, [enableStrategyGuide, requestP2P, sessionTrackId, sessionTrackName, strategyAvailable, pitwallState?.gameFormat]);
 
   // Seed optimal temp from strategy guide peak_temps_c when available and no manual override in query
   useEffect(() => {
@@ -838,9 +833,7 @@ export function CockpitDashboard({
       {settingsOpen && (
         <PitSettingsModal
           current={pitSettings}
-          currentStrategyAccessKey={strategyAccessKey}
           onApply={applyPitSettings}
-          onChangeStrategyAccessKey={setStrategyAccessKey}
           onClose={closeSettings}
         />
       )}
@@ -994,7 +987,7 @@ export function CockpitDashboard({
                             style={{ backgroundColor: getTyreColor(driver.tireCompound) }}
                           />
                           {driver.tireAge}
-                          {featurePermissions.viewAdvancedStrategy && (
+                          {strategyAvailable && (
                             <span
                               className={styles.tyreLifeCell}
                               style={driver.tyreLifeSpan != null && driver.tyreUsableLife != null && driver.tyreUsableLife > 0
@@ -1059,20 +1052,20 @@ export function CockpitDashboard({
           />
           <div className={styles.progressCard}>
             <div className={styles.progressHeader}>
-              <span>DRS Status</span>
+              <span>{boostStatus.title}</span>
               <span className={styles.progressStatus}>
-                {getDrsWindowStatus(player)}
+                {boostStatus.statusText}
               </span>
             </div>
             <div className={styles.progressTrack}>
               <div
                 className={styles.progressFill}
-                style={{ width: `${getDrsProgress(player)}%` }}
+                style={{ width: `${boostStatus.progressPct}%` }}
               />
             </div>
             <div className={styles.progressFooter}>
-              <span>{getDrsWindowLabel(player)}</span>
-              <strong>{formatDrsWindow(player)}</strong>
+              <span>{boostStatus.footerLabel}</span>
+              <strong>{boostStatus.footerValue}</strong>
             </div>
           </div>
           <BattleTarget
@@ -1176,18 +1169,11 @@ export function CockpitDashboard({
           {strategyPanel.notes && (
             <div className={styles.strategyNotes}>{strategyPanel.notes}</div>
           )}
-          {!featurePermissions.viewAdvancedStrategy ? (
+          {is2026 ? (
             <div className={styles.strategyUnlockCard}>
-              <span className={styles.strategyUnlockLabel}>Advanced Strategy Locked</span>
+              <span className={styles.strategyUnlockLabel}>Strategy Unavailable</span>
               <span className={styles.strategySupportText}>
-                Join with a permissions code that grants advanced strategy access to use numeric track data here.
-              </span>
-            </div>
-          ) : !strategyDataUnlocked ? (
-            <div className={styles.strategyUnlockCard}>
-              <span className={styles.strategyUnlockLabel}>Strategy Key Required</span>
-              <span className={styles.strategySupportText}>
-                Open pit settings and enter the strategy key to unlock track guide data.
+                2026 Season Pack (F1 26) has no track strategy data yet. Live heuristic calls remain available.
               </span>
             </div>
           ) : (
@@ -1199,7 +1185,6 @@ export function CockpitDashboard({
                     ? 'Numeric strategy guide active'
                     : 'Guide unavailable, using heuristic fallback'}
               </span>
-              <span className={styles.strategySupportText}>Permission Granted / Key Accepted</span>
             </div>
           )}
         </div>
@@ -1317,6 +1302,15 @@ export function CockpitDashboard({
                   tone="primary"
                   className={styles.compactMetricTile}
                 />
+                {is2026 && (
+                  <MetricTile
+                    label="AERO"
+                    value={activeAero.value}
+                    note={activeAero.note}
+                    tone="primary"
+                    className={styles.compactMetricTile}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -1366,13 +1360,11 @@ export function CockpitDashboard({
               </div>
             ) : (
               <div className={styles.compoundLifeEmpty}>
-                {!featurePermissions.viewAdvancedStrategy
-                  ? 'Advanced strategy permission required.'
-                  : !strategyDataUnlocked
-                    ? 'Enter the strategy key in settings to unlock track guide data.'
-                    : strategyGuideLoading
-                      ? 'Loading track guide...'
-                      : 'No compound life data for this track.'}
+                {is2026
+                  ? '2026 Season Pack has no strategy data.'
+                  : strategyGuideLoading
+                    ? 'Loading track guide...'
+                    : 'No compound life data for this track.'}
               </div>
             )}
           </div>
@@ -1409,22 +1401,17 @@ export function CockpitDashboard({
 
 function PitSettingsModal({
   current,
-  currentStrategyAccessKey,
   onApply,
-  onChangeStrategyAccessKey,
   onClose,
 }: {
   current: PitSettings;
-  currentStrategyAccessKey: string;
   onApply: (s: PitSettings) => void;
-  onChangeStrategyAccessKey: (value: string) => void;
   onClose: () => void;
 }) {
   const speedRef = useRef<HTMLInputElement>(null);
   const timeRef = useRef<HTMLInputElement>(null);
   const tempLowRef = useRef<HTMLInputElement>(null);
   const tempHighRef = useRef<HTMLInputElement>(null);
-  const strategyKeyRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     speedRef.current?.focus();
@@ -1535,24 +1522,6 @@ function PitSettingsModal({
         <span className={styles.modalFieldHint}>
           Core temperature range for &quot;CORE OK&quot; status. Auto-filled from strategy guide when available.
         </span>
-
-        <div className={styles.modalField}>
-          <label className={styles.modalFieldLabel} htmlFor="strategy-access-key">
-            Strategy Access Key
-          </label>
-          <input
-            id="strategy-access-key"
-            ref={strategyKeyRef}
-            className={styles.modalInput}
-            type="password"
-            defaultValue={currentStrategyAccessKey}
-            placeholder="Enter strategy key"
-            onChange={(event) => onChangeStrategyAccessKey(normalizeStrategyAccessKey(event.target.value))}
-          />
-          <span className={styles.modalFieldHint}>
-            Saved locally and required before numeric track strategy data is used.
-          </span>
-        </div>
 
         <button type="submit" className={styles.modalApply}>
           Apply
@@ -2036,6 +2005,46 @@ function formatDrsWindow(player: DriverInfo | null): string {
     return `${(player.deltaToCarInFront / 1000).toFixed(2)}s`;
   }
   return `${((player.deltaToCarInFront - 1000) / 1000).toFixed(2)}s`;
+}
+
+type BoostStatusView = {
+  title: string;
+  statusText: string;
+  progressPct: number;
+  footerLabel: string;
+  footerValue: string;
+};
+
+// 25는 DRS(갭 기반), 2026 Season Pack은 Overtake(Manual Override) 상태를 표시한다.
+// 4개 DRS 헬퍼를 흩뿌리는 대신 표시용 뷰 모델 하나로 모은다.
+function buildBoostStatus(player: DriverInfo | null, is2026: boolean): BoostStatusView {
+  if (is2026) {
+    const active = player?.overtakeActive === true;
+    const available = player?.overtakeAvailable === true;
+    return {
+      title: 'Overtake',
+      statusText: active ? 'ACTIVE' : available ? 'READY' : 'UNAVAILABLE',
+      progressPct: active ? 100 : available ? 60 : 0,
+      footerLabel: 'Manual Override',
+      footerValue: active ? 'DEPLOYING' : available ? 'AVAILABLE' : '--',
+    };
+  }
+  return {
+    title: 'DRS Status',
+    statusText: getDrsWindowStatus(player),
+    progressPct: getDrsProgress(player),
+    footerLabel: getDrsWindowLabel(player),
+    footerValue: formatDrsWindow(player),
+  };
+}
+
+// 2026 Season Pack Active Aero: activeAeroMode 1=직선(X, low drag), 0=코너(Z, downforce).
+// 0은 Go DTO의 omitempty로 생략되므로 26 세션에서 1이 아니면 코너(Z)로 간주한다.
+function formatActiveAero(player: DriverInfo | null, is2026: boolean): { value: string; note?: string } {
+  if (!is2026 || !player) return { value: '--' };
+  return player.activeAeroMode === 1
+    ? { value: 'X', note: 'Straight' }
+    : { value: 'Z', note: 'Corner' };
 }
 
 function formatGap(driver: DriverInfo): string {
