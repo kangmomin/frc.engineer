@@ -21,15 +21,41 @@ const (
 	sigHeartbeatPeriod = 30 * time.Second       // application-level keepalive to survive proxy idle timeouts
 	reconnectBaseDelay = 1 * time.Second
 	reconnectMaxDelay  = 30 * time.Second
+
+	// DataChannel keepalive: pion의 ICE 타임아웃(수십 초)에만 의존하면 죽은
+	// P2P 감지가 너무 느리다. 앱 레벨 ping/pong으로 15초 내 감지한다.
+	dcPingPeriod       = 5 * time.Second
+	dcPongRestartAfter = 15 * time.Second // ping 3회 연속 손실 → ICE restart
+	dcPongDropAfter    = 30 * time.Second // restart로도 복구 실패 → peer 제거
+
+	// ICE restart 정책: 재수집+재연결은 통상 2~5초 — 15초는 3배 마진이며
+	// viewer의 disconnected watchdog(18s)보다 짧아 sender가 먼저 정리한다.
+	iceRestartTimeout      = 15 * time.Second
+	iceRestartMaxPerWindow = 2
+	iceRestartWindow       = 60 * time.Second
 )
 
 var defaultICEServers = []webrtc.ICEServer{
 	{URLs: []string{"stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"}},
 }
 
+// sigDialer bounds the WebSocket handshake — DefaultDialer has no timeout and
+// can hang forever on a black-holed route.
+var sigDialer = &websocket.Dialer{HandshakeTimeout: 10 * time.Second}
+
 // RequestHandler is called when an engineer sends a request over DataChannel.
 // The returned bytes are sent back as a unicast response.
 type RequestHandler func(peerID string, msg []byte) []byte
+
+// peerMeta tracks per-peer keepalive and ICE-restart state. Guarded by pm.mu.
+type peerMeta struct {
+	lastPongAt   time.Time
+	pongSeen     bool // 구버전 viewer(pong 미응답)에서는 워치독을 비활성화하는 안전망
+	restarts     int
+	windowStart  time.Time
+	restartingAt time.Time // zero = restart 진행 중 아님
+	restartTimer *time.Timer
+}
 
 // PeerManager manages WebRTC peer connections for the sender (driver) side.
 // It connects to the signaling server, creates rooms, and handles
@@ -44,6 +70,7 @@ type PeerManager struct {
 	fastChannels map[string]*webrtc.DataChannel
 	permits      map[string]signaling.Permissions
 	peerViews    map[string]string // per-peer active view: "cockpit" or "qualifying"
+	peerMeta     map[string]*peerMeta
 	mu           sync.RWMutex
 
 	roomID                 string
@@ -53,9 +80,11 @@ type PeerManager struct {
 	defaultPermissionsCode string
 	iceServers             []webrtc.ICEServer
 	onRequest              RequestHandler
-	onCountChange          func(int) // called when engineer count changes
+	onCountChange          func(int)    // called when engineer count changes
+	onStatus               func(string) // signaling status text for tray tooltip 등
 	logger                 *slog.Logger
 	done                   chan struct{}
+	closed                 bool // guarded by sigMu; Connect() after Close() re-arms done
 	reconnecting           bool
 	writeDone              chan struct{}
 }
@@ -69,6 +98,7 @@ func NewPeerManager(signalingURL string, logger *slog.Logger) *PeerManager {
 		fastChannels: make(map[string]*webrtc.DataChannel),
 		permits:      make(map[string]signaling.Permissions),
 		peerViews:    make(map[string]string),
+		peerMeta:     make(map[string]*peerMeta),
 		iceServers:   cloneICEServers(defaultICEServers),
 		logger:       logger,
 		done:         make(chan struct{}),
@@ -83,6 +113,18 @@ func (pm *PeerManager) SetRequestHandler(h RequestHandler) {
 // SetCountChangeHandler registers a callback invoked when engineer count changes.
 func (pm *PeerManager) SetCountChangeHandler(h func(int)) {
 	pm.onCountChange = h
+}
+
+// SetStatusHandler registers a callback invoked with human-readable signaling
+// status transitions (rtc 패키지가 systray에 의존하지 않도록 콜백 주입).
+func (pm *PeerManager) SetStatusHandler(h func(string)) {
+	pm.onStatus = h
+}
+
+func (pm *PeerManager) notifyStatus(status string) {
+	if pm.onStatus != nil {
+		pm.onStatus(status)
+	}
 }
 
 // SetRoomMetadata stores room list metadata used for room creation and updates.
@@ -139,7 +181,17 @@ func (pm *PeerManager) RoomID() string { return pm.roomID }
 func (pm *PeerManager) RoomCode() string { return pm.roomCode }
 
 // Connect establishes a WebSocket connection to the signaling server and sends room_create.
+// Safe to call again after Close(): the done channel is re-armed so the
+// read/write loops and reconnect logic work for the new session.
 func (pm *PeerManager) Connect() error {
+	pm.sigMu.Lock()
+	if pm.closed {
+		pm.done = make(chan struct{})
+		pm.closed = false
+		pm.reconnecting = false
+	}
+	pm.sigMu.Unlock()
+
 	if err := pm.dial(); err != nil {
 		return err
 	}
@@ -177,12 +229,13 @@ func (pm *PeerManager) Connect() error {
 	pm.logger.Info("room created on signaling server", "roomId", pm.roomID, "roomCode", pm.roomCode)
 
 	pm.startLoops()
+	go pm.keepaliveLoop()
 	return nil
 }
 
 // dial establishes a WebSocket connection and installs pong handler + read deadline.
 func (pm *PeerManager) dial() error {
-	conn, _, err := websocket.DefaultDialer.Dial(pm.signalingURL, nil)
+	conn, _, err := sigDialer.Dial(pm.signalingURL, nil)
 	if err != nil {
 		return fmt.Errorf("signaling connect: %w", err)
 	}
@@ -208,20 +261,30 @@ func (pm *PeerManager) startLoops() {
 }
 
 // BroadcastAll sends a binary message to all connected DataChannels.
+// Channels are snapshotted under RLock so SCTP writes never run while holding
+// the lock (a slow write would otherwise block removePeer and friends).
 func (pm *PeerManager) BroadcastAll(message []byte) {
+	type target struct {
+		peerID  string
+		channel *webrtc.DataChannel
+	}
 	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-
+	snapshot := make([]target, 0, len(pm.channels))
 	for peerID, ch := range pm.channels {
-		if ch.ReadyState() != webrtc.DataChannelStateOpen {
+		snapshot = append(snapshot, target{peerID: peerID, channel: ch})
+	}
+	pm.mu.RUnlock()
+
+	for _, t := range snapshot {
+		if t.channel.ReadyState() != webrtc.DataChannelStateOpen {
 			continue
 		}
-		if ch.BufferedAmount() > maxBufferedAmount {
-			pm.logger.Debug("dropping message for slow peer", "peerId", peerID)
+		if t.channel.BufferedAmount() > maxBufferedAmount {
+			pm.logger.Debug("dropping message for slow peer", "peerId", t.peerID)
 			continue
 		}
-		if err := ch.Send(message); err != nil {
-			pm.logger.Debug("send failed", "peerId", peerID, "error", err)
+		if err := t.channel.Send(message); err != nil {
+			pm.logger.Debug("send failed", "peerId", t.peerID, "error", err)
 		}
 	}
 }
@@ -343,10 +406,14 @@ func (pm *PeerManager) ConnectedCount() int {
 
 // PeerDebugInfo returns debug information about connected peers and their permissions.
 type PeerDebugInfo struct {
-	PeerID      string                `json:"peerId"`
-	State       string                `json:"state"`
-	View        string                `json:"view,omitempty"`
-	Permissions signaling.Permissions `json:"permissions"`
+	PeerID        string                `json:"peerId"`
+	State         string                `json:"state"`
+	ICEState      string                `json:"iceState,omitempty"`
+	CandidatePair string                `json:"candidatePair,omitempty"` // 예: "srflx -> host"
+	Restarts      int                   `json:"restarts,omitempty"`
+	LastPongAgoMs int64                 `json:"lastPongAgoMs,omitempty"`
+	View          string                `json:"view,omitempty"`
+	Permissions   signaling.Permissions `json:"permissions"`
 }
 
 // DebugPeers returns debug info for all tracked peers.
@@ -355,19 +422,61 @@ func (pm *PeerManager) DebugPeers() []PeerDebugInfo {
 	defer pm.mu.RUnlock()
 	var out []PeerDebugInfo
 	for peerID, ch := range pm.channels {
-		out = append(out, PeerDebugInfo{
+		info := PeerDebugInfo{
 			PeerID:      peerID,
 			State:       ch.ReadyState().String(),
 			View:        pm.peerViews[peerID],
 			Permissions: pm.permits[peerID],
-		})
+		}
+		if pc := pm.peers[peerID]; pc != nil {
+			info.ICEState = pc.ICEConnectionState().String()
+			info.CandidatePair = selectedCandidatePair(pc)
+		}
+		if meta := pm.peerMeta[peerID]; meta != nil {
+			info.Restarts = meta.restarts
+			if meta.pongSeen {
+				info.LastPongAgoMs = time.Since(meta.lastPongAt).Milliseconds()
+			}
+		}
+		out = append(out, info)
 	}
 	return out
 }
 
+// selectedCandidatePair summarizes the active ICE candidate pair types
+// (e.g. "srflx -> host"); empty when not yet established.
+func selectedCandidatePair(pc *webrtc.PeerConnection) string {
+	sctp := pc.SCTP()
+	if sctp == nil {
+		return ""
+	}
+	transport := sctp.Transport()
+	if transport == nil {
+		return ""
+	}
+	ice := transport.ICETransport()
+	if ice == nil {
+		return ""
+	}
+	pair, err := ice.GetSelectedCandidatePair()
+	if err != nil || pair == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s -> %s", pair.Local.Typ, pair.Remote.Typ)
+}
+
 // Close shuts down all peer connections and the signaling connection.
+// Idempotent; a later Connect() re-arms the manager.
 func (pm *PeerManager) Close() {
-	close(pm.done)
+	pm.sigMu.Lock()
+	if pm.closed {
+		pm.sigMu.Unlock()
+		return
+	}
+	pm.closed = true
+	done := pm.done
+	pm.sigMu.Unlock()
+	close(done)
 
 	pm.mu.Lock()
 	for id, pc := range pm.peers {
@@ -386,8 +495,18 @@ func (pm *PeerManager) Close() {
 	pm.sigMu.Unlock()
 }
 
+// doneChan returns the current generation's done channel under lock.
+// Goroutines capture it once at entry — after Close()+Connect() re-arms the
+// channel, stale goroutines still observe their own (closed) generation.
+func (pm *PeerManager) doneChan() chan struct{} {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	return pm.done
+}
+
 // writeSignalingLoop sends periodic pings and heartbeat messages to keep the signaling connection alive.
 func (pm *PeerManager) writeSignalingLoop() {
+	done := pm.doneChan()
 	pingTicker := time.NewTicker(sigPingPeriod)
 	heartbeatTicker := time.NewTicker(sigHeartbeatPeriod)
 	defer pingTicker.Stop()
@@ -395,7 +514,7 @@ func (pm *PeerManager) writeSignalingLoop() {
 
 	for {
 		select {
-		case <-pm.done:
+		case <-done:
 			return
 		case <-pm.writeDone:
 			return
@@ -417,6 +536,7 @@ func (pm *PeerManager) writeSignalingLoop() {
 }
 
 func (pm *PeerManager) readSignalingLoop() {
+	done := pm.doneChan()
 	roomClosed := false
 	pm.sigMu.Lock()
 	conn := pm.sigConn
@@ -429,6 +549,7 @@ func (pm *PeerManager) readSignalingLoop() {
 		}
 		pm.sigMu.Unlock()
 		if !roomClosed {
+			pm.notifyStatus("Signaling 재연결 중")
 			pm.scheduleReconnect()
 		}
 		pm.logger.Info("signaling read loop exited")
@@ -436,7 +557,7 @@ func (pm *PeerManager) readSignalingLoop() {
 
 	for {
 		select {
-		case <-pm.done:
+		case <-done:
 			return
 		default:
 		}
@@ -448,7 +569,7 @@ func (pm *PeerManager) readSignalingLoop() {
 		}
 		if err := conn.ReadJSON(&msg); err != nil {
 			select {
-			case <-pm.done:
+			case <-done:
 				return
 			default:
 				pm.logger.Error("signaling read error", "error", err)
@@ -487,14 +608,8 @@ func (pm *PeerManager) readSignalingLoop() {
 
 // scheduleReconnect initiates a reconnection attempt if not already in progress.
 func (pm *PeerManager) scheduleReconnect() {
-	select {
-	case <-pm.done:
-		return
-	default:
-	}
-
 	pm.sigMu.Lock()
-	if pm.reconnecting {
+	if pm.closed || pm.reconnecting {
 		pm.sigMu.Unlock()
 		return
 	}
@@ -506,6 +621,7 @@ func (pm *PeerManager) scheduleReconnect() {
 
 // reconnectLoop attempts to re-establish the signaling connection with exponential backoff.
 func (pm *PeerManager) reconnectLoop() {
+	done := pm.doneChan()
 	defer func() {
 		pm.sigMu.Lock()
 		pm.reconnecting = false
@@ -515,7 +631,7 @@ func (pm *PeerManager) reconnectLoop() {
 	delay := reconnectBaseDelay
 	for {
 		select {
-		case <-pm.done:
+		case <-done:
 			return
 		default:
 		}
@@ -523,7 +639,7 @@ func (pm *PeerManager) reconnectLoop() {
 		pm.logger.Info("attempting signaling reconnection", "delay", delay)
 
 		select {
-		case <-pm.done:
+		case <-done:
 			return
 		case <-time.After(delay):
 		}
@@ -569,9 +685,11 @@ func (pm *PeerManager) reconnectLoop() {
 			continue
 		}
 
+		rejoinFailed := false
 		if resp.Type == signaling.TypeError {
 			// Room expired or not found — fallback to room_create with the same stable room id.
 			pm.logger.Warn("room_rejoin failed, creating new room", "error", resp.Error)
+			rejoinFailed = true
 
 			create := signaling.Message{
 				Type:                   signaling.TypeRoomCreate,
@@ -608,7 +726,16 @@ func (pm *PeerManager) reconnectLoop() {
 			}
 			pm.roomCode = resp.RoomCode
 			pm.logger.Info("signaling reconnected", "roomId", pm.roomID, "roomCode", pm.roomCode)
+			pm.notifyStatus("Running")
 			pm.startLoops()
+			if rejoinFailed {
+				// 방이 만료되어 새로 생성됨 — 서버에 엔지니어 세션이 없으므로
+				// 기존 peer를 정리하고 viewer 재조인을 기다린다.
+				pm.closeAllPeers()
+			} else {
+				// rejoin 성공: 살아있는 peer는 유지하고, 끊긴 peer만 ICE restart.
+				pm.recoverStalePeers()
+			}
 			return
 		}
 
@@ -653,6 +780,9 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 
 	se := webrtc.SettingEngine{}
 	se.SetSCTPMaxReceiveBufferSize(4 * 1024 * 1024) // 4MB
+	// pion 기본 failed 타임아웃(25s)은 너무 느리다 — ICE restart 경로가 있으므로
+	// 빠른 failed 전이(15s)가 유리하다. (disconnected 5s / keepalive 2s는 기본값 유지)
+	se.SetICETimeouts(5*time.Second, 15*time.Second, 2*time.Second)
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
 	pc, err := api.NewPeerConnection(config)
 	if err != nil {
@@ -689,6 +819,7 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 		pm.fastChannels[peerID] = fastDC
 	}
 	pm.permits[peerID] = permissions
+	pm.peerMeta[peerID] = &peerMeta{windowStart: time.Now()}
 	pm.mu.Unlock()
 
 	dc.OnOpen(func() {
@@ -706,21 +837,27 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		// Check for view change message
+		// Small JSON control messages: keepalive pong / view change
 		if len(msg.Data) < 100 {
-			var viewMsg struct {
+			var ctrlMsg struct {
 				Type string `json:"type"`
 				View string `json:"view"`
 			}
-			if json.Unmarshal(msg.Data, &viewMsg) == nil && viewMsg.Type == "setView" {
-				switch viewMsg.View {
-				case "cockpit", "qualifying":
-					pm.mu.Lock()
-					pm.peerViews[peerID] = viewMsg.View
-					pm.mu.Unlock()
-					pm.logger.Info("peer view changed", "peerId", peerID, "view", viewMsg.View)
+			if json.Unmarshal(msg.Data, &ctrlMsg) == nil {
+				switch ctrlMsg.Type {
+				case "pong":
+					pm.notePong(peerID)
+					return
+				case "setView":
+					switch ctrlMsg.View {
+					case "cockpit", "qualifying":
+						pm.mu.Lock()
+						pm.peerViews[peerID] = ctrlMsg.View
+						pm.mu.Unlock()
+						pm.logger.Info("peer view changed", "peerId", peerID, "view", ctrlMsg.View)
+					}
+					return
 				}
-				return
 			}
 		}
 
@@ -751,7 +888,13 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		pm.logger.Info("peer connection state changed", "peerId", peerID, "state", state.String())
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
+			pm.noteConnected(peerID)
+		case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed:
+			// 끊김 감지 즉시 ICE restart 시도 (캡 초과/실패 시 removePeer로 수렴)
+			go pm.restartICE(peerID)
+		case webrtc.PeerConnectionStateClosed:
 			pm.removePeer(peerID)
 		}
 	})
@@ -836,11 +979,228 @@ func (pm *PeerManager) removePeer(peerID string) {
 		delete(pm.fastChannels, peerID)
 		delete(pm.permits, peerID)
 		delete(pm.peerViews, peerID)
+		if meta := pm.peerMeta[peerID]; meta != nil && meta.restartTimer != nil {
+			meta.restartTimer.Stop()
+		}
+		delete(pm.peerMeta, peerID)
 	}
 	pm.mu.Unlock()
 
 	if ok && pm.onCountChange != nil {
 		pm.onCountChange(pm.ConnectedCount())
+	}
+}
+
+// notePong records a keepalive pong from the peer.
+func (pm *PeerManager) notePong(peerID string) {
+	pm.mu.Lock()
+	if meta := pm.peerMeta[peerID]; meta != nil {
+		meta.lastPongAt = time.Now()
+		meta.pongSeen = true
+	}
+	pm.mu.Unlock()
+}
+
+// noteConnected clears any in-flight ICE restart state for the peer.
+func (pm *PeerManager) noteConnected(peerID string) {
+	pm.mu.Lock()
+	if meta := pm.peerMeta[peerID]; meta != nil {
+		meta.restartingAt = time.Time{}
+		if meta.restartTimer != nil {
+			meta.restartTimer.Stop()
+			meta.restartTimer = nil
+		}
+		// 복구 직후의 stale pong 타임아웃 오탐 방지
+		meta.lastPongAt = time.Now()
+	}
+	pm.mu.Unlock()
+}
+
+// restartICE renegotiates the connection for an existing peer using an ICE
+// restart offer. The offer travels over the regular signaling relay with the
+// Restart flag so the viewer reuses its live PeerConnection (no DC teardown).
+func (pm *PeerManager) restartICE(peerID string) {
+	pm.mu.Lock()
+	pc, ok := pm.peers[peerID]
+	meta := pm.peerMeta[peerID]
+	if !ok || meta == nil {
+		pm.mu.Unlock()
+		return
+	}
+	if !meta.restartingAt.IsZero() {
+		pm.mu.Unlock()
+		return // restart already in flight
+	}
+	now := time.Now()
+	if now.Sub(meta.windowStart) > iceRestartWindow {
+		meta.windowStart = now
+		meta.restarts = 0
+	}
+	if meta.restarts >= iceRestartMaxPerWindow {
+		pm.mu.Unlock()
+		pm.logger.Warn("ICE restart cap reached, dropping peer", "peerId", peerID)
+		pm.removePeer(peerID)
+		return
+	}
+	if pc.SignalingState() != webrtc.SignalingStateStable {
+		// 직전 협상이 미완(answer 미도착 등)이면 restart offer를 얹을 수 없다.
+		// keepalive/ICE failed 경로가 결국 removePeer로 수렴한다.
+		pm.mu.Unlock()
+		pm.logger.Warn("skipping ICE restart in non-stable signaling state", "peerId", peerID, "state", pc.SignalingState().String())
+		return
+	}
+	meta.restarts++
+	meta.restartingAt = now
+	pm.mu.Unlock()
+
+	offer, err := pc.CreateOffer(&webrtc.OfferOptions{ICERestart: true})
+	if err != nil {
+		pm.logger.Error("failed to create ICE restart offer", "peerId", peerID, "error", err)
+		pm.removePeer(peerID)
+		return
+	}
+	if err := pc.SetLocalDescription(offer); err != nil {
+		pm.logger.Error("failed to set ICE restart local description", "peerId", peerID, "error", err)
+		pm.removePeer(peerID)
+		return
+	}
+	offerJSON, err := json.Marshal(offer)
+	if err != nil {
+		pm.logger.Error("failed to marshal ICE restart offer", "peerId", peerID, "error", err)
+		pm.removePeer(peerID)
+		return
+	}
+
+	pm.logger.Info("sending ICE restart offer", "peerId", peerID)
+	pm.sendSignaling(signaling.Message{
+		Type:    signaling.TypeOffer,
+		PeerID:  peerID,
+		Payload: offerJSON,
+		Restart: true,
+	})
+
+	// restart 포기 타이머: 기한 내 Connected로 복귀하지 못하면 정리하고
+	// viewer의 full rejoin에 맡긴다.
+	timer := time.AfterFunc(iceRestartTimeout, func() {
+		pm.mu.RLock()
+		current, exists := pm.peers[peerID]
+		pm.mu.RUnlock()
+		if !exists || current != pc {
+			return
+		}
+		if pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
+			pm.logger.Warn("ICE restart did not recover in time, dropping peer", "peerId", peerID)
+			pm.removePeer(peerID)
+		}
+	})
+
+	pm.mu.Lock()
+	// 락을 푼 사이 noteConnected가 restart 상태를 정리했을 수 있다(ICE 자가 복구).
+	// restartingAt이 비워졌으면 이 restart는 이미 끝난 것 — 새 타이머를 버린다.
+	if m := pm.peerMeta[peerID]; m != nil && !m.restartingAt.IsZero() {
+		if m.restartTimer != nil {
+			m.restartTimer.Stop()
+		}
+		m.restartTimer = timer
+	} else {
+		timer.Stop()
+	}
+	pm.mu.Unlock()
+}
+
+// keepaliveLoop pings every peer's data channel and reacts to missing pongs.
+func (pm *PeerManager) keepaliveLoop() {
+	done := pm.doneChan()
+	ticker := time.NewTicker(dcPingPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			pm.pingPeers()
+		}
+	}
+}
+
+func (pm *PeerManager) pingPeers() {
+	type target struct {
+		peerID       string
+		channel      *webrtc.DataChannel
+		pongSeen     bool
+		lastPongAt   time.Time
+		restarting   bool
+	}
+
+	pm.mu.RLock()
+	targets := make([]target, 0, len(pm.channels))
+	for peerID, ch := range pm.channels {
+		meta := pm.peerMeta[peerID]
+		t := target{peerID: peerID, channel: ch}
+		if meta != nil {
+			t.pongSeen = meta.pongSeen
+			t.lastPongAt = meta.lastPongAt
+			t.restarting = !meta.restartingAt.IsZero()
+		}
+		targets = append(targets, t)
+	}
+	pm.mu.RUnlock()
+
+	now := time.Now()
+	ping := fmt.Sprintf(`{"type":"ping","ts":%d}`, now.UnixMilli())
+
+	for _, t := range targets {
+		if t.channel.ReadyState() == webrtc.DataChannelStateOpen {
+			_ = t.channel.SendText(ping)
+		}
+		if !t.pongSeen {
+			continue // 구버전 viewer: pong을 보내지 않으므로 워치독 비활성
+		}
+		silent := now.Sub(t.lastPongAt)
+		switch {
+		case silent > dcPongDropAfter:
+			pm.logger.Warn("peer keepalive lost, dropping peer", "peerId", t.peerID, "silentFor", silent)
+			pm.removePeer(t.peerID)
+		case silent > dcPongRestartAfter && !t.restarting:
+			pm.logger.Warn("peer keepalive stalled, attempting ICE restart", "peerId", t.peerID, "silentFor", silent)
+			go pm.restartICE(t.peerID)
+		}
+	}
+}
+
+// recoverStalePeers re-offers (ICE restart) to peers that are not connected.
+// 시그널링 단절 중 유실된 offer/answer/candidate는 큐잉하지 않는다 — 복구 후
+// 재협상 한 번이 전부 무효화·재생성하기 때문.
+func (pm *PeerManager) recoverStalePeers() {
+	pm.mu.RLock()
+	stale := make([]string, 0, len(pm.peers))
+	for peerID, pc := range pm.peers {
+		if pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
+			stale = append(stale, peerID)
+		}
+	}
+	pm.mu.RUnlock()
+
+	for _, peerID := range stale {
+		pm.logger.Info("recovering stale peer after signaling reconnect", "peerId", peerID)
+		go pm.restartICE(peerID)
+	}
+}
+
+// closeAllPeers tears down every peer connection but keeps the signaling link.
+// room_rejoin 실패로 방을 새로 만든 경우 서버에 엔지니어 엔트리가 없으므로
+// viewer의 재조인(새 협상)에 맡긴다.
+func (pm *PeerManager) closeAllPeers() {
+	pm.mu.Lock()
+	ids := make([]string, 0, len(pm.peers))
+	for peerID := range pm.peers {
+		ids = append(ids, peerID)
+	}
+	pm.mu.Unlock()
+
+	for _, peerID := range ids {
+		pm.removePeer(peerID)
 	}
 }
 

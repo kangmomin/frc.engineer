@@ -373,6 +373,9 @@ func main() {
 	}
 	peerManager.SetRoomMetadata(roomName, roomPassword)
 	peerManager.SetDefaultPermissionsCode(frcAccountKey)
+	peerManager.SetStatusHandler(func(status string) {
+		systray.SetTooltip(fmt.Sprintf("FRC Pitwall Sender %s — %s", appVersion, status))
+	})
 
 	// Create DataChannel broadcaster
 	broadcaster := rtc.NewDataChannelBroadcaster(peerManager)
@@ -906,13 +909,51 @@ func main() {
 	cachedDriverPerms = resolveDriverPerms(cfgFRCAccountKey)
 	cfgMu.Unlock()
 
-	// Connect to signaling server (require pitwall permission)
+	// Connect to signaling server (require pitwall permission).
+	// 시그널링이 일시적으로 죽어 있어도 sender는 살아서 백오프 재시도해야 한다 —
+	// 이전에는 첫 실패에 os.Exit(1)로 앱 전체가 종료됐다.
+	connectWithRetry := func() {
+		delay := time.Second
+		for {
+			// 재시도 중 권한이 회수되면 중단 (Close 후 Connect가 세션을 되살리는 것 방지)
+			cfgMu.Lock()
+			pitwallAllowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
+			cfgMu.Unlock()
+			if !pitwallAllowed {
+				logger.Warn("pitwall permission revoked during connect retry, aborting")
+				return
+			}
+			err := peerManager.Connect()
+			if err == nil {
+				// TOCTOU 가드: 권한 체크와 Connect 사이에 회수+Close가 끼어들면
+				// Connect가 세션을 되살린다 — cfgMu 하에 재확인 후 되돌린다.
+				cfgMu.Lock()
+				stillAllowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
+				cfgMu.Unlock()
+				if !stillAllowed {
+					peerManager.Close()
+					logger.Warn("pitwall permission revoked during connect, closing session")
+					return
+				}
+				systray.SetTooltip("FRC Pitwall Sender " + appVersion + " — Running")
+				return
+			}
+			logger.Warn("signaling connect failed, retrying", "error", err, "delay", delay)
+			systray.SetTooltip(fmt.Sprintf("FRC Pitwall Sender %s — Signaling 연결 재시도 중 (%s)", appVersion, delay))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+			delay *= 2
+			if delay > 30*time.Second {
+				delay = 30 * time.Second
+			}
+		}
+	}
 	shouldConnect := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
 	if shouldConnect {
-		if err := peerManager.Connect(); err != nil {
-			logger.Error("failed to connect to signaling server", "error", err)
-			os.Exit(1)
-		}
+		go connectWithRetry()
 	} else {
 		logger.Warn("pitwall permission denied, skipping signaling connection")
 	}
@@ -1628,11 +1669,7 @@ func main() {
 				peerManager.Close()
 				logger.Warn("pitwall permission revoked, disconnected from signaling")
 			} else if !wasPitwall && nowPitwall {
-				go func() {
-					if err := peerManager.Connect(); err != nil {
-						logger.Error("failed to reconnect to signaling", "error", err)
-					}
-				}()
+				go connectWithRetry()
 				logger.Info("pitwall permission granted, reconnecting to signaling")
 			}
 		}
