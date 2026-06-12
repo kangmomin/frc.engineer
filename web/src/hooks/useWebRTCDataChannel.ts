@@ -33,12 +33,23 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 const SIGNALING_RESPONSE_TIMEOUT_MS = 6_000;
 const OFFER_TIMEOUT_MS = 8_000;
 const PEER_CONNECTION_TIMEOUT_MS = 12_000;
+// 'disconnected' watchdog: sender의 ICE restart 1사이클(감지 5s + offer 왕복 +
+// ICE 재연결 ≈ 11s)을 온전히 기다린 뒤에야 full reconnect로 넘어간다.
+const DISCONNECTED_RECOVERY_TIMEOUT_MS = 18_000;
 const DATA_REQUEST_TIMEOUT_MS = 30_000;
 
-// Auto-reconnect: bounded exponential backoff (1s, 2s, 4s, 8s, 16s) before
-// falling back to the manual reconnect screen. Caps retry storms across peers.
+// Auto-reconnect: 한 번이라도 연결에 성공한 세션은 무한 재시도(백오프 cap 30s
+// + ±30% jitter). 초기 연결(성공 이력 없음)만 5회로 제한해 오타/죽은 방에서
+// 빠르게 수동 화면으로 보낸다.
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+// 시그널링 상시 유지: ~110s 프록시 idle cap 대비 3배 마진 (sender와 동일 값)
+const HEARTBEAT_INTERVAL_MS = 30_000;
+// sender keepalive ping(5s) 3회 손실 시 죽은 P2P로 판정
+const KEEPALIVE_TIMEOUT_MS = 15_000;
+const KEEPALIVE_CHECK_INTERVAL_MS = 5_000;
+const PENDING_CANDIDATE_LIMIT = 32;
 
 type PendingRequest =
   | {
@@ -207,6 +218,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const reconnectTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastTargetRef = useRef('');
   const pendingRequestsRef = useRef(new Map<string, PendingRequest>());
+  // 한 번이라도 P2P connected에 도달했는지 — 재연결 정책(무한 vs 5회)을 가른다
+  const hadConnectedRef = useRef(false);
+  // 서버가 발급한 engineer peerId — 시그널링 재바인딩(room_join + peerId)에 사용
+  const lastPeerIdRef = useRef('');
+  // 시그널링 WS가 닫혀 있는 동안 모아 두는 ICE candidate (재연결 후 flush)
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  // sender keepalive ping 수신 여부 (구버전 sender에서는 워치독 비활성)
+  const pingSeenRef = useRef(false);
+  const lastTrafficAtRef = useRef(0);
 
   // Refs for routeMessage batching
   const pendingPitwallRef = useRef<PitwallState | null>(null);
@@ -397,7 +417,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     if (reconnectTimeoutRef.current) return;
 
     const attempt = reconnectAttemptsRef.current;
-    if (attempt >= MAX_RECONNECT_ATTEMPTS) {
+    // 초기 연결(성공 이력 없음)만 횟수 제한 — 라이브 세션 끊김은 무한 재시도.
+    if (!hadConnectedRef.current && attempt >= MAX_RECONNECT_ATTEMPTS) {
       emitP2PDebug('error', 'reconnect', 'Giving up after reaching the max reconnect attempts.', {
         attempts: attempt,
         message,
@@ -406,7 +427,9 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       return;
     }
 
-    const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt); // 1s, 2s, 4s, 8s, 16s
+    // 백오프 cap 30s + ±30% jitter (방당 최대 8명의 동시 복구 분산)
+    const base = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, Math.min(attempt, 5)), RECONNECT_MAX_DELAY_MS);
+    const delay = Math.round(base * (0.85 + Math.random() * 0.3));
     reconnectAttemptsRef.current = attempt + 1;
 
     emitP2PDebug('warn', 'reconnect', 'Scheduling automatic reconnect.', {
@@ -438,6 +461,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const disconnect = useCallback(() => {
     terminalFailureRef.current = null;
     reconnectAttemptsRef.current = 0;
+    hadConnectedRef.current = false;
+    lastPeerIdRef.current = '';
+    pendingCandidatesRef.current = [];
+    pingSeenRef.current = false;
     clearStageTimeout();
     clearReconnectTimer();
     setLastError('');
@@ -609,6 +636,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     if (lastTargetRef.current !== connectionTarget) {
       lastTargetRef.current = connectionTarget;
       reconnectAttemptsRef.current = 0;
+      hadConnectedRef.current = false;
+      lastPeerIdRef.current = '';
+      pendingCandidatesRef.current = [];
+      pingSeenRef.current = false;
     }
 
     isMountedRef.current = true;
@@ -620,16 +651,52 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     setRtcState('new');
     setConnectionState('connecting');
     setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-    armStageTimeout('Timed out waiting for the signaling server to acknowledge the room join.', SIGNALING_RESPONSE_TIMEOUT_MS);
 
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(signalingUrl);
-    } catch {
-      failConnection('error', 'Failed to open the signaling connection.');
-      return;
-    }
-    wsRef.current = ws;
+    // --- 시그널링 계층 (PC 계층과 분리: ws 단절·재연결이 살아있는 P2P를 건드리지 않는다) ---
+    let ws: WebSocket | null = null;
+    let wsReconnectTimer: number | null = null;
+    let wsReconnectDelay = RECONNECT_BASE_DELAY_MS;
+    let heartbeatTimer: number | null = null;
+    let disposed = false;
+
+    const stopHeartbeat = () => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+
+    const sendViaWs = (payload: Record<string, unknown>): boolean => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+        return true;
+      }
+      return false;
+    };
+
+    const flushPendingCandidates = () => {
+      if (pendingCandidatesRef.current.length === 0) return;
+      const queued = pendingCandidatesRef.current;
+      pendingCandidatesRef.current = [];
+      emitP2PDebug('info', 'signaling', 'Flushing queued ICE candidates.', { count: queued.length }, false);
+      for (const candidate of queued) {
+        if (!sendViaWs({ type: 'ice_candidate', payload: candidate })) {
+          pendingCandidatesRef.current.push(candidate);
+        }
+      }
+    };
+
+    const scheduleWsReconnect = () => {
+      if (disposed || terminalFailureRef.current) return;
+      if (wsReconnectTimer) return;
+      const delay = Math.round(Math.min(wsReconnectDelay, RECONNECT_MAX_DELAY_MS) * (0.85 + Math.random() * 0.3));
+      wsReconnectDelay = Math.min(wsReconnectDelay * 2, RECONNECT_MAX_DELAY_MS);
+      emitP2PDebug('warn', 'signaling', 'Scheduling signaling-only reconnect.', { delayMs: delay }, false);
+      wsReconnectTimer = window.setTimeout(() => {
+        wsReconnectTimer = null;
+        connectSignaling();
+      }, delay);
+    };
 
     const handleICECandidate = (candidatePayload: unknown) => {
       const pc = pcRef.current;
@@ -640,8 +707,35 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       });
     };
 
-    const handleOffer = (offerPayload: unknown) => {
+    const handleOffer = (offerPayload: unknown, isRestart: boolean) => {
       const offer = offerPayload as RTCSessionDescriptionInit;
+
+      // sender 주도 ICE restart: 살아있는 PC에 재협상만 적용한다 (DC 유지 —
+      // 화면 끊김 없이 네트워크 경로만 복구). 조건이 안 맞으면 full rebuild.
+      if (isRestart && pcRef.current && dcRef.current && pcRef.current.signalingState === 'stable') {
+        const pc = pcRef.current;
+        emitP2PDebug('info', 'signaling', 'Received ICE restart offer, renegotiating in place.', undefined, false);
+        // restart 중에는 DC 트래픽이 멈춘다 — keepalive 워치독이 진행 중인
+        // in-place 복구를 full reconnect로 선점하지 않도록 타이머를 리셋한다.
+        lastTrafficAtRef.current = Date.now();
+        clearStageTimeout();
+        setConnectionState('reconnecting');
+        armStageTimeout('ICE restart did not complete in time.', PEER_CONNECTION_TIMEOUT_MS);
+        pc.setRemoteDescription(new RTCSessionDescription(offer))
+          .then(() => pc.createAnswer())
+          .then((answer) => pc.setLocalDescription(answer).then(() => answer))
+          .then((answer) => {
+            sendViaWs({ type: 'answer', payload: answer });
+          })
+          .catch((err) => {
+            emitP2PDebug('error', 'connection', 'ICE restart renegotiation failed.', {
+              error: err instanceof Error ? err.message : String(err),
+            }, false);
+            scheduleReconnect('ICE restart renegotiation failed.');
+          });
+        return;
+      }
+
       emitP2PDebug('info', 'signaling', 'Received WebRTC offer from sender.', undefined, false);
       clearStageTimeout();
       setConnectionState('negotiating');
@@ -667,6 +761,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         const state = pc.connectionState;
 
         if (state === 'connected') {
+          hadConnectedRef.current = true;
+          lastTrafficAtRef.current = Date.now();
           setRtcState('connected');
           clearStageTimeout();
           clearReconnectTimer();
@@ -681,13 +777,12 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           setFeaturePermissions(NO_FEATURE_PERMISSIONS);
           scheduleReconnect('Peer connection lost.');
         } else if (state === 'disconnected') {
-          // Transient; WebRTC may self-heal. Surface as reconnecting, but arm a
-          // watchdog: if it neither recovers to 'connected' nor degrades to 'failed'
-          // within the window, force a reconnect so the UI can't stall here forever.
+          // Transient — sender가 ICE restart로 자가 복구할 시간을 준다 (감지 5s +
+          // restart 협상 + ICE 재연결 ≈ 11s → 18s 워치독). 복구 실패 시 full reconnect.
           setRtcState('disconnected');
           setConnectionState('reconnecting');
           setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-          armStageTimeout('Peer connection stalled in disconnected state.', PEER_CONNECTION_TIMEOUT_MS);
+          armStageTimeout('Peer connection stalled in disconnected state.', DISCONNECTED_RECOVERY_TIMEOUT_MS);
         } else {
           setRtcState(state);
         }
@@ -697,17 +792,42 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         if (!isMountedRef.current) return;
         if (terminalFailureRef.current) return;
         if (pc.iceConnectionState === 'failed') {
+          // 실패 원인 진단용 candidate-pair 통계 1회 기록 (방화벽/NAT 의심 판별)
+          pc.getStats().then((stats) => {
+            let pairCount = 0;
+            let succeededPairs = 0;
+            const candidateTypes: string[] = [];
+            stats.forEach((report) => {
+              if (report.type === 'candidate-pair') {
+                pairCount += 1;
+                if ((report as { state?: string }).state === 'succeeded') succeededPairs += 1;
+              }
+              if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+                const t = (report as { candidateType?: string }).candidateType;
+                if (t && !candidateTypes.includes(`${report.type}:${t}`)) {
+                  candidateTypes.push(`${report.type}:${t}`);
+                }
+              }
+            });
+            emitP2PDebug('error', 'ice-stats', 'ICE failure candidate statistics.', {
+              pairCount,
+              succeededPairs,
+              candidateTypes,
+            }, false);
+          }).catch(() => { /* stats 미지원 환경 무시 */ });
           scheduleReconnect('ICE negotiation failed. A TURN relay may be required for this network path.');
         }
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'ice_candidate',
-            payload: event.candidate.toJSON(),
-          }));
+        if (!event.candidate) return;
+        const candidate = event.candidate.toJSON();
+        if (sendViaWs({ type: 'ice_candidate', payload: candidate })) return;
+        // 시그널링이 잠시 끊겨 있으면 큐에 모아 재연결 후 flush한다.
+        if (pendingCandidatesRef.current.length >= PENDING_CANDIDATE_LIMIT) {
+          pendingCandidatesRef.current.shift();
         }
+        pendingCandidatesRef.current.push(candidate);
       };
 
       pc.ondatachannel = (event) => {
@@ -716,6 +836,24 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         dc.binaryType = 'arraybuffer';
         dc.onmessage = (e) => {
           if (!isMountedRef.current) return;
+          lastTrafficAtRef.current = Date.now();
+
+          // sender keepalive ping → 즉시 pong 응답 (requestId가 없는 제어 메시지)
+          if (typeof e.data === 'string' && e.data.length < 100 && e.data.includes('"ping"')) {
+            try {
+              const ctrl = JSON.parse(e.data) as { type?: string; ts?: number };
+              if (ctrl?.type === 'ping') {
+                pingSeenRef.current = true;
+                if (dc.readyState === 'open') {
+                  dc.send(JSON.stringify({ type: 'pong', ts: ctrl.ts ?? 0 }));
+                }
+                return;
+              }
+            } catch {
+              // JSON이 아니면 일반 메시지로 계속 처리
+            }
+          }
+
           const response = pendingRequestsRef.current.size > 0
             ? decodeResponseEnvelope(e.data as ArrayBuffer | string)
             : null;
@@ -811,9 +949,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           return pc.setLocalDescription(answer).then(() => answer);
         })
         .then((answer) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'answer', payload: answer }));
-          }
+          sendViaWs({ type: 'answer', payload: answer });
         })
         .catch((err) => {
           console.error('WebRTC offer/answer failed:', err);
@@ -824,83 +960,205 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         });
     };
 
-    ws.onopen = () => {
-      if (!isMountedRef.current) { ws.close(); return; }
-      emitP2PDebug('info', 'signaling', 'Joining sender room.', {
-        roomId: roomId ?? null,
-        roomCode: roomCode ?? null,
-      }, false);
-      ws.send(JSON.stringify({
-        type: 'room_join',
-        roomId,
-        roomCode,
-        password,
-      }));
-    };
+    function connectSignaling() {
+      if (disposed || terminalFailureRef.current || !isMountedRef.current) return;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
-    ws.onclose = () => {
-      if (!isMountedRef.current) return;
-      if (terminalFailureRef.current) return;
-      emitP2PDebug('warn', 'signaling', 'Signaling connection closed.', undefined, false);
-      // Signaling is only needed for the initial handshake. If the peer connection
-      // is already live, a signaling drop (e.g. the ~110s proxy cap) does not affect
-      // the P2P link — so only reconnect if the handshake hadn't completed yet.
-      if (pcRef.current?.connectionState === 'connected') {
-        return;
+      // PC가 살아있거나(connected) 자가 복구 대기 중(disconnected 워치독,
+      // restart 협상)이면 조용한 시그널링 재바인딩 — 6s ack 타임아웃이 단일
+      // stage-timeout 슬롯을 통해 18s 워치독을 덮어쓰지 않도록 PC가 아예
+      // 없거나 종단 상태일 때만 무장한다.
+      const pcState = pcRef.current?.connectionState;
+      const initialHandshake = !pcRef.current || pcState === 'new' || pcState === 'failed' || pcState === 'closed';
+      if (initialHandshake) {
+        armStageTimeout('Timed out waiting for the signaling server to acknowledge the room join.', SIGNALING_RESPONSE_TIMEOUT_MS);
       }
-      scheduleReconnect('Signaling connection closed before the peer link was established.');
-    };
 
-    ws.onerror = () => {
-      if (!isMountedRef.current) return;
-      if (terminalFailureRef.current) return;
-      emitP2PDebug('error', 'signaling', 'Signaling server connection failed.', undefined, false);
-      // The reconnect decision is made in ws.onclose, which fires right after onerror.
-    };
-
-    ws.onmessage = (event) => {
-      if (!isMountedRef.current) return;
-
-      let msg: { type: string; payload?: unknown; error?: string; permissions?: FeaturePermissions };
+      let socket: WebSocket;
       try {
-        msg = JSON.parse(event.data);
+        socket = new WebSocket(signalingUrl);
       } catch {
+        if (initialHandshake) {
+          failConnection('error', 'Failed to open the signaling connection.');
+        } else {
+          scheduleWsReconnect();
+        }
         return;
       }
+      ws = socket;
+      wsRef.current = socket;
 
-      switch (msg.type) {
-        case 'room_joined':
-          emitP2PDebug('info', 'signaling', 'Joined sender room.', {
-            roomId: roomId ?? null,
-            roomCode: roomCode ?? null,
-          }, false);
-          clearStageTimeout();
-          setFeaturePermissions(msg.permissions ?? NO_FEATURE_PERMISSIONS);
-          setConnectionState('waiting-offer');
-          armStageTimeout('Timed out waiting for the sender to publish a WebRTC offer.', OFFER_TIMEOUT_MS);
-          break;
-        case 'offer':
-          handleOffer(msg.payload);
-          break;
-        case 'ice_candidate':
-          handleICECandidate(msg.payload);
-          break;
-        case 'room_closed':
-          emitP2PDebug('error', 'signaling', 'Sender room was closed.', undefined, false);
-          failConnection('error', 'The sender room was closed.');
-          break;
-        case 'error':
-          console.error('Signaling error:', msg.error);
-          emitP2PDebug('error', 'signaling', 'Received signaling error.', {
-            error: msg.error ?? 'Unknown signaling error.',
-          }, false);
-          failConnection('error', msg.error ?? 'Unknown signaling error.');
-          break;
+      socket.onopen = () => {
+        if (!isMountedRef.current || disposed) {
+          socket.close();
+          return;
+        }
+        emitP2PDebug('info', 'signaling', 'Joining sender room.', {
+          roomId: roomId ?? null,
+          roomCode: roomCode ?? null,
+          peerId: lastPeerIdRef.current || null,
+        }, false);
+        socket.send(JSON.stringify({
+          type: 'room_join',
+          roomId,
+          roomCode,
+          password,
+          // 재바인딩: 기존 peerId를 보내면 서버가 살아있는 P2P 세션에 WS만 다시 묶는다.
+          ...(lastPeerIdRef.current ? { peerId: lastPeerIdRef.current } : {}),
+        }));
+        // 프록시 idle cap(~110s) 회피용 상시 heartbeat — 시그널링을 세션 내내 유지해
+        // sender 주도 ICE restart 경로를 항상 열어 둔다.
+        stopHeartbeat();
+        heartbeatTimer = window.setInterval(() => {
+          sendViaWs({ type: 'heartbeat' });
+        }, HEARTBEAT_INTERVAL_MS);
+      };
+
+      socket.onclose = () => {
+        if (!isMountedRef.current || disposed) return;
+        stopHeartbeat();
+        if (terminalFailureRef.current) return;
+        emitP2PDebug('warn', 'signaling', 'Signaling connection closed.', undefined, false);
+        if (pcRef.current?.connectionState === 'connected') {
+          // P2P는 독립적으로 유지 — 시그널링만 백그라운드에서 복구한다.
+          scheduleWsReconnect();
+          return;
+        }
+        scheduleReconnect('Signaling connection closed before the peer link was established.');
+      };
+
+      socket.onerror = () => {
+        if (!isMountedRef.current || disposed) return;
+        if (terminalFailureRef.current) return;
+        emitP2PDebug('error', 'signaling', 'Signaling server connection failed.', undefined, false);
+        // The reconnect decision is made in socket.onclose, which fires right after onerror.
+      };
+
+      socket.onmessage = (event) => {
+        if (!isMountedRef.current || disposed) return;
+
+        let msg: { type: string; payload?: unknown; error?: string; permissions?: FeaturePermissions; peerId?: string; restart?: boolean };
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        switch (msg.type) {
+          case 'room_joined': {
+            wsReconnectDelay = RECONNECT_BASE_DELAY_MS;
+            const rebound = lastPeerIdRef.current !== '' && msg.peerId === lastPeerIdRef.current;
+            if (typeof msg.peerId === 'string' && msg.peerId) {
+              lastPeerIdRef.current = msg.peerId;
+            }
+            setFeaturePermissions(msg.permissions ?? NO_FEATURE_PERMISSIONS);
+            flushPendingCandidates();
+            if (rebound && pcRef.current?.connectionState === 'connected') {
+              emitP2PDebug('info', 'signaling', 'Signaling rebound to live peer session.', {
+                peerId: msg.peerId,
+              }, false);
+              break;
+            }
+            emitP2PDebug('info', 'signaling', 'Joined sender room.', {
+              roomId: roomId ?? null,
+              roomCode: roomCode ?? null,
+            }, false);
+            clearStageTimeout();
+            setConnectionState('waiting-offer');
+            armStageTimeout('Timed out waiting for the sender to publish a WebRTC offer.', OFFER_TIMEOUT_MS);
+            break;
+          }
+          case 'offer':
+            handleOffer(msg.payload, msg.restart === true);
+            break;
+          case 'ice_candidate':
+            handleICECandidate(msg.payload);
+            break;
+          case 'heartbeat':
+            // 서버의 heartbeat echo — 무시
+            break;
+          case 'room_closed':
+            emitP2PDebug('error', 'signaling', 'Sender room was closed.', undefined, false);
+            if (hadConnectedRef.current) {
+              // sender가 잠시 이탈해 방이 만료된 경우 — sender 재접속 시 같은
+              // roomID로 방을 재생성하므로(room_create 폴백) 재시도 가치가 있다.
+              lastPeerIdRef.current = '';
+              scheduleReconnect('The sender room was closed.');
+            } else {
+              failConnection('error', 'The sender room was closed.');
+            }
+            break;
+          case 'error': {
+            const errMsg = msg.error ?? 'Unknown signaling error.';
+            emitP2PDebug('error', 'signaling', 'Received signaling error.', { error: errMsg }, false);
+            const lowered = errMsg.toLowerCase();
+            const retryable = hadConnectedRef.current
+              && !lowered.includes('password')
+              && !lowered.includes('full');
+            if (retryable) {
+              lastPeerIdRef.current = '';
+              if (pcRef.current?.connectionState === 'connected') {
+                // P2P는 살아있고 join만 거절됨(예: 서버 재시작 직후 방 미생성) —
+                // 시그널링만 백오프 재시도하고 화면은 유지한다.
+                scheduleWsReconnect();
+              } else {
+                scheduleReconnect(errMsg);
+              }
+            } else {
+              console.error('Signaling error:', errMsg);
+              failConnection('error', errMsg);
+            }
+            break;
+          }
+        }
+      };
+    }
+
+    // 죽은 P2P 조기 감지: sender ping(5s)이 15초간 끊기면 재연결.
+    // 구버전 sender(ping 미전송)에서는 pingSeen이 false라 비활성.
+    const keepaliveWatchdog = window.setInterval(() => {
+      if (!pingSeenRef.current) return;
+      const dc = dcRef.current;
+      if (!dc || dc.readyState !== 'open') return;
+      const silentFor = Date.now() - lastTrafficAtRef.current;
+      if (silentFor > KEEPALIVE_TIMEOUT_MS) {
+        pingSeenRef.current = false;
+        emitP2PDebug('warn', 'connection', 'No keepalive traffic from sender, reconnecting.', {
+          silentForMs: silentFor,
+        }, false);
+        scheduleReconnect('No keepalive traffic from the sender.');
+      }
+    }, KEEPALIVE_CHECK_INTERVAL_MS);
+
+    // 백그라운드 탭/절전 복귀 시 대기 중인 재연결을 즉시 발화
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+        if (!terminalFailureRef.current) {
+          setReconnectNonce((n) => n + 1);
+        }
+      } else if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+        connectSignaling();
       }
     };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    connectSignaling();
 
     return () => {
+      disposed = true;
       isMountedRef.current = false;
+      stopHeartbeat();
+      if (wsReconnectTimer) {
+        clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+      }
+      clearInterval(keepaliveWatchdog);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       cleanup();
     };
     // Re-run when connection params change
