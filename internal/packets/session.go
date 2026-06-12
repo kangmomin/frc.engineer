@@ -35,7 +35,7 @@ type PacketSessionData struct {
 	TotalLaps                 uint8  // Total laps in race
 	TrackLength               uint16 // Track length (meters)
 	SessionType               uint8  // 0=unknown, 1=P1, 2=P2, 3=P3, 4=Short P, 5=Q1, 6=Q2, 7=Q3, 8=Short Q, 9=OSQ, 10=R, 11=R2, 12=R3, 13=Time Trial
-	TrackID                   int8   // -1=unknown, 0-29=track IDs
+	TrackID                   int8   // -1=unknown. 항상 F1 25 canonical enum으로 정규화됨 (2026 wire 값은 파싱 시 변환)
 	NumMarshalZones           uint8
 	MarshalZones              [21]MarshalZone
 	SafetyCarStatus           uint8 // 0=no safety car, 1=full, 2=virtual, 3=formation lap
@@ -78,7 +78,64 @@ const (
 
 // MinSessionPacketSize is the minimum size needed to parse essential session fields
 // We need at least up to safetyCarStatus (offset 153 + 1 byte)
+//
+// 2026 Season Pack 참고: Session 패킷이 926바이트로 커졌지만 신규 필드
+// (Active Aero zone 등)는 모두 패킷 말미에 추가됐다 — 우리가 읽는 앞부분
+// 오프셋은 F1 25와 동일하다 (MacManley/f1-26-udp 필드 순서로 확인).
 const MinSessionPacketSize = sessionSafetyCarStatusOffset + 1
+
+// track2026ToCanonical maps the 2026 Season Pack track enum (the legacy full
+// F1 enum, e.g. 9=Hungaroring/10=Spa, plus new 39-42 entries) onto the
+// compacted F1 25 enum that the rest of the app (track store, lap storage,
+// names) is keyed on. IDs absent from this table pass through unchanged.
+var track2026ToCanonical = map[int8]int8{
+	9:  8,  // Hungary
+	10: 9,  // Belgium (Spa)
+	11: 10, // Italy (Monza)
+	12: 11, // Singapore
+	13: 12, // Japan (Suzuka)
+	14: 13, // UAE (Abu Dhabi)
+	15: 14, // United States (Austin)
+	26: 23, // Netherlands (Zandvoort)
+	27: 24, // Italy (Imola)
+	29: 25, // Saudi Arabia (Jeddah)
+	30: 26, // United States (Miami)
+	31: 28, // United States (Las Vegas)
+	32: 27, // Qatar (Losail)
+	// 39-42 (Reverse layouts, Madrid)는 충돌이 없어 그대로 통과한다.
+}
+
+// canonicalToWire2026 is the inverse of track2026ToCanonical, built once at init.
+var canonicalToWire2026 = func() map[int8]int8 {
+	inverse := make(map[int8]int8, len(track2026ToCanonical))
+	for wire, canonical := range track2026ToCanonical {
+		inverse[canonical] = wire
+	}
+	return inverse
+}()
+
+// CanonicalTrackID normalizes a wire trackId into the F1 25 canonical space.
+func CanonicalTrackID(format uint16, id int8) int8 {
+	if format != PacketFormat2026 {
+		return id
+	}
+	if mapped, ok := track2026ToCanonical[id]; ok {
+		return mapped
+	}
+	return id
+}
+
+// WireTrackID maps a canonical (F1 25) track id back onto the given format's
+// wire enum — CanonicalTrackID의 역함수 (시뮬레이터/패킷 생성용).
+func WireTrackID(format uint16, canonical int8) int8 {
+	if format != PacketFormat2026 {
+		return canonical
+	}
+	if wire, ok := canonicalToWire2026[canonical]; ok {
+		return wire
+	}
+	return canonical
+}
 
 // ErrSessionPacketTooSmall is returned when session packet is too small
 var ErrSessionPacketTooSmall = errors.New("session packet too small")
@@ -98,7 +155,7 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 		TotalLaps:        data[sessionTotalLapsOffset],
 		TrackLength:      binary.LittleEndian.Uint16(data[sessionTrackLengthOffset:]),
 		SessionType:      data[sessionTypeOffset],
-		TrackID:          int8(data[sessionTrackIDOffset]),
+		TrackID:          CanonicalTrackID(header.PacketFormat, int8(data[sessionTrackIDOffset])),
 		SessionTimeLeft:  binary.LittleEndian.Uint16(data[sessionTimeLeftOffset:]),
 		SessionDuration:  binary.LittleEndian.Uint16(data[sessionDurationOffset:]),
 		NumMarshalZones:  data[sessionNumMarshalZonesOffset],

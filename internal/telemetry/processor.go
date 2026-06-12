@@ -81,6 +81,7 @@ type Processor struct {
 	latestTelemetry *packets.CarTelemetryData
 	latestLapData   *packets.LapData
 	latestHeader    *packets.PacketHeader
+	latestPlayerCT2 *packets.CarTelemetry2Data // 2026 Season Pack: 플레이어 Overtake/Active Aero 상태
 
 	// Race summary persistence state
 	raceSummaryMu       sync.Mutex
@@ -291,6 +292,9 @@ func (p *Processor) processPacket(data []byte) {
 	if parsed.MotionEx != nil {
 		p.pitwallManager.UpdateMotionEx(parsed.MotionEx)
 	}
+	if parsed.CarTelemetry2 != nil {
+		p.pitwallManager.UpdateCarTelemetry2(parsed.CarTelemetry2)
+	}
 
 	p.mu.Lock()
 
@@ -308,6 +312,13 @@ func (p *Processor) processPacket(data []byte) {
 		if playerLapData != nil {
 			p.latestLapData = playerLapData
 			p.latestHeader = parsed.Header
+		}
+	}
+
+	if parsed.CarTelemetry2 != nil {
+		if idx := int(parsed.Header.PlayerCarIndex); idx < packets.MaxCars {
+			ct2 := parsed.CarTelemetry2.CarTelemetry2Data[idx]
+			p.latestPlayerCT2 = &ct2
 		}
 	}
 
@@ -409,7 +420,8 @@ func (p *Processor) buildDashboardData() *dto.Dashboard {
 		LastLapTime:       lap.LastLapTimeInMS,
 		BestLapTime:       p.deltaCalculator.GetBestLapTime(),
 		Position:          lap.CarPosition,
-		DRS:               tel.DRS == 1,
+		// 2026 모드에서는 DRS가 폐지되어 Overtake(Manual Override)가 부스트 인디케이터다.
+		DRS:               tel.DRS == 1 || (p.latestPlayerCT2 != nil && p.latestPlayerCT2.OvertakeActive == 1),
 		RevLights:         tel.RevLightsPercent,
 		Sector:            lap.Sector,
 		LapInvalid:        lap.CurrentLapInvalid == 1,

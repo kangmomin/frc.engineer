@@ -46,10 +46,25 @@ func main() {
 	roomManager := signaling.NewRoomManager(logger, frcAPI)
 	defer roomManager.Stop()
 
+	// ALLOWED_ORIGINS (콤마 구분) 설정 시에만 Origin 검사.
+	// Go sender는 Origin 헤더를 보내지 않으므로 "헤더 없음 = 허용"이 필수.
+	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
+
 	upgrader := websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin:     func(r *http.Request) bool { return true },
+		// SDP offer/answer는 2~4KB라 1KB 버퍼는 매 메시지 다중 read를 유발한다.
+		ReadBufferSize:  4096,
+		WriteBufferSize: 4096,
+		CheckOrigin: func(r *http.Request) bool {
+			if len(allowedOrigins) == 0 {
+				return true
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
+			_, ok := allowedOrigins[strings.ToLower(origin)]
+			return ok
+		},
 	}
 
 	mux := http.NewServeMux()
@@ -76,6 +91,9 @@ func main() {
 			return
 		}
 		defer conn.Close()
+
+		// 정상 페이로드 최대치(SDP ~8KB)의 8배 마진. 대형 프레임으로 인한 메모리 폭주 차단.
+		conn.SetReadLimit(64 * 1024)
 
 		// Set up read deadline and pong handler for keepalive.
 		conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -146,4 +164,15 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 	logger.Info("shutting down signaling server")
+}
+
+func parseAllowedOrigins(raw string) map[string]struct{} {
+	origins := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		origin := strings.ToLower(strings.TrimSpace(part))
+		if origin != "" {
+			origins[origin] = struct{}{}
+		}
+	}
+	return origins
 }

@@ -205,15 +205,24 @@ func convertParticipants(in *packets.PacketParticipantsData, carCount int) *extp
 	for i := 0; i < carCount; i++ {
 		src := in.Participants[i]
 		out.Participants[i] = extpackets.ParticipantData{
-			AiControlled:  src.AIControlled == 1,
-			DriverID:      src.DriverID,
-			NetworkID:     src.NetworkID,
+			AiControlled: src.AIControlled == 1,
+			// 외부 라이브러리(f1-25-parser)는 uint8 ID만 안다. 2026 모드의
+			// 16비트 ID는 255로 캡 — setup 지원 표시용이라 식별 정확도 손실만 있다.
+			DriverID:      clampUint8(src.DriverID),
+			NetworkID:     clampUint8(src.NetworkID),
 			TeamID:        int(src.TeamID),
 			Name:          src.GetName(),
 			YourTelemetry: src.YourTelemetry,
 		}
 	}
 	return out
+}
+
+func clampUint8(v uint16) uint8 {
+	if v > 255 {
+		return 255
+	}
+	return uint8(v)
 }
 
 func convertMotion(in *packets.PacketMotionData, carCount int) *extpackets.PacketMotionData {

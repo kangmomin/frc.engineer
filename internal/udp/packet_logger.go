@@ -31,6 +31,8 @@ var packetIDName = map[packets.PacketID]string{
 	packets.PacketIDTyreSets:       "tyre_sets",
 	packets.PacketIDMotionEx:       "motion_ex",
 	packets.PacketIDTimeTrial:      "time_trial",
+	packets.PacketIDLapPositions:   "lap_positions",
+	packets.PacketIDCarTelemetry2:  "car_telemetry2",
 }
 
 // PacketLogEntry is a single JSONL record written to disk.
@@ -210,6 +212,8 @@ func parsedPayload(p *ParsedData) interface{} {
 		return p.CarStatus
 	case p.CarDamage != nil:
 		return p.CarDamage
+	case p.CarTelemetry2 != nil:
+		return p.CarTelemetry2
 	case p.Event != nil:
 		return p.Event
 	default:

@@ -30,6 +30,8 @@ type PitwallManager struct {
 	carStatus         *packets.PacketCarStatusData
 	lapData           *packets.PacketLapData
 	telemetry         *packets.PacketCarTelemetryData
+	carTelemetry2     *packets.PacketCarTelemetry2Data // 2026 Season Pack 전용 (nil on F1 25)
+	gameFormat        uint16                           // 마지막으로 수신한 packetFormat (2025/2026)
 	carDamage         *packets.PacketCarDamageData
 	carSetups         *packets.PacketCarSetupData
 	tyreSets          [packets.MaxCars]*packets.PacketTyreSetsData
@@ -105,7 +107,19 @@ func (pm *PitwallManager) UpdateSession(s *packets.PacketSessionData) {
 			s.SessionType, s.SessionTimeLeft, s.SessionDuration)
 	}
 	pm.session = s
+	pm.noteFormatLocked(s.Header.PacketFormat)
 	pm.mu.Unlock()
+}
+
+// noteFormatLocked tracks the active packetFormat and clears format-specific
+// caches when the game switches UDP mode (25↔26) — 이전 포맷의 CT2/고수위가
+// 새 세션을 오염시키지 않게 한다. pm.mu 보유 상태에서 호출할 것.
+func (pm *PitwallManager) noteFormatLocked(format uint16) {
+	if pm.gameFormat != 0 && pm.gameFormat != format {
+		pm.carTelemetry2 = nil
+		pm.peakActiveCars = 0
+	}
+	pm.gameFormat = format
 }
 
 // UpdateParticipants stores the latest participants packet
@@ -146,7 +160,13 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 			wz = car.WorldPositionZ
 			sector = int(ld.Sector)
 
-			if pm.telemetry != nil {
+			if pm.carTelemetry2 != nil {
+				// 2026 모드: DRS 폐지. Active Aero X-mode(직선 저드래그)를 고속
+				// 구간 플래그로 기록해 트랙맵/ERS 프로파일의 의미를 유지한다.
+				if pm.carTelemetry2.CarTelemetry2Data[idx].ActiveAeroMode == 1 {
+					drs = 1
+				}
+			} else if pm.telemetry != nil {
 				drs = int(pm.telemetry.CarTelemetryData[idx].DRS)
 			}
 		}
@@ -199,6 +219,16 @@ func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
 func (pm *PitwallManager) UpdateTelemetry(t *packets.PacketCarTelemetryData) {
 	pm.mu.Lock()
 	pm.telemetry = t
+	pm.noteFormatLocked(t.Header.PacketFormat)
+	pm.mu.Unlock()
+}
+
+// UpdateCarTelemetry2 stores the latest Car Telemetry 2 packet
+// (2026 Season Pack: Active Aero / Overtake state).
+func (pm *PitwallManager) UpdateCarTelemetry2(t *packets.PacketCarTelemetry2Data) {
+	pm.mu.Lock()
+	pm.noteFormatLocked(t.Header.PacketFormat)
+	pm.carTelemetry2 = t
 	pm.mu.Unlock()
 }
 
@@ -255,6 +285,7 @@ func (pm *PitwallManager) BuildReplayState() *dto.PitwallState {
 func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mode, includeTrackMap bool) *dto.PitwallState {
 	state := &dto.PitwallState{
 		PlayerIndex:          int(pm.playerIndex),
+		GameFormat:           int(pm.gameFormat),
 		ERSEstimateEnabled:   true, // broadcaster filters per-peer via ViewERSEstimate
 		ERSComparisonEnabled: pm.ersCompareEnabled,
 	}
@@ -410,7 +441,7 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 	}
 
 	if numCars > 0 {
-		ersEstimates := pm.ersEstimator.Update(pm.session, pm.participants, pm.lapData, pm.telemetry, pm.carStatus, pm.playerIndex)
+		ersEstimates := pm.ersEstimator.Update(pm.session, pm.participants, pm.lapData, pm.telemetry, pm.carStatus, pm.carTelemetry2, pm.playerIndex)
 		state.Drivers = make([]dto.DriverInfo, numCars)
 		for i := range numCars {
 			d := &state.Drivers[i]
@@ -502,6 +533,14 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 					d.TireInnerTemp[w] = int(ct.TyresInnerTemperature[g])
 					// BrakeTemp – omitted from broadcast DTO
 				}
+			}
+
+			// 2026 Season Pack: Active Aero / Overtake (Manual Override) 상태
+			if pm.carTelemetry2 != nil {
+				ct2 := &pm.carTelemetry2.CarTelemetry2Data[i]
+				d.OvertakeActive = ct2.OvertakeActive == 1
+				d.OvertakeAvailable = ct2.OvertakeAvailable == 1
+				d.ActiveAeroMode = int(ct2.ActiveAeroMode)
 			}
 
 			if pm.carDamage != nil {

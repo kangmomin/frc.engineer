@@ -48,7 +48,12 @@ var ErrCarSetupPacketTooSmall = errors.New("car setup packet too small")
 
 // ParseCarSetupPacket parses a car setup packet from raw bytes
 func ParseCarSetupPacket(data []byte, header *PacketHeader) (*PacketCarSetupData, error) {
-	expectedSize := PacketHeaderSize + (CarSetupDataSize * MaxCars) + 4
+	spec, ok := SpecFor(header.PacketFormat)
+	if !ok {
+		return nil, ErrCarSetupPacketTooSmall
+	}
+
+	expectedSize := PacketHeaderSize + (CarSetupDataSize * spec.NumCars) + 4
 	if len(data) < expectedSize {
 		return nil, ErrCarSetupPacketTooSmall
 	}
@@ -58,7 +63,7 @@ func ParseCarSetupPacket(data []byte, header *PacketHeader) (*PacketCarSetupData
 	}
 
 	offset := PacketHeaderSize
-	for i := range MaxCars {
+	for i := range spec.NumCars {
 		packet.CarSetupData[i] = parseCarSetupData(data[offset:])
 		offset += CarSetupDataSize
 	}

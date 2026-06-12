@@ -165,7 +165,7 @@ func testSnapshot() Snapshot {
 	}
 }
 
-func setParticipant(p *packets.ParticipantData, name string, teamID uint8, aiControlled uint8, yourTelemetry uint8) {
+func setParticipant(p *packets.ParticipantData, name string, teamID uint16, aiControlled uint8, yourTelemetry uint8) {
 	p.TeamID = teamID
 	p.AIControlled = aiControlled
 	p.YourTelemetry = yourTelemetry

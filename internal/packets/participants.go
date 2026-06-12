@@ -13,12 +13,14 @@ type LiveryColour struct {
 	Blue  uint8
 }
 
-// ParticipantData represents data for a single participant (57 bytes per F1 25 spec)
+// ParticipantData represents data for a single participant
+// (wire size: 57 bytes in F1 25, 60 bytes in the 2026 Season Pack — driverId,
+// networkId, teamId widen to uint16)
 type ParticipantData struct {
 	AIControlled    uint8          // Whether controlled by AI (1) or human (0)
-	DriverID        uint8          // Driver ID (255 = player)
-	NetworkID       uint8          // Network ID (unique for network game)
-	TeamID          uint8          // Team ID (0=Mercedes, 1=Ferrari, 2=Red Bull, etc.)
+	DriverID        uint16         // Driver ID (255 = player); uint8 on the F1 25 wire
+	NetworkID       uint16         // Network ID (unique for network game); uint8 on the F1 25 wire
+	TeamID          uint16         // Team ID (0=Mercedes...; 2026 Season Pack: 476-486 = '26 teams); uint8 on the F1 25 wire
 	MyTeam          uint8          // My team flag
 	RaceNumber      uint8          // Race number
 	Nationality     uint8          // Nationality ID
@@ -31,7 +33,8 @@ type ParticipantData struct {
 	LiveryColours   [4]LiveryColour // Car livery colours (12 bytes)
 }
 
-// ParticipantDataSize is the size of a single ParticipantData in bytes
+// ParticipantDataSize is the F1 25 wire size of a single ParticipantData in
+// bytes. Use SpecFor(format).ParticipantSize for format-aware code.
 const ParticipantDataSize = 57
 
 // PacketParticipantsData is the full participants packet
@@ -46,7 +49,13 @@ var ErrParticipantsPacketTooSmall = errors.New("participants packet too small")
 
 // ParseParticipantsPacket parses a participants packet from raw bytes
 func ParseParticipantsPacket(data []byte, header *PacketHeader) (*PacketParticipantsData, error) {
-	expectedSize := PacketHeaderSize + 1 + (ParticipantDataSize * MaxCars)
+	spec, ok := SpecFor(header.PacketFormat)
+	if !ok {
+		return nil, ErrParticipantsPacketTooSmall
+	}
+	is2026 := header.PacketFormat == PacketFormat2026
+
+	expectedSize := PacketHeaderSize + 1 + (spec.ParticipantSize * spec.NumCars)
 	if len(data) < expectedSize {
 		return nil, ErrParticipantsPacketTooSmall
 	}
@@ -57,30 +66,38 @@ func ParseParticipantsPacket(data []byte, header *PacketHeader) (*PacketParticip
 	}
 
 	offset := PacketHeaderSize + 1
-	for i := range MaxCars {
-		packet.Participants[i] = parseParticipantData(data[offset:])
-		offset += ParticipantDataSize
+	for i := range spec.NumCars {
+		packet.Participants[i] = parseParticipantData(data[offset:], is2026)
+		offset += spec.ParticipantSize
 	}
 
 	return packet, nil
 }
 
 // parseParticipantData parses a single participant's data
-func parseParticipantData(data []byte) ParticipantData {
+func parseParticipantData(data []byte, is2026 bool) ParticipantData {
 	p := ParticipantData{}
 	offset := 0
 
 	p.AIControlled = data[offset]
 	offset++
 
-	p.DriverID = data[offset]
-	offset++
-
-	p.NetworkID = data[offset]
-	offset++
-
-	p.TeamID = data[offset]
-	offset++
+	if is2026 {
+		// 2026 Season Pack widens driverId/networkId/teamId to uint16.
+		p.DriverID = binary.LittleEndian.Uint16(data[offset:])
+		offset += 2
+		p.NetworkID = binary.LittleEndian.Uint16(data[offset:])
+		offset += 2
+		p.TeamID = binary.LittleEndian.Uint16(data[offset:])
+		offset += 2
+	} else {
+		p.DriverID = uint16(data[offset])
+		offset++
+		p.NetworkID = uint16(data[offset])
+		offset++
+		p.TeamID = uint16(data[offset])
+		offset++
+	}
 
 	p.MyTeam = data[offset]
 	offset++

@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"frc.engineer/internal/packets"
 )
 
 //go:embed all:recordings
@@ -28,20 +30,46 @@ var embeddedRecordings embed.FS
 // Simulates F1 25 UDP telemetry for testing
 
 const (
-	PacketIDMotion       = 0
-	PacketIDSession      = 1
-	PacketIDLapData      = 2
-	PacketIDEvent        = 3
-	PacketIDParticipants = 4
-	PacketIDCarTelemetry = 6
-	PacketIDCarStatus    = 7
-	MaxCars              = 22
-	PacketHeaderSize     = 29
-	ParticipantDataSize  = 57
-	CarStatusDataSize    = 55
-	SessionPacketSize    = 685
-	recordingPageSize    = 12
+	PacketIDMotion        = 0
+	PacketIDSession       = 1
+	PacketIDLapData       = 2
+	PacketIDEvent         = 3
+	PacketIDParticipants  = 4
+	PacketIDCarTelemetry  = 6
+	PacketIDCarStatus     = 7
+	PacketIDCarTelemetry2 = 16
+	MaxCars               = 24 // 배열 용량 (2025 모드는 앞 22대만 사용)
+	PacketHeaderSize      = 29
+	SessionPacketSize     = 685
+	recordingPageSize     = 12
 )
+
+// simFormat selects the simulated UDP wire format (2025 = F1 25, 2026 = Season Pack).
+var simFormat uint16 = 2025
+
+func simIs2026() bool { return simFormat == 2026 }
+
+// simSpec returns the wire layout for the selected format — 파서와 같은
+// packets.FormatSpec을 공유해 크기 테이블 이중 유지보수를 피한다.
+func simSpec() packets.FormatSpec {
+	spec, ok := packets.SpecFor(simFormat)
+	if !ok {
+		spec, _ = packets.SpecFor(packets.PacketFormat2025)
+	}
+	return spec
+}
+
+func simNumCars() int          { return simSpec().NumCars }
+func simParticipantSize() int  { return simSpec().ParticipantSize }
+func simCarStatusSize() int    { return simSpec().CarStatusSize }
+func simCarTelemetrySize() int { return simSpec().CarTelemetrySize }
+func simCarMotionSize() int    { return simSpec().CarMotionSize }
+
+// simWireTrackID maps the app-canonical track id onto the simulated wire enum
+// (파서의 CanonicalTrackID와 같은 테이블을 역방향으로 사용).
+func simWireTrackID(canonical uint8) uint8 {
+	return uint8(packets.WireTrackID(simFormat, int8(canonical)))
+}
 
 var mockudpVersion = "v3.30.0"
 
@@ -53,7 +81,15 @@ func main() {
 	speed := flag.Float64("speed", 1.0, "Replay speed multiplier")
 	loopFlag := flag.Bool("loop", false, "Loop replay continuously")
 	record := flag.String("record", "", "Record simulation to raw.bin file")
+	format := flag.Int("format", 2025, "UDP packet format: 2025 (F1 25) or 2026 (Season Pack)")
 	flag.Parse()
+
+	switch *format {
+	case 2025, 2026:
+		simFormat = uint16(*format)
+	default:
+		log.Fatalf("unsupported -format %d (use 2025 or 2026)", *format)
+	}
 
 	conn, err := net.Dial("udp", *addr)
 	if err != nil {
@@ -532,6 +568,9 @@ func runSimulation(ctx context.Context, conn net.Conn, laps, hz int) {
 
 		send(conn, sim.BuildMotionPacket(frameID))
 		send(conn, sim.BuildTelemetryPacket(frameID))
+		if simIs2026() {
+			send(conn, sim.BuildCarTelemetry2Packet(frameID))
+		}
 		send(conn, sim.BuildLapDataPacket(frameID))
 		sim.Tick()
 
@@ -593,6 +632,9 @@ func runSimulationWithRecord(conn net.Conn, outPath string, laps, hz int) {
 
 		writePacket(sim.BuildMotionPacket(frameID))
 		writePacket(sim.BuildTelemetryPacket(frameID))
+		if simIs2026() {
+			writePacket(sim.BuildCarTelemetry2Packet(frameID))
+		}
 		writePacket(sim.BuildLapDataPacket(frameID))
 		sim.Tick()
 
@@ -1125,7 +1167,7 @@ func (s *Simulator) BuildSessionPacket(frameID uint32) []byte {
 	buf[32] = uint8(s.TotalLaps)
 	binary.LittleEndian.PutUint16(buf[33:35], uint16(s.TrackLength))
 	buf[35] = 15 // Race
-	buf[36] = byte(s.TrackID)
+	buf[36] = simWireTrackID(uint8(s.TrackID))
 	buf[47] = 3 // NumMarshalZones
 	writeMarshalZone(buf, 48, 0.00, 1)
 	writeMarshalZone(buf, 53, 0.33, 1)
@@ -1151,8 +1193,9 @@ func (s *Simulator) BuildSessionPacket(frameID uint32) []byte {
 }
 
 func (s *Simulator) BuildTelemetryPacket(frameID uint32) []byte {
-	// Header (29) + 22 cars * 60 bytes + 3 bytes footer
-	packetSize := PacketHeaderSize + (MaxCars * 60) + 3
+	numCars := simNumCars()
+	carSize := simCarTelemetrySize()
+	packetSize := PacketHeaderSize + (numCars * carSize) + 3
 	buf := make([]byte, packetSize)
 
 	// Write header
@@ -1160,9 +1203,9 @@ func (s *Simulator) BuildTelemetryPacket(frameID uint32) []byte {
 
 	// Write car telemetry data for all cars
 	offset := PacketHeaderSize
-	for i := 0; i < MaxCars; i++ {
+	for i := 0; i < numCars; i++ {
 		s.writeCarTelemetry(buf[offset:], i == int(s.PlayerCarIdx), i)
-		offset += 60
+		offset += carSize
 	}
 
 	// MFD panel index, secondary, suggested gear
@@ -1173,24 +1216,66 @@ func (s *Simulator) BuildTelemetryPacket(frameID uint32) []byte {
 	return buf
 }
 
+// BuildCarTelemetry2Packet builds the 2026-only Car Telemetry 2 packet (ID 16).
+func (s *Simulator) BuildCarTelemetry2Packet(frameID uint32) []byte {
+	numCars := simNumCars()
+	buf := make([]byte, PacketHeaderSize+(numCars*10))
+	s.writeHeader(buf, PacketIDCarTelemetry2, frameID)
+
+	offset := PacketHeaderSize
+	for i := 0; i < numCars; i++ {
+		isPlayer := i == int(s.PlayerCarIdx)
+		speed := s.Speed
+		if !isPlayer && i < len(s.aiCars) {
+			speed = s.aiCars[i].speed
+		}
+		straight := speed > 250 // 고속 직선 = X-mode
+		overtakeActive := uint8(0)
+		if isPlayer && s.DRS == 1 {
+			// 플레이어 DRS 토글 시뮬레이션을 Overtake로 재활용
+			overtakeActive = 1
+		}
+		buf[offset] = boolByte(straight) // ActiveAeroMode: 1=straight(X)
+		buf[offset+1] = 1                // ActiveAeroAvailable
+		binary.LittleEndian.PutUint16(buf[offset+2:], 120) // ActiveAeroActivationDistance
+		buf[offset+4] = 1 // OvertakeAvailable
+		buf[offset+5] = overtakeActive
+		binary.LittleEndian.PutUint16(buf[offset+6:], 80) // OvertakeActivationDistance
+		buf[offset+8] = 1                                 // Regulations2026
+		buf[offset+9] = 0                                 // DrivingWrongWay
+		offset += 10
+	}
+
+	return buf
+}
+
+func boolByte(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func (s *Simulator) BuildMotionPacket(frameID uint32) []byte {
-	packetSize := PacketHeaderSize + (MaxCars * 60)
+	numCars := simNumCars()
+	carSize := simCarMotionSize()
+	packetSize := PacketHeaderSize + (numCars * carSize)
 	buf := make([]byte, packetSize)
 
 	s.writeHeader(buf, PacketIDMotion, frameID)
 
 	offset := PacketHeaderSize
-	for i := 0; i < MaxCars; i++ {
+	for i := 0; i < numCars; i++ {
 		s.writeMotionData(buf[offset:], i)
-		offset += 60
+		offset += carSize
 	}
 
 	return buf
 }
 
 func (s *Simulator) BuildLapDataPacket(frameID uint32) []byte {
-	// Header (29) + 22 cars * 57 bytes + 2 bytes footer
-	packetSize := PacketHeaderSize + (MaxCars * 57) + 2
+	numCars := simNumCars()
+	packetSize := PacketHeaderSize + (numCars * 57) + 2
 	buf := make([]byte, packetSize)
 
 	// Write header
@@ -1198,7 +1283,7 @@ func (s *Simulator) BuildLapDataPacket(frameID uint32) []byte {
 
 	// Write lap data for all cars
 	offset := PacketHeaderSize
-	for i := 0; i < MaxCars; i++ {
+	for i := 0; i < numCars; i++ {
 		s.writeLapData(buf[offset:], i == int(s.PlayerCarIdx), i)
 		offset += 57
 	}
@@ -1211,31 +1296,35 @@ func (s *Simulator) BuildLapDataPacket(frameID uint32) []byte {
 }
 
 func (s *Simulator) BuildParticipantsPacket(frameID uint32) []byte {
-	packetSize := PacketHeaderSize + 1 + (MaxCars * ParticipantDataSize)
+	numCars := simNumCars()
+	carSize := simParticipantSize()
+	packetSize := PacketHeaderSize + 1 + (numCars * carSize)
 	buf := make([]byte, packetSize)
 
 	s.writeHeader(buf, PacketIDParticipants, frameID)
-	buf[PacketHeaderSize] = MaxCars
+	buf[PacketHeaderSize] = uint8(numCars)
 
 	offset := PacketHeaderSize + 1
-	for i := 0; i < MaxCars; i++ {
+	for i := 0; i < numCars; i++ {
 		s.writeParticipantData(buf[offset:], i)
-		offset += ParticipantDataSize
+		offset += carSize
 	}
 
 	return buf
 }
 
 func (s *Simulator) BuildCarStatusPacket(frameID uint32) []byte {
-	packetSize := PacketHeaderSize + (MaxCars * CarStatusDataSize)
+	numCars := simNumCars()
+	carSize := simCarStatusSize()
+	packetSize := PacketHeaderSize + (numCars * carSize)
 	buf := make([]byte, packetSize)
 
 	s.writeHeader(buf, PacketIDCarStatus, frameID)
 
 	offset := PacketHeaderSize
-	for i := 0; i < MaxCars; i++ {
+	for i := 0; i < numCars; i++ {
 		s.writeCarStatus(buf[offset:], i == int(s.PlayerCarIdx), i)
-		offset += CarStatusDataSize
+		offset += carSize
 	}
 
 	return buf
@@ -1270,8 +1359,12 @@ func (s *Simulator) BuildPenaltyEventPacket(frameID uint32, evt penaltyEventData
 }
 
 func (s *Simulator) writeHeader(buf []byte, packetID uint8, frameID uint32) {
-	binary.LittleEndian.PutUint16(buf[0:2], 2025) // PacketFormat
-	buf[2] = 25                                   // GameYear
+	binary.LittleEndian.PutUint16(buf[0:2], simFormat) // PacketFormat
+	gameYear := uint8(25)
+	if simIs2026() {
+		gameYear = 26
+	}
+	buf[2] = gameYear // GameYear
 	buf[3] = 1                                    // GameMajorVersion
 	buf[4] = 0                                    // GameMinorVersion
 	buf[5] = 1                                    // PacketVersion
@@ -1372,9 +1465,14 @@ func (s *Simulator) writeCarTelemetry(buf []byte, isPlayer bool, carIdx int) {
 		offset++
 	}
 
-	// Engine temp
-	binary.LittleEndian.PutUint16(buf[offset:], uint16(100+rand.Intn(20)))
-	offset += 2
+	// Engine temp (2026: uint8로 축소)
+	if simIs2026() {
+		buf[offset] = uint8(100 + rand.Intn(20))
+		offset++
+	} else {
+		binary.LittleEndian.PutUint16(buf[offset:], uint16(100+rand.Intn(20)))
+		offset += 2
+	}
 
 	// Tyres pressure (4 x float32)
 	for i := 0; i < 4; i++ {
@@ -1559,12 +1657,23 @@ func (s *Simulator) writeMotionData(buf []byte, carIdx int) {
 	offset += 2
 	binary.LittleEndian.PutUint16(buf[offset:], uint16(rightZ))
 	offset += 2
-	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(float32(math.Sin(angle)*0.8)))
-	offset += 4
-	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.15))
-	offset += 4
-	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.05))
-	offset += 4
+	gLat := math.Sin(angle) * 0.8
+	if simIs2026() {
+		// 2026: G-force int16 양자화 (×1000)
+		binary.LittleEndian.PutUint16(buf[offset:], uint16(int16(gLat*1000)))
+		offset += 2
+		binary.LittleEndian.PutUint16(buf[offset:], uint16(int16(0.15*1000)))
+		offset += 2
+		binary.LittleEndian.PutUint16(buf[offset:], uint16(int16(0.05*1000)))
+		offset += 2
+	} else {
+		binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(float32(gLat)))
+		offset += 4
+		binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.15))
+		offset += 4
+		binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.05))
+		offset += 4
+	}
 	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(yaw))
 	offset += 4
 	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0.01))
@@ -1572,7 +1681,8 @@ func (s *Simulator) writeMotionData(buf []byte, carIdx int) {
 	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(0))
 }
 
-// F1 2025 grid: teamID (0-9), 2 drivers per team
+// F1 grid: teamID (2025 enum 0-9, 11=Cadillac 의사값), 2 drivers per team.
+// 2025 모드는 앞 22대만 사용. 2026 모드는 24대 + teamID를 '26 enum(476+)으로 변환.
 var f1Grid = [MaxCars]struct {
 	name   string
 	teamID uint8
@@ -1587,14 +1697,28 @@ var f1Grid = [MaxCars]struct {
 	{"Lawson", 6, 30}, {"Hadjar", 6, 20}, // RB
 	{"Ocon", 7, 31}, {"Bearman", 7, 87}, // Haas
 	{"Sainz", 3, 55}, {"Albon", 3, 23}, // Williams
-	{"Hulkenberg", 9, 27}, {"Bortoleto", 9, 5}, // Sauber
-	{"AI 21", 255, 98}, {"AI 22", 255, 99}, // Reserve
+	{"Hulkenberg", 9, 27}, {"Bortoleto", 9, 5}, // Sauber/Audi
+	{"Bottas", 11, 77}, {"Perez", 11, 11}, // Cadillac (2026 전용; 2025 모드에선 미사용 인덱스)
+	{"AI 23", 255, 98}, {"AI 24", 255, 99}, // Reserve (2026 모드 24번째까지)
+}
+
+// team2026 maps the pseudo-2025 grid teamIDs to the 2026 Season Pack team enum.
+var team2026 = map[uint8]uint16{
+	0: 476, 1: 477, 2: 478, 3: 479, 4: 480, 5: 481,
+	6: 482, 7: 483, 8: 484, 9: 485, 11: 486,
 }
 
 func (s *Simulator) writeParticipantData(buf []byte, carIdx int) {
 	offset := 0
 	isPlayer := carIdx == int(s.PlayerCarIdx)
 	entry := f1Grid[carIdx]
+
+	teamID := uint16(entry.teamID)
+	if simIs2026() {
+		if mapped, ok := team2026[entry.teamID]; ok {
+			teamID = mapped
+		}
+	}
 
 	if isPlayer {
 		buf[offset] = 0 // Human
@@ -1603,17 +1727,27 @@ func (s *Simulator) writeParticipantData(buf []byte, carIdx int) {
 	}
 	offset++
 
+	driverID := uint16(carIdx)
 	if isPlayer {
-		buf[offset] = 255
-	} else {
-		buf[offset] = uint8(carIdx)
+		driverID = 255
 	}
-	offset++
 
-	buf[offset] = uint8(carIdx) // NetworkID
-	offset++
-	buf[offset] = entry.teamID // TeamID
-	offset++
+	if simIs2026() {
+		// 2026: driverId/networkId/teamId uint16
+		binary.LittleEndian.PutUint16(buf[offset:], driverID)
+		offset += 2
+		binary.LittleEndian.PutUint16(buf[offset:], uint16(carIdx)) // NetworkID
+		offset += 2
+		binary.LittleEndian.PutUint16(buf[offset:], teamID)
+		offset += 2
+	} else {
+		buf[offset] = uint8(driverID)
+		offset++
+		buf[offset] = uint8(carIdx) // NetworkID
+		offset++
+		buf[offset] = uint8(teamID) // TeamID
+		offset++
+	}
 	if isPlayer {
 		buf[offset] = 1
 	}
@@ -1714,6 +1848,11 @@ func (s *Simulator) writeCarStatus(buf []byte, isPlayer bool, carIdx int) {
 	offset += 4
 	binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(140000))
 	offset += 4
+	if simIs2026() {
+		// ERSHarvestLimitPerLap (2026 신규 필드)
+		binary.LittleEndian.PutUint32(buf[offset:], math.Float32bits(2_000_000))
+		offset += 4
+	}
 	buf[offset] = 0 // NetworkPaused
 }
 

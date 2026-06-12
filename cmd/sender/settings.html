@@ -1270,12 +1270,22 @@
         .filter(([, enabled]) => !!enabled)
         .map(([key]) => permissionLabels[key] || key);
 
+      const diagnostics = [
+        peer.iceState ? `ICE ${peer.iceState}` : '',
+        peer.candidatePair ? `path ${peer.candidatePair}` : '',
+        peer.restarts ? `restarts ${peer.restarts}` : '',
+        typeof peer.lastPongAgoMs === 'number' && peer.lastPongAgoMs > 0
+          ? `pong ${(peer.lastPongAgoMs / 1000).toFixed(1)}s ago`
+          : '',
+      ].filter(Boolean).join(' · ');
+
       return `
         <div class="engineer-card">
           <div class="engineer-card-head">
             <div>
               <div class="engineer-name">${escapeHTML(peer.peerId)}</div>
               <div class="engineer-meta">View ${escapeHTML(peer.view || 'cockpit')}</div>
+              ${diagnostics ? `<div class="engineer-meta">${escapeHTML(diagnostics)}</div>` : ''}
             </div>
             <span class="engineer-state">${escapeHTML(peer.state || 'unknown')}</span>
           </div>

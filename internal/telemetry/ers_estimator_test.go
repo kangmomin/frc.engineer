@@ -1,4 +1,4 @@
-package telemetry
+﻿package telemetry
 
 import (
 	"math"
@@ -12,14 +12,14 @@ func TestERSEstimatorResetsOnNewSession(t *testing.T) {
 
 	for step := 0; step < 7; step++ {
 		session, participants, lapData, telemetry, carStatus := makeERSTestPackets(101, float32(step)*0.25, 1, float32(150+step*90), 0.98, 0.02, 305, 3, 1, float32(step*24_000), float32(step*3_000), 0, false)
-		estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+		estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 	}
 	if estimator.cars[0].validSteps == 0 {
 		t.Fatal("expected estimator to accumulate warmup steps")
 	}
 
 	session, participants, lapData, telemetry, carStatus := makeERSTestPackets(202, 0.10, 1, 90, 0.20, 0.00, 110, 0, 0, 0, 0, 0, false)
-	snapshot := estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+	snapshot := estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 
 	if estimator.sessionUID != 202 {
 		t.Fatalf("sessionUID = %d, want 202", estimator.sessionUID)
@@ -38,7 +38,7 @@ func TestERSEstimatorUsesPublicTelemetryCalibration(t *testing.T) {
 	for step := 0; step < 8; step++ {
 		energy := float32(3_200_000 - (step * 10_000))
 		session, participants, lapData, telemetry, carStatus := makeERSTestPackets(303, float32(step)*0.25, 2, float32(300+step*85), 1.00, 0.00, 320, 3, 1, float32(step*25_000), float32(step*2_000), energy, true)
-		estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+		estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 	}
 
 	if estimator.calibrationSamples == 0 {
@@ -54,7 +54,7 @@ func TestERSEstimatorTracksDeployAndHarvest(t *testing.T) {
 
 	for step := 0; step < 7; step++ {
 		session, participants, lapData, telemetry, carStatus := makeERSTestPackets(404, float32(step)*0.25, 3, float32(220+step*95), 0.99, 0.01, 300, 3, 1, float32(step*28_000), float32(step*2_000), 0, false)
-		estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+		estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 	}
 	afterDeploy := estimator.cars[0].energyJ
 	if afterDeploy >= ersEstimateDefaultEnergyJ {
@@ -63,7 +63,7 @@ func TestERSEstimatorTracksDeployAndHarvest(t *testing.T) {
 
 	for step := 7; step < 14; step++ {
 		session, participants, lapData, telemetry, carStatus := makeERSTestPackets(404, float32(step)*0.25, 3, float32(220+step*95), 0.18, 0.62, 130, 1, 0, 196_000, float32((step-6)*22_000), 0, false)
-		estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+		estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 	}
 	afterHarvest := estimator.cars[0].energyJ
 	if afterHarvest <= afterDeploy {
@@ -76,12 +76,12 @@ func TestERSEstimatorCarriesForwardAcrossLapChange(t *testing.T) {
 
 	for step := 0; step < 7; step++ {
 		session, participants, lapData, telemetry, carStatus := makeERSTestPackets(505, float32(step)*0.25, 5, float32(4_800+step*120), 0.96, 0.02, 290, 2, 1, float32(step*20_000), float32(step*1_000), 0, false)
-		estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+		estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 	}
 	beforeLapChange := estimator.cars[0].energyJ
 
 	session, participants, lapData, telemetry, carStatus := makeERSTestPackets(505, 2.0, 6, 85, 0.55, 0.05, 165, 1, 0, 500, 250, 0, false)
-	estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+	estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 
 	car := estimator.cars[0]
 	if car.completedLaps != 1 {
@@ -365,7 +365,7 @@ func TestERSEstimatorInitializesPlayerFromActualEnergy(t *testing.T) {
 	estimator := NewERSEstimator(nil)
 
 	session, participants, lapData, telemetry, carStatus := makeERSTestPackets(707, 0.25, 2, 320, 0.94, 0.01, 296, 3, 1, 32_000, 4_000, 40_000, false)
-	snapshot := estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+	snapshot := estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 
 	if snapshot[0].Percent > 5 {
 		t.Fatalf("initial estimate percent = %d, want <= 5 when actual ERS is nearly empty", snapshot[0].Percent)
@@ -381,7 +381,7 @@ func TestERSEstimatorUsesPlayerActualForCalibration(t *testing.T) {
 	for step := 0; step < 8; step++ {
 		energy := float32(1_200_000 - (step * 12_000))
 		session, participants, lapData, telemetry, carStatus := makeERSTestPackets(808, float32(step)*0.25, 3, float32(500+step*90), 1.00, 0.00, 315, 3, 1, float32(step*18_000), float32(step*1_500), energy, false)
-		estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+		estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 	}
 
 	if estimator.calibrationSamples == 0 {
@@ -409,7 +409,7 @@ func TestERSEstimatorReanchorsLargeActualMismatch(t *testing.T) {
 	}
 
 	session, participants, lapData, telemetry, carStatus := makeERSTestPackets(909, 1.25, 4, 980, 0.98, 0.00, 312, 3, 1, 250_000, 32_000, 40_000, false)
-	snapshot := estimator.Update(session, participants, lapData, telemetry, carStatus, 0)
+	snapshot := estimator.Update(session, participants, lapData, telemetry, carStatus, nil, 0)
 
 	if snapshot[0].Percent > 6 {
 		t.Fatalf("reanchored estimate percent = %d, want <= 6 for near-empty actual ERS", snapshot[0].Percent)

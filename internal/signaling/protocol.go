@@ -46,4 +46,7 @@ type Message struct {
 	PeerID                 string          `json:"peerId,omitempty"`
 	Payload                json.RawMessage `json:"payload,omitempty"`
 	Error                  string          `json:"error,omitempty"`
+	// Restart marks an offer as an ICE restart for an existing peer session.
+	// 서버 Relay는 구조체 전체를 그대로 전달하므로 서버 변경 없이 통과한다.
+	Restart bool `json:"restart,omitempty"`
 }

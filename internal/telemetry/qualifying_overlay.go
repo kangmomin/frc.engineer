@@ -392,6 +392,10 @@ func (pm *PitwallManager) buildQualifyingOverlayDataLocked() *dto.StrategyOverla
 			car.speedKPH = int(ct.Speed)
 			car.drsActivated = ct.DRS != 0
 		}
+		if pm.carTelemetry2 != nil {
+			// 2026 모드: Overtake(Manual Override)가 DRS 신호를 대체한다.
+			car.drsActivated = car.drsActivated || pm.carTelemetry2.CarTelemetry2Data[i].OvertakeActive == 1
+		}
 		if pm.carStatus != nil {
 			cs := &pm.carStatus.CarStatusData[i]
 			car.tireCompound = tireCompoundString(cs.VisualTyreCompound)

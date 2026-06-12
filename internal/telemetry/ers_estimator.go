@@ -9,6 +9,8 @@ import (
 )
 
 const (
+	// ERS 배터리 저장 용량. 2026 규정에서도 4MJ로 유지된다(FIA 기술 규정).
+	// 2026 Season Pack 실게임 캡처에서 ERSStoreEnergy 최대값으로 재검증할 것.
 	ersEstimateMaxEnergyJ        = 4_000_000.0
 	ersEstimateDefaultEnergyJ    = ersEstimateMaxEnergyJ * 0.70
 	ersEstimateBucketSizeM       = 100.0
@@ -85,12 +87,15 @@ func NewERSEstimator(trackStore *tracks.TrackStore) *ERSEstimator {
 }
 
 // Update advances the estimator and returns a full-car snapshot.
+// carTelemetry2 is nil on F1 25; on the 2026 Season Pack it supplies the
+// Overtake (Manual Override) state that replaces DRS as the deploy-boost signal.
 func (e *ERSEstimator) Update(
 	session *packets.PacketSessionData,
 	participants *packets.PacketParticipantsData,
 	lapData *packets.PacketLapData,
 	telemetry *packets.PacketCarTelemetryData,
 	carStatus *packets.PacketCarStatusData,
+	carTelemetry2 *packets.PacketCarTelemetry2Data,
 	playerIndex uint8,
 ) [packets.MaxCars]ERSEstimate {
 	var out [packets.MaxCars]ERSEstimate
@@ -136,6 +141,14 @@ func (e *ERSEstimator) Update(
 		tel := telemetry.CarTelemetryData[i]
 		status := carStatus.CarStatusData[i]
 
+		// 배포 부스트 신호: F1 25는 DRS, 2026 모드는 Overtake(Manual Override).
+		// OR-merge — 2026 모드에서도 pre-2026 규정 차량은 DRS를 쓸 수 있다
+		// (processor/qualifying_overlay와 동일한 의미론).
+		boostActive := tel.DRS == 1
+		if carTelemetry2 != nil && carTelemetry2.CarTelemetry2Data[i].OvertakeActive == 1 {
+			boostActive = true
+		}
+
 		lapNum := int(lap.CurrentLapNum)
 		lapDistance := maxFloat64(float64(sanitize(lap.LapDistance)), 0)
 		if lapNum <= 0 && lapDistance <= 0 && tel.Speed == 0 {
@@ -166,7 +179,7 @@ func (e *ERSEstimator) Update(
 
 		if hasActual && car.lastActualKnown && progressValid && !lapChanged {
 			bucket := e.bucketIndex(lapDistance)
-			phase := classifyERSPhase(float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), float64(tel.Speed)-car.lastSpeed, int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
+			phase := classifyERSPhase(float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), float64(tel.Speed)-car.lastSpeed, int(status.ERSDeployMode), boostActive, e.trackProfile.drsBuckets[bucket])
 			e.recordCalibration(bucket, phase, actualEnergy-car.lastActualEnergyJ, sessionTime-car.lastSessionTime)
 		}
 
@@ -189,8 +202,8 @@ func (e *ERSEstimator) Update(
 				car.energyJ = clampFloat64(car.energyJ+harvestDelta-deployDelta, 0, ersEstimateMaxEnergyJ)
 			} else {
 				bucket := e.bucketIndex(lapDistance)
-				phase := classifyERSPhase(float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), float64(tel.Speed)-car.lastSpeed, int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
-				rate := estimateERSRate(phase, float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), int(status.ERSDeployMode), tel.DRS == 1, e.trackProfile.drsBuckets[bucket])
+				phase := classifyERSPhase(float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), float64(tel.Speed)-car.lastSpeed, int(status.ERSDeployMode), boostActive, e.trackProfile.drsBuckets[bucket])
+				rate := estimateERSRate(phase, float64(tel.Throttle), float64(tel.Brake), float64(tel.Speed), int(status.ERSDeployMode), boostActive, e.trackProfile.drsBuckets[bucket])
 				rate = e.applyCalibration(bucket, phase, rate)
 				car.energyJ = clampFloat64(car.energyJ+(rate*(sessionTime-car.lastSessionTime)), 0, ersEstimateMaxEnergyJ)
 			}

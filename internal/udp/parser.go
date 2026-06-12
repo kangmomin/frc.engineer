@@ -22,12 +22,14 @@ type ParsedData struct {
 	TyreSets       *packets.PacketTyreSetsData
 	SessionHistory *packets.PacketSessionHistoryData
 	Event          *packets.PacketEventData
+	CarTelemetry2  *packets.PacketCarTelemetry2Data // 2026 Season Pack 전용
 }
 
-// Parser handles parsing of F1 25 UDP packets
+// Parser handles parsing of F1 25 / 2026 Season Pack UDP packets
 type Parser struct {
-	logger       *slog.Logger
-	packetLogger atomic.Pointer[PacketLogger]
+	logger             *slog.Logger
+	packetLogger       atomic.Pointer[PacketLogger]
+	unsupportedDropped atomic.Uint64
 }
 
 // NewParser creates a new packet parser
@@ -48,6 +50,17 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 	header, err := packets.ParseHeader(data)
 	if err != nil {
 		return nil, err
+	}
+
+	// 지원하지 않는 packetFormat은 조용히 버린다 (스팸 방지를 위해 256회당 1회만 경고).
+	if !packets.IsSupportedFormat(header.PacketFormat) {
+		if p.unsupportedDropped.Add(1)%256 == 1 {
+			p.logger.Warn("dropping packets with unsupported packetFormat",
+				"packetFormat", header.PacketFormat,
+				"dropped", p.unsupportedDropped.Load(),
+			)
+		}
+		return nil, nil
 	}
 
 	parsed := &ParsedData{
@@ -162,6 +175,14 @@ func (p *Parser) Parse(data []byte) (*ParsedData, error) {
 			return nil, err
 		}
 		parsed.Event = event
+
+	case packets.PacketIDCarTelemetry2:
+		telemetry2, err := packets.ParseCarTelemetry2Packet(data, header)
+		if err != nil {
+			p.logger.Debug("failed to parse car telemetry 2 packet", "error", err)
+			return nil, err
+		}
+		parsed.CarTelemetry2 = telemetry2
 
 	default:
 		// 미처리 패킷: 로깅만 수행
