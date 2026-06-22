@@ -590,17 +590,15 @@ func main() {
 			return
 		}
 		trackName := strings.TrimSpace(r.URL.Query().Get("trackName"))
-		// 2026 Season Pack(F1 26)은 전략 트랙 데이터가 없으므로 차단. 그 외(F1 25/미상)는 key 없이 허용.
-		if gameFormat, convErr := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("gameFormat"))); convErr == nil && gameFormat == 2026 {
-			http.Error(w, "strategy guide unavailable for this season", http.StatusNotFound)
-			return
-		}
+		gameFormat, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("gameFormat")))
 
 		trackGuide := strategyStore.TrackBySession(int8(trackIDValue), trackName)
 		if trackGuide == nil {
 			http.Error(w, "strategy guide not found", http.StatusNotFound)
 			return
 		}
+		// F1 26(2026 Season Pack)은 폐지된 C6 컴파운드를 C5로 강등한다.
+		trackGuide = strategydata.ApplyGameFormat(trackGuide, gameFormat)
 
 		response := struct {
 			Track     *strategydata.NormalizedTrackFile       `json:"track"`

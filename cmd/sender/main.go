@@ -832,14 +832,6 @@ func main() {
 					Error:     "strategy guide unavailable",
 				})
 			}
-			// 2026 Season Pack(F1 26)은 전략 트랙 데이터가 없으므로 차단.
-			if body.GameFormat == 2026 {
-				return encodeP2PResponse(dto.WSResponse{
-					Type:      dto.MessageTypeStrategyGuide,
-					RequestID: req.RequestID,
-					Error:     "strategy guide unavailable for this season",
-				})
-			}
 			trackGuide := strategyStore.TrackBySession(body.TrackID, body.TrackName)
 			if trackGuide == nil {
 				return encodeP2PResponse(dto.WSResponse{
@@ -848,6 +840,8 @@ func main() {
 					Error:     "strategy guide not found",
 				})
 			}
+			// F1 26(2026 Season Pack)은 폐지된 C6 컴파운드를 C5로 강등한다.
+			trackGuide = strategydata.ApplyGameFormat(trackGuide, body.GameFormat)
 			logger.Info("received p2p strategy guide request",
 				"peerId", peerID,
 				"requestId", req.RequestID,
