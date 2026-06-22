@@ -1,0 +1,21 @@
+{
+  "projectId": "8a29fbde-3304-44b1-9e3d-c65e5a331edf",
+  "shape": "package",
+  "pkg": "minmo-pitwall-ui",
+  "globalName": "MinmoPitwallUI",
+  "entry": "./web/src/ui/_ds-entry.mjs",
+  "srcDir": "src/ui",
+  "componentSrcMap": {
+    "PanelTitle": "src/ui/PanelTitle.tsx",
+    "StatRibbon": "src/ui/StatRibbon.tsx",
+    "MetricTile": "src/ui/MetricTile.tsx",
+    "WeatherIcon": "src/ui/WeatherIcon.tsx"
+  },
+  "dtsPropsFor": {
+    "PanelTitle": "  title: string;\n  tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';\n  detail?: string;\n  endContent?: React.ReactNode;",
+    "StatRibbon": "  label: string;\n  value: string;\n  detail: string;\n  tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';\n  /** Narrow padding + smaller value font variant. */\n  dense?: boolean;\n  className?: string;",
+    "MetricTile": "  label: string;\n  value: string;\n  tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';\n  note?: string;\n  /** Narrow padding + smaller font variant. */\n  compact?: boolean;\n  className?: string;",
+    "WeatherIcon": "  /** Weather state: 'clear' | 'light cloud' | 'overcast' | 'storm' | (anything else renders the rain icon). Spaces or underscores accepted. */\n  weather: string;"
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
