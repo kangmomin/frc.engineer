@@ -273,6 +273,27 @@ func applyOverlayState(state overlayState, radar, weather, strategy overlayContr
 	}
 }
 
+// signalingHTTPBase converts a signaling WebSocket URL (e.g. wss://host/ws) into
+// its HTTP origin (https://host) for plain HTTP calls such as
+// /api/banned-nicknames. Returns "" if the URL has no usable scheme+host.
+func signalingHTTPBase(signalingURL string) string {
+	u, err := url.Parse(strings.TrimSpace(signalingURL))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	switch u.Scheme {
+	case "wss":
+		u.Scheme = "https"
+	case "ws":
+		u.Scheme = "http"
+	case "http", "https":
+		// already an HTTP scheme
+	default:
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 func buildEngineerInviteLink(dashboardBaseURL, signalingURL, roomID string) string {
 	if strings.TrimSpace(signalingURL) == "" || strings.TrimSpace(roomID) == "" {
 		return ""

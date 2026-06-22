@@ -105,6 +105,11 @@ type Processor struct {
 	replaySession     *dto.SessionInfo
 	replayLastFrameTS int64
 	pitwallObserver   PitwallStateObserver
+
+	// Nickname ban gate (player-nickname hard ban)
+	banLookup        func(playerName string) bool
+	onBanStateChange func(banned bool)
+	banned           atomic.Bool
 }
 
 // NewProcessor creates a new telemetry processor
@@ -159,6 +164,41 @@ func (p *Processor) SetPitwallStateObserver(observer PitwallStateObserver) {
 	p.mu.Lock()
 	p.pitwallObserver = observer
 	p.mu.Unlock()
+}
+
+// SetBanChecker installs the predicate used to test the player nickname against
+// the ban list. Must be called before Start: the field is read without a mutex
+// from the processor goroutine, and the `go Start(...)` establishes the
+// happens-before relationship. Changing that ordering would introduce a data race.
+func (p *Processor) SetBanChecker(fn func(playerName string) bool) {
+	p.banLookup = fn
+}
+
+// SetBanStateChangeHandler installs a callback fired once per ban-state
+// transition (true=banned, false=lifted). Must be called before Start (same
+// no-mutex happens-before as SetBanChecker). Invoked from the processor
+// goroutine, so it must not block.
+func (p *Processor) SetBanStateChangeHandler(fn func(banned bool)) {
+	p.onBanStateChange = fn
+}
+
+// IsBanned reports the most recent ban evaluation. Safe from any goroutine.
+func (p *Processor) IsBanned() bool {
+	return p.banned.Load()
+}
+
+// evaluateBan matches the current player nickname against the ban predicate,
+// fires the transition callback on state changes, and returns whether the player
+// is currently banned. Called only from the processor goroutine.
+func (p *Processor) evaluateBan() bool {
+	if p.banLookup == nil {
+		return false
+	}
+	banned := p.banLookup(p.pitwallManager.GetPlayerName())
+	if prev := p.banned.Swap(banned); prev != banned && p.onBanStateChange != nil {
+		p.onBanStateChange(banned)
+	}
+	return banned
 }
 
 // SetReplayRecording toggles timeline snapshot capture used by summary/advanced storage.
@@ -240,27 +280,10 @@ func (p *Processor) processPacket(data []byte) {
 	p.observeSessionUID(parsed.Header.SessionUID)
 	p.observeReplaySession(parsed.Header.SessionUID)
 
-	// Handle event packets (penalties, warnings, race control)
-	if parsed.Event != nil {
-		p.handleEventPacket(parsed)
-	}
-
-	// Feed pitwall manager with new packet types
+	// Feed pitwall manager with all packet types first, so ban evaluation and
+	// every downstream broadcast observe the latest participants / player index.
 	if parsed.Motion != nil {
 		p.pitwallManager.UpdateMotion(parsed.Motion, parsed.Header.PlayerCarIndex)
-
-		// Broadcast positions at full rate (60Hz) over fast channel
-		if p.fastHub != nil {
-			if positions := p.pitwallManager.BuildPositions(); positions != nil {
-				msg := dto.WSResponse{
-					Type: dto.MessageTypePositionUpdate,
-					Data: positions,
-				}
-				if fastData, err := dto.MsgpackMarshal(msg); err == nil {
-					p.fastHub.BroadcastFast(fastData)
-				}
-			}
-		}
 	}
 	if parsed.Session != nil {
 		p.pitwallManager.UpdateSession(parsed.Session)
@@ -294,6 +317,32 @@ func (p *Processor) processPacket(data []byte) {
 	}
 	if parsed.CarTelemetry2 != nil {
 		p.pitwallManager.UpdateCarTelemetry2(parsed.CarTelemetry2)
+	}
+
+	// Hard ban gate: when the player's nickname is on the ban list, skip ALL
+	// event handling and broadcasts (positions / pitwall / dashboard / replay).
+	// The pitwall manager was still updated above, so a nickname or list change
+	// automatically lifts the ban on a subsequent packet.
+	if p.evaluateBan() {
+		return
+	}
+
+	// Handle event packets (penalties, warnings, race control)
+	if parsed.Event != nil {
+		p.handleEventPacket(parsed)
+	}
+
+	// Broadcast positions at full rate (60Hz) over fast channel
+	if parsed.Motion != nil && p.fastHub != nil {
+		if positions := p.pitwallManager.BuildPositions(); positions != nil {
+			msg := dto.WSResponse{
+				Type: dto.MessageTypePositionUpdate,
+				Data: positions,
+			}
+			if fastData, err := dto.MsgpackMarshal(msg); err == nil {
+				p.fastHub.BroadcastFast(fastData)
+			}
+		}
 	}
 
 	p.mu.Lock()

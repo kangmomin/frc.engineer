@@ -785,6 +785,18 @@ func (pm *PitwallManager) GetDriverName(vehicleIdx uint8) string {
 	return pm.participants.Participants[vehicleIdx].GetName()
 }
 
+// GetPlayerName returns the player's own participant name (header PlayerCarIndex
+// slot), or empty string if participants / player index are not yet known. Used
+// for nickname-ban matching. Empty result means "cannot identify" → never banned.
+func (pm *PitwallManager) GetPlayerName() string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	if pm.participants == nil || int(pm.playerIndex) >= len(pm.participants.Participants) {
+		return ""
+	}
+	return pm.participants.Participants[pm.playerIndex].GetName()
+}
+
 // BuildPositions returns car positions from the latest motion packet.
 // This is a lightweight alternative to BuildState for high-frequency broadcasting.
 func (pm *PitwallManager) BuildPositions() []dto.CarPosition {

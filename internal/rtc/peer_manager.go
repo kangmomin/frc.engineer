@@ -87,6 +87,7 @@ type PeerManager struct {
 	closed                 bool // guarded by sigMu; Connect() after Close() re-arms done
 	reconnecting           bool
 	writeDone              chan struct{}
+	playerName             string // current in-game player nickname (guarded by sigMu)
 }
 
 // NewPeerManager creates a PeerManager. Call Connect() to start.
@@ -140,6 +141,20 @@ func (pm *PeerManager) SetDefaultPermissionsCode(code string) {
 	pm.sigMu.Lock()
 	pm.defaultPermissionsCode = code
 	pm.sigMu.Unlock()
+}
+
+// SetPlayerName updates the current in-game player nickname reported to the
+// signaling server (room_create / room_rejoin / heartbeat) for IP auto-ban.
+func (pm *PeerManager) SetPlayerName(name string) {
+	pm.sigMu.Lock()
+	pm.playerName = name
+	pm.sigMu.Unlock()
+}
+
+func (pm *PeerManager) getPlayerName() string {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	return pm.playerName
 }
 
 // SetICEServers overrides the default STUN-only ICE server list.
@@ -203,6 +218,7 @@ func (pm *PeerManager) Connect() error {
 		RoomName:               pm.roomName,
 		Password:               pm.roomPassword,
 		DefaultPermissionsCode: pm.defaultPermissionsCode,
+		PlayerName:             pm.getPlayerName(),
 	}
 	if err := pm.sigConn.WriteJSON(create); err != nil {
 		pm.sigConn.Close()
@@ -529,8 +545,9 @@ func (pm *PeerManager) writeSignalingLoop() {
 			}
 			pm.sigMu.Unlock()
 		case <-heartbeatTicker.C:
-			// Application-level keepalive to survive reverse proxy idle timeouts.
-			pm.sendSignaling(signaling.Message{Type: signaling.TypeHeartbeat})
+			// Application-level keepalive (also carries the latest player nickname
+			// for server-side IP auto-ban detection on nickname change).
+			pm.sendSignaling(signaling.Message{Type: signaling.TypeHeartbeat, PlayerName: pm.getPlayerName()})
 		}
 	}
 }
@@ -660,6 +677,7 @@ func (pm *PeerManager) reconnectLoop() {
 			RoomName:               pm.roomName,
 			Password:               pm.roomPassword,
 			DefaultPermissionsCode: pm.defaultPermissionsCode,
+			PlayerName:             pm.getPlayerName(),
 		}
 		pm.sigMu.Lock()
 		err := pm.sigConn.WriteJSON(rejoin)
@@ -697,6 +715,7 @@ func (pm *PeerManager) reconnectLoop() {
 				RoomName:               pm.roomName,
 				Password:               pm.roomPassword,
 				DefaultPermissionsCode: pm.defaultPermissionsCode,
+				PlayerName:             pm.getPlayerName(),
 			}
 			pm.sigMu.Lock()
 			err = pm.sigConn.WriteJSON(create)
@@ -1126,11 +1145,11 @@ func (pm *PeerManager) keepaliveLoop() {
 
 func (pm *PeerManager) pingPeers() {
 	type target struct {
-		peerID       string
-		channel      *webrtc.DataChannel
-		pongSeen     bool
-		lastPongAt   time.Time
-		restarting   bool
+		peerID     string
+		channel    *webrtc.DataChannel
+		pongSeen   bool
+		lastPongAt time.Time
+		restarting bool
 	}
 
 	pm.mu.RLock()

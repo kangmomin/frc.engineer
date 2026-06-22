@@ -20,6 +20,7 @@ import (
 	"github.com/skip2/go-qrcode"
 
 	"frc.engineer/internal/analysis"
+	"frc.engineer/internal/banlist"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/frcapi"
@@ -393,6 +394,11 @@ func main() {
 	processor.PitwallManager().SetERSActualEnabled(true)
 	processor.PitwallManager().SetERSComparisonEnabled(false)
 	trackState := senderProcessorTrackState{processor: processor}
+
+	// Nickname ban: shared store fed by the central list (polled below) and read
+	// by the processor on every packet to hard-stop transmission for banned players.
+	banStore := banlist.NewStore()
+	processor.SetBanChecker(banStore.IsBanned)
 
 	// Runtime config state protected by mutex
 	var cfgMu sync.Mutex
@@ -914,8 +920,8 @@ func main() {
 			cfgMu.Lock()
 			pitwallAllowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
 			cfgMu.Unlock()
-			if !pitwallAllowed {
-				logger.Warn("pitwall permission revoked during connect retry, aborting")
+			if !pitwallAllowed || processor.IsBanned() {
+				logger.Warn("pitwall unavailable (permission revoked or nickname banned) during connect retry, aborting")
 				return
 			}
 			err := peerManager.Connect()
@@ -925,9 +931,9 @@ func main() {
 				cfgMu.Lock()
 				stillAllowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
 				cfgMu.Unlock()
-				if !stillAllowed {
+				if !stillAllowed || processor.IsBanned() {
 					peerManager.Close()
-					logger.Warn("pitwall permission revoked during connect, closing session")
+					logger.Warn("pitwall unavailable (permission revoked or nickname banned) during connect, closing session")
 					return
 				}
 				systray.SetTooltip("FRC Pitwall Sender " + appVersion + " — Running")
@@ -946,11 +952,34 @@ func main() {
 			}
 		}
 	}
-	shouldConnect := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
-	if shouldConnect {
+	// shouldBeConnected gates (re)connection on BOTH pitwall permission and the
+	// nickname ban — used here, by the ban-state callback, and the config path.
+	shouldBeConnected := func() bool {
+		cfgMu.Lock()
+		allowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
+		cfgMu.Unlock()
+		return allowed && !processor.IsBanned()
+	}
+
+	// When the player's nickname enters/leaves the ban list, hard-stop or resume.
+	// Invoked from the processor goroutine, so keep it non-blocking.
+	processor.SetBanStateChangeHandler(func(banned bool) {
+		if banned {
+			// Close asynchronously: this callback runs on the processor goroutine
+			// and Close() may block on signaling I/O.
+			go peerManager.Close()
+			logger.Warn("player nickname banned — transmission stopped, session closed")
+			systray.SetTooltip("FRC Pitwall Sender " + appVersion + " — 차단됨 (밴 리스트)")
+		} else if shouldBeConnected() {
+			logger.Info("nickname ban lifted — reconnecting to signaling")
+			go connectWithRetry()
+		}
+	})
+
+	if shouldBeConnected() {
 		go connectWithRetry()
 	} else {
-		logger.Warn("pitwall permission denied, skipping signaling connection")
+		logger.Warn("pitwall connection skipped (permission denied or nickname banned)")
 	}
 
 	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState) error {
@@ -1003,6 +1032,49 @@ func main() {
 	// Start components
 	go udpListener.Start(ctx)
 	go processor.Start(ctx, udpListener.Packets())
+
+	// Poll the central ban list (signaling server) and refresh the local store.
+	// Fail-open: on fetch errors we keep the previous list rather than unbanning.
+	go func() {
+		banClient := banlist.NewClient(signalingHTTPBase(signalingURL))
+		fetchOnce := func() {
+			fctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			names, err := banClient.Fetch(fctx)
+			if err != nil {
+				logger.Warn("failed to fetch ban list, keeping previous (fail-open)", "error", err)
+				return
+			}
+			banStore.Replace(names)
+			logger.Info("ban list refreshed", "count", banStore.Count())
+		}
+		fetchOnce()
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				fetchOnce()
+			}
+		}
+	}()
+
+	// Report the player nickname to signaling (for server-side IP auto-ban).
+	// Synced periodically since the nickname is only known after telemetry arrives.
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				peerManager.SetPlayerName(processor.PitwallManager().GetPlayerName())
+			}
+		}
+	}()
 
 	// Settings HTTP server
 	mux := http.NewServeMux()
@@ -1171,6 +1243,7 @@ func main() {
 			"currentTrack":       getCurrentTrack(trackState, trackStore),
 			"radarActive":        radarOv.IsRunning(),
 			"weatherActive":      weatherOv.IsRunning(),
+			"banned":             processor.IsBanned(),
 			"strategyActive":     strategyOv.IsRunning(),
 			"invite":             invite,
 			"peers":              peers,
@@ -1663,7 +1736,10 @@ func main() {
 			if wasPitwall && !nowPitwall {
 				peerManager.Close()
 				logger.Warn("pitwall permission revoked, disconnected from signaling")
-			} else if !wasPitwall && nowPitwall {
+			} else if !wasPitwall && nowPitwall && !processor.IsBanned() {
+				// cfgMu is already held here, so we must NOT call shouldBeConnected()
+				// (it re-locks cfgMu → deadlock). nowPitwall already reflects the
+				// permission; only the ban needs the extra (lock-free) check.
 				go connectWithRetry()
 				logger.Info("pitwall permission granted, reconnecting to signaling")
 			}

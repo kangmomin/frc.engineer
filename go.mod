@@ -1,11 +1,12 @@
 module frc.engineer
 
-go 1.24.0
+go 1.25.0
 
 require (
 	frc.pitwall.parser/telemetry-go v0.0.0-20260414033605-9ce9091d20ce
 	github.com/energye/systray v1.0.3
 	github.com/gorilla/websocket v1.5.3
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pion/webrtc/v4 v4.2.9
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/vmihailenco/msgpack/v5 v5.4.1
@@ -14,6 +15,9 @@ require (
 require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/pion/datachannel v1.6.0 // indirect
 	github.com/pion/dtls/v3 v3.1.2 // indirect
 	github.com/pion/ice/v4 v4.2.1 // indirect
@@ -33,7 +37,9 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 )
 

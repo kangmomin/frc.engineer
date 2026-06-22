@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"frc.engineer/internal/bandb"
 	"frc.engineer/internal/frcapi"
 	"frc.engineer/internal/signaling"
 	"github.com/gorilla/websocket"
@@ -28,6 +30,10 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
+	// App-level context, cancelled on shutdown so background goroutines exit.
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+
 	// Railway/Render/Fly set PORT; allow override via SIGNALING_PORT.
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -43,8 +49,67 @@ func main() {
 	frcAPI := frcapi.NewClient(frcAPIURL)
 	logger.Info("FRC API client configured", "url", frcAPIURL)
 
-	roomManager := signaling.NewRoomManager(logger, frcAPI)
+	// IP/nickname ban store (Postgres). Gracefully disabled if DATABASE_URL unset.
+	var banCache *bandb.Cache
+	var banStore bandb.Store
+	if dsn := strings.TrimSpace(os.Getenv("DATABASE_URL")); dsn != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		db, err := bandb.Open(ctx, dsn)
+		cancel()
+		if err != nil {
+			logger.Error("ban DB connect failed; ban features disabled", "error", err)
+		} else {
+			schemaCtx, schemaCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err = db.EnsureSchema(schemaCtx)
+			schemaCancel()
+			if err != nil {
+				logger.Error("ban DB schema failed; ban features disabled", "error", err)
+				db.Close() // close immediately; don't leave a zombie connection
+			} else {
+				defer db.Close()
+				banStore = db
+				banCache = bandb.NewCache()
+				logger.Info("ban DB connected")
+			}
+		}
+	} else {
+		logger.Warn("DATABASE_URL not set; ban features disabled")
+	}
+
+	roomManager := signaling.NewRoomManager(logger, frcAPI, banCache, banStore)
 	defer roomManager.Stop()
+
+	// Periodically refresh the ban cache from the DB (also reflects manual edits
+	// such as DELETE). Hot paths read only the cache, never the DB.
+	if banCache != nil && banStore != nil {
+		go func() {
+			refresh := func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if ips, err := banStore.ListIPs(ctx); err != nil {
+					logger.Warn("ban refresh: list ips failed", "error", err)
+				} else {
+					banCache.ReplaceIPs(ips)
+				}
+				if nicks, err := banStore.ListNicknames(ctx); err != nil {
+					logger.Warn("ban refresh: list nicknames failed", "error", err)
+				} else {
+					banCache.ReplaceNicks(nicks)
+				}
+			}
+			refresh()
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-appCtx.Done():
+					return
+				case <-ticker.C:
+					refresh()
+				}
+			}
+		}()
+	}
 
 	// ALLOWED_ORIGINS (콤마 구분) 설정 시에만 Origin 검사.
 	// Go sender는 Origin 헤더를 보내지 않으므로 "헤더 없음 = 허용"이 필수.
@@ -84,7 +149,16 @@ func main() {
 		_ = json.NewEncoder(w).Encode(roomManager.ListRooms())
 	})
 
+	mux.HandleFunc("/api/banned-nicknames", handleBannedNicknames(banCache))
+
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		// IP ban gate: reject banned IPs before the WebSocket handshake (applies
+		// to both drivers and engineers — /ws is the shared entry point).
+		clientIP := bandb.ClientIP(r)
+		if banCache != nil && banCache.HasIP(clientIP) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			logger.Error("websocket upgrade failed", "error", err)
@@ -138,7 +212,7 @@ func main() {
 				}
 				return
 			}
-			currentPeer = roomManager.HandleMessageExported(conn, raw, currentPeer, writeMu)
+			currentPeer = roomManager.HandleMessageExported(conn, raw, currentPeer, writeMu, clientIP)
 		}
 	})
 
@@ -175,4 +249,30 @@ func parseAllowedOrigins(raw string) map[string]struct{} {
 		}
 	}
 	return origins
+}
+
+// handleBannedNicknames serves the banned-nickname list (from the DB-backed
+// cache) for senders to poll. Mirrors the /api/rooms CORS shape. A nil cache
+// (ban features disabled) returns an empty list.
+func handleBannedNicknames(cache *bandb.Cache) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		list := []string{}
+		if cache != nil {
+			list = append(list, cache.Nicknames()...)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(struct {
+			Nicknames []string `json:"nicknames"`
+		}{Nicknames: list})
+	}
 }

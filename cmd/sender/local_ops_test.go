@@ -21,6 +21,24 @@ func TestBuildEngineerInviteLink(t *testing.T) {
 	}
 }
 
+func TestSignalingHTTPBase(t *testing.T) {
+	cases := map[string]string{
+		"wss://signal.example/ws":      "https://signal.example",
+		"ws://localhost:9090/ws":       "http://localhost:9090",
+		"https://signal.example":       "https://signal.example",
+		"http://localhost:9090/ws":     "http://localhost:9090",
+		"wss://host.example/custom/ws": "https://host.example",
+		"":                             "",
+		"   ":                          "",
+		"not a url":                    "",
+	}
+	for raw, want := range cases {
+		if got := signalingHTTPBase(raw); got != want {
+			t.Errorf("signalingHTTPBase(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestNormalizeEngineerDashboardURLPrivateNetworksUseHTTP(t *testing.T) {
 	cases := map[string]string{
 		"10.0.0.15:5173":    "http://10.0.0.15:5173",

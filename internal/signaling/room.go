@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"frc.engineer/internal/bandb"
+	"frc.engineer/internal/banlist"
 	"frc.engineer/internal/frcapi"
 	"github.com/gorilla/websocket"
 )
@@ -79,22 +81,58 @@ type RoomManager struct {
 	roomsByCode map[string]*Room // roomCode ??Room
 	roomsByID   map[string]*Room // roomId ??Room
 	frcAPI      *frcapi.Client
+	banCache    *bandb.Cache // nil이면 IP/닉 ban 비활성 (DATABASE_URL 미설정)
+	banStore    bandb.Store  // nil이면 영구 등록 skip (캐시만)
 	mu          sync.RWMutex
 	logger      *slog.Logger
 	done        chan struct{}
 }
 
 // NewRoomManager creates a new RoomManager and starts a background cleanup goroutine.
-func NewRoomManager(logger *slog.Logger, frcAPI *frcapi.Client) *RoomManager {
+// banCache/banStore may be nil to disable ban features (graceful degrade).
+func NewRoomManager(logger *slog.Logger, frcAPI *frcapi.Client, banCache *bandb.Cache, banStore bandb.Store) *RoomManager {
 	rm := &RoomManager{
 		roomsByCode: make(map[string]*Room),
 		roomsByID:   make(map[string]*Room),
 		frcAPI:      frcAPI,
+		banCache:    banCache,
+		banStore:    banStore,
 		logger:      logger,
 		done:        make(chan struct{}),
 	}
 	go rm.cleanupLoop()
 	return rm
+}
+
+// checkAndBanNickname reports whether playerName is on the banned-nickname list;
+// if so it records clientIP as banned (cache immediately for instant effect, DB
+// asynchronously) so later connections from that IP are blocked even after a
+// nickname change. No-op when ban features are disabled or the IP is unknown.
+func (rm *RoomManager) checkAndBanNickname(clientIP, playerName string) bool {
+	if rm.banCache == nil || clientIP == "" {
+		return false
+	}
+	// Already banned (e.g. repeated messages on the same connection): skip the
+	// nickname match and the duplicate async DB write.
+	if rm.banCache.HasIP(clientIP) {
+		return true
+	}
+	norm := banlist.Normalize(playerName)
+	if norm == "" || !rm.banCache.HasNick(norm) {
+		return false
+	}
+	rm.banCache.AddIP(clientIP) // immediate: next connection from this IP is blocked
+	if rm.banStore != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := rm.banStore.AddIP(ctx, clientIP, norm, "banned-nickname"); err != nil {
+				rm.logger.Warn("failed to persist auto-banned IP", "ip", clientIP, "error", err)
+			}
+		}()
+	}
+	rm.logger.Info("auto-banned IP for banned nickname", "ip", clientIP, "nickname", norm)
+	return true
 }
 
 // Stop terminates the cleanup goroutine.
@@ -656,12 +694,12 @@ type ExportedPeer struct {
 }
 
 // HandleMessageExported wraps HandleMessage for use from external packages.
-func (rm *RoomManager) HandleMessageExported(conn *websocket.Conn, raw []byte, ep *ExportedPeer, writeMu *sync.Mutex) *ExportedPeer {
+func (rm *RoomManager) HandleMessageExported(conn *websocket.Conn, raw []byte, ep *ExportedPeer, writeMu *sync.Mutex, clientIP string) *ExportedPeer {
 	var cp *peer
 	if ep != nil {
 		cp = ep.p
 	}
-	result := rm.HandleMessage(conn, raw, cp, writeMu)
+	result := rm.HandleMessage(conn, raw, cp, writeMu, clientIP)
 	if result == nil {
 		return nil
 	}
@@ -679,10 +717,18 @@ func (rm *RoomManager) RemoveExportedPeer(ep *ExportedPeer) {
 }
 
 // HandleMessage processes an incoming signaling message from a WebSocket connection.
-func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPeer *peer, writeMu *sync.Mutex) *peer {
+func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPeer *peer, writeMu *sync.Mutex, clientIP string) *peer {
 	var msg Message
 	if err := json.Unmarshal(raw, &msg); err != nil {
 		sendErrorRaw(conn, "invalid JSON", writeMu)
+		return currentPeer
+	}
+
+	// IP auto-ban: any message reporting a banned nickname records the client IP
+	// and drops the connection (rejected at upgrade on the next attempt).
+	if rm.checkAndBanNickname(clientIP, msg.PlayerName) {
+		sendErrorRaw(conn, "banned", writeMu)
+		_ = conn.Close()
 		return currentPeer
 	}
 
