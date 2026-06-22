@@ -18,6 +18,7 @@ import type {
 import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { clamp, formatDelta, formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
+import { projectTyreWear, tyreWearPerLap } from './tyrePrediction';
 import styles from './CockpitDashboard.module.css';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
@@ -362,7 +363,7 @@ export function CockpitDashboard({
   const wheelCoreTemp = normalizeWheelData(player?.tireInnerTemp);
   const wheelWear = normalizeWheelData(player?.tireWear);
   const averageWear = wheelWear.reduce((sum, value) => sum + value, 0) / WHEEL_LABELS.length;
-  const averageWearPerLap = player?.tireAge ? averageWear / Math.max(player.tireAge, 1) : 0;
+  const averageWearPerLap = tyreWearPerLap(averageWear, player?.tireAge);
   const [wearDisplayMode] = useLocalStorage<TireWearDisplayMode>(
     'tireWearDisplayMode',
     'absolute',
@@ -399,14 +400,7 @@ export function CockpitDashboard({
     }
     return next;
   }, [compoundLapBenchmarks]);
-  const tireAge = Math.max(player?.tireAge ?? 0, 1);
-  const targetTireAge = Math.max(predictionLaps, 1);
-  const wheelWearPrediction = wheelWear.map((wear) => {
-    const wearPerLap = player?.tireAge ? wear / tireAge : 0;
-    const absolute = Math.min(wearPerLap * targetTireAge, 100);
-    const delta = absolute - wear;
-    return { delta: Math.round(delta), absolute: Math.round(absolute) };
-  });
+  const wheelWearPrediction = wheelWear.map((wear) => projectTyreWear(wear, player?.tireAge, predictionLaps));
   const pitWindow = getPitWindow(session, player);
   const recommendedTyre = getRecommendedTyre(player, session);
   const trafficStatus = getTrafficStatus(carBehind);
@@ -1198,7 +1192,7 @@ export function CockpitDashboard({
             detail={`AVG WEAR/LAP: ${averageWearPerLap.toFixed(1)}%`}
             endContent={(
               <div className={styles.predictionInput}>
-                <label htmlFor="pred-laps">At Lap</label>
+                <label htmlFor="pred-laps">In</label>
                 <input
                   id="pred-laps"
                   className={styles.lapInput}

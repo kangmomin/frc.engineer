@@ -251,8 +251,8 @@ export function SettingsView() {
         </div>
         <span className={styles.hint}>
           {wearDisplayMode === 'absolute'
-            ? 'Absolute: shows total predicted wear at N laps (ex: 75%).'
-            : 'Relative: shows additional wear over N laps (ex: +15%).'}
+            ? 'Absolute: total predicted wear after N more laps (ex: 75%).'
+            : 'Relative: additional wear over the next N laps (ex: +15%).'}
         </span>
       </div>
 

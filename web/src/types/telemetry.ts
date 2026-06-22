@@ -68,8 +68,8 @@ export type ViewMode = 'driver' | 'pitwall';
 
 /**
  * Tire wear prediction display mode
- * - 'absolute': Show predicted total wear at N laps (e.g. 75%)
- * - 'relative': Show additional wear over N laps (e.g. +15%)
+ * - 'absolute': Show predicted total wear after N more laps (e.g. 75%)
+ * - 'relative': Show additional wear over the next N laps (e.g. +15%)
  */
 export type TireWearDisplayMode = 'absolute' | 'relative';
 
