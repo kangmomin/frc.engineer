@@ -36,6 +36,9 @@ const PEER_CONNECTION_TIMEOUT_MS = 12_000;
 // 'disconnected' watchdog: sender의 ICE restart 1사이클(감지 5s + offer 왕복 +
 // ICE 재연결 ≈ 11s)을 온전히 기다린 뒤에야 full reconnect로 넘어간다.
 const DISCONNECTED_RECOVERY_TIMEOUT_MS = 18_000;
+// ICE가 순간 'disconnected'로 깜빡일 때(Wi-Fi 로밍/jitter) 화면을 즉시 reconnecting으로
+// 바꾸면 권한 게이팅 패널이 사라졌다 나타난다. grace 안에 복구되면 UI를 건드리지 않는다.
+const DISCONNECTED_UI_GRACE_MS = 2_500;
 const DATA_REQUEST_TIMEOUT_MS = 30_000;
 
 // Auto-reconnect: 한 번이라도 연결에 성공한 세션은 무한 재시도(백오프 cap 30s
@@ -213,6 +216,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const dcRef = useRef<RTCDataChannel | null>(null);
   const isMountedRef = useRef(true);
   const stageTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const disconnectGraceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const terminalFailureRef = useRef<ConnectionState | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -355,6 +359,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
   const cleanup = useCallback(() => {
     clearStageTimeout();
+    if (disconnectGraceRef.current) {
+      clearTimeout(disconnectGraceRef.current);
+      disconnectGraceRef.current = null;
+    }
     clearReconnectTimer();
     rejectAllPendingRequests('P2P connection closed.');
     // Detach handlers before close() so the resulting onclose/onstatechange
@@ -765,6 +773,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           lastTrafficAtRef.current = Date.now();
           setRtcState('connected');
           clearStageTimeout();
+          if (disconnectGraceRef.current) {
+            clearTimeout(disconnectGraceRef.current);
+            disconnectGraceRef.current = null;
+          }
           clearReconnectTimer();
           // A clean connected state resets the backoff counter by design: each fresh
           // drop earns a full retry budget (rapid connect/drop ping-pong is rare).
@@ -780,8 +792,17 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           // Transient — sender가 ICE restart로 자가 복구할 시간을 준다 (감지 5s +
           // restart 협상 + ICE 재연결 ≈ 11s → 18s 워치독). 복구 실패 시 full reconnect.
           setRtcState('disconnected');
-          setConnectionState('reconnecting');
-          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+          // 화면 변경(reconnecting + 권한 박탈)은 grace 후에도 미복구일 때만 적용해,
+          // 짧은 ICE 깜빡임에 패널이 사라졌다 나타나는 현상을 막는다. 18s 백스톱은 즉시 무장.
+          if (disconnectGraceRef.current == null) {
+            disconnectGraceRef.current = window.setTimeout(() => {
+              disconnectGraceRef.current = null;
+              if (!isMountedRef.current || terminalFailureRef.current) return;
+              if (pcRef.current?.connectionState === 'connected') return;
+              setConnectionState('reconnecting');
+              setFeaturePermissions(NO_FEATURE_PERMISSIONS);
+            }, DISCONNECTED_UI_GRACE_MS);
+          }
           armStageTimeout('Peer connection stalled in disconnected state.', DISCONNECTED_RECOVERY_TIMEOUT_MS);
         } else {
           setRtcState(state);
