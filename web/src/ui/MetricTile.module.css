@@ -1,0 +1,51 @@
+.metricTile {
+  min-width: 0;
+  padding: 10px;
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  background: rgba(14, 14, 15, 0.52);
+  border: 1px solid rgba(59, 73, 76, 0.15);
+}
+
+/* label span */
+.metricTile span {
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* value strong — 색은 tone 클래스가 제공한다. */
+.metricTile strong {
+  font-family: var(--font-racing);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.metricNote {
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* compact 변형: 기존 compactMetricTile. base 뒤에 정의해 순서로 override를 보장한다. */
+.compact {
+  min-height: 54px;
+  padding: 8px 10px;
+  gap: 3px;
+}
+
+.compact strong {
+  font-size: 0.94rem;
+}
+
+.compact span {
+  font-size: 10px;
+}

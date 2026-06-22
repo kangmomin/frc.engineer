@@ -1,0 +1,15 @@
+/* 부모가 크기(width/height)와 색(color)을 제공한다. 표준 사용은 16px 박스 안. */
+.icon {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon circle {
+  fill: currentColor;
+  stroke: none;
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel, getWearStatusColor } from '../../constants/tyreCompounds';
@@ -19,6 +19,7 @@ import { getApiUrl } from '../../utils/apiBase';
 import { getConnectionDetail, getConnectionLabel } from '../../utils/connectionStatus';
 import { clamp, formatDelta, formatLapTime, formatRaceStorageModeBadge } from '../../utils/formatters';
 import { projectTyreWear, tyreWearPerLap } from './tyrePrediction';
+import { MetricTile, PanelTitle, StatRibbon, WeatherIcon } from '../../ui';
 import styles from './CockpitDashboard.module.css';
 
 const WHEEL_LABELS = ['FL', 'FR', 'RL', 'RR'] as const;
@@ -387,9 +388,9 @@ export function CockpitDashboard({
   );
   const [strategyGuide, setStrategyGuide] = useState<StrategyGuideResponse | null>(null);
   const [strategyGuideLoading, setStrategyGuideLoading] = useState(false);
-  // 전략 트랙 데이터는 F1 25만 존재한다. 26(Season Pack)은 데이터가 없어 차단하고,
-  // 그 외(25/미상)는 별도 key·권한 없이 기본 노출한다.
-  const strategyAvailable = !is2026;
+  // F1 26(2026 Season Pack)도 전략 가이드를 노출한다(베타). 데이터는 F1 25 기준이며,
+  // 폐지된 C6 컴파운드는 백엔드에서 C5로 강등된다. 정확한 26 산식 보정은 Phase 2 예정.
+  const strategyAvailable = true;
   const parsedCompoundLapBenchmarks = useMemo(() => {
     const next: Record<string, number> = {};
     for (const [key, value] of Object.entries(compoundLapBenchmarks)) {
@@ -614,11 +615,10 @@ export function CockpitDashboard({
     [compoundLapBenchmarks, parsedCompoundLapBenchmarks, player?.tireCompound, strategyGuide],
   );
   const compoundLifeDetail = useMemo(() => {
-    if (is2026) return '2026 Season Pack — no strategy data';
     if (strategyGuideLoading) return 'Loading track guide...';
     if (!strategyGuide) return 'Track guide unavailable';
     return `50% race baseline / ${strategyGuide.track.track_info.laps_50pct}L`;
-  }, [is2026, strategyGuide, strategyGuideLoading]);
+  }, [strategyGuide, strategyGuideLoading]);
 
   useEffect(() => {
     if (sessionTrackId == null || sessionTrackId < 0 || !sessionTrackName.trim()) {
@@ -840,7 +840,7 @@ export function CockpitDashboard({
               value={`${player?.currentLapNum ?? 0}/${session?.totalLaps ?? '--'}`}
               detail={session?.trackName ?? 'No Session'}
               tone="primary"
-              className={styles.lapRibbon}
+              dense
             />
             <StatRibbon
               label="Track Temp"
@@ -1163,24 +1163,20 @@ export function CockpitDashboard({
           {strategyPanel.notes && (
             <div className={styles.strategyNotes}>{strategyPanel.notes}</div>
           )}
-          {is2026 ? (
-            <div className={styles.strategyUnlockCard}>
-              <span className={styles.strategyUnlockLabel}>Strategy Unavailable</span>
+          <div className={styles.strategyUnlockMeta}>
+            <span className={styles.strategyUnlockStatus}>
+              {strategyGuideLoading
+                ? 'Loading strategy guide...'
+                : strategyPanel.guideActive
+                  ? 'Numeric strategy guide active'
+                  : 'Guide unavailable, using heuristic fallback'}
+            </span>
+            {is2026 && (
               <span className={styles.strategySupportText}>
-                2026 Season Pack (F1 26) has no track strategy data yet. Live heuristic calls remain available.
+                {'⚠'} BETA · F1 25 기준 추정 — 26 전용 보정 예정
               </span>
-            </div>
-          ) : (
-            <div className={styles.strategyUnlockMeta}>
-              <span className={styles.strategyUnlockStatus}>
-                {strategyGuideLoading
-                  ? 'Loading strategy guide...'
-                  : strategyPanel.guideActive
-                    ? 'Numeric strategy guide active'
-                    : 'Guide unavailable, using heuristic fallback'}
-              </span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -1282,19 +1278,19 @@ export function CockpitDashboard({
                   label="Fuel"
                   value={fuelMargin}
                   tone={fuelMargin.startsWith('-') ? 'secondary' : 'tertiary'}
-                  className={styles.compactMetricTile}
+                  compact
                 />
                 <MetricTile
                   label="BB"
                   value={player?.brakeBias != null ? `${player.brakeBias.toFixed(1)}%` : '--'}
                   tone="tertiary"
-                  className={styles.compactMetricTile}
+                  compact
                 />
                 <MetricTile
                   label="DIFF"
                   value={player?.diffOnThrottle != null ? `${player.diffOnThrottle}%` : '--'}
                   tone="primary"
-                  className={styles.compactMetricTile}
+                  compact
                 />
                 {is2026 && (
                   <MetricTile
@@ -1302,7 +1298,7 @@ export function CockpitDashboard({
                     value={activeAero.value}
                     note={activeAero.note}
                     tone="primary"
-                    className={styles.compactMetricTile}
+                    compact
                   />
                 )}
               </div>
@@ -1354,11 +1350,9 @@ export function CockpitDashboard({
               </div>
             ) : (
               <div className={styles.compoundLifeEmpty}>
-                {is2026
-                  ? '2026 Season Pack has no strategy data.'
-                  : strategyGuideLoading
-                    ? 'Loading track guide...'
-                    : 'No compound life data for this track.'}
+                {strategyGuideLoading
+                  ? 'Loading track guide...'
+                  : 'No compound life data for this track.'}
               </div>
             )}
           </div>
@@ -1525,28 +1519,6 @@ function PitSettingsModal({
   );
 }
 
-function StatRibbon({
-  label,
-  value,
-  detail,
-  tone,
-  className,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone: 'primary' | 'tertiary' | 'secondary' | 'neutral';
-  className?: string;
-}) {
-  return (
-    <div className={className ? `${styles.ribbonCard} ${styles[tone]} ${className}` : `${styles.ribbonCard} ${styles[tone]}`}>
-      <div className={styles.ribbonLabel}>{label}</div>
-      <strong>{value}</strong>
-      <span>{detail}</span>
-    </div>
-  );
-}
-
 function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
   const receivedAtRef = useRef(Date.now());
   const lastOffsetsRef = useRef('');
@@ -1589,90 +1561,6 @@ function WeatherRibbon({ forecasts }: { forecasts: WeatherForecast[] }) {
           ))
         )}
       </div>
-    </div>
-  );
-}
-
-function WeatherIcon({ weather }: { weather: string }) {
-  const normalized = weather.replace(/_/g, ' ').toLowerCase();
-
-  if (normalized === 'clear') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="4.5" />
-        <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1" />
-      </svg>
-    );
-  }
-
-  if (normalized === 'light cloud' || normalized === 'overcast') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7.5 18.5h9a4 4 0 0 0 .4-8A5.5 5.5 0 0 0 6.4 9.3 3.8 3.8 0 0 0 7.5 18.5Z" />
-      </svg>
-    );
-  }
-
-  if (normalized === 'storm') {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7.5 15.5h9a4 4 0 0 0 .4-8A5.5 5.5 0 0 0 6.4 6.3 3.8 3.8 0 0 0 7.5 15.5Z" />
-        <path d="M13 16l-2 4h4l-2 4" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7.5 15.5h9a4 4 0 0 0 .4-8A5.5 5.5 0 0 0 6.4 6.3 3.8 3.8 0 0 0 7.5 15.5Z" />
-      <path d="M9 17.5l-1 3M13 17.5l-1 3M17 17.5l-1 3" />
-    </svg>
-  );
-}
-
-function PanelTitle({
-  title,
-  tone,
-  detail,
-  endContent,
-}: {
-  title: string;
-  tone: 'primary' | 'tertiary' | 'secondary' | 'neutral';
-  detail?: string;
-  endContent?: ReactNode;
-}) {
-  return (
-    <div className={styles.panelTitle}>
-      <div>
-        <span className={`${styles.panelEyebrow} ${styles[tone]}`}>{title}</span>
-        {detail && <span className={styles.panelDetail}>{detail}</span>}
-      </div>
-      <div className={styles.panelTitleAside}>
-        {endContent}
-        <span className={`${styles.panelMarker} ${styles[tone]}`} />
-      </div>
-    </div>
-  );
-}
-
-function MetricTile({
-  label,
-  value,
-  tone,
-  note,
-  className,
-}: {
-  label: string;
-  value: string;
-  tone: 'primary' | 'tertiary' | 'secondary' | 'neutral';
-  note?: string;
-  className?: string;
-}) {
-  return (
-    <div className={className ? `${styles.metricTile} ${className}` : styles.metricTile}>
-      <span>{label}</span>
-      <strong className={styles[tone]}>{value}</strong>
-      {note && <small className={styles.metricNote}>{note}</small>}
     </div>
   );
 }

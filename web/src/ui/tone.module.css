@@ -1,0 +1,16 @@
+/* 공유 tone 색상 어휘. theme.css 토큰을 참조한다. */
+.primary {
+  color: var(--accent);
+}
+
+.secondary {
+  color: var(--accent-soft);
+}
+
+.tertiary {
+  color: var(--accent-lime);
+}
+
+.neutral {
+  color: var(--text-primary);
+}

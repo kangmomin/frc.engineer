@@ -1,0 +1,43 @@
+.panelTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(59, 73, 76, 0.15);
+}
+
+.panelTitleAside {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* color는 tone 클래스가 제공한다(항상 tone과 함께 적용됨). */
+.panelEyebrow {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.panelDetail {
+  display: block;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* box-shadow가 currentColor를 쓰므로 색은 tone 클래스가 제공한다. */
+.panelMarker {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  box-shadow: 0 0 18px currentColor;
+}
