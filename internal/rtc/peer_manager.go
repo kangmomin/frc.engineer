@@ -68,26 +68,24 @@ type PeerManager struct {
 	peers        map[string]*webrtc.PeerConnection
 	channels     map[string]*webrtc.DataChannel
 	fastChannels map[string]*webrtc.DataChannel
-	permits      map[string]signaling.Permissions
 	peerViews    map[string]string // per-peer active view: "cockpit" or "qualifying"
 	peerMeta     map[string]*peerMeta
 	mu           sync.RWMutex
 
-	roomID                 string
-	roomCode               string
-	roomName               string
-	roomPassword           string
-	defaultPermissionsCode string
-	iceServers             []webrtc.ICEServer
-	onRequest              RequestHandler
-	onCountChange          func(int)    // called when engineer count changes
-	onStatus               func(string) // signaling status text for tray tooltip 등
-	logger                 *slog.Logger
-	done                   chan struct{}
-	closed                 bool // guarded by sigMu; Connect() after Close() re-arms done
-	reconnecting           bool
-	writeDone              chan struct{}
-	playerName             string // current in-game player nickname (guarded by sigMu)
+	roomID        string
+	roomCode      string
+	roomName      string
+	roomPassword  string
+	iceServers    []webrtc.ICEServer
+	onRequest     RequestHandler
+	onCountChange func(int)    // called when engineer count changes
+	onStatus      func(string) // signaling status text for tray tooltip 등
+	logger        *slog.Logger
+	done          chan struct{}
+	closed        bool // guarded by sigMu; Connect() after Close() re-arms done
+	reconnecting  bool
+	writeDone     chan struct{}
+	playerName    string // current in-game player nickname (guarded by sigMu)
 }
 
 // NewPeerManager creates a PeerManager. Call Connect() to start.
@@ -97,7 +95,6 @@ func NewPeerManager(signalingURL string, logger *slog.Logger) *PeerManager {
 		peers:        make(map[string]*webrtc.PeerConnection),
 		channels:     make(map[string]*webrtc.DataChannel),
 		fastChannels: make(map[string]*webrtc.DataChannel),
-		permits:      make(map[string]signaling.Permissions),
 		peerViews:    make(map[string]string),
 		peerMeta:     make(map[string]*peerMeta),
 		iceServers:   cloneICEServers(defaultICEServers),
@@ -136,13 +133,6 @@ func (pm *PeerManager) SetRoomMetadata(name, password string) {
 	pm.sigMu.Unlock()
 }
 
-// SetDefaultPermissionsCode sets the default permission code for engineers joining without one.
-func (pm *PeerManager) SetDefaultPermissionsCode(code string) {
-	pm.sigMu.Lock()
-	pm.defaultPermissionsCode = code
-	pm.sigMu.Unlock()
-}
-
 // SetPlayerName updates the current in-game player nickname reported to the
 // signaling server (room_create / room_rejoin / heartbeat) for IP auto-ban.
 func (pm *PeerManager) SetPlayerName(name string) {
@@ -173,18 +163,16 @@ func (pm *PeerManager) UpdateRoomMetadata(name, password string) {
 	pm.sigMu.Lock()
 	pm.roomName = name
 	pm.roomPassword = password
-	defaultCode := pm.defaultPermissionsCode
 	connected := pm.sigConn != nil
 	roomID := pm.roomID
 	pm.sigMu.Unlock()
 
 	if connected && roomID != "" {
 		pm.sendSignaling(signaling.Message{
-			Type:                   signaling.TypeRoomUpdate,
-			RoomID:                 roomID,
-			RoomName:               name,
-			Password:               password,
-			DefaultPermissionsCode: defaultCode,
+			Type:     signaling.TypeRoomUpdate,
+			RoomID:   roomID,
+			RoomName: name,
+			Password: password,
 		})
 	}
 }
@@ -213,12 +201,11 @@ func (pm *PeerManager) Connect() error {
 
 	// Send room_create
 	create := signaling.Message{
-		Type:                   signaling.TypeRoomCreate,
-		RoomID:                 pm.roomID,
-		RoomName:               pm.roomName,
-		Password:               pm.roomPassword,
-		DefaultPermissionsCode: pm.defaultPermissionsCode,
-		PlayerName:             pm.getPlayerName(),
+		Type:       signaling.TypeRoomCreate,
+		RoomID:     pm.roomID,
+		RoomName:   pm.roomName,
+		Password:   pm.roomPassword,
+		PlayerName: pm.getPlayerName(),
 	}
 	if err := pm.sigConn.WriteJSON(create); err != nil {
 		pm.sigConn.Close()
@@ -328,21 +315,19 @@ func (pm *PeerManager) BroadcastAllFast(message []byte) {
 
 // BroadcastPerPeer sends a potentially different payload to each connected peer.
 // Returns (dropped, total) counts of peers.
-func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions signaling.Permissions, view string) []byte) (int, int) {
+func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, view string) []byte) (int, int) {
 	pm.mu.RLock()
 	type target struct {
-		peerID      string
-		channel     *webrtc.DataChannel
-		permissions signaling.Permissions
-		view        string
+		peerID  string
+		channel *webrtc.DataChannel
+		view    string
 	}
 	targets := make([]target, 0, len(pm.channels))
 	for peerID, ch := range pm.channels {
 		targets = append(targets, target{
-			peerID:      peerID,
-			channel:     ch,
-			permissions: pm.permits[peerID],
-			view:        pm.peerViews[peerID],
+			peerID:  peerID,
+			channel: ch,
+			view:    pm.peerViews[peerID],
 		})
 	}
 	pm.mu.RUnlock()
@@ -359,7 +344,7 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, permissions 
 			dropped++
 			continue
 		}
-		message := resolve(target.peerID, target.permissions, target.view)
+		message := resolve(target.peerID, target.view)
 		if len(message) == 0 {
 			continue
 		}
@@ -420,16 +405,15 @@ func (pm *PeerManager) ConnectedCount() int {
 	return count
 }
 
-// PeerDebugInfo returns debug information about connected peers and their permissions.
+// PeerDebugInfo returns debug information about connected peers.
 type PeerDebugInfo struct {
-	PeerID        string                `json:"peerId"`
-	State         string                `json:"state"`
-	ICEState      string                `json:"iceState,omitempty"`
-	CandidatePair string                `json:"candidatePair,omitempty"` // 예: "srflx -> host"
-	Restarts      int                   `json:"restarts,omitempty"`
-	LastPongAgoMs int64                 `json:"lastPongAgoMs,omitempty"`
-	View          string                `json:"view,omitempty"`
-	Permissions   signaling.Permissions `json:"permissions"`
+	PeerID        string `json:"peerId"`
+	State         string `json:"state"`
+	ICEState      string `json:"iceState,omitempty"`
+	CandidatePair string `json:"candidatePair,omitempty"` // 예: "srflx -> host"
+	Restarts      int    `json:"restarts,omitempty"`
+	LastPongAgoMs int64  `json:"lastPongAgoMs,omitempty"`
+	View          string `json:"view,omitempty"`
 }
 
 // DebugPeers returns debug info for all tracked peers.
@@ -439,10 +423,9 @@ func (pm *PeerManager) DebugPeers() []PeerDebugInfo {
 	var out []PeerDebugInfo
 	for peerID, ch := range pm.channels {
 		info := PeerDebugInfo{
-			PeerID:      peerID,
-			State:       ch.ReadyState().String(),
-			View:        pm.peerViews[peerID],
-			Permissions: pm.permits[peerID],
+			PeerID: peerID,
+			State:  ch.ReadyState().String(),
+			View:   pm.peerViews[peerID],
 		}
 		if pc := pm.peers[peerID]; pc != nil {
 			info.ICEState = pc.ICEConnectionState().String()
@@ -500,7 +483,6 @@ func (pm *PeerManager) Close() {
 		delete(pm.peers, id)
 		delete(pm.channels, id)
 		delete(pm.fastChannels, id)
-		delete(pm.permits, id)
 	}
 	pm.mu.Unlock()
 
@@ -598,7 +580,7 @@ func (pm *PeerManager) readSignalingLoop() {
 		case signaling.TypeHeartbeat:
 			// Ignore heartbeat echo from server.
 		case signaling.TypePeerJoined:
-			pm.onPeerJoined(msg.PeerID, msg.Permissions)
+			pm.onPeerJoined(msg.PeerID)
 		case signaling.TypePeerLeft:
 			pm.onPeerLeft(msg.PeerID)
 		case signaling.TypeAnswer:
@@ -672,12 +654,11 @@ func (pm *PeerManager) reconnectLoop() {
 
 		// Try room_rejoin with the stable room id.
 		rejoin := signaling.Message{
-			Type:                   signaling.TypeRoomRejoin,
-			RoomID:                 pm.roomID,
-			RoomName:               pm.roomName,
-			Password:               pm.roomPassword,
-			DefaultPermissionsCode: pm.defaultPermissionsCode,
-			PlayerName:             pm.getPlayerName(),
+			Type:       signaling.TypeRoomRejoin,
+			RoomID:     pm.roomID,
+			RoomName:   pm.roomName,
+			Password:   pm.roomPassword,
+			PlayerName: pm.getPlayerName(),
 		}
 		pm.sigMu.Lock()
 		err := pm.sigConn.WriteJSON(rejoin)
@@ -710,12 +691,11 @@ func (pm *PeerManager) reconnectLoop() {
 			rejoinFailed = true
 
 			create := signaling.Message{
-				Type:                   signaling.TypeRoomCreate,
-				RoomID:                 pm.roomID,
-				RoomName:               pm.roomName,
-				Password:               pm.roomPassword,
-				DefaultPermissionsCode: pm.defaultPermissionsCode,
-				PlayerName:             pm.getPlayerName(),
+				Type:       signaling.TypeRoomCreate,
+				RoomID:     pm.roomID,
+				RoomName:   pm.roomName,
+				Password:   pm.roomPassword,
+				PlayerName: pm.getPlayerName(),
 			}
 			pm.sigMu.Lock()
 			err = pm.sigConn.WriteJSON(create)
@@ -767,7 +747,7 @@ func (pm *PeerManager) reconnectLoop() {
 	}
 }
 
-func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permissions) {
+func (pm *PeerManager) onPeerJoined(peerID string) {
 	pm.mu.RLock()
 	existingPC, existingPeer := pm.peers[peerID]
 	existingDC := pm.channels[peerID]
@@ -837,7 +817,6 @@ func (pm *PeerManager) onPeerJoined(peerID string, permissions signaling.Permiss
 	if fastDC != nil {
 		pm.fastChannels[peerID] = fastDC
 	}
-	pm.permits[peerID] = permissions
 	pm.peerMeta[peerID] = &peerMeta{windowStart: time.Now()}
 	pm.mu.Unlock()
 
@@ -996,7 +975,6 @@ func (pm *PeerManager) removePeer(peerID string) {
 		delete(pm.peers, peerID)
 		delete(pm.channels, peerID)
 		delete(pm.fastChannels, peerID)
-		delete(pm.permits, peerID)
 		delete(pm.peerViews, peerID)
 		if meta := pm.peerMeta[peerID]; meta != nil && meta.restartTimer != nil {
 			meta.restartTimer.Stop()

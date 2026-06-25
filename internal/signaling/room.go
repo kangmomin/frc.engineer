@@ -15,7 +15,6 @@ import (
 
 	"frc.engineer/internal/bandb"
 	"frc.engineer/internal/banlist"
-	"frc.engineer/internal/frcapi"
 	"github.com/gorilla/websocket"
 )
 
@@ -35,13 +34,12 @@ const (
 
 // peer wraps a WebSocket connection with its role and room association.
 type peer struct {
-	conn        *websocket.Conn
-	role        peerRole
-	roomID      string
-	roomCode    string
-	permissions Permissions
-	id          string      // unique peer id (only for engineers)
-	writeMu     *sync.Mutex // shared with handler; serializes all conn writes
+	conn     *websocket.Conn
+	role     peerRole
+	roomID   string
+	roomCode string
+	id       string      // unique peer id (only for engineers)
+	writeMu  *sync.Mutex // shared with handler; serializes all conn writes
 }
 
 func (p *peer) sendJSON(msg Message) error {
@@ -55,16 +53,15 @@ func (p *peer) sendJSON(msg Message) error {
 
 // Room represents a single signaling room owned by a sender.
 type Room struct {
-	ID                     string
-	Code                   string
-	Name                   string
-	Password               string
-	DefaultPermissionsCode string
-	Driver                 *peer
-	Engineers              map[string]*peer // peerId ??peer
-	DriverLostAt           *time.Time       // set when driver disconnects; nil when connected
-	UpdatedAt              time.Time
-	mu                     sync.Mutex
+	ID           string
+	Code         string
+	Name         string
+	Password     string
+	Driver       *peer
+	Engineers    map[string]*peer // peerId ??peer
+	DriverLostAt *time.Time       // set when driver disconnects; nil when connected
+	UpdatedAt    time.Time
+	mu           sync.Mutex
 }
 
 // RoomSummary is the public room-list payload for engineer clients.
@@ -80,9 +77,8 @@ type RoomSummary struct {
 type RoomManager struct {
 	roomsByCode map[string]*Room // roomCode ??Room
 	roomsByID   map[string]*Room // roomId ??Room
-	frcAPI      *frcapi.Client
-	banCache    *bandb.Cache // nil이면 IP/닉 ban 비활성 (DATABASE_URL 미설정)
-	banStore    bandb.Store  // nil이면 영구 등록 skip (캐시만)
+	banCache    *bandb.Cache     // nil이면 IP/닉 ban 비활성 (DATABASE_URL 미설정)
+	banStore    bandb.Store      // nil이면 영구 등록 skip (캐시만)
 	mu          sync.RWMutex
 	logger      *slog.Logger
 	done        chan struct{}
@@ -90,11 +86,10 @@ type RoomManager struct {
 
 // NewRoomManager creates a new RoomManager and starts a background cleanup goroutine.
 // banCache/banStore may be nil to disable ban features (graceful degrade).
-func NewRoomManager(logger *slog.Logger, frcAPI *frcapi.Client, banCache *bandb.Cache, banStore bandb.Store) *RoomManager {
+func NewRoomManager(logger *slog.Logger, banCache *bandb.Cache, banStore bandb.Store) *RoomManager {
 	rm := &RoomManager{
 		roomsByCode: make(map[string]*Room),
 		roomsByID:   make(map[string]*Room),
-		frcAPI:      frcAPI,
 		banCache:    banCache,
 		banStore:    banStore,
 		logger:      logger,
@@ -142,7 +137,7 @@ func (rm *RoomManager) Stop() {
 
 // CreateRoom allocates a new room for the given driver connection.
 // If requestedRoomID is set, it will be reused for room recreation.
-func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mutex, requestedRoomID, roomName, password, defaultPermissionsCode string) (string, string, error) {
+func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mutex, requestedRoomID, roomName, password string) (string, string, error) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
@@ -180,7 +175,6 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 	room.Code = code
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
-	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.Driver = driverPeer
 	room.DriverLostAt = nil
 	room.UpdatedAt = time.Now()
@@ -191,88 +185,54 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 }
 
 // JoinRoom adds an engineer to an existing room.
-func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.Conn, writeMu *sync.Mutex) (string, string, Permissions, error) {
+func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.Conn, writeMu *sync.Mutex) (string, string, error) {
 	rm.mu.RLock()
 	room, ok := rm.lookupRoomLocked(roomID, code)
 	rm.mu.RUnlock()
 	if !ok {
-		return "", "", Permissions{}, fmt.Errorf("room not found")
-	}
-
-	grantedPermissions := FullPermissions()
-	var frcKey string
-
-	room.mu.Lock()
-	if room.DriverLostAt != nil {
-		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("room %s is offline", room.Name)
-	}
-	if room.Password != "" && subtle.ConstantTimeCompare([]byte(room.Password), []byte(password)) != 1 {
-		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("invalid room password")
-	}
-	if len(room.Engineers) >= maxEngineersPerRoom {
-		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("room %s is full (max %d)", room.Name, maxEngineersPerRoom)
-	}
-	frcKey = strings.TrimSpace(room.DefaultPermissionsCode)
-	room.mu.Unlock()
-	if frcKey != "" && frcapi.IsAccountKey(frcKey) && rm.frcAPI != nil {
-		// viewer의 join ack 타임아웃이 6초라 그보다 짧아야 정상 응답이 도달한다.
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		result, err := rm.frcAPI.CheckPermissions(ctx, frcKey, FRCPermissionKeys())
-		if err != nil {
-			rm.logger.Warn("FRC API error, granting full permissions", "error", err)
-		}
-		if result != nil {
-			grantedPermissions = MapFRCPermissions(result)
-		}
+		return "", "", fmt.Errorf("room not found")
 	}
 
 	peerID := generatePeerID()
 	engineerPeer := &peer{
-		conn:        conn,
-		role:        roleEngineer,
-		roomID:      room.ID,
-		roomCode:    room.Code,
-		permissions: grantedPermissions,
-		id:          peerID,
-		writeMu:     writeMu,
+		conn:     conn,
+		role:     roleEngineer,
+		roomID:   room.ID,
+		roomCode: room.Code,
+		id:       peerID,
+		writeMu:  writeMu,
 	}
 
 	var driverToNotify *peer
 	var roomCode string
 	var engineerCount int
+	var roomName string
 
 	room.mu.Lock()
 	if room.DriverLostAt != nil {
 		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("room %s is offline", room.Name)
+		return "", "", fmt.Errorf("room %s is offline", room.Name)
 	}
 	if room.Password != "" && subtle.ConstantTimeCompare([]byte(room.Password), []byte(password)) != 1 {
 		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("invalid room password")
+		return "", "", fmt.Errorf("invalid room password")
 	}
 	if len(room.Engineers) >= maxEngineersPerRoom {
 		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("room %s is full (max %d)", room.Name, maxEngineersPerRoom)
+		return "", "", fmt.Errorf("room %s is full (max %d)", room.Name, maxEngineersPerRoom)
 	}
 	room.Engineers[peerID] = engineerPeer
 	room.UpdatedAt = time.Now()
-	if room.DriverLostAt == nil {
-		driverToNotify = room.Driver
-	}
+	driverToNotify = room.Driver
 	roomCode = room.Code
 	engineerCount = len(room.Engineers)
-	roomName := room.Name
+	roomName = room.Name
 	room.mu.Unlock()
 
 	if driverToNotify != nil {
 		if err := driverToNotify.sendJSON(Message{
-			Type:        TypePeerJoined,
-			PeerID:      peerID,
-			Permissions: grantedPermissions,
+			Type:   TypePeerJoined,
+			PeerID: peerID,
 		}); err != nil {
 			room.mu.Lock()
 			delete(room.Engineers, peerID)
@@ -288,26 +248,26 @@ func (rm *RoomManager) JoinRoom(roomID, code, password string, conn *websocket.C
 				_ = driverToNotify.conn.Close()
 			}
 			rm.logger.Warn("failed to notify driver about engineer join", "roomId", room.ID, "code", room.Code, "peerId", peerID, "engineerCount", engineerCount, "error", err)
-			return "", "", Permissions{}, fmt.Errorf("room %s is offline", roomName)
+			return "", "", fmt.Errorf("room %s is offline", roomName)
 		}
 	}
 
 	rm.logger.Info("engineer joined room", "roomId", room.ID, "code", room.Code, "peerId", peerID,
 		"engineerCount", engineerCount)
-	return peerID, roomCode, grantedPermissions, nil
+	return peerID, roomCode, nil
 }
 
 // RebindEngineer reattaches a new WebSocket connection to an existing engineer
 // session after a transient signaling drop. The live P2P link is untouched and
 // the driver is intentionally NOT notified (no peer_joined) — the engineer keeps
-// its peerID and permissions. Returns an error when the session is unknown, so
-// the caller can fall back to a fresh JoinRoom.
-func (rm *RoomManager) RebindEngineer(roomID, code, peerID, password string, conn *websocket.Conn, writeMu *sync.Mutex) (string, string, Permissions, error) {
+// its peerID. Returns an error when the session is unknown, so the caller can
+// fall back to a fresh JoinRoom.
+func (rm *RoomManager) RebindEngineer(roomID, code, peerID, password string, conn *websocket.Conn, writeMu *sync.Mutex) (string, string, error) {
 	rm.mu.RLock()
 	room, ok := rm.lookupRoomLocked(roomID, code)
 	rm.mu.RUnlock()
 	if !ok {
-		return "", "", Permissions{}, fmt.Errorf("room not found")
+		return "", "", fmt.Errorf("room not found")
 	}
 
 	var oldConn *websocket.Conn
@@ -315,29 +275,27 @@ func (rm *RoomManager) RebindEngineer(roomID, code, peerID, password string, con
 	room.mu.Lock()
 	if room.Password != "" && subtle.ConstantTimeCompare([]byte(room.Password), []byte(password)) != 1 {
 		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("invalid room password")
+		return "", "", fmt.Errorf("invalid room password")
 	}
 	eng, ok := room.Engineers[peerID]
 	if !ok {
 		room.mu.Unlock()
-		return "", "", Permissions{}, fmt.Errorf("engineer session not found")
+		return "", "", fmt.Errorf("engineer session not found")
 	}
 	oldConn = eng.conn
 	// 새 peer 구조체로 교체한다. 구 핸들러의 RemovePeer가 포인터 정체성 가드에
 	// 걸려 재바인딩된 세션을 지우지 못하게 하기 위함.
 	room.Engineers[peerID] = &peer{
-		conn:        conn,
-		role:        roleEngineer,
-		roomID:      room.ID,
-		roomCode:    room.Code,
-		permissions: eng.permissions,
-		id:          peerID,
-		writeMu:     writeMu,
+		conn:     conn,
+		role:     roleEngineer,
+		roomID:   room.ID,
+		roomCode: room.Code,
+		id:       peerID,
+		writeMu:  writeMu,
 	}
 	room.UpdatedAt = time.Now()
 	resolvedRoomID := room.ID
 	resolvedCode := room.Code
-	permissions := eng.permissions
 	room.mu.Unlock()
 
 	if oldConn != nil && oldConn != conn {
@@ -345,11 +303,11 @@ func (rm *RoomManager) RebindEngineer(roomID, code, peerID, password string, con
 	}
 
 	rm.logger.Info("engineer rebound to room", "roomId", resolvedRoomID, "code", resolvedCode, "peerId", peerID)
-	return resolvedRoomID, resolvedCode, permissions, nil
+	return resolvedRoomID, resolvedCode, nil
 }
 
 // RejoinRoom reconnects a driver to an existing room after a transient disconnect.
-func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *sync.Mutex, roomName, password, defaultPermissionsCode string) (string, error) {
+func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *sync.Mutex, roomName, password string) (string, error) {
 	rm.mu.RLock()
 	room, ok := rm.roomsByID[roomID]
 	rm.mu.RUnlock()
@@ -375,7 +333,6 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 	room.DriverLostAt = nil
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
-	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.UpdatedAt = time.Now()
 	roomCode := room.Code
 	for _, eng := range room.Engineers {
@@ -392,9 +349,8 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 			continue
 		}
 		if err := room.Driver.sendJSON(Message{
-			Type:        TypePeerJoined,
-			PeerID:      eng.id,
-			Permissions: eng.permissions,
+			Type:   TypePeerJoined,
+			PeerID: eng.id,
 		}); err != nil {
 			rm.logger.Warn("failed to replay engineer join to reconnected driver", "roomId", room.ID, "code", roomCode, "peerId", eng.id, "error", err)
 			break
@@ -406,7 +362,7 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 }
 
 // UpdateRoomMetadata updates room list metadata for a connected sender.
-func (rm *RoomManager) UpdateRoomMetadata(roomID, roomName, password, defaultPermissionsCode string) (string, error) {
+func (rm *RoomManager) UpdateRoomMetadata(roomID, roomName, password string) (string, error) {
 	rm.mu.RLock()
 	room, ok := rm.roomsByID[roomID]
 	rm.mu.RUnlock()
@@ -418,7 +374,6 @@ func (rm *RoomManager) UpdateRoomMetadata(roomID, roomName, password, defaultPer
 	defer room.mu.Unlock()
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
-	room.DefaultPermissionsCode = defaultPermissionsCode
 	room.UpdatedAt = time.Now()
 	rm.logger.Info("room metadata updated", "roomId", room.ID, "code", room.Code, "name", room.Name)
 	return room.Code, nil
@@ -734,7 +689,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 
 	switch msg.Type {
 	case TypeRoomCreate:
-		roomID, code, err := rm.CreateRoom(conn, writeMu, msg.RoomID, msg.RoomName, msg.Password, msg.DefaultPermissionsCode)
+		roomID, code, err := rm.CreateRoom(conn, writeMu, msg.RoomID, msg.RoomName, msg.Password)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -752,7 +707,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			sendErrorRaw(conn, "roomId required", writeMu)
 			return currentPeer
 		}
-		code, err := rm.RejoinRoom(msg.RoomID, conn, writeMu, msg.RoomName, msg.Password, msg.DefaultPermissionsCode)
+		code, err := rm.RejoinRoom(msg.RoomID, conn, writeMu, msg.RoomName, msg.Password)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -770,7 +725,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			sendErrorRaw(conn, "driver room update only", writeMu)
 			return currentPeer
 		}
-		code, err := rm.UpdateRoomMetadata(currentPeer.roomID, msg.RoomName, msg.Password, msg.DefaultPermissionsCode)
+		code, err := rm.UpdateRoomMetadata(currentPeer.roomID, msg.RoomName, msg.Password)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -792,7 +747,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 		// WebSocket만 교체한다 (driver에게 peer_joined를 보내지 않음).
 		// 실패하면 일반 join으로 폴백해 새 peerID를 발급한다.
 		if msg.PeerID != "" {
-			roomID, roomCode, permissions, err := rm.RebindEngineer(msg.RoomID, msg.RoomCode, msg.PeerID, msg.Password, conn, writeMu)
+			roomID, roomCode, err := rm.RebindEngineer(msg.RoomID, msg.RoomCode, msg.PeerID, msg.Password, conn, writeMu)
 			if err == nil {
 				p := rm.FindPeer(conn, roomID)
 				if p == nil {
@@ -800,17 +755,16 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 					return currentPeer
 				}
 				_ = p.sendJSON(Message{
-					Type:        TypeRoomJoined,
-					PeerID:      msg.PeerID,
-					RoomID:      roomID,
-					RoomCode:    roomCode,
-					Permissions: permissions,
+					Type:     TypeRoomJoined,
+					PeerID:   msg.PeerID,
+					RoomID:   roomID,
+					RoomCode: roomCode,
 				})
 				return p
 			}
 			rm.logger.Info("engineer rebind failed, falling back to fresh join", "peerId", msg.PeerID, "error", err)
 		}
-		peerID, roomCode, permissions, err := rm.JoinRoom(msg.RoomID, msg.RoomCode, msg.Password, conn, writeMu)
+		peerID, roomCode, err := rm.JoinRoom(msg.RoomID, msg.RoomCode, msg.Password, conn, writeMu)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -830,11 +784,10 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			return currentPeer
 		}
 		_ = p.sendJSON(Message{
-			Type:        TypeRoomJoined,
-			PeerID:      peerID,
-			RoomID:      roomID,
-			RoomCode:    roomCode,
-			Permissions: permissions,
+			Type:     TypeRoomJoined,
+			PeerID:   peerID,
+			RoomID:   roomID,
+			RoomCode: roomCode,
 		})
 		return p
 

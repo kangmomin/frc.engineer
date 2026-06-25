@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"frc.engineer/internal/bandb"
-	"frc.engineer/internal/frcapi"
 	"frc.engineer/internal/signaling"
 	"github.com/gorilla/websocket"
 )
@@ -42,13 +41,6 @@ func main() {
 	if port == "" {
 		port = "9090"
 	}
-	frcAPIURL := strings.TrimSpace(os.Getenv("FRC_API_URL"))
-	if frcAPIURL == "" {
-		frcAPIURL = "https://f1-rivals-cup-production.up.railway.app"
-	}
-	frcAPI := frcapi.NewClient(frcAPIURL)
-	logger.Info("FRC API client configured", "url", frcAPIURL)
-
 	// IP/nickname ban store (Postgres). Gracefully disabled if DATABASE_URL unset.
 	var banCache *bandb.Cache
 	var banStore bandb.Store
@@ -76,7 +68,7 @@ func main() {
 		logger.Warn("DATABASE_URL not set; ban features disabled")
 	}
 
-	roomManager := signaling.NewRoomManager(logger, frcAPI, banCache, banStore)
+	roomManager := signaling.NewRoomManager(logger, banCache, banStore)
 	defer roomManager.Stop()
 
 	// Periodically refresh the ban cache from the DB (also reflects manual edits

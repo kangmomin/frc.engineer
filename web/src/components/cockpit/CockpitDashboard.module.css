@@ -516,8 +516,7 @@
   color: #ff8b65;
 }
 
-.pitInactive,
-.pitLocked {
+.pitInactive {
   color: var(--text-muted);
 }
 
@@ -525,12 +524,10 @@
   color: #7edcbd;
 }
 
-.topSpeedBase,
-.topSpeedLocked {
+.topSpeedBase {
   color: var(--text-secondary);
 }
 
-.referenceGapLeader,
 .referenceGapPlayer {
   color: inherit;
 }

@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMockTelemetry } from '../../hooks/useMockTelemetry';
 import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
 import { useWebRTCDataChannel } from '../../hooks/useWebRTCDataChannel';
-import {
-  NO_FEATURE_PERMISSIONS,
-  useTelemetryStore,
-} from '../../store/telemetryStore';
+import { useTelemetryStore } from '../../store/telemetryStore';
 import { getConnectionDetail, isConnectionFailure } from '../../utils/connectionStatus';
 import { CockpitDashboard } from '../cockpit/CockpitDashboard';
 import { PostRaceDebrief } from '../debrief/PostRaceDebrief';
@@ -95,18 +92,15 @@ export function Layout() {
 
   const setConnectionMode = useTelemetryStore((state) => state.setConnectionMode);
   const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
-  const setFeaturePermissions = useTelemetryStore((state) => state.setFeaturePermissions);
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
   const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
   const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
   const setPlaybackActive = useTelemetryStore((state) => state.setPlaybackActive);
   const connectionState = useTelemetryStore((state) => state.connectionState);
   const raceResult = useTelemetryStore((state) => state.raceResult);
-  const viewQualifying = useTelemetryStore((state) => state.featurePermissions.viewQualifying);
-  const setupSupport = useTelemetryStore((state) => state.featurePermissions.setupSupport);
   const sessionType = useTelemetryStore((state) => state.pitwallState?.session?.sessionType ?? '');
   const isQualiSession = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(sessionType);
-  const showQualifying = viewQualifying && isQualiSession;
+  const showQualifying = isQualiSession;
 
   const [dashboardView, setDashboardView] = useState<DashboardView>(() => {
     return readInitialView();
@@ -121,12 +115,6 @@ export function Layout() {
   useEffect(() => {
     setConnectionMode('remote');
   }, [setConnectionMode]);
-
-  useEffect(() => {
-    if (!rtcOptions) {
-      setFeaturePermissions(NO_FEATURE_PERMISSIONS);
-    }
-  }, [rtcOptions, setFeaturePermissions]);
 
   usePitwallWebSocket({ url: '' });
   useMockTelemetry(false);
@@ -218,7 +206,6 @@ export function Layout() {
     persistRemoteSession(nextOptions);
     setRtcOptions(nextOptions);
     setConnectAttempted(true);
-    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setConnectionState('disconnected');
     setPitwallState(null);
     clearNotifications();
@@ -226,34 +213,28 @@ export function Layout() {
     // Bump the hook's nonce so reconnecting to the SAME room after a terminal
     // failure (auto-retries exhausted) still re-runs the connection effect.
     forceReconnect();
-  }, [clearNotifications, clearRaceResult, forceReconnect, setConnectionState, setFeaturePermissions, setPitwallState]);
+  }, [clearNotifications, clearRaceResult, forceReconnect, setConnectionState, setPitwallState]);
 
   const openRoomPicker = useCallback(() => {
     setRtcOptions(null);
-    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setConnectionState('disconnected');
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
+  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
 
   const goToMainScreen = useCallback(() => {
     clearRemoteQuery();
     setRtcOptions(null);
     setConnectAttempted(false);
-    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setConnectionState('disconnected');
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setFeaturePermissions, setPitwallState]);
+  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
 
   // Setup manager runs independently — no .shell wrapper (it has overflow:hidden)
   if (dashboardView === 'setup') {
-    if (!setupSupport) {
-      switchView('cockpit');
-      return null;
-    }
     return <F1SetupManager onBack={() => switchView('cockpit')} />;
   }
 

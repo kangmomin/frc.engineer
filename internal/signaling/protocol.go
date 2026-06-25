@@ -21,29 +21,14 @@ const (
 	TypeHeartbeat    = "heartbeat"     // bidirectional keepalive
 )
 
-type Permissions struct {
-	ViewERSEstimate      bool `json:"viewERSEstimate"`
-	ViewERSActual        bool `json:"viewERSActual"`
-	ViewAdvancedStrategy bool `json:"viewAdvancedStrategy"`
-	ViewPitStatus        bool `json:"viewPitStatus"`
-	ViewTopSpeed         bool `json:"viewTopSpeed"`
-	ViewPlayerDelta      bool `json:"viewPlayerDelta"`
-	ViewQualifying       bool `json:"viewQualifying"`
-	Pitwall              bool `json:"pitwall"`
-	Overlay              bool `json:"overlay"`
-	SetupSupport         bool `json:"setupSupport"`
-}
-
 // Message is the JSON envelope for all signaling communication.
 type Message struct {
-	Type                   string      `json:"type"`
-	RoomID                 string      `json:"roomId,omitempty"`
-	RoomCode               string      `json:"roomCode,omitempty"`
-	RoomName               string      `json:"roomName,omitempty"`
-	Password               string      `json:"password,omitempty"`
-	DefaultPermissionsCode string      `json:"defaultPermissionsCode,omitempty"`
-	Permissions            Permissions `json:"permissions,omitempty"`
-	PeerID                 string      `json:"peerId,omitempty"`
+	Type     string `json:"type"`
+	RoomID   string `json:"roomId,omitempty"`
+	RoomCode string `json:"roomCode,omitempty"`
+	RoomName string `json:"roomName,omitempty"`
+	Password string `json:"password,omitempty"`
+	PeerID   string `json:"peerId,omitempty"`
 	// PlayerName is the sender's current in-game player nickname (sender→server),
 	// used for server-side IP auto-ban matching. omitempty keeps older senders
 	// (which don't send it) compatible.

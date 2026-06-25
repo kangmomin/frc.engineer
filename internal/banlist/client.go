@@ -85,7 +85,6 @@ type bannedResponse struct {
 }
 
 // Client fetches the banned-nickname list from the signaling server over HTTP.
-// Modeled on internal/frcapi.Client.
 type Client struct {
 	httpBase string
 	http     *http.Client

@@ -295,14 +295,12 @@ export function CockpitDashboard({
     raceControlNotifications,
     connectionState,
     playbackActive,
-    featurePermissions,
   } = useTelemetryStore(
     useShallow((state) => ({
       pitwallState: state.pitwallState,
       raceControlNotifications: state.raceControlNotifications,
       connectionState: state.connectionState,
       playbackActive: state.playbackActive,
-      featurePermissions: state.featurePermissions,
     })),
   );
 
@@ -323,12 +321,7 @@ export function CockpitDashboard({
   // 2026 Season Pack: DRS 폐지 → Overtake(Manual Override)가 부스트 표시를 대체
   const is2026 = pitwallState?.gameFormat === 2026;
   const boostLabel = is2026 ? 'OVT' : 'DRS';
-  const ersVisible = featurePermissions.viewERSActual;
-  const ersEstimateVisible = pitwallState?.ersEstimateEnabled ?? false;
-  const ersComparisonEnabled = ersVisible && ersEstimateVisible && (pitwallState?.ersComparisonEnabled ?? false);
-  const pitStatusVisible = featurePermissions.viewPitStatus;
-  const topSpeedVisible = featurePermissions.viewTopSpeed;
-  const playerDeltaVisible = featurePermissions.viewPlayerDelta;
+  const ersComparisonEnabled = pitwallState?.ersComparisonEnabled ?? false;
 
   const drivers = useMemo(
     () => [...(pitwallState?.drivers ?? [])].sort((a, b) => a.position - b.position),
@@ -407,7 +400,7 @@ export function CockpitDashboard({
   const trafficStatus = getTrafficStatus(carBehind);
   const boostStatus = buildBoostStatus(player, is2026);
   const activeAero = formatActiveAero(player, is2026);
-  const gapColumnLabel = playerDeltaVisible ? 'To You' : 'Gap';
+  const gapColumnLabel = 'To You';
   const tyreColumnLabel = strategyAvailable ? 'Tyre / Life' : 'Tyre Age';
   const leaderboardColumnOptions = useMemo(
     () => [
@@ -936,26 +929,20 @@ export function CockpitDashboard({
                           className={`${styles.ersCell} ${styles.mobileLabeledCell} ${ersComparisonEnabled ? styles.ersCellCompare : ''}`}
                           data-mobile-label="ERS"
                         >
-                          {ersVisible ? (
-                            <>
-                              <span className={styles[getErsActualTone(driver)]}>{formatErsActual(driver)}</span>
-                              {ersComparisonEnabled && (
-                                <span className={styles.ersCompareMeta}>
-                                  {formatErsCompare(driver)}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className={styles.ersPending}>LOCK</span>
+                          <span className={styles[getErsActualTone(driver)]}>{formatErsActual(driver)}</span>
+                          {ersComparisonEnabled && (
+                            <span className={styles.ersCompareMeta}>
+                              {formatErsCompare(driver)}
+                            </span>
                           )}
                         </span>
                       )}
                       {leaderboardColumns.gap && (
                         <span
-                          className={`${styles.referenceCell} ${styles.mobileLabeledCell} ${playerDeltaVisible ? styles.referenceGapPlayer : styles.referenceGapLeader}`}
+                          className={`${styles.referenceCell} ${styles.mobileLabeledCell} ${styles.referenceGapPlayer}`}
                           data-mobile-label={gapColumnLabel}
                         >
-                          {formatReferenceGap(driver, player, playerDeltaVisible)}
+                          {formatReferenceGap(driver, player)}
                         </span>
                       )}
                       {leaderboardColumns.interval && (
@@ -997,15 +984,15 @@ export function CockpitDashboard({
                       )}
                       {leaderboardColumns.pit && (
                         <span className={`${styles.pitCell} ${styles.mobileLabeledCell}`} data-mobile-label="Pit">
-                          <span className={styles[getPitStatusTone(driver, pitStatusVisible)]}>
-                            {formatPitStatus(driver, pitStatusVisible)}
+                          <span className={styles[getPitStatusTone(driver)]}>
+                            {formatPitStatus(driver)}
                           </span>
                         </span>
                       )}
                       {leaderboardColumns.vmax && (
                         <span className={`${styles.topSpeedCell} ${styles.mobileLabeledCell}`} data-mobile-label="Vmax">
-                          <span className={styles[getTopSpeedTone(driver, topSpeedVisible)]}>
-                            {formatTopSpeed(driver, topSpeedVisible)}
+                          <span className={styles[getTopSpeedTone(driver)]}>
+                            {formatTopSpeed(driver)}
                           </span>
                         </span>
                       )}
@@ -1929,14 +1916,7 @@ function formatActiveAero(player: DriverInfo | null, is2026: boolean): { value: 
     : { value: 'Z', note: 'Corner' };
 }
 
-function formatGap(driver: DriverInfo): string {
-  if (driver.position === 1) return 'LEADER';
-  if (driver.deltaToRaceLeader == null || driver.deltaToRaceLeader <= 0) return '--';
-  return `+${(driver.deltaToRaceLeader / 1000).toFixed(3)}`;
-}
-
-function formatReferenceGap(driver: DriverInfo, player: DriverInfo | null, visible: boolean): string {
-  if (!visible) return formatGap(driver);
+function formatReferenceGap(driver: DriverInfo, player: DriverInfo | null): string {
   if (!player) return '--';
   if (player && driver.index === player.index) return 'YOU';
   if (driver.deltaToPlayer == null) return '--';
@@ -1949,14 +1929,12 @@ function formatInterval(driver: DriverInfo): string {
   return `+${(driver.deltaToCarInFront / 1000).toFixed(3)}`;
 }
 
-function formatTopSpeed(driver: DriverInfo, visible: boolean): string {
-  if (!visible) return 'LOCK';
+function formatTopSpeed(driver: DriverInfo): string {
   if (!driver.topSpeed || driver.topSpeed <= 0) return '--';
   return `${driver.topSpeed}`;
 }
 
-function getTopSpeedTone(driver: DriverInfo, visible: boolean): 'topSpeedLocked' | 'topSpeedHigh' | 'topSpeedBase' {
-  if (!visible) return 'topSpeedLocked';
+function getTopSpeedTone(driver: DriverInfo): 'topSpeedHigh' | 'topSpeedBase' {
   if ((driver.topSpeed ?? 0) >= 320) return 'topSpeedHigh';
   return 'topSpeedBase';
 }
@@ -2098,13 +2076,11 @@ function getDrsTone(driver: DriverInfo, is2026: boolean): 'drsActive' | 'drsArme
   return 'drsInactive';
 }
 
-function formatPitStatus(driver: DriverInfo, visible: boolean): string {
-  if (!visible) return 'LOCK';
+function formatPitStatus(driver: DriverInfo): string {
   return driver.pitStatus > 0 ? 'PIT' : '--';
 }
 
-function getPitStatusTone(driver: DriverInfo, visible: boolean): 'pitLocked' | 'pitActive' | 'pitInactive' {
-  if (!visible) return 'pitLocked';
+function getPitStatusTone(driver: DriverInfo): 'pitActive' | 'pitInactive' {
   return driver.pitStatus > 0 ? 'pitActive' : 'pitInactive';
 }
 

@@ -46,19 +46,6 @@ export type ConnectionState =
   | 'ice-failed'
   | 'error';
 
-export interface FeaturePermissions {
-  viewERSEstimate: boolean;
-  viewERSActual: boolean;
-  viewAdvancedStrategy: boolean;
-  viewPitStatus: boolean;
-  viewTopSpeed: boolean;
-  viewPlayerDelta: boolean;
-  viewQualifying: boolean;
-  pitwall: boolean;
-  overlay: boolean;
-  setupSupport: boolean;
-}
-
 export type DataStorageMode = 'advanced' | 'resultOnly' | 'summary';
 
 /**

@@ -23,10 +23,8 @@ import (
 	"frc.engineer/internal/banlist"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
-	"frc.engineer/internal/frcapi"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rtc"
-	"frc.engineer/internal/signaling"
 	"frc.engineer/internal/strategydata"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
@@ -49,7 +47,6 @@ type senderConfig struct {
 	UDPPort              int                      `json:"udpPort"`
 	RoomName             string                   `json:"roomName,omitempty"`
 	RoomPassword         string                   `json:"roomPassword,omitempty"`
-	FRCAccountKey        string                   `json:"frcAccountKey,omitempty"`
 	EngineerDashboardURL string                   `json:"engineerDashboardUrl,omitempty"`
 	SaveFiles            bool                     `json:"saveFiles"`
 	DataStorageMode      rtconfig.DataStorageMode `json:"dataStorageMode,omitempty"`
@@ -306,7 +303,6 @@ func main() {
 		}
 	}
 	roomPassword := os.Getenv("SENDER_ROOM_PASSWORD")
-	frcAccountKey := os.Getenv("FRC_ACCOUNT_KEY")
 	engineerDashboardURL := normalizeEngineerDashboardURL("")
 	udpPort := 20777
 	if p := os.Getenv("F1_UDP_PORT"); p != "" {
@@ -327,9 +323,6 @@ func main() {
 			roomName = saved.RoomName
 		}
 		roomPassword = saved.RoomPassword
-		if saved.FRCAccountKey != "" {
-			frcAccountKey = saved.FRCAccountKey
-		}
 		saveFiles = saved.SaveFiles
 		dataStorageMode = rtconfig.NormalizeDataStorageMode(saved.DataStorageMode)
 		trackRecording = saved.TrackRecording
@@ -373,7 +366,6 @@ func main() {
 		logger.Info("configured custom WebRTC ICE servers", "count", len(iceServers))
 	}
 	peerManager.SetRoomMetadata(roomName, roomPassword)
-	peerManager.SetDefaultPermissionsCode(frcAccountKey)
 	peerManager.SetStatusHandler(func(status string) {
 		systray.SetTooltip(fmt.Sprintf("FRC Pitwall Sender %s — %s", appVersion, status))
 	})
@@ -408,10 +400,7 @@ func main() {
 	cfgTrackRecording := trackRecording
 	cfgRoomName := roomName
 	cfgRoomPassword := roomPassword
-	cfgDefaultPermissionsCode := frcAccountKey
-	cfgFRCAccountKey := frcAccountKey
 	cfgEngineerDashboardURL := engineerDashboardURL
-	var cachedDriverPerms *signaling.DriverPermissions
 	var cfgForwardTargets []rtconfig.ForwardTarget
 	cfgOverlayPresets := []overlayPreset{}
 	cfgOverlayHotkeys := defaultedOverlayHotkeys(nil)
@@ -880,60 +869,24 @@ func main() {
 		}
 	})
 
-	// Check driver permissions before connecting to signaling
-	frcClient := frcapi.NewClient("https://f1-rivals-cup-production.up.railway.app")
-	resolveDriverPerms := func(accountKey string) *signaling.DriverPermissions {
-		accountKey = strings.TrimSpace(accountKey)
-		full := signaling.FullDriverPermissions()
-		if accountKey == "" {
-			return &full
-		}
-		if !frcapi.IsAccountKey(accountKey) {
-			logger.Warn("invalid FRC account key format, granting full driver permissions")
-			return &full
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		result, err := frcClient.CheckPermissions(ctx, accountKey, signaling.FRCDriverPermissionKeys())
-		if err != nil {
-			logger.Warn("failed to check driver permissions, granting full access", "error", err)
-			return &full
-		}
-		if result == nil {
-			return &full
-		}
-		dp := signaling.MapFRCDriverPermissions(result)
-		return &dp
-	}
-
-	cfgMu.Lock()
-	cachedDriverPerms = resolveDriverPerms(cfgFRCAccountKey)
-	cfgMu.Unlock()
-
-	// Connect to signaling server (require pitwall permission).
+	// Connect to signaling server.
 	// 시그널링이 일시적으로 죽어 있어도 sender는 살아서 백오프 재시도해야 한다 —
 	// 이전에는 첫 실패에 os.Exit(1)로 앱 전체가 종료됐다.
 	connectWithRetry := func() {
 		delay := time.Second
 		for {
-			// 재시도 중 권한이 회수되면 중단 (Close 후 Connect가 세션을 되살리는 것 방지)
-			cfgMu.Lock()
-			pitwallAllowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
-			cfgMu.Unlock()
-			if !pitwallAllowed || processor.IsBanned() {
-				logger.Warn("pitwall unavailable (permission revoked or nickname banned) during connect retry, aborting")
+			// 닉네임 밴 상태면 중단 (Close 후 Connect가 세션을 되살리는 것 방지)
+			if processor.IsBanned() {
+				logger.Warn("nickname banned during connect retry, aborting")
 				return
 			}
 			err := peerManager.Connect()
 			if err == nil {
-				// TOCTOU 가드: 권한 체크와 Connect 사이에 회수+Close가 끼어들면
-				// Connect가 세션을 되살린다 — cfgMu 하에 재확인 후 되돌린다.
-				cfgMu.Lock()
-				stillAllowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
-				cfgMu.Unlock()
-				if !stillAllowed || processor.IsBanned() {
+				// TOCTOU 가드: 체크와 Connect 사이에 밴+Close가 끼어들면
+				// Connect가 세션을 되살린다 — 재확인 후 되돌린다.
+				if processor.IsBanned() {
 					peerManager.Close()
-					logger.Warn("pitwall unavailable (permission revoked or nickname banned) during connect, closing session")
+					logger.Warn("nickname banned during connect, closing session")
 					return
 				}
 				systray.SetTooltip("FRC Pitwall Sender " + appVersion + " — Running")
@@ -952,13 +905,10 @@ func main() {
 			}
 		}
 	}
-	// shouldBeConnected gates (re)connection on BOTH pitwall permission and the
-	// nickname ban — used here, by the ban-state callback, and the config path.
+	// shouldBeConnected gates (re)connection on the nickname ban — used here,
+	// by the ban-state callback, and the config path.
 	shouldBeConnected := func() bool {
-		cfgMu.Lock()
-		allowed := cachedDriverPerms != nil && cachedDriverPerms.Pitwall
-		cfgMu.Unlock()
-		return allowed && !processor.IsBanned()
+		return !processor.IsBanned()
 	}
 
 	// When the player's nickname enters/leaves the ban list, hard-stop or resume.
@@ -1085,7 +1035,6 @@ func main() {
 			UDPPort:              cfgUDPPort,
 			RoomName:             cfgRoomName,
 			RoomPassword:         cfgRoomPassword,
-			FRCAccountKey:        cfgFRCAccountKey,
 			EngineerDashboardURL: cfgEngineerDashboardURL,
 			SaveFiles:            cfgSaveFiles,
 			DataStorageMode:      cfgDataStorageMode,
@@ -1221,7 +1170,6 @@ func main() {
 		tr := cfgTrackRecording
 		rn := cfgRoomName
 		rp := cfgRoomPassword
-		dp := cachedDriverPerms
 		dashboardURL := cfgEngineerDashboardURL
 		cfgMu.Unlock()
 		senderState := buildSenderState(sf, tr, mode)
@@ -1247,9 +1195,6 @@ func main() {
 			"strategyActive":     strategyOv.IsRunning(),
 			"invite":             invite,
 			"peers":              peers,
-		}
-		if dp != nil {
-			statusMap["driverPermissions"] = dp
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(statusMap)
@@ -1462,7 +1407,6 @@ func main() {
 		tr := cfgTrackRecording
 		rn := cfgRoomName
 		rp := cfgRoomPassword
-		fak := cfgFRCAccountKey
 		dashboardURL := cfgEngineerDashboardURL
 		ft := make([]rtconfig.ForwardTarget, len(cfgForwardTargets))
 		copy(ft, cfgForwardTargets)
@@ -1478,7 +1422,6 @@ func main() {
 			"trackRecording":       tr,
 			"roomName":             rn,
 			"roomPassword":         rp,
-			"frcAccountKey":        fak,
 			"engineerDashboardUrl": dashboardURL,
 			"forwardTargets":       ft,
 			"overlayPresets":       presets,
@@ -1586,7 +1529,6 @@ func main() {
 			TrackRecordingOverwriteApprovedFor string                   `json:"trackRecordingOverwriteApprovedFor"`
 			RoomName                           string                   `json:"roomName"`
 			RoomPassword                       string                   `json:"roomPassword"`
-			FRCAccountKey                      string                   `json:"frcAccountKey"`
 			ForwardTargets                     []rtconfig.ForwardTarget `json:"forwardTargets"`
 			OverlayPresets                     *[]overlayPreset         `json:"overlayPresets"`
 			OverlayHotkeys                     *overlayHotkeys          `json:"overlayHotkeys"`
@@ -1715,34 +1657,11 @@ func main() {
 		}
 		processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording, cfgDataStorageMode))
 
-		prevFRCKey := cfgFRCAccountKey
-		cfgFRCAccountKey = strings.TrimSpace(body.FRCAccountKey)
-		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword || cfgFRCAccountKey != cfgDefaultPermissionsCode {
+		if nextRoomName != cfgRoomName || nextRoomPassword != cfgRoomPassword {
 			cfgRoomName = nextRoomName
 			cfgRoomPassword = nextRoomPassword
-			cfgDefaultPermissionsCode = cfgFRCAccountKey
-			peerManager.SetDefaultPermissionsCode(cfgDefaultPermissionsCode)
 			peerManager.UpdateRoomMetadata(cfgRoomName, cfgRoomPassword)
 			logger.Info("room metadata changed", "roomName", cfgRoomName, "protected", cfgRoomPassword != "")
-		}
-
-		// Re-check driver permissions when FRC key changes
-		if cfgFRCAccountKey != prevFRCKey {
-			newDP := resolveDriverPerms(cfgFRCAccountKey)
-			prevDP := cachedDriverPerms
-			cachedDriverPerms = newDP
-			wasPitwall := prevDP != nil && prevDP.Pitwall
-			nowPitwall := newDP != nil && newDP.Pitwall
-			if wasPitwall && !nowPitwall {
-				peerManager.Close()
-				logger.Warn("pitwall permission revoked, disconnected from signaling")
-			} else if !wasPitwall && nowPitwall && !processor.IsBanned() {
-				// cfgMu is already held here, so we must NOT call shouldBeConnected()
-				// (it re-locks cfgMu → deadlock). nowPitwall already reflects the
-				// permission; only the ban needs the extra (lock-free) check.
-				go connectWithRetry()
-				logger.Info("pitwall permission granted, reconnecting to signaling")
-			}
 		}
 
 		// Update forward targets
@@ -1764,47 +1683,10 @@ func main() {
 			"trackRecording":       cfgTrackRecording,
 			"roomName":             cfgRoomName,
 			"roomPassword":         cfgRoomPassword,
-			"frcAccountKey":        cfgFRCAccountKey,
 			"engineerDashboardUrl": cfgEngineerDashboardURL,
 			"forwardTargets":       cfgForwardTargets,
 			"overlayPresets":       cfgOverlayPresets,
 			"overlayHotkeys":       cfgOverlayHotkeys,
-		})
-	})
-
-	mux.HandleFunc("GET /api/frc-verify", func(w http.ResponseWriter, r *http.Request) {
-		key := r.URL.Query().Get("key")
-		if key == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "key parameter required"})
-			return
-		}
-		info, err := frcClient.VerifyKey(r.Context(), key)
-		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-			return
-		}
-		if info == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "account key not found"})
-			return
-		}
-		// Also check driver permissions
-		dp := resolveDriverPerms(key)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"valid":             info.Valid,
-			"accountKey":        info.AccountKey,
-			"id":                info.ID,
-			"nickname":          info.Nickname,
-			"avatarUrl":         info.AvatarURL,
-			"role":              info.Role,
-			"createdAt":         info.CreatedAt,
-			"driverPermissions": dp,
 		})
 	})
 

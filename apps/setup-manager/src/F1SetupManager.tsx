@@ -45,13 +45,6 @@ type SetupWorkspaceId = "builder" | "analysis";
 type Severity = "high" | "med" | "low";
 type SenderStorageMode = "resultOnly" | "summary" | "advanced";
 
-interface DriverPermissions {
-  pitwall?: boolean;
-  overlay?: boolean;
-  setupSupport?: boolean;
-  [key: string]: boolean | undefined;
-}
-
 interface SenderInvite {
   dashboardUrl?: string;
   signalingUrl?: string;
@@ -65,7 +58,6 @@ interface SenderPeer {
   peerId?: string;
   state?: string;
   view?: string;
-  permissions?: DriverPermissions;
 }
 
 interface SenderCurrentTrack {
@@ -76,7 +68,6 @@ interface SenderCurrentTrack {
 
 interface SenderStatus {
   currentTrack?: SenderCurrentTrack;
-  driverPermissions?: DriverPermissions;
   radarActive?: boolean;
   weatherActive?: boolean;
   strategyActive?: boolean;
@@ -171,7 +162,6 @@ interface SenderConfigResponse {
   trackRecording?: boolean;
   roomName?: string;
   roomPassword?: string;
-  frcAccountKey?: string;
   engineerDashboardUrl?: string;
   forwardTargets?: SenderForwardTargetResponse[];
   overlayPresets?: OverlayPreset[];
@@ -191,7 +181,6 @@ interface SenderConfigDraft {
   trackRecording: boolean;
   roomName: string;
   roomPassword: string;
-  frcAccountKey: string;
   forwardTargets: SenderForwardTargetDraft[];
 }
 
@@ -231,7 +220,6 @@ const DEFAULT_SENDER_CONFIG: SenderConfigDraft = {
   trackRecording: false,
   roomName: "Sender Room",
   roomPassword: "",
-  frcAccountKey: "",
   forwardTargets: [],
 };
 const SENDER_STORAGE_MODE_OPTIONS: Array<{
@@ -255,18 +243,6 @@ const SENDER_STORAGE_MODE_OPTIONS: Array<{
     description: "Save race result, replay timeline, and raw packet logs.",
   },
 ];
-const DRIVER_PERMISSION_LABELS: Record<string, string> = {
-  pitwall: "Pitwall",
-  overlay: "Overlay",
-  setupSupport: "Setup",
-  viewERSEstimate: "ERS Est",
-  viewERSActual: "ERS",
-  viewAdvancedStrategy: "Adv Strat",
-  viewPitStatus: "Pit Status",
-  viewTopSpeed: "Top Speed",
-  viewPlayerDelta: "Player Delta",
-  viewQualifying: "Qualifying",
-};
 const SECTION_COPY: Record<SectionId, { title: string; detail: string }> = {
   "setup-manager": {
     title: "Setup Manager",
@@ -345,7 +321,6 @@ function buildSenderConfigDraft(data: SenderConfigResponse | null | undefined): 
     trackRecording: typeof data?.trackRecording === "boolean" ? data.trackRecording : DEFAULT_SENDER_CONFIG.trackRecording,
     roomName: typeof data?.roomName === "string" ? data.roomName : DEFAULT_SENDER_CONFIG.roomName,
     roomPassword: typeof data?.roomPassword === "string" ? data.roomPassword : DEFAULT_SENDER_CONFIG.roomPassword,
-    frcAccountKey: typeof data?.frcAccountKey === "string" ? data.frcAccountKey : DEFAULT_SENDER_CONFIG.frcAccountKey,
     forwardTargets: normalizeSenderForwardTargetsResponse(data?.forwardTargets),
   };
 }
@@ -460,15 +435,6 @@ function slugifyPresetName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-function grantedPermissionLabels(permissions?: DriverPermissions): string[] {
-  if (!permissions) {
-    return [];
-  }
-  return Object.entries(permissions)
-    .filter(([, enabled]) => Boolean(enabled))
-    .map(([key]) => DRIVER_PERMISSION_LABELS[key] || key);
 }
 
 async function readStoredValue<T>(key: string, fallback: T): Promise<T> {
@@ -1179,7 +1145,6 @@ export function F1SetupManager() {
           trackRecordingOverwriteApprovedFor: trackRecordingOverwriteFilename,
           roomName: senderConfig.roomName,
           roomPassword: senderConfig.roomPassword,
-          frcAccountKey: senderConfig.frcAccountKey,
           forwardTargets: nextForwardTargets,
           overlayPresets,
           overlayHotkeys: draftOverlayHotkeys,
@@ -1235,9 +1200,6 @@ export function F1SetupManager() {
   };
 
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack, latestRaceResult } = useSenderConnection(senderUrl);
-  const permissionsKnown = Boolean(senderStatus?.driverPermissions);
-  const canUseSetup = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.setupSupport) : true;
-  const canUseOverlay = permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true;
 
   useEffect(() => {
     setOverlayState({
@@ -1629,7 +1591,6 @@ export function F1SetupManager() {
   const activeSection = SECTION_COPY[section];
   const senderInvite = senderStatus?.invite ?? null;
   const senderPeers = senderStatus?.peers ?? [];
-  const senderPermissionLabels = grantedPermissionLabels(senderStatus?.driverPermissions);
 
   return (
     <div
@@ -1687,11 +1648,11 @@ export function F1SetupManager() {
                 <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>{activeSection.detail}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <span style={{ padding: "4px 10px", borderRadius: 999, background: canUseSetup ? "rgba(205,255,19,0.12)" : "rgba(255,82,92,0.12)", color: canUseSetup ? P.accent2 : P.danger, fontSize: 10, fontFamily: P.mono }}>
-                  Setup {canUseSetup ? "Ready" : "Limited"}
+                <span style={{ padding: "4px 10px", borderRadius: 999, background: "rgba(205,255,19,0.12)", color: P.accent2, fontSize: 10, fontFamily: P.mono }}>
+                  Setup Ready
                 </span>
-                <span style={{ padding: "4px 10px", borderRadius: 999, background: canUseOverlay ? "rgba(0,229,255,0.12)" : "rgba(255,82,92,0.12)", color: canUseOverlay ? P.accent : P.danger, fontSize: 10, fontFamily: P.mono }}>
-                  Overlay {canUseOverlay ? "Ready" : "Limited"}
+                <span style={{ padding: "4px 10px", borderRadius: 999, background: "rgba(0,229,255,0.12)", color: P.accent, fontSize: 10, fontFamily: P.mono }}>
+                  Overlay Ready
                 </span>
                 <span style={{ padding: "4px 10px", borderRadius: 999, background: senderConnected ? "rgba(0,229,255,0.12)" : "rgba(59,73,76,0.18)", color: senderConnected ? P.accent : P.muted, fontSize: 10, fontFamily: P.mono }}>
                   Sender {senderConnected ? "Online" : "Offline"}
@@ -2073,14 +2034,6 @@ export function F1SetupManager() {
                       style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
                     />
                   </div>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>FRC Account Key</div>
-                    <input
-                      value={senderConfig.frcAccountKey}
-                      onChange={(event) => setSenderConfig((current) => ({ ...current, frcAccountKey: event.target.value }))}
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
-                    />
-                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2312,17 +2265,6 @@ export function F1SetupManager() {
                             </div>
                             <span style={{ fontSize: 10, color: P.accent }}>{peer.state || "unknown"}</span>
                           </div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {grantedPermissionLabels(peer.permissions).length ? (
-                              grantedPermissionLabels(peer.permissions).map((label) => (
-                                <span key={`${peer.peerId}-${label}`} style={{ padding: "3px 7px", borderRadius: 999, background: "rgba(0,229,255,0.12)", color: P.accent, fontSize: 9, fontFamily: P.mono }}>
-                                  {label}
-                                </span>
-                              ))
-                            ) : (
-                              <span style={{ fontSize: 10, color: P.muted }}>No permissions granted.</span>
-                            )}
-                          </div>
                         </div>
                       ))}
                     </div>
@@ -2440,12 +2382,6 @@ export function F1SetupManager() {
           {section === "overlay" ? (
           <>
             <Panel title="OVERLAY STATUS">
-              {!canUseOverlay ? (
-                <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, border: `1px solid ${P.danger}`, background: "rgba(255,82,92,0.08)", color: P.text, fontSize: 11, lineHeight: 1.6 }}>
-                  Overlay permission is reported as limited by the sender. Local controls remain visible, but the runtime may reject changes until the permission issue is cleared.
-                </div>
-              ) : null}
-
               {overlayError ? (
                 <div style={{ marginBottom: 12, padding: 10, borderRadius: 4, background: "rgba(255,82,92,0.08)", color: P.danger, fontSize: 11 }}>
                   {overlayError}
@@ -2565,21 +2501,6 @@ export function F1SetupManager() {
                 <button onClick={() => void saveOverlayHotkeySettings()} disabled={savingOverlayConfig} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: savingOverlayConfig ? "wait" : "pointer" }}>
                   SAVE
                 </button>
-              </div>
-            </Panel>
-
-            <Panel title="ACCESS">
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                {[{ label: "Pitwall", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.pitwall) : true }, { label: "Overlay", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.overlay) : true }, { label: "Setup", enabled: permissionsKnown ? Boolean(senderStatus?.driverPermissions?.setupSupport) : true }].map((item) => (
-                  <span key={item.label} style={{ padding: "4px 10px", borderRadius: 999, background: item.enabled ? "rgba(205,255,19,0.12)" : "rgba(255,82,92,0.12)", color: item.enabled ? P.accent2 : P.danger, fontSize: 10, fontFamily: P.mono }}>
-                    {item.label}
-                  </span>
-                ))}
-              </div>
-              <div style={{ fontSize: 11, color: P.muted, lineHeight: 1.6 }}>
-                {senderPermissionLabels.length
-                  ? `Active sender permissions: ${senderPermissionLabels.join(", ")}.`
-                  : "Permission preview is unavailable until the sender reports driver permissions."}
               </div>
             </Panel>
           </>

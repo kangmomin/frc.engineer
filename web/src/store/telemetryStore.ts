@@ -5,7 +5,6 @@ import type {
   ConnectionState,
   RaceControlNotification,
   RaceSummary,
-  FeaturePermissions,
 } from '../types/telemetry';
 
 export type ConnectionMode = 'local' | 'remote';
@@ -16,8 +15,6 @@ interface TelemetryState {
   setConnectionState: (state: ConnectionState) => void;
   connectionMode: ConnectionMode;
   setConnectionMode: (mode: ConnectionMode) => void;
-  featurePermissions: FeaturePermissions;
-  setFeaturePermissions: (permissions: FeaturePermissions) => void;
   playbackActive: boolean;
   setPlaybackActive: (active: boolean) => void;
 
@@ -46,39 +43,11 @@ interface TelemetryState {
 
 const MAX_NOTIFICATIONS = 50;
 
-export const NO_FEATURE_PERMISSIONS: FeaturePermissions = {
-  viewERSEstimate: false,
-  viewERSActual: false,
-  viewAdvancedStrategy: false,
-  viewPitStatus: false,
-  viewTopSpeed: false,
-  viewPlayerDelta: false,
-  viewQualifying: false,
-  pitwall: false,
-  overlay: false,
-  setupSupport: false,
-};
-
-export const FULL_FEATURE_PERMISSIONS: FeaturePermissions = {
-  viewERSEstimate: true,
-  viewERSActual: true,
-  viewAdvancedStrategy: true,
-  viewPitStatus: true,
-  viewTopSpeed: true,
-  viewPlayerDelta: true,
-  viewQualifying: true,
-  pitwall: true,
-  overlay: true,
-  setupSupport: true,
-};
-
 export const useTelemetryStore = create<TelemetryState>((set) => ({
   connectionState: 'disconnected',
   setConnectionState: (state) => set({ connectionState: state }),
   connectionMode: 'local',
   setConnectionMode: (mode) => set({ connectionMode: mode }),
-  featurePermissions: FULL_FEATURE_PERMISSIONS,
-  setFeaturePermissions: (permissions) => set({ featurePermissions: permissions }),
   playbackActive: false,
   setPlaybackActive: (active) => set({ playbackActive: active }),
 

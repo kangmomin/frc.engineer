@@ -292,23 +292,23 @@ export function SettingsView() {
               </div>
               <div className={styles.guideEntry}>
                 <strong>Pit</strong>
-                <span>Pit lane status. Shows "IN" when the car is in the pit lane, "PIT" when actively pitting, and the pit stop duration in seconds. Requires Pit Status permission.</span>
+                <span>Pit lane status. Shows "IN" when the car is in the pit lane, "PIT" when actively pitting, and the pit stop duration in seconds.</span>
               </div>
               <div className={styles.guideEntry}>
                 <strong>ERS</strong>
-                <span>Actual ERS (Energy Recovery System) battery level as a percentage. Requires ERS permission.</span>
+                <span>Actual ERS (Energy Recovery System) battery level as a percentage.</span>
               </div>
               <div className={styles.guideEntry}>
                 <strong>ERS Compare</strong>
-                <span>When comparison is enabled, shows the actual ERS percentage with the estimate delta. "A38% Δ+7" means actual 38% and estimate 7 points higher. Requires ERS and ERS Estimate permissions.</span>
+                <span>When comparison is enabled, shows the actual ERS percentage with the estimate delta. "A38% Δ+7" means actual 38% and estimate 7 points higher.</span>
               </div>
               <div className={styles.guideEntry}>
                 <strong>Vmax</strong>
-                <span>Top speed recorded at the speed trap during the session (km/h). Requires Top Speed permission.</span>
+                <span>Top speed recorded at the speed trap during the session (km/h).</span>
               </div>
               <div className={styles.guideEntry}>
-                <strong>To You / Gap</strong>
-                <span>With Player Delta permission: time gap to your car (negative = ahead of you). Without permission: gap to race leader.</span>
+                <strong>To You</strong>
+                <span>Time gap to your car (negative = ahead of you).</span>
               </div>
               <div className={styles.guideEntry}>
                 <strong>Interval</strong>

@@ -1,7 +1,7 @@
 import { decode } from '@msgpack/msgpack';
 import { useEffect, useCallback, useRef, useState } from 'react';
-import type { ConnectionState, FeaturePermissions, PitwallState, WSRequest, WSResponse } from '../types/telemetry';
-import { NO_FEATURE_PERMISSIONS, useTelemetryStore } from '../store/telemetryStore';
+import type { ConnectionState, PitwallState, WSRequest, WSResponse } from '../types/telemetry';
+import { useTelemetryStore } from '../store/telemetryStore';
 import { routeMessage } from './useMessageRouter';
 
 interface UseWebRTCOptions {
@@ -201,7 +201,6 @@ const CONFIGURED_ICE_SERVERS = getConfiguredIceServers();
 
 export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRTCReturn {
   const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
-  const setFeaturePermissions = useTelemetryStore((s) => s.setFeaturePermissions);
   const setPitwallState = useTelemetryStore((s) => s.setPitwallState);
   const updatePositions = useTelemetryStore((s) => s.updatePositions);
   const addRaceControlNotification = useTelemetryStore((s) => s.addRaceControlNotification);
@@ -409,10 +408,9 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     clearStageTimeout();
     setLastError(message);
     setConnectionState(state);
-    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setRtcState('disconnected');
     cleanup();
-  }, [cleanup, clearStageTimeout, setConnectionState, setFeaturePermissions]);
+  }, [cleanup, clearStageTimeout, setConnectionState]);
 
   // scheduleReconnect drives bounded auto-reconnect. Each drop bumps the attempt
   // counter and schedules a backoff timer; on fire it increments reconnectNonce,
@@ -478,9 +476,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     setLastError('');
     cleanup();
     setConnectionState('disconnected');
-    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
     setRtcState('new');
-  }, [cleanup, clearStageTimeout, clearReconnectTimer, setConnectionState, setFeaturePermissions]);
+  }, [cleanup, clearStageTimeout, clearReconnectTimer, setConnectionState]);
 
   // forceReconnect clears any terminal failure and bumps the nonce so the main
   // effect re-runs even when the connection target is unchanged (e.g. the user
@@ -658,7 +655,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     setLastError('');
     setRtcState('new');
     setConnectionState('connecting');
-    setFeaturePermissions(NO_FEATURE_PERMISSIONS);
 
     // --- 시그널링 계층 (PC 계층과 분리: ws 단절·재연결이 살아있는 P2P를 건드리지 않는다) ---
     let ws: WebSocket | null = null;
@@ -786,7 +782,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         } else if (state === 'failed' || state === 'closed') {
           // Leave rtcState to scheduleReconnect (it sets 'connecting') so Layout's
           // `rtcConnectionState === 'failed'` gate isn't tripped mid-retry.
-          setFeaturePermissions(NO_FEATURE_PERMISSIONS);
           scheduleReconnect('Peer connection lost.');
         } else if (state === 'disconnected') {
           // Transient — sender가 ICE restart로 자가 복구할 시간을 준다 (감지 5s +
@@ -800,7 +795,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
               if (!isMountedRef.current || terminalFailureRef.current) return;
               if (pcRef.current?.connectionState === 'connected') return;
               setConnectionState('reconnecting');
-              setFeaturePermissions(NO_FEATURE_PERMISSIONS);
             }, DISCONNECTED_UI_GRACE_MS);
           }
           armStageTimeout('Peer connection stalled in disconnected state.', DISCONNECTED_RECOVERY_TIMEOUT_MS);
@@ -958,7 +952,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
               label: dc.label,
               pendingRequests: pendingRequestsRef.current.size,
             }, false);
-            setFeaturePermissions(NO_FEATURE_PERMISSIONS);
             scheduleReconnect('Data channel closed.');
           };
         }
@@ -1058,7 +1051,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       socket.onmessage = (event) => {
         if (!isMountedRef.current || disposed) return;
 
-        let msg: { type: string; payload?: unknown; error?: string; permissions?: FeaturePermissions; peerId?: string; restart?: boolean };
+        let msg: { type: string; payload?: unknown; error?: string; peerId?: string; restart?: boolean };
         try {
           msg = JSON.parse(event.data);
         } catch {
@@ -1072,7 +1065,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
             if (typeof msg.peerId === 'string' && msg.peerId) {
               lastPeerIdRef.current = msg.peerId;
             }
-            setFeaturePermissions(msg.permissions ?? NO_FEATURE_PERMISSIONS);
             flushPendingCandidates();
             if (rebound && pcRef.current?.connectionState === 'connected') {
               emitP2PDebug('info', 'signaling', 'Signaling rebound to live peer session.', {
