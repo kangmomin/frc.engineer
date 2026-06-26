@@ -42,11 +42,13 @@ func main() {
 		port = "9090"
 	}
 	// IP/nickname ban store (Postgres). Gracefully disabled if DATABASE_URL unset.
+	// BAN_DB_SCHEMA overrides the Postgres schema holding the ban tables
+	// (default "pitwall"); point it at an existing schema to skip CREATE.
 	var banCache *bandb.Cache
 	var banStore bandb.Store
 	if dsn := strings.TrimSpace(os.Getenv("DATABASE_URL")); dsn != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		db, err := bandb.Open(ctx, dsn)
+		db, err := bandb.Open(ctx, dsn, strings.TrimSpace(os.Getenv("BAN_DB_SCHEMA")))
 		cancel()
 		if err != nil {
 			logger.Error("ban DB connect failed; ban features disabled", "error", err)

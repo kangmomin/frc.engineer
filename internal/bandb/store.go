@@ -22,9 +22,9 @@ func (db *DB) AddIP(ctx context.Context, ip, nickname, reason string) error {
 	if ip == "" {
 		return nil
 	}
-	_, err := db.pool.Exec(ctx,
-		`INSERT INTO pitwall.banned_ips (ip, nickname, reason) VALUES ($1, $2, $3)
-		 ON CONFLICT (ip) DO NOTHING`,
+	_, err := db.pool.Exec(ctx, fmt.Sprintf(
+		`INSERT INTO %s (ip, nickname, reason) VALUES ($1, $2, $3)
+		 ON CONFLICT (ip) DO NOTHING`, db.table("banned_ips")),
 		ip, nickname, reason)
 	if err != nil {
 		return fmt.Errorf("bandb: add ip: %w", err)
@@ -35,7 +35,7 @@ func (db *DB) AddIP(ctx context.Context, ip, nickname, reason string) error {
 // ListIPs returns all banned IPs, normalized so cache keys match regardless of
 // how a row was inserted (auto-ban or manual).
 func (db *DB) ListIPs(ctx context.Context) ([]string, error) {
-	rows, err := db.pool.Query(ctx, `SELECT ip FROM pitwall.banned_ips`)
+	rows, err := db.pool.Query(ctx, fmt.Sprintf(`SELECT ip FROM %s`, db.table("banned_ips")))
 	if err != nil {
 		return nil, fmt.Errorf("bandb: list ips: %w", err)
 	}
@@ -56,7 +56,7 @@ func (db *DB) ListIPs(ctx context.Context) ([]string, error) {
 // ListNicknames returns all banned nicknames, normalized (lower+trim) so a row
 // inserted manually as "BadGuy" still matches the normalized player name.
 func (db *DB) ListNicknames(ctx context.Context) ([]string, error) {
-	rows, err := db.pool.Query(ctx, `SELECT nickname FROM pitwall.banned_nicknames`)
+	rows, err := db.pool.Query(ctx, fmt.Sprintf(`SELECT nickname FROM %s`, db.table("banned_nicknames")))
 	if err != nil {
 		return nil, fmt.Errorf("bandb: list nicknames: %w", err)
 	}

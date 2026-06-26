@@ -14,7 +14,7 @@ func TestStoreIntegration(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL not set; skipping Postgres integration test")
 	}
 	ctx := context.Background()
-	db, err := Open(ctx, dsn)
+	db, err := Open(ctx, dsn, os.Getenv("TEST_DB_SCHEMA"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
