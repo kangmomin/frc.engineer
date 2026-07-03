@@ -536,6 +536,20 @@ export interface StrategyTrackGuide {
   };
   setup_type_descriptions: Record<string, string | null>;
   hotlap_video_url?: string;
+  /** F1 26(2026 Season Pack) 세션에서만 채워진다. F1 25는 undefined(원본 불변). */
+  strategy_meta?: StrategyMeta;
+}
+
+/** 트랙 가이드가 게임 포맷에 맞춰 어떻게 보정됐는지 설명한다(백엔드 ApplyGameFormat). */
+export interface StrategyMeta {
+  /** 데이터 출처 게임 (현재 전부 "f1_25_scrape"). */
+  source_game: string;
+  /** 세션 packetFormat (2026). */
+  game_format: number;
+  /** 적용된 보정 (예: "drs_abolished", "c6_downgraded_to_c5"). */
+  adjustments?: string[];
+  /** 26 규정 기반 정성 안내 (검증 confirmed 사실만). */
+  notes?: string[];
 }
 
 export interface StrategyRangeValue {

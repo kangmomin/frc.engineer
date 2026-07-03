@@ -595,8 +595,9 @@ export function CockpitDashboard({
       trafficStatus,
       parsedCompoundLapBenchmarks,
       pitSettings.pitStopTime,
+      is2026,
     ),
-    [drivers, parsedCompoundLapBenchmarks, pitSettings.pitStopTime, pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
+    [drivers, is2026, parsedCompoundLapBenchmarks, pitSettings.pitStopTime, pitWindow, player, recommendedTyre, session, strategyGuide, trafficStatus],
   );
   const compoundLifeCards = useMemo(
     () => buildCompoundLifeCards(
@@ -610,7 +611,12 @@ export function CockpitDashboard({
   const compoundLifeDetail = useMemo(() => {
     if (strategyGuideLoading) return 'Loading track guide...';
     if (!strategyGuide) return 'Track guide unavailable';
-    return `50% race baseline / ${strategyGuide.track.track_info.laps_50pct}L`;
+    const base = `50% race baseline / ${strategyGuide.track.track_info.laps_50pct}L`;
+    const meta = strategyGuide.track.strategy_meta;
+    if (!meta) return base;
+    // 26 세션: 컴파운드 수명은 F1 25 스크랩 값임을 표기하고, C6 강등 사실을 알린다.
+    const c6Downgraded = meta.adjustments?.includes('c6_downgraded_to_c5');
+    return `${base} · F1 25 est${c6Downgraded ? ' · C6→C5 (2026: C1–C5)' : ''}`;
   }, [strategyGuide, strategyGuideLoading]);
 
   useEffect(() => {
@@ -1155,12 +1161,17 @@ export function CockpitDashboard({
               {strategyGuideLoading
                 ? 'Loading strategy guide...'
                 : strategyPanel.guideActive
-                  ? 'Numeric strategy guide active'
+                  ? is2026
+                    ? 'F1 25 estimate active · 2026 Season Pack'
+                    : 'Numeric strategy guide active'
                   : 'Guide unavailable, using heuristic fallback'}
             </span>
             {is2026 && (
-              <span className={styles.strategySupportText}>
-                {'⚠'} BETA · F1 25 기준 추정 — 26 전용 보정 예정
+              <span
+                className={styles.strategySupportText}
+                title={strategyGuide?.track.strategy_meta?.notes?.join('\n')}
+              >
+                {'⚠'} F1 25 baseline · adjusted for 2026 Season Pack (C1–C5, no DRS)
               </span>
             )}
           </div>
@@ -2272,6 +2283,7 @@ function buildStrategyPanelData(
   trafficStatus: { label: string; detail: string; meter: number },
   compoundLapBenchmarks: Record<string, number>,
   fallbackPitLossSeconds: number,
+  is2026: boolean,
 ): StrategyPanelData {
   const guideTrack = strategyGuide?.track;
   const raceStrategy = guideTrack?.race_strategy;
@@ -2285,6 +2297,7 @@ function buildStrategyPanelData(
     compoundLapBenchmarks,
     pitLossSeconds,
     session && player ? Math.max((session.totalLaps ?? 0) - player.currentLapNum, 0) : 0,
+    is2026,
   );
   const exitMetric = buildPitExitMetric(
     drivers,
@@ -2306,7 +2319,7 @@ function buildStrategyPanelData(
 
     return {
       guideActive: true,
-      titleDetail: 'Numeric guide active',
+      titleDetail: is2026 ? 'F1 25 estimate' : 'Numeric guide active',
       targetTyre,
       targetTyreReason: primaryPlan ? `${primaryPlan.tyres.map((tyre) => getTyreShortLabel(tyre)).join(' - ')}` : undefined,
       pitWindowLabel,
@@ -2337,7 +2350,10 @@ function buildStrategyPanelData(
       guideActive: false,
       titleDetail: 'Track data only',
       targetTyre: recommendedTyre,
-      targetTyreReason: `${guideTrack.track_info.circuit_length_km.toFixed(3)}km · ${guideTrack.track_info.drs_zones} DRS`,
+      // 26 규정은 DRS 폐지 → Active Aero. 25 스크랩의 DRS zone 수를 근거로 쓰지 않는다.
+      targetTyreReason: is2026
+        ? `${guideTrack.track_info.circuit_length_km.toFixed(3)}km · Active Aero`
+        : `${guideTrack.track_info.circuit_length_km.toFixed(3)}km · ${guideTrack.track_info.drs_zones} DRS`,
       pitWindowLabel: pitWindow.label,
       pitWindowTone: pitWindow.tone,
       primaryMetric: {
@@ -2643,10 +2659,14 @@ function buildCompoundStrategyCall(
   compoundLapBenchmarks: Record<string, number>,
   pitLossSeconds: number | null | undefined,
   lapsRemaining: number,
+  is2026: boolean,
 ): StrategyPanelData['strategyCall'] | undefined {
   if (!currentCompound || !targetCompound) {
     return undefined;
   }
+  // 26 세션의 pit-loss/랩타임 근거는 F1 25 스크랩 값이라 단정 대신 추정 톤으로 표기한다.
+  // (검증: '언더컷 약화/오버컷 강세'는 unverifiable → 산식/가중치는 절대 바꾸지 않는다.)
+  const estNote = is2026 ? 'EST · F1 25 pit-loss' : null;
 
   const currentMs = compoundLapBenchmarks[currentCompound];
   const targetMs = compoundLapBenchmarks[targetCompound];
@@ -2702,6 +2722,7 @@ function buildCompoundStrategyCall(
         pairMeta,
         pitLossMs != null ? `Pit Loss ${(pitLossMs / 1000).toFixed(1)}s` : null,
         breakEvenLaps != null ? `Break-even ${formatLapsValue(breakEvenLaps)}` : null,
+        estNote,
       ].filter(Boolean).join(' / '),
       tone: isRecoverable ? 'tertiary' : 'secondary',
       meter: isRecoverable
@@ -2721,6 +2742,7 @@ function buildCompoundStrategyCall(
       pairMeta,
       pitLossMs != null ? `Pit Loss ${(pitLossMs / 1000).toFixed(1)}s` : null,
       overcutWindowLaps != null ? `Pressure Window ${formatLapsValue(overcutWindowLaps)}` : null,
+      estNote,
     ].filter(Boolean).join(' / '),
     tone: 'primary',
     meter: clamp((absDeltaMs / 700) * 100, 12, 100),

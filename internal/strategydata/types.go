@@ -120,6 +120,17 @@ type NormalizedTrackFile struct {
 	Setups                NormalizedSetups         `json:"setups"`
 	ERSGuide              *NormalizedERSGuide      `json:"ers_guide,omitempty"`
 	HotlapVideoURL        *string                  `json:"hotlap_video_url,omitempty"`
+	StrategyMeta          *NormalizedStrategyMeta  `json:"strategy_meta,omitempty"`
+}
+
+// NormalizedStrategyMeta는 트랙 가이드가 특정 게임 포맷에 맞춰 어떻게 보정됐는지
+// 설명한다. F1 26(2026 Season Pack) 세션에서만 채워지고, F1 25는 nil로 남아
+// 직렬화에서 생략되므로 25 페이로드/표시는 불변이다.
+type NormalizedStrategyMeta struct {
+	SourceGame  string   `json:"source_game"`           // 데이터 출처 게임 (현재 전부 "f1_25_scrape")
+	GameFormat  int      `json:"game_format"`           // 세션 packetFormat (2026)
+	Adjustments []string `json:"adjustments,omitempty"` // 적용된 보정 (예: "drs_abolished", "c6_downgraded_to_c5")
+	Notes       []string `json:"notes,omitempty"`       // 26 규정 기반 정성 안내 (검증 confirmed 사실만)
 }
 
 type NormalizedSource struct {
