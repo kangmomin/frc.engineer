@@ -71,7 +71,7 @@
 ### WebRTC 페이로드 사이즈 제약
 WebRTC DataChannel 관련 기능을 추가하거나 DTO 필드를 확장할 때, **최대 페이로드가 Chrome SCTP 수신 버퍼(256KB)를 초과하지 않는지 반드시 검토**해야 한다.
 
-- 모든 드라이버(22대) 데이터가 채워진 worst-case 기준으로 추정
+- 모든 드라이버 데이터가 채워진 worst-case 기준으로 추정 (**F1 26(2026 Season Pack)은 NumCars=24** — 22대 기준으로 잡지 말 것. F1 25는 22대)
 - TrackMap 포함 시 피크 사이즈 고려
 - `maxBufferedAmount`(128KB)와의 관계도 확인
 - 초과 가능성이 있으면 `omitempty` 적용, 필드 분리, 또는 전송 빈도 조절로 대응
