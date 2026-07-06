@@ -6,6 +6,8 @@ import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
 import { REF_NOW } from './format';
 import { MockHubDataSource } from './data/mock';
+import { CompositeHubDataSource } from './data/http';
+import { isForcedRemoteMode } from '../runtimeFlags';
 import type {
   HubOverview, HubRankings, HubSetupMarket, HubStrategyMarket, HubPerf, HubReview,
 } from './data/types';
@@ -27,7 +29,12 @@ const PLACEHOLDER: Record<string, { title: string; note: string }> = {
 
 export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const t = useMemo(() => buildTheme('#e0a83d', 'light'), []);
-  const dataSource = useMemo(() => new MockHubDataSource(), []);
+  // Desktop (embedded Go server) → composite: own data over HTTP, rest mock.
+  // Vercel standalone (no backend) → pure mock.
+  const dataSource = useMemo(() => {
+    const mock = new MockHubDataSource();
+    return isForcedRemoteMode ? mock : new CompositeHubDataSource(mock);
+  }, []);
   const rowPad = rowPadFor('comfortable');
 
   const [active, setActive] = useState<HubScreen>('overview');

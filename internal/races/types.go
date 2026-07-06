@@ -149,6 +149,7 @@ type RaceListItem struct {
 	SessionType     string                   `json:"sessionType"`
 	PlayerName      string                   `json:"playerName"`
 	FinalPosition   int                      `json:"finalPosition"`
+	BestLapMS       uint32                   `json:"bestLapMs"`
 	FileSizeBytes   int64                    `json:"fileSizeBytes"`
 	DataStorageMode rtconfig.DataStorageMode `json:"dataStorageMode,omitempty"`
 	HasReplay       bool                     `json:"hasReplay"`

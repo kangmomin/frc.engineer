@@ -156,6 +156,71 @@ func TestFileStorageDeleteRejectsUnsafeID(t *testing.T) {
 	}
 }
 
+func TestFileStorageListPopulatesBestLap(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewFileStorage(dir, nil)
+	if err != nil {
+		t.Fatalf("NewFileStorage() error = %v", err)
+	}
+
+	if _, err := store.Save(&RaceSummary{
+		ID:           "20260301_120000_spa_9",
+		SavedAtLocal: time.Now().Format("2006-01-02 15:04:05"),
+		Track:        TrackInfo{TrackName: "Spa"},
+		Session:      SessionSummary{SessionType: "Time Trial"},
+		Player:       PlayerSummary{Name: "P", FinalPosition: 1, BestLapMS: 91234},
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	items, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("List() len = %d, want 1", len(items))
+	}
+	if items[0].BestLapMS != 91234 {
+		t.Fatalf("List()[0].BestLapMS = %d, want 91234", items[0].BestLapMS)
+	}
+}
+
+func TestFileStorageStaleMetaRescanned(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewFileStorage(dir, nil)
+	if err != nil {
+		t.Fatalf("NewFileStorage() error = %v", err)
+	}
+
+	id, err := store.Save(&RaceSummary{
+		ID:           "20260301_130000_imola_4",
+		SavedAtLocal: time.Now().Format("2006-01-02 15:04:05"),
+		Track:        TrackInfo{TrackName: "Imola"},
+		Session:      SessionSummary{SessionType: "Time Trial"},
+		Player:       PlayerSummary{Name: "P", FinalPosition: 2, BestLapMS: 74905},
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Simulate a pre-BestLapMS sidecar: no metaVersion, stale zero best lap.
+	stale := []byte(`{"id":"` + id + `","trackName":"Imola","bestLapMs":0}`)
+	if err := os.WriteFile(filepath.Join(dir, id+".meta.json"), stale, 0o644); err != nil {
+		t.Fatalf("write stale meta: %v", err)
+	}
+
+	items, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("List() len = %d, want 1", len(items))
+	}
+	if items[0].BestLapMS != 74905 {
+		t.Fatalf("stale meta not rescanned: BestLapMS = %d, want 74905", items[0].BestLapMS)
+	}
+}
+
 func TestFileStorageWalkReplayEmitsMetaBeforeFrames(t *testing.T) {
 	t.Parallel()
 
