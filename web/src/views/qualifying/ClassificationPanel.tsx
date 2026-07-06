@@ -38,7 +38,12 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
       <PanelTitle title="Qualifying Classification" tone="primary" detail={detail} />
       {/* Phase2 LeaderboardPanel과 동일한 ARIA table 구조(FIX-6 계승): role=table의 직계
           자식은 header row, 이후 rowgroup 안에 데이터 row들. 행 자체엔 aria-live를 달지 않는다
-          (랩마다 갱신되는 리더보드를 스크린리더가 매번 읽으면 과도하다). */}
+          (랩마다 갱신되는 리더보드를 스크린리더가 매번 읽으면 과도하다). rows가 빈 경우(a11y #4)
+          rowgroup 자체를 렌더하지 않고 status 메시지로 완전히 대체한다(rowgroup 내부에 role 없는
+          방어 분기를 두지 않는다 — 컨테이너 게이트 상 도달 불가하지만 ARIA 체인은 항상 유효해야
+          한다). 컷오프 마커가 있는 행은 [마커 div + row div]를 감싸는 wrapper가 필요한데, 이
+          wrapper는 role="presentation"으로 밝혀 rowgroup→row 체인이 끊기지 않게 한다(a11y #1/
+          comp M-1/scope L2). 마커 자체는 장식용 구분선이라 aria-hidden으로 숨긴다. */}
       <div role="table" aria-label="Qualifying Classification" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden' }}>
         <div role="presentation" style={{ minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div
@@ -67,16 +72,17 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
             <span role="columnheader" style={{ ...headLabel, textAlign: 'center' }}>Try</span>
             <span role="columnheader" style={{ ...headLabel, textAlign: 'center' }}>Status</span>
           </div>
-          <div role="rowgroup" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-            {rows.length === 0 ? (
-              <div role="status" style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
-                No drivers in feed
-              </div>
-            ) : (
-              rows.map((row) => (
-                <div key={row.index}>
+          {rows.length === 0 ? (
+            <div role="status" style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+              No drivers in feed
+            </div>
+          ) : (
+            <div role="rowgroup" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+              {rows.map((row) => (
+                <div key={row.index} role="presentation">
                   {row.isCutoffMark && (
                     <div
+                      aria-hidden="true"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -108,7 +114,18 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
                         {row.driverCode}
                       </span>
                       {row.aiShow && (
-                        <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-muted)', border: '1px solid var(--bg-panel-border)', borderRadius: 3, padding: '1px 4px' }}>
+                        <span
+                          style={{
+                            fontSize: 8.5,
+                            fontWeight: 700,
+                            letterSpacing: '.06em',
+                            color: 'var(--text-muted)',
+                            background: 'rgba(14,14,15,.5)',
+                            border: '1px solid var(--bg-panel-border)',
+                            borderRadius: 3,
+                            padding: '1px 4px',
+                          }}
+                        >
                           AI
                         </span>
                       )}
@@ -127,6 +144,10 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
                           padding: '2px 7px',
                           borderRadius: 4,
                           border: `1px solid ${row.tyreColor}`,
+                          // 다크칩 배경(a11y #6) — soft(#ff3333 계열) 타이어 배지가 드롭 행
+                          // 틴트(rgba(255,82,92,.08)) 위에서 3.53:1로 실패하던 것을 해소한다
+                          // (TYRE_COLORS 자체는 불변, Phase2 FIX-6 tyre/damage 셀과 동일 패턴).
+                          background: 'rgba(14,14,15,.5)',
                           color: row.tyreColor,
                         }}
                       >
@@ -134,10 +155,12 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
                       </span>
                     </div>
                     <span role="cell" style={{ ...raceFont, fontSize: 12.5, textAlign: 'center', color: 'var(--text-secondary)' }}>{row.laps}</span>
-                    <div role="cell" style={{ display: 'flex', justifyContent: 'center' }}>
+                    {/* aria-label을 배지 span이 아니라 부모 role=cell div로 옮긴다(a11y #3) —
+                        일반 span에 실린 aria-label은 셀의 접근 가능한 이름으로 안정적으로
+                        노출되지 않는다(Phase2 DRS 배지와 동일 패턴, 그쪽은 별도 트래킹). */}
+                    <div role="cell" aria-label={`${row.tryLabel}: ${row.trySummary}`} style={{ display: 'flex', justifyContent: 'center' }}>
                       <span
                         title={row.trySummary}
-                        aria-label={`${row.tryLabel}: ${row.trySummary}`}
                         style={{ ...raceFont, fontSize: 10, fontWeight: 800, letterSpacing: '.04em', padding: '2px 7px', borderRadius: 4, background: row.tryBg, color: row.tryColor }}
                       >
                         {row.tryLabel}
@@ -150,9 +173,9 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
                     </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

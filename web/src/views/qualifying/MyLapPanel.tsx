@@ -55,7 +55,14 @@ export function MyLapPanel({ lap, detail }: MyLapPanelProps) {
         </div>
       </div>
 
-      <div style={{ width: '100%', height: 5, background: 'rgba(132,147,150,.18)', borderRadius: 3, overflow: 'hidden' }}>
+      <div
+        role="progressbar"
+        aria-label="Lap progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(lap.progressPct)}
+        style={{ width: '100%', height: 5, background: 'rgba(132,147,150,.18)', borderRadius: 3, overflow: 'hidden' }}
+      >
         <div style={{ height: '100%', background: 'linear-gradient(90deg,var(--accent),var(--accent-lime))', width: `${lap.progressPct}%` }} />
       </div>
 

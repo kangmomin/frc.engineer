@@ -86,6 +86,19 @@ describe('deriveClassificationRows — pos/leader/player/drop coloring', () => {
     expect(rows[0].isDrop).toBe(false);
   });
 
+  it('player in the drop zone still gets accent posColor — drop cue moves to the border/cutoff line, not the text (a11y #7)', () => {
+    // Q1 safeCount=15 — build 16 drivers so position 16 (index 15) is the first drop, and make
+    // that driver the player.
+    const drivers = Array.from({ length: 16 }, (_, i) => makeDriver(i, { position: i + 1, bestLapTime: 90_000 + i * 100 }));
+    const segment = deriveQualiSegment('Q1');
+    const player = drivers[15];
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, player, 90_000);
+
+    expect(rows[15].isDrop).toBe(true);
+    expect(rows[15].posColor).toBe('var(--accent)'); // player wins over drop for text color (contrast)
+    expect(rows[15].accentColor).toBe('var(--accent-red)'); // left border still signals the drop
+  });
+
   it('marks rows below safeCount as drop (red) and flags the first-out row as cutoff mark', () => {
     // Q1 safeCount=15 — build 16 drivers so position 16 is the first drop.
     const drivers = Array.from({ length: 16 }, (_, i) => makeDriver(i, { position: i + 1, bestLapTime: 90_000 + i * 100 }));

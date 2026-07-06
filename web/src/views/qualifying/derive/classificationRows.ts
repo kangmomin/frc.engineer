@@ -61,9 +61,11 @@ function getDriverStatusInfo(pitStatus: number, driverStatus: number): { label: 
     case 3:
       return { label: 'OUT', color: 'var(--accent)', bg: 'rgba(0,229,255,.12)' };
     case 0:
-      return { label: 'GAR', color: 'var(--text-muted)', bg: 'transparent' };
+      // 다크칩 배경(a11y #8) — muted 텍스트가 player-tint 행(cyan .12)에서도 대비를 유지하도록
+      // 배지에 불투명에 가까운 배경을 깐다(Phase2 FIX-6 tyre/damage 셀과 동일 패턴).
+      return { label: 'GAR', color: 'var(--text-muted)', bg: 'rgba(14,14,15,.5)' };
     default:
-      return { label: DASH, color: 'var(--text-muted)', bg: 'transparent' };
+      return { label: DASH, color: 'var(--text-muted)', bg: 'rgba(14,14,15,.5)' };
   }
 }
 
@@ -114,7 +116,11 @@ export function deriveClassificationRows(
     const tryState = tryMap.get(d.index);
     const best = getQualifyingBestLapTime(d);
 
-    const posColor = isLeader ? 'var(--sector-purple)' : isDrop ? 'var(--accent-red)' : isPlayer ? 'var(--accent)' : 'var(--text-muted)';
+    // player 행은 드롭 여부와 무관하게 accent(cyan)로 통일한다(a11y #7) — 이전엔 isDrop이
+    // isPlayer보다 우선해 player-in-drop 행에서 red 텍스트가 cyan 틴트(rowBg) 위에 얹혀
+    // 4.05:1로 대비가 실패했다. 드롭 정보는 이 행의 accentColor(왼쪽 보더, 계속 red)와
+    // 컷오프 구분선 + Cutoff Watch 패널 + outLabel로 이미 전달되므로 텍스트 색만 통일한다.
+    const posColor = isLeader ? 'var(--sector-purple)' : isPlayer ? 'var(--accent)' : isDrop ? 'var(--accent-red)' : 'var(--text-muted)';
     const nameColor = isPlayer ? 'var(--accent)' : 'var(--text-primary)';
     const rowBg = isPlayer
       ? 'rgba(0,229,255,.12)'
@@ -129,7 +135,8 @@ export function deriveClassificationRows(
 
     const rawGap = best > 0 ? formatGapDeltaMs(best, leaderBest) : '--';
     const gap = best <= 0 ? DASH : isLeader ? 'POLE' : rawGap === '--' ? DASH : rawGap;
-    const gapColor = gap === 'POLE' ? 'var(--sector-purple)' : gap === DASH ? 'var(--text-muted)' : 'var(--text-secondary)';
+    // dash('—')도 text-secondary로 통일한다(a11y #8) — player-tint 행에서 text-muted 대비 실패.
+    const gapColor = gap === 'POLE' ? 'var(--sector-purple)' : 'var(--text-secondary)';
 
     const s1 = sectorCell(acc?.bestS1 ?? 0, overallBest.bestS1);
     const s2 = sectorCell(acc?.bestS2 ?? 0, overallBest.bestS2);
