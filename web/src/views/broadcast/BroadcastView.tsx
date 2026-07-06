@@ -42,8 +42,16 @@ function shortCode(name: string): string {
 }
 
 export function BroadcastView({ controls }: { controls: ShellControls }) {
-  const { pitwallState, notifications } = useTelemetryStore(
-    useShallow((s) => ({ pitwallState: s.pitwallState, notifications: s.raceControlNotifications })),
+  // positions(60Hz fast 채널)는 이 뷰에서 쓰지 않는다. pitwallState 객체 전체가 아니라
+  // drivers/session/gameFormat 슬라이스만 구독해, updatePositions 가 pitwallState 참조만
+  // 교체하는 프레임(위 세 슬라이스 참조는 보존됨)에는 재렌더/재조립되지 않게 한다.
+  const { driversRaw, session, gameFormat, notifications } = useTelemetryStore(
+    useShallow((s) => ({
+      driversRaw: s.pitwallState?.drivers,
+      session: s.pitwallState?.session ?? null,
+      gameFormat: s.pitwallState?.gameFormat,
+      notifications: s.raceControlNotifications,
+    })),
   );
   const { grid, gridStatus, epoch, firstSeenLap, notificationLaps } = useRaceMetaStore(
     useShallow((s) => ({
@@ -55,12 +63,11 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
     })),
   );
 
-  const session = pitwallState?.session ?? null;
   const sessionType = session?.sessionType ?? '';
-  const is2026 = pitwallState?.gameFormat === 2026;
+  const is2026 = gameFormat === 2026;
   const drivers = useMemo(
-    () => [...(pitwallState?.drivers ?? [])].sort((a, b) => a.position - b.position),
-    [pitwallState?.drivers],
+    () => [...(driversRaw ?? [])].sort((a, b) => a.position - b.position),
+    [driversRaw],
   );
   const sessionKey = `${session?.trackId ?? ''}|${sessionType}|${session?.totalLaps ?? ''}`;
 
@@ -68,7 +75,7 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
   const battles = useBattleEngine(drivers, sessionKey, epoch, is2026, session?.safetyCar);
 
   // ── 게이트 (모든 hook 이후) ──
-  if (!pitwallState || drivers.length === 0) {
+  if (!session || drivers.length === 0) {
     return <BroadcastEmpty controls={controls} message="Waiting for telemetry stream…" />;
   }
   if (!/^Race/i.test(sessionType)) {
@@ -79,7 +86,7 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
   const fieldStatus = deriveFieldStatus(drivers);
   const lapCounter = deriveLapCounter(drivers, session);
   const raceStatus = getRaceStatus(session);
-  const strategy = deriveStrategyBoard(pitwallState);
+  const strategy = deriveStrategyBoard(session);
   const rainRisk = deriveRainRisk(session);
   const fl = deriveFastestLap(drivers);
   const fastest = fl ? { code: codes.get(fl.driverIndex) ?? '—', time: formatLapTime(fl.timeMs) } : null;
@@ -206,7 +213,7 @@ function BroadcastEmpty({ controls, message, sub }: { controls: ShellControls; m
         <NavTabs active={controls.view} onNavigate={controls.onNavigate} disabled={controls.navDisabled} />
         <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 16 }}>WORLD FEED</div>
       </header>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
+      <div role="status" aria-live="polite" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
         <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 18, color: 'var(--text-secondary)' }}>{message}</div>
         {sub ? <div style={{ fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Current session · {sub}</div> : null}
       </div>

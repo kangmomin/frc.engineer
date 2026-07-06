@@ -1,4 +1,4 @@
-import type { PitwallState } from '../../../types/telemetry';
+import type { SessionInfo } from '../../../types/telemetry';
 
 export interface StrategyCrossover {
   dryGroup: string;
@@ -18,8 +18,7 @@ export interface StrategyBoard {
  * Strategy / Pit Window 패널의 실데이터 파생 (예측/조작 없음).
  * 게임이 직접 제공하는 pitStopRejoinPosition / pitStopWindow* / crossoverPrediction만 읽는다.
  */
-export function deriveStrategyBoard(pitwallState: PitwallState | null): StrategyBoard {
-  const session = pitwallState?.session ?? null;
+export function deriveStrategyBoard(session: SessionInfo | null): StrategyBoard {
   const cp = session?.crossoverPrediction;
 
   return {

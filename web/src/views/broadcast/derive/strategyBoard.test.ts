@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CrossoverPrediction, PitwallState, SessionInfo } from '../../../types/telemetry';
+import type { CrossoverPrediction, SessionInfo } from '../../../types/telemetry';
 import { deriveStrategyBoard } from './strategyBoard';
 
 // ── Helpers ──
@@ -16,17 +16,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     trackName: 'Test Track',
     trackLength: 5000,
     ...overrides,
-  };
-}
-
-function makePitwallState(session: SessionInfo | null): PitwallState {
-  return {
-    session,
-    drivers: [],
-    positions: [],
-    playerIndex: 0,
-    ersEstimateEnabled: false,
-    ersComparisonEnabled: false,
   };
 }
 
@@ -50,7 +39,7 @@ function makeCrossover(overrides: Partial<CrossoverPrediction> = {}): CrossoverP
 // ── Tests ──
 
 describe('deriveStrategyBoard', () => {
-  it('returns all-null when pitwallState is null', () => {
+  it('returns all-null when session is null', () => {
     expect(deriveStrategyBoard(null)).toEqual({
       rejoinPosition: null,
       windowIdealLap: null,
@@ -60,8 +49,7 @@ describe('deriveStrategyBoard', () => {
   });
 
   it('returns all-null when the omitempty session fields are absent', () => {
-    const state = makePitwallState(makeSession());
-    expect(deriveStrategyBoard(state)).toEqual({
+    expect(deriveStrategyBoard(makeSession())).toEqual({
       rejoinPosition: null,
       windowIdealLap: null,
       windowLatestLap: null,
@@ -70,28 +58,23 @@ describe('deriveStrategyBoard', () => {
   });
 
   it('maps present rejoin/pit-window fields', () => {
-    const state = makePitwallState(
+    const result = deriveStrategyBoard(
       makeSession({
         pitStopRejoinPosition: 7,
         pitStopWindowIdealLap: 22,
         pitStopWindowLatestLap: 28,
       }),
     );
-    const result = deriveStrategyBoard(state);
     expect(result.rejoinPosition).toBe(7);
     expect(result.windowIdealLap).toBe(22);
     expect(result.windowLatestLap).toBe(28);
   });
 
   it('maps crossover only when available is true', () => {
-    const unavailable = makePitwallState(
-      makeSession({ crossoverPrediction: makeCrossover({ available: false }) }),
-    );
+    const unavailable = makeSession({ crossoverPrediction: makeCrossover({ available: false }) });
     expect(deriveStrategyBoard(unavailable).crossover).toBeNull();
 
-    const available = makePitwallState(
-      makeSession({ crossoverPrediction: makeCrossover() }),
-    );
+    const available = makeSession({ crossoverPrediction: makeCrossover() });
     expect(deriveStrategyBoard(available).crossover).toEqual({
       dryGroup: 'soft',
       wetGroup: 'inter',
