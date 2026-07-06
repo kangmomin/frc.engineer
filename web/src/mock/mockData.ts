@@ -769,16 +769,22 @@ function buildQualiActiveDriver(index: number, seed: DriverSeed, tick: number): 
   const s1Final = Math.round(curLapTotal * QUALI_SECTOR1_RATIO);
   const s2Final = Math.round(curLapTotal * QUALI_SECTOR2_RATIO);
 
+  // sector1/2TimeMs는 라이브 스톱워치처럼 구간 내내 증가하는 값이 아니라, 해당 섹터를
+  // "완주"하는 순간에만 등장하는 계단형 값이다(실 와이어 시맨틱 — Phase2 deriveSectorCells의
+  // `currentSector>=1이어야 sector1TimeMs가 유효`라는 게이트가 바로 이 특성을 전제한다).
+  // 섹터 도중 선형 보간(램프)으로 채우면 useSectorAccumulator의 "관측된 모든 양수값의 최소"
+  // 로직이 램프 초반의 극소값을 실제 완주 기록으로 오인해 고정해버린다 — 반드시 계단형으로
+  // 생성해야 한다.
   let sector1TimeMs: number;
   let sector2TimeMs: number;
   let currentSector: number;
   if (lapFraction < QUALI_SECTOR1_RATIO) {
-    sector1TimeMs = Math.round((lapFraction / QUALI_SECTOR1_RATIO) * s1Final);
+    sector1TimeMs = 0;
     sector2TimeMs = 0;
     currentSector = 0;
   } else if (lapFraction < QUALI_SECTOR1_RATIO + QUALI_SECTOR2_RATIO) {
     sector1TimeMs = s1Final;
-    sector2TimeMs = Math.round(((lapFraction - QUALI_SECTOR1_RATIO) / QUALI_SECTOR2_RATIO) * s2Final);
+    sector2TimeMs = 0;
     currentSector = 1;
   } else {
     sector1TimeMs = s1Final;
