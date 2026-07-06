@@ -29,7 +29,7 @@ export function MyCarPanel({ car, detail }: { car: MyCarVM | null; detail: strin
     return (
       <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 11, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <PanelTitle title="My Car" tone="primary" detail={detail} />
-        <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>No player car in feed</div>
+        <div role="status" style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>No player car in feed</div>
       </div>
     );
   }

@@ -25,10 +25,12 @@ export interface PitWallHeaderProps {
   is2026: boolean;
   settingsOpen: boolean;
   onToggleSettings: () => void;
+  /** Display Settings 팝오버를 닫을 때(Escape/× 클릭) 포커스를 되돌릴 트리거 버튼 참조(FIX-6). */
+  settingsButtonRef: React.RefObject<HTMLButtonElement>;
 }
 
 /** Broadcast BroadcastHeader 패턴 확장 — weather summary 추가, 버전칩은 read-only(Spec §5). */
-export function PitWallHeader({ controls, gpTitle, gpSubtitle, lap, weather, status, is2026, settingsOpen, onToggleSettings }: PitWallHeaderProps) {
+export function PitWallHeader({ controls, gpTitle, gpSubtitle, lap, weather, status, is2026, settingsOpen, onToggleSettings, settingsButtonRef }: PitWallHeaderProps) {
   const statusColor = STATUS_COLOR[status.tone];
   return (
     <header
@@ -95,6 +97,7 @@ export function PitWallHeader({ controls, gpTitle, gpSubtitle, lap, weather, sta
           <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 12, letterSpacing: '.04em', color: 'var(--accent)' }}>{is2026 ? 'F1 26' : 'F1 25'}</span>
         </div>
         <button
+          ref={settingsButtonRef}
           onClick={onToggleSettings}
           title="Display settings"
           aria-expanded={settingsOpen}

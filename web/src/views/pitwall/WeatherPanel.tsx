@@ -33,13 +33,14 @@ export function WeatherPanel({ weather, weatherStep, onStepChange }: WeatherPane
       <div style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', background: weather.alertBg, borderLeft: `3px solid ${weather.alertColor}`, fontSize: 11.5, fontWeight: 600, color: weather.alertColor }}>{weather.alertText}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Interval</span>
-        <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+        <div role="group" aria-label="Forecast interval" style={{ display: 'flex', gap: 4, flex: 1 }}>
           {WEATHER_STEP_OPTIONS.map((m) => {
             const active = weatherStep === m;
             return (
               <button
                 key={m}
                 onClick={() => onStepChange(m)}
+                aria-pressed={active}
                 style={{ flex: 1, cursor: 'pointer', fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 11, padding: '5px 2px', borderRadius: 'var(--radius-sm)', background: active ? 'var(--accent)' : 'transparent', color: active ? '#0c0c0d' : 'var(--text-muted)', border: `1px solid ${active ? 'var(--accent)' : 'var(--bg-panel-border)'}` }}
               >
                 {m}m
@@ -49,7 +50,7 @@ export function WeatherPanel({ weather, weatherStep, onStepChange }: WeatherPane
         </div>
       </div>
       {weather.bars.length === 0 ? (
-        <div style={{ padding: '12px 0', textAlign: 'center', fontSize: 11.5, color: 'var(--text-muted)' }}>No forecast</div>
+        <div role="status" style={{ padding: '12px 0', textAlign: 'center', fontSize: 11.5, color: 'var(--text-muted)' }}>No forecast</div>
       ) : (
         <>
           <div style={{ position: 'relative', height: 42, display: 'flex', alignItems: 'flex-end', gap: 2, paddingTop: 2 }}>

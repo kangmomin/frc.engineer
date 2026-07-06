@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { NavTabs } from '../../shell/NavTabs';
 import type { ShellControls } from '../../shell/types';
@@ -46,6 +46,13 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   const prefs = useDisplayPrefs();
   const strategyGuide = useStrategyGuide(request, session, gameFormat);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  // 팝오버를 닫을 때(Escape/× 클릭 모두) 트리거 버튼으로 포커스를 되돌린다(FIX-6, 비-모달
+  // 팝오버 표준 패턴) — DisplaySettings 자신은 자기 트리거를 모르므로 여기서 처리한다.
+  function closeSettings() {
+    setSettingsOpen(false);
+    settingsButtonRef.current?.focus();
+  }
 
   // rows/myCar/lapCounter를 게이트 앞에서 useMemo로 고정한다(FIX-3/comp-H1) — 컬럼 리사이즈
   // 드래그·설정 팝오버 토글 등 이 값들과 무관한 리렌더마다 파생 전체를 재계산하지 않도록 한다.
@@ -85,6 +92,7 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
         is2026={is2026}
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((v) => !v)}
+        settingsButtonRef={settingsButtonRef}
       />
       {settingsOpen && (
         <DisplaySettings
@@ -94,7 +102,7 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
           onTogglePanel={prefs.togglePanel}
           onResetWidths={prefs.resetWidths}
           is2026={is2026}
-          onClose={() => setSettingsOpen(false)}
+          onClose={closeSettings}
         />
       )}
       <main style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 306px', gap: 11 }}>

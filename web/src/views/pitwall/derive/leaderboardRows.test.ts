@@ -297,4 +297,16 @@ describe('deriveLeaderboardRows', () => {
     expect(rows.find((r) => r.index === 0)!.name).toBe('VER');
     expect(rows.find((r) => r.index === 1)!.name).toBe('VE2');
   });
+  it('drs title communicates active/armed/inactive via text, not color alone (FIX-6 a11y)', () => {
+    const active = makeDriver({ index: 0, position: 1, drsActivated: true });
+    const inactive = makeDriver({ index: 1, position: 2, drsActivated: false });
+    const rows = deriveLeaderboardRows([active, inactive], null, false, null);
+    expect(rows.find((r) => r.index === 0)!.drsTitle).toBe('DRS active');
+    expect(rows.find((r) => r.index === 1)!.drsTitle).toBe('DRS unavailable');
+  });
+  it('stint dot carries the raw compound name for title/aria-label, not color alone (FIX-6 a11y)', () => {
+    const d = makeDriver({ index: 0, position: 1, stintHistory: [{ compound: 'Soft', laps: 10 }, { compound: 'Medium', laps: 20 }] });
+    const rows = deriveLeaderboardRows([d], null, false, null);
+    expect(rows[0].stintDots.map((s) => s.name)).toEqual(['Soft', 'Medium']);
+  });
 });

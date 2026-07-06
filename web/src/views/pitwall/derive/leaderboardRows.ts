@@ -150,6 +150,8 @@ export interface LeaderRow {
   drsLabel: string;
   drsColor: string;
   drsBg: string;
+  /** 색상만으로 active/armed/inactive를 구분하던 것을 보완하는 title/aria-label 문구(FIX-6). */
+  drsTitle: string;
   ersPct: string;
   ersW: string;
   ersColor: string;
@@ -161,7 +163,9 @@ export interface LeaderRow {
   penLabel: string;
   penColor: string;
   penBg: string;
-  stintDots: Array<{ color: string }>;
+  /** name: 원시 compound 문자열(legacy CockpitDashboard 표기 선례 준수, 매핑 이름 아님). 색만으로
+   * 스틴트 구분을 전달하지 않도록 title/aria-label("Stint N: <name>", FIX-6) 조립에 쓰인다. */
+  stintDots: Array<{ color: string; name: string }>;
   compound: string;
   compoundColor: string;
   age: string;
@@ -200,14 +204,18 @@ function posColor(isLeader: boolean, isPlayer: boolean): string {
   return 'var(--text-muted)';
 }
 
-function drsCell(driver: DriverInfo, is2026: boolean): { label: string; color: string; bg: string } {
+/**
+ * DRS/OVT 배지는 armed(노랑/시안)와 active(라임)를 색으로만 구분해 색맹·스크린리더
+ * 사용자에게는 동일한 "DRS"/"OVT" 텍스트로만 보인다 — title/aria-label로 상태를 명시한다(FIX-6).
+ */
+function drsCell(driver: DriverInfo, is2026: boolean): { label: string; color: string; bg: string; title: string } {
   const tone = getDrsTone(driver, is2026);
   const label = is2026 ? 'OVT' : 'DRS';
-  if (tone === 'drsActive') return { label, color: '#0c0c0d', bg: 'var(--accent-lime)' };
+  if (tone === 'drsActive') return { label, color: '#0c0c0d', bg: 'var(--accent-lime)', title: `${label} active` };
   if (tone === 'drsArmed') {
-    return { label, color: '#0c0c0d', bg: is2026 ? 'var(--accent)' : 'var(--accent-yellow)' };
+    return { label, color: '#0c0c0d', bg: is2026 ? 'var(--accent)' : 'var(--accent-yellow)', title: `${label} available` };
   }
-  return { label: DASH, color: 'var(--text-muted)', bg: 'transparent' };
+  return { label: DASH, color: 'var(--text-muted)', bg: 'transparent', title: `${label} unavailable` };
 }
 
 function ersCell(driver: DriverInfo): { pct: string; width: string; color: string } {
@@ -230,13 +238,13 @@ function gapToYouCell(driver: DriverInfo, isPlayer: boolean): { text: string; co
 }
 
 function tyreCell(driver: DriverInfo): {
-  stintDots: Array<{ color: string }>;
+  stintDots: Array<{ color: string; name: string }>;
   compound: string;
   compoundColor: string;
   age: string;
   tyreLife: string;
 } {
-  const stintDots = (driver.stintHistory ?? []).map((s) => ({ color: getTyreColor(s.compound) }));
+  const stintDots = (driver.stintHistory ?? []).map((s) => ({ color: getTyreColor(s.compound), name: s.compound }));
   const hasLife =
     driver.tyreLifeSpan != null && driver.tyreUsableLife != null && driver.tyreUsableLife > 0;
   const tyreLife = hasLife
@@ -329,6 +337,7 @@ export function deriveLeaderboardRows(
       drsLabel: drs.label,
       drsColor: drs.color,
       drsBg: drs.bg,
+      drsTitle: drs.title,
       ersPct: ers.pct,
       ersW: ers.width,
       ersColor: ers.color,

@@ -43,9 +43,15 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
       }}
     >
       <PanelTitle title="Cockpit Leaderboard" tone="primary" detail={detail} />
-      <div style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden' }}>
-        <div style={{ minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* ARIA table 구조(FIX-6): 실 <table>이 아닌 CSS grid div이므로 role로 시맨틱을 부여한다.
+          outer(role=table) → header row(role=row, table의 직계 자식) / body(role=rowgroup) →
+          각 데이터 row(role=row). 순수 레이아웃용 중간 wrapper는 role="presentation"으로 밝혀
+          required-owned-elements 체인이 깨지지 않게 한다. 행에는 aria-live를 절대 달지 않는다
+          (리더보드는 랩마다 갱신되므로 매 변경을 읽어주면 스크린리더가 감당 못 한다). */}
+      <div role="table" aria-label="Cockpit Leaderboard" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden' }}>
+        <div role="presentation" style={{ minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div
+            role="row"
             style={{
               flex: 'none',
               display: 'grid',
@@ -57,10 +63,10 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
               borderBottom: '1px solid var(--bg-panel-border)',
             }}
           >
-            <span style={headLabel}>Pos</span>
-            <span style={headLabel}>Driver</span>
+            <span role="columnheader" style={headLabel}>Pos</span>
+            <span role="columnheader" style={headLabel}>Driver</span>
             {active.map((k) => (
-              <div key={k} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: COL_ALIGN[k], minWidth: 0 }}>
+              <div key={k} role="columnheader" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: COL_ALIGN[k], minWidth: 0 }}>
                 <span style={{ ...headLabel, letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {columnHeadLabel(k, is2026)}
                 </span>
@@ -90,10 +96,11 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
               </div>
             ))}
           </div>
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <div role="rowgroup" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
             {rows.map((row) => (
               <div
                 key={row.index}
+                role="row"
                 style={{
                   flex: 'none',
                   display: 'grid',
@@ -105,8 +112,8 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                   borderLeft: `3px solid ${row.teamColor}`,
                 }}
               >
-                <span style={{ ...raceFont, fontWeight: 800, fontSize: 15, color: row.posColor }}>{row.pos}</span>
-                <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span role="cell" style={{ ...raceFont, fontWeight: 800, fontSize: 15, color: row.posColor }}>{row.pos}</span>
+                <div role="cell" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ ...raceFont, fontWeight: 800, fontSize: 14, letterSpacing: '.04em', color: row.nameColor, whiteSpace: 'nowrap' }}>
                     {row.name}
                   </span>
@@ -117,33 +124,38 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                   )}
                 </div>
                 {cols.drs && (
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <span style={{ ...raceFont, fontWeight: 800, fontSize: 11, letterSpacing: '.04em', padding: '2px 8px', borderRadius: 4, background: row.drsBg, color: row.drsColor }}>
+                  <div role="cell" style={{ display: 'flex', justifyContent: 'center' }}>
+                    <span title={row.drsTitle} aria-label={row.drsTitle} style={{ ...raceFont, fontWeight: 800, fontSize: 11, letterSpacing: '.04em', padding: '2px 8px', borderRadius: 4, background: row.drsBg, color: row.drsColor }}>
                       {row.drsLabel}
                     </span>
                   </div>
                 )}
                 {cols.ers && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <div style={{ flex: 1, height: 6, background: 'rgba(132,147,150,.2)', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: row.ersW, background: row.ersColor }} />
                     </div>
                     <span style={{ ...raceFont, fontSize: 12, color: 'var(--text-secondary)', width: 30, textAlign: 'right' }}>{row.ersPct}</span>
                   </div>
                 )}
-                {cols.gap && <span style={{ ...raceFont, fontSize: 13, color: row.toYouColor, textAlign: 'right' }}>{row.toYou}</span>}
-                {cols.interval && <span style={{ ...raceFont, fontSize: 13, color: 'var(--text-secondary)', textAlign: 'right' }}>{row.interval}</span>}
-                {cols.lastLap && <span style={{ ...raceFont, fontSize: 13, color: row.lastColor, textAlign: 'right' }}>{row.lastLap}</span>}
+                {cols.gap && <span role="cell" style={{ ...raceFont, fontSize: 13, color: row.toYouColor, textAlign: 'right' }}>{row.toYou}</span>}
+                {cols.interval && <span role="cell" style={{ ...raceFont, fontSize: 13, color: 'var(--text-secondary)', textAlign: 'right' }}>{row.interval}</span>}
+                {cols.lastLap && <span role="cell" style={{ ...raceFont, fontSize: 13, color: row.lastColor, textAlign: 'right' }}>{row.lastLap}</span>}
                 {cols.penalty && (
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <div role="cell" style={{ display: 'flex', justifyContent: 'center' }}>
                     <span style={{ ...raceFont, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: row.penBg, color: row.penColor }}>{row.penLabel}</span>
                   </div>
                 )}
                 {cols.tyre && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                  <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 2 }}>
                       {row.stintDots.map((dot, i) => (
-                        <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: dot.color }} />
+                        <span
+                          key={i}
+                          title={`Stint ${i + 1}: ${dot.name}`}
+                          aria-label={`Stint ${i + 1}: ${dot.name}`}
+                          style={{ width: 7, height: 7, borderRadius: '50%', background: dot.color }}
+                        />
                       ))}
                     </div>
                     <span
@@ -156,6 +168,9 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
+                        // 틴트된 row(playerRow/leaderRow/teamRow) 배경 위에서도 균일한 대비를
+                        // 갖도록 damage 셀과 동일한 다크 칩 배경을 깐다(FIX-6, TYRE_COLORS 불변).
+                        background: 'rgba(14,14,15,.5)',
                         ...raceFont,
                         fontWeight: 800,
                         fontSize: 11,
@@ -169,20 +184,20 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                   </div>
                 )}
                 {cols.pit && (
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <div role="cell" style={{ display: 'flex', justifyContent: 'center' }}>
                     <span style={{ ...raceFont, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: row.pitBg, color: row.pitColor }}>{row.pitLabel}</span>
                   </div>
                 )}
-                {cols.vmax && <span style={{ ...raceFont, fontSize: 13, color: 'var(--text-secondary)', textAlign: 'right' }}>{row.vmax}</span>}
+                {cols.vmax && <span role="cell" style={{ ...raceFont, fontSize: 13, color: 'var(--text-secondary)', textAlign: 'right' }}>{row.vmax}</span>}
                 {cols.sector && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                  <div role="cell" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
                     <span style={{ ...raceFont, fontSize: 11.5, color: row.s1c, textAlign: 'center' }}>{row.s1}</span>
                     <span style={{ ...raceFont, fontSize: 11.5, color: row.s2c, textAlign: 'center' }}>{row.s2}</span>
                     <span style={{ ...raceFont, fontSize: 11.5, color: row.s3c, textAlign: 'center' }}>{row.s3}</span>
                   </div>
                 )}
                 {cols.damage && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3 }}>
+                  <div role="cell" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3 }}>
                     <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.dmgFLc }}>FL {row.dmgFL}</span>
                     <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.dmgFRc }}>FR {row.dmgFR}</span>
                     <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.dmgRWc }}>RW {row.dmgRW}</span>

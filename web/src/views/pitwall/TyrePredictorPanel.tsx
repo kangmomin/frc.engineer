@@ -36,7 +36,7 @@ export function TyrePredictorPanel({ player }: { player: DriverInfo | null }) {
     return (
       <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 11, display: 'flex', flexDirection: 'column', gap: 9 }}>
         <PanelTitle title="Tyre Predictor" tone="tertiary" detail="—" />
-        <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>Awaiting tyre data</div>
+        <div role="status" style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>Awaiting tyre data</div>
       </div>
     );
   }
@@ -61,8 +61,9 @@ export function TyrePredictorPanel({ player }: { player: DriverInfo | null }) {
       <PanelTitle title="Tyre Predictor" tone="tertiary" detail={`${player.tireCompound} · Age ${age} · ${Math.round(wear)}% now`} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderLeft: `2px solid ${aheadSt.color}`, borderRadius: 3, padding: '7px 9px' }}>
-        <span style={{ fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>+ Laps</span>
+        <label htmlFor="tyre-predictor-ahead-laps" style={{ fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>+ Laps</label>
         <input
+          id="tyre-predictor-ahead-laps"
           type="number"
           value={aheadN}
           min={AHEAD_MIN}
@@ -81,8 +82,9 @@ export function TyrePredictorPanel({ player }: { player: DriverInfo | null }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderLeft: `2px solid ${targetPast ? 'var(--text-muted)' : targetSt.color}`, borderRadius: 3, padding: '7px 9px' }}>
-        <span style={{ fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>At Lap</span>
+        <label htmlFor="tyre-predictor-at-lap" style={{ fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>At Lap</label>
         <input
+          id="tyre-predictor-at-lap"
           type="number"
           value={effectiveTarget}
           min={TARGET_MIN}

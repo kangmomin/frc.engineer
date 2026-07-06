@@ -5,7 +5,7 @@ function EmptyState({ text }: { text: string }) {
   return (
     <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 11, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <PanelTitle title="Strategy Guide" tone="secondary" detail="Live" />
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>{text}</div>
+      <div role="status" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>{text}</div>
     </div>
   );
 }
