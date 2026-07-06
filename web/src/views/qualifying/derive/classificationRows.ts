@@ -135,7 +135,9 @@ export function deriveClassificationRows(
     const s2 = sectorCell(acc?.bestS2 ?? 0, overallBest.bestS2);
     const s3 = sectorCell(acc?.bestS3 ?? 0, overallBest.bestS3);
 
-    const status = getDriverStatusInfo(d.pitStatus, d.driverStatus);
+    // driverStatus는 Go DTO omitempty라 GARAGE(0)는 값이 아니라 필드 부재(undefined)로
+    // 온다(M1) — 정규화 없이 넘기면 switch(undefined)가 default(dash)로 빠져 GAR이 사라진다.
+    const status = getDriverStatusInfo(d.pitStatus, d.driverStatus ?? 0);
     const tryTone = tryState ? getTryTone(tryState.tone) : { color: 'var(--text-muted)', bg: 'transparent' };
 
     return {

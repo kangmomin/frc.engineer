@@ -699,7 +699,7 @@ function qualiBestLapMs(driverIndex: number, uptoLapInclusive: number): number {
 }
 
 function buildQualiGarageDriver(index: number, seed: DriverSeed): DriverInfo {
-  return {
+  const driver: DriverInfo = {
     index,
     name: seed.name,
     teamId: seed.teamId,
@@ -744,13 +744,30 @@ function buildQualiGarageDriver(index: number, seed: DriverSeed): DriverInfo {
     numUnservedDriveThroughs: 0,
     numUnservedStopGoPenalties: 0,
     lapInvalid: false,
+    // [tradeoff, comp m-7] pitStatus:0(온트랙)+lapDistance:0이라 useTrackGaps(`pitStatus===0`
+    // 필터)가 이 차를 "0m 지점의 온트랙 차"로 오인해 ahead/behind 갭 계산을 오염시킬 수 있다.
+    // pitStatus:1/2(PIT)로 바꾸면 실제로는 더 정확해지지만, classificationRows의
+    // getDriverStatusInfo가 "핏 > 드라이버상태" 우선순위(전 커밋 불변 lift)라 Status 컬럼이
+    // GAR 대신 PIT을 표시하게 되어 M1(driverStatus ?? 0 → GAR) 검증을 스모크에서 가리게 된다 —
+    // 그 트레이드오프를 피해 pitStatus:0을 유지한다(garage 드라이버는 QUALI_GARAGE_INDICES
+    // 2대뿐이라 ahead/behind 오염 영향은 제한적).
     pitStatus: 0,
-    driverStatus: 0, // GARAGE
+    driverStatus: 0, // GARAGE — 아래서 omitempty 부재로 삭제(M1 정규화를 smoke가 실제로 밟게 함)
     resultStatus: 0,
     numPitStops: 0,
     lapDistance: 0,
     pitStopTimer: 0,
   };
+
+  // omitempty 재현(Phase3 M3): 완주 없는 섹터(sector1/2TimeMs)와 driverStatus(0=GARAGE)는
+  // 실 와이어에서 필드 자체가 부재하다 — M1(classificationRows의 `d.driverStatus ?? 0`)의
+  // undefined 정규화 경로를 smoke가 실제로 밟도록 런타임에서 키를 제거한다(타입 변경 없음).
+  const mutableDriver = driver as Partial<DriverInfo>;
+  delete mutableDriver.sector1TimeMs;
+  delete mutableDriver.sector2TimeMs;
+  delete mutableDriver.driverStatus;
+
+  return driver;
 }
 
 function buildQualiActiveDriver(index: number, seed: DriverSeed, tick: number): DriverInfo {
@@ -796,7 +813,7 @@ function buildQualiActiveDriver(index: number, seed: DriverSeed, tick: number): 
   const bestLapTime = lastLapCompletedNum > 0 ? qualiBestLapMs(index, lastLapCompletedNum) : 0;
   const ersActualPct = clampInt(Math.round(70 + 25 * Math.sin(effectiveTick / 10 + index)), 15, 100);
 
-  return {
+  const driver: DriverInfo = {
     index,
     name: seed.name,
     teamId: seed.teamId,
@@ -848,6 +865,21 @@ function buildQualiActiveDriver(index: number, seed: DriverSeed, tick: number): 
     lapDistance: round1(lapFraction * TRACK_LENGTH),
     pitStopTimer: 0,
   };
+
+  // omitempty 재현(Phase3 M3/scope M3): Go DTO의 sector1/2TimeMs는 `,omitempty`라 완주 전
+  // 구간은 값이 0이 아니라 필드 자체가 부재(undefined)한다. 실 와이어 정합을 위해 아직
+  // 완주하지 않은 섹터의 키를 런타임에서 제거한다 — 타입(DriverInfo.sector1/2TimeMs: number)은
+  // 그대로 두고 이 지점에서만 cast로 삭제를 허용한다. H1(tryStatus buildSectorDelta)의
+  // undefined 경로를 smoke가 실제로 밟도록 하기 위함(마스킹하던 명시적 0을 제거).
+  const mutableDriver = driver as Partial<DriverInfo>;
+  if (currentSector === 0) {
+    delete mutableDriver.sector1TimeMs;
+    delete mutableDriver.sector2TimeMs;
+  } else if (currentSector === 1) {
+    delete mutableDriver.sector2TimeMs;
+  }
+
+  return driver;
 }
 
 function buildQualiDriverFrames(tick: number): DriverInfo[] {

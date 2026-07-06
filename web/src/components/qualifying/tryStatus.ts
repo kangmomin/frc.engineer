@@ -39,7 +39,11 @@ function formatSignedDelta(deltaMs: number): string {
 }
 
 function buildSectorDelta(currentMs: number, bestMs: number): number | null {
-  if (currentMs <= 0 || bestMs <= 0) return null;
+  // 유한성 가드(H1): sector1/2TimeMs는 Go DTO에서 omitempty라 완주 전에는 값이 0이 아니라
+  // 필드 자체가 부재(undefined)한다. `undefined <= 0`은 false라 아래 가드를 그냥 통과해버리고
+  // `undefined - bestMs`가 NaN을 반환해 My Lap Δ타일/summary/Try title에 "+NaN"이 표시되던
+  // 버그를 막는다. NaN 등 비유한값도 동일하게 차단한다.
+  if (!Number.isFinite(currentMs) || !Number.isFinite(bestMs) || currentMs <= 0 || bestMs <= 0) return null;
   return currentMs - bestMs;
 }
 

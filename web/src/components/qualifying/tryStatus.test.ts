@@ -120,4 +120,25 @@ describe('evaluateDriverTryState', () => {
     expect(state.sectorDelta1Ms).toBe(-80);
     expect(state.sectorDelta2Ms).toBe(-120);
   });
+
+  it('omitempty-absent sector1/2TimeMs (undefined) yields null deltas, never NaN (H1)', () => {
+    const state = evaluateDriverTryState(
+      makeDriver({ sector1TimeMs: undefined, sector2TimeMs: undefined }),
+      { s1: 27_100, s2: 28_300, s3: 25_700 },
+    );
+
+    expect(state.sectorDelta1Ms).toBeNull();
+    expect(state.sectorDelta2Ms).toBeNull();
+    expect(state.summary).not.toContain('NaN');
+  });
+
+  it('a non-finite sector time (NaN) yields a null delta, never NaN (H1)', () => {
+    const state = evaluateDriverTryState(
+      makeDriver({ sector1TimeMs: NaN }),
+      { s1: 27_100, s2: 28_300, s3: 25_700 },
+    );
+
+    expect(state.sectorDelta1Ms).toBeNull();
+    expect(state.summary).not.toContain('NaN');
+  });
 });
