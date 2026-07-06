@@ -437,10 +437,23 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
   const playerFrame = frames.find((frame) => frame.driver.index === PLAYER_INDEX);
   const playerLeaderDelta = playerFrame?.driver.deltaToRaceLeader ?? 0;
 
+  // 인접 간격(interval)을 gap-to-leader 차분으로 계산 — deltaToCarInFront 를 gap-to-leader 로
+  // 두던 단순화를 바로잡는다(러닝오더 INT 컬럼·배틀 엔진이 실제 interval 을 쓰도록).
+  const byGap = [...frames].sort(
+    (a, b) => (a.driver.deltaToRaceLeader ?? 0) - (b.driver.deltaToRaceLeader ?? 0),
+  );
+  const intervalByIndex = new Map<number, number>();
+  byGap.forEach((frame, i) => {
+    const cur = frame.driver.deltaToRaceLeader ?? 0;
+    const prev = i === 0 ? 0 : byGap[i - 1].driver.deltaToRaceLeader ?? 0;
+    intervalByIndex.set(frame.driver.index, i === 0 ? 0 : Math.max(0, round1(cur - prev)));
+  });
+
   return frames.map((frame) => ({
     ...frame,
     driver: {
       ...frame.driver,
+      deltaToCarInFront: intervalByIndex.get(frame.driver.index) ?? 0,
       deltaToPlayer: (frame.driver.deltaToRaceLeader ?? 0) - playerLeaderDelta,
     },
   }));
