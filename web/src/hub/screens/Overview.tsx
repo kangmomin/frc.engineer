@@ -15,6 +15,10 @@ interface Props {
 }
 
 export function Overview({ t, data, featured, onGoMarket, onGoAnalysis }: Props) {
+  // Real sessions carry true epoch timestamps, so relative time must be based on
+  // the real clock, not format.ts's REF_NOW (which exists only to keep mock
+  // demo times deterministic and would render every real session as "방금").
+  const now = Date.now();
   return (
     <section>
       {/* season banner */}
@@ -58,7 +62,7 @@ export function Overview({ t, data, featured, onGoMarket, onGoAnalysis }: Props)
               <div style={{ fontFamily: MONO, fontSize: 10, color: t.t3 }}>라이브니스 바인딩 검증</div>
             </div>
             {data.recentSessions.map((s, i) => (
-              <SessionRow key={i} t={t} s={s} />
+              <SessionRow key={i} t={t} s={s} now={now} />
             ))}
           </div>
 
@@ -80,7 +84,12 @@ export function Overview({ t, data, featured, onGoMarket, onGoAnalysis }: Props)
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* wallet */}
           <div style={{ background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12, padding: 18 }}>
-            <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.14em', color: t.t2, fontWeight: 600, marginBottom: 15 }}>CREDIT WALLET</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}>
+              <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.14em', color: t.t2, fontWeight: 600 }}>CREDIT WALLET</div>
+              {/* Credits/ledger have no backend yet (Phase 3) — flag them as demo so
+                  the mock ledger isn't read as real payouts about real sessions. */}
+              <span style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: '.08em', color: t.t3, border: `1px solid ${t.line2}`, borderRadius: 4, padding: '2px 6px' }}>데모</span>
+            </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
               <span style={{ fontFamily: MONO, fontSize: 34, fontWeight: 700, color: t.accInk, lineHeight: 0.9 }}>⬢ {data.spendableCredits.toLocaleString('en-US')}</span>
               <span style={{ fontSize: 11, color: t.t3, paddingBottom: 4 }}>spendable</span>
@@ -134,13 +143,18 @@ function StatCard({ t, label, value, valueColor, foot, footColor }: { t: HubThem
   );
 }
 
-function SessionRow({ t, s }: { t: HubTheme; s: HubSession }) {
+function SessionRow({ t, s, now }: { t: HubTheme; s: HubSession; now: number }) {
   const valid = s.state === 'valid';
   const stateLabel = valid ? '✓ VALID' : '◷ ESCROW';
   const stateColor = valid ? t.green : t.warn;
   const stateBg = valid ? rgba(t.green, 0.12) : t.warnSoft;
+  // crDelta 0 = real session with no platform credit ledger yet → hide the badge
+  // rather than assert a false "+0 cr".
+  const showCr = s.crDelta !== 0;
   const crText = valid ? `${signed(s.crDelta)} cr` : `${signed(s.crDelta)} 대기`;
   const crColor = valid ? t.green : t.warn;
+  const lapText = s.lapMs > 0 ? msToTime(s.lapMs) : '—';
+  const timeText = s.atMs > 0 ? relativeTime(s.atMs, now) : '—';
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 50px 96px 108px 74px 78px', alignItems: 'center', gap: 12, padding: '12px 18px', borderTop: `1px solid ${t.linesoft}` }}>
       <div style={{ minWidth: 0 }}>
@@ -148,12 +162,12 @@ function SessionRow({ t, s }: { t: HubTheme; s: HubSession }) {
         <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.1em', color: t.t3, marginLeft: 9 }}>{s.type}</span>
       </div>
       <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, color: t.t2 }}>P{s.pos}</div>
-      <div style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: t.t1 }}>{msToTime(s.lapMs)}</div>
+      <div style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: t.t1 }}>{lapText}</div>
       <div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '.05em', padding: '4px 9px', borderRadius: 5, color: stateColor, background: stateBg }}>{stateLabel}</span>
       </div>
-      <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: crColor, textAlign: 'right' }}>{crText}</div>
-      <div style={{ fontSize: 11, color: t.t3, textAlign: 'right' }}>{relativeTime(s.atMs)}</div>
+      <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: crColor, textAlign: 'right' }}>{showCr ? crText : ''}</div>
+      <div style={{ fontSize: 11, color: t.t3, textAlign: 'right' }}>{timeText}</div>
     </div>
   );
 }

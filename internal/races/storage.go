@@ -415,24 +415,39 @@ func (s *FileStorage) metaPath(id string) string {
 	return filepath.Join(s.baseDir, id+".meta.json")
 }
 
+// currentRaceMetaVersion is bumped whenever a RaceListItem field is added so
+// that sidecars written by older builds are detected as stale and rescanned.
+const currentRaceMetaVersion = 1
+
+// raceListMeta is the on-disk sidecar envelope. MetaVersion lives only here,
+// never on the API-facing RaceListItem, so /api/races stays unpolluted.
+type raceListMeta struct {
+	RaceListItem
+	MetaVersion int `json:"metaVersion"`
+}
+
 func (s *FileStorage) readListMeta(id string) (RaceListItem, error) {
 	data, err := os.ReadFile(s.metaPath(id))
 	if err != nil {
 		return RaceListItem{}, err
 	}
 
-	var item RaceListItem
-	if err := json.Unmarshal(data, &item); err != nil {
+	var meta raceListMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
 		return RaceListItem{}, err
 	}
-	return item, nil
+	if meta.MetaVersion != currentRaceMetaVersion {
+		// Stale sidecar (e.g. missing BestLapMS): force a rescan in List().
+		return RaceListItem{}, fmt.Errorf("stale race meta version %d", meta.MetaVersion)
+	}
+	return meta.RaceListItem, nil
 }
 
 func (s *FileStorage) writeListMeta(item RaceListItem) error {
 	if !isSafeID(item.ID) {
 		return ErrUnsafeID
 	}
-	data, err := json.Marshal(item)
+	data, err := json.Marshal(raceListMeta{RaceListItem: item, MetaVersion: currentRaceMetaVersion})
 	if err != nil {
 		return err
 	}
@@ -454,6 +469,7 @@ func buildRaceListItem(summary *RaceSummary, fileSize int64) RaceListItem {
 		SessionType:     summary.Session.SessionType,
 		PlayerName:      summary.Player.Name,
 		FinalPosition:   summary.Player.FinalPosition,
+		BestLapMS:       summary.Player.BestLapMS,
 		FileSizeBytes:   fileSize,
 		DataStorageMode: rtconfig.NormalizeDataStorageMode(summary.DataStorageMode),
 		HasReplay:       frameCount > 0,
@@ -526,12 +542,14 @@ func scanRaceListItem(path, fallbackID string, fileSize int64) (RaceListItem, er
 			var player struct {
 				Name          string `json:"name"`
 				FinalPosition int    `json:"finalPosition"`
+				BestLapMS     uint32 `json:"bestLapMs"`
 			}
 			if err := dec.Decode(&player); err != nil {
 				return RaceListItem{}, err
 			}
 			item.PlayerName = player.Name
 			item.FinalPosition = player.FinalPosition
+			item.BestLapMS = player.BestLapMS
 		case "replay":
 			hasReplay, frameCount, err := scanReplayMeta(dec)
 			if err != nil {

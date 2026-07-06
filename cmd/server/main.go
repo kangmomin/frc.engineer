@@ -23,6 +23,7 @@ import (
 	"frc.engineer/internal/analysis"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/platform"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/storage"
 	"frc.engineer/internal/strategydata"
@@ -112,6 +113,9 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("race summary storage initialized", "dir", filepath.Join("data", "races"))
+
+	// Platform read-model service (hub overview over the user's own races).
+	platformSvc := platform.NewService(raceStorage, logger)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -480,6 +484,22 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(list)
+	})
+
+	// REST API: GET /api/hub/overview (own-data slice of the hub overview)
+	mux.HandleFunc("/api/hub/overview", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		stats, err := platformSvc.Overview()
+		if err != nil {
+			logger.Error("failed to build hub overview", "error", err)
+			http.Error(w, "failed to build hub overview", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(stats)
 	})
 
 	// REST API: GET /api/replay/{id} (NDJSON stream: meta + frames)
