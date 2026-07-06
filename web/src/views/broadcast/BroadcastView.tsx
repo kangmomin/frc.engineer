@@ -6,6 +6,7 @@ import { NavTabs } from '../../shell/NavTabs';
 import type { ShellControls } from '../../shell/types';
 import { moveVsStart, useRaceMetaStore } from '../../store/raceMetaStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
+import { codeFromDriverName, deriveDriverCodes } from '../../utils/driverCodes';
 import { formatLapTime } from '../../utils/formatters';
 import { formatGapToLeader, formatInterval, getRaceStatus, getTrackCondition } from '../../utils/raceDisplay';
 import { BroadcastHeader } from './BroadcastHeader';
@@ -15,7 +16,6 @@ import { LiveBattlesPanel, type BattleCard } from './LiveBattlesPanel';
 import { RunningOrderPanel, type OrderRow } from './RunningOrderPanel';
 import { StrategyPanel } from './StrategyPanel';
 import { WeatherPanel, type WeatherVM } from './WeatherPanel';
-import { deriveDriverCodes } from './derive/driverCodes';
 import {
   classifyIssue,
   deriveDriverIssue,
@@ -33,12 +33,6 @@ function timeTag(ts: number): string {
   } catch {
     return '·';
   }
-}
-
-function shortCode(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  const base = (parts[parts.length - 1] || name).replace(/[^\p{L}\p{N}]/gu, '');
-  return base.slice(0, 3).toUpperCase() || '—';
 }
 
 export function BroadcastView({ controls }: { controls: ShellControls }) {
@@ -163,7 +157,7 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
   const issues: IssueItem[] = notifications.slice(0, 10).map((n, idx) => ({
     id: n.id,
     lapTag: notificationLaps[n.id] != null ? `L${notificationLaps[n.id]}` : timeTag(n.timestamp),
-    code: n.driverName ? nameToCode.get(n.driverName) ?? shortCode(n.driverName) : '—',
+    code: n.driverName ? nameToCode.get(n.driverName) ?? codeFromDriverName(n.driverName) : '—',
     text: n.message,
     colorKey: classifyIssue(n.message, n.severity),
     highlight: idx === 0,

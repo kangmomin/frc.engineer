@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CarDamage, DriverInfo, SessionInfo } from '../../../types/telemetry';
 import {
-  codeFromName,
   damageTone,
   deriveLeaderboardRows,
   deriveSectorCells,
@@ -101,23 +100,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     ...overrides,
   };
 }
-
-// ── codeFromName ──
-
-describe('codeFromName', () => {
-  it('takes last token, uppercased, sliced to 3 chars', () => {
-    expect(codeFromName('Lewis Hamilton')).toBe('HAM');
-  });
-  it('single-word name slices to 3 chars', () => {
-    expect(codeFromName('Verstappen')).toBe('VER');
-  });
-  it('empty name falls back to P{index}', () => {
-    expect(codeFromName('', 7)).toBe('P7');
-  });
-  it('empty name with no index falls back to placeholder', () => {
-    expect(codeFromName('')).toBe('---');
-  });
-});
 
 // ── getDamageSummaryItems / damageTone ──
 
@@ -307,5 +289,12 @@ describe('deriveLeaderboardRows', () => {
     const d = makeDriver({ index: 0, position: 1, topSpeed: 0 });
     const rows = deriveLeaderboardRows([d], null, false, null);
     expect(rows[0].vmax).toBe('—');
+  });
+  it('driver code (name field) comes from the shared deriveDriverCodes — dedup consistent with Broadcast (FIX-5)', () => {
+    const a = makeDriver({ index: 0, position: 1, name: 'Max Verstappen' });
+    const b = makeDriver({ index: 1, position: 2, name: 'Liam Verstappen' });
+    const rows = deriveLeaderboardRows([a, b], null, false, null);
+    expect(rows.find((r) => r.index === 0)!.name).toBe('VER');
+    expect(rows.find((r) => r.index === 1)!.name).toBe('VE2');
   });
 });

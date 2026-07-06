@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { DriverInfo } from '../../../types/telemetry';
-import { deriveDriverCodes } from './driverCodes';
+import type { DriverInfo } from '../types/telemetry';
+import { codeFromDriverName, deriveDriverCodes } from './driverCodes';
 
 function makeDriver(index: number, name: string): DriverInfo {
   return {
@@ -90,5 +90,22 @@ describe('deriveDriverCodes', () => {
   it('falls back to C{index} (zero-padded) for empty/whitespace-only names', () => {
     const codes = deriveDriverCodes([makeDriver(3, '   ')]);
     expect(codes.get(3)).toBe('C03');
+  });
+});
+
+describe('codeFromDriverName', () => {
+  it('shares the same base-extraction as deriveDriverCodes (FIX-5 — no more divergent impls)', () => {
+    expect(codeFromDriverName('Max Verstappen')).toBe('VER');
+    expect(codeFromDriverName('xX-Sp33dy-Xx')).toBe('XXS');
+  });
+
+  it('does not dedup — every call is independent (no shared occurrence state)', () => {
+    expect(codeFromDriverName('Max Verstappen')).toBe('VER');
+    expect(codeFromDriverName('Liam Verstappen')).toBe('VER');
+  });
+
+  it('falls back to a dash for empty/whitespace-only names (no index available for C{index})', () => {
+    expect(codeFromDriverName('   ')).toBe('—');
+    expect(codeFromDriverName('')).toBe('—');
   });
 });

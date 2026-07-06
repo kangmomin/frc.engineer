@@ -3,6 +3,8 @@ import { projectTyreWear } from '../../components/cockpit/tyrePrediction';
 import { getWearStatusColor, TYRE_WEAR_THRESHOLDS } from '../../constants/tyreCompounds';
 import { PanelTitle } from '../../ui';
 import type { DriverInfo } from '../../types/telemetry';
+import { clamp } from '../../utils/formatters';
+import { averageWear } from './derive/myCar';
 
 const AHEAD_MIN = 0;
 const AHEAD_MAX = 60;
@@ -18,16 +20,6 @@ function wearStatus(wearPercent: number): { label: string; color: string } {
   if (wearPercent < TYRE_WEAR_THRESHOLDS.warning) return { label: 'Fair', color };
   if (wearPercent < TYRE_WEAR_THRESHOLDS.critical) return { label: 'High Deg', color };
   return { label: 'Cliff', color };
-}
-
-function averageWear(driver: DriverInfo): number {
-  if (driver.tyreSetWear != null) return driver.tyreSetWear;
-  if (driver.tireWear.length > 0) return driver.tireWear.reduce((sum, w) => sum + w, 0) / driver.tireWear.length;
-  return 0;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
 
 /**
@@ -49,7 +41,7 @@ export function TyrePredictorPanel({ player }: { player: DriverInfo | null }) {
     );
   }
 
-  const wear = averageWear(player);
+  const wear = averageWear(player) ?? 0;
   const age = player.tireAge;
   const effectiveTarget = targetLap ?? clamp(player.currentLapNum + DEFAULT_TARGET_OFFSET, TARGET_MIN, TARGET_MAX);
 

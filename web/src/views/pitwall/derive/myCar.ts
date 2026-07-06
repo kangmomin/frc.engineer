@@ -1,7 +1,7 @@
 import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompounds';
 import type { DriverInfo, SessionInfo } from '../../../types/telemetry';
+import { deriveDriverCodes } from '../../../utils/driverCodes';
 import { formatLapTime } from '../../../utils/formatters';
-import { codeFromName } from './leaderboardRows';
 
 const DASH = '—';
 
@@ -55,7 +55,8 @@ function deltaTone(deltaMs: number): string {
   return deltaMs <= 0 ? 'var(--delta-faster)' : 'var(--delta-slower)';
 }
 
-function averageWear(driver: DriverInfo): number | null {
+/** TyrePredictorPanel과 공유(FIX-5) — 그쪽은 예측 연산 특성상 `?? 0`으로 unwrap해 쓴다. */
+export function averageWear(driver: DriverInfo): number | null {
   if (driver.tyreSetWear != null) return driver.tyreSetWear;
   if (driver.tireWear.length > 0) {
     return driver.tireWear.reduce((sum, w) => sum + w, 0) / driver.tireWear.length;
@@ -122,6 +123,8 @@ export function deriveMyCar(
   const idx = drivers.findIndex((d) => d.index === player.index);
   const ahead = idx > 0 ? drivers[idx - 1] : null;
   const behind = idx >= 0 && idx < drivers.length - 1 ? drivers[idx + 1] : null;
+  // Broadcast(WORLD)와 동일 코드 파생 공유(FIX-5).
+  const codes = deriveDriverCodes(drivers);
 
   // [Assumption] Spec은 "앞차 없음(리더)" 폴백으로 deltaPersonalBest를 제안하지만, 그 필드는
   // 레거시 TelemetryData(구 단일차량 프로토콜) 전용이며 DriverInfo에는 존재하지 않는다.
@@ -133,9 +136,9 @@ export function deriveMyCar(
 
   return {
     position: `P${player.position}`,
-    aheadCode: ahead ? codeFromName(ahead.name, ahead.index) : DASH,
+    aheadCode: ahead ? codes.get(ahead.index) ?? DASH : DASH,
     gapAhead: formatAheadGap(player),
-    behindCode: behind ? codeFromName(behind.name, behind.index) : DASH,
+    behindCode: behind ? codes.get(behind.index) ?? DASH : DASH,
     gapBehind: formatBehindGap(behind),
     lastLapText: formatLapTime(player.lastLapTime),
     deltaText,

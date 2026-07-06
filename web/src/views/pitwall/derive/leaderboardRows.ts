@@ -1,6 +1,7 @@
 import { getTeamColor } from '../../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompounds';
 import type { DriverInfo, SessionInfo } from '../../../types/telemetry';
+import { deriveDriverCodes } from '../../../utils/driverCodes';
 import { formatLapTime } from '../../../utils/formatters';
 import { driverCanArmDrs, formatInterval, getSectorFlag } from '../../../utils/raceDisplay';
 
@@ -20,14 +21,6 @@ const SECTOR_CLOSE_MARGIN_MS = 120;
 const ERS_LOW_PCT = 20;
 
 // ── legacy 이식 헬퍼 (CockpitDashboard.tsx 기계적 복사, import 아님) ──
-
-/** legacy abbreviateDriver(1786) 이식·개칭. */
-export function codeFromName(name: string, fallbackIndex?: number): string {
-  const trimmed = name?.trim();
-  if (!trimmed) return fallbackIndex != null ? `P${fallbackIndex}` : '---';
-  const parts = trimmed.split(/\s+/);
-  return (parts.length > 1 ? parts[parts.length - 1] : trimmed).slice(0, 3).toUpperCase();
-}
 
 /** legacy getDamageSummaryItems(1770) 이식. */
 export function getDamageSummaryItems(
@@ -306,6 +299,9 @@ export function deriveLeaderboardRows(
 ): LeaderRow[] {
   const validLaps = drivers.map((d) => d.lastLapTime).filter((t) => t > 0);
   const fastestMs = validLaps.length ? Math.min(...validLaps) : null;
+  // Broadcast(WORLD)와 동일 코드 파생 공유(FIX-5) — 별도 구현이던 codeFromName을 제거하고
+  // deriveDriverCodes로 통일해 두 뷰의 동일 드라이버 코드 표기가 항상 일치하게 한다.
+  const codes = deriveDriverCodes(drivers);
 
   return drivers.map((driver, i) => {
     const isPlayer = player != null && driver.index === player.index;
@@ -327,7 +323,7 @@ export function deriveLeaderboardRows(
       posColor: posColor(isLeader, isPlayer),
       teamColor: getTeamColor(driver.teamId),
       rowBg: rowBackground(tone, i),
-      name: codeFromName(driver.name, driver.index),
+      name: codes.get(driver.index) ?? DASH,
       nameColor: isPlayer ? 'var(--accent)' : 'var(--text-primary)',
       aiShow: driver.aiControlled,
       drsLabel: drs.label,
