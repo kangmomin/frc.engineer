@@ -1,10 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { PitwallState } from '../types/telemetry';
-import { buildMockMessages } from '../mock/mockData';
+import { buildMockMessages, buildQualiMockMessages } from '../mock/mockData';
+import type { MockScenario } from '../runtimeFlags';
 import { useTelemetryStore } from '../store/telemetryStore';
 import { routeMessage } from './useMessageRouter';
 
-export function useMockTelemetry(enabled: boolean) {
+/**
+ * scenario='quali'는 Phase 3 검증용 additive 분기 — buildQualiMockMessages로 갈아탄다.
+ * 기존 scenario='race'(기본값) 경로는 그대로 buildMockMessages를 사용해 `?mock=1` 회귀가 없다.
+ */
+export function useMockTelemetry(enabled: boolean, scenario: MockScenario = 'race') {
   const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
   const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
   const addRaceControlNotification = useTelemetryStore((state) => state.addRaceControlNotification);
@@ -24,7 +29,7 @@ export function useMockTelemetry(enabled: boolean) {
     const applyFrame = () => {
       setConnectionState('connected');
 
-      const messages = buildMockMessages(tick++);
+      const messages = scenario === 'quali' ? buildQualiMockMessages(tick++) : buildMockMessages(tick++);
       for (const message of messages) {
         routeMessage(
           message,
@@ -51,5 +56,5 @@ export function useMockTelemetry(enabled: boolean) {
         pitwallRafRef.current = 0;
       }
     };
-  }, [addRaceControlNotification, enabled, setConnectionState, setPitwallState, setRaceResult]);
+  }, [addRaceControlNotification, enabled, scenario, setConnectionState, setPitwallState, setRaceResult]);
 }

@@ -6,7 +6,7 @@ import { RemoteConnect } from '../components/remote/RemoteConnect';
 import { F1SetupManager } from '../components/setup/F1SetupManager';
 import { useMockTelemetry } from '../hooks/useMockTelemetry';
 import { useWebRTCDataChannel } from '../hooks/useWebRTCDataChannel';
-import { isMockMode } from '../runtimeFlags';
+import { isMockMode, mockScenario } from '../runtimeFlags';
 import { startRaceMetaTracker } from '../store/raceMetaStore';
 import { useTelemetryStore } from '../store/telemetryStore';
 import type {
@@ -111,8 +111,8 @@ export function AppShell() {
     window.localStorage.removeItem('frc_signaling_url');
   }, []);
 
-  // dev mock 피드 (?mock=1) — connected 상태로 스토어를 채운다
-  useMockTelemetry(mock);
+  // dev mock 피드 (?mock=1 race / ?mock=quali) — connected 상태로 스토어를 채운다
+  useMockTelemetry(mock, mockScenario);
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
   const {

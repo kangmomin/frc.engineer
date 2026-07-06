@@ -641,6 +641,264 @@ function encodeMessage(type: string, data: unknown): string {
   return JSON.stringify(message);
 }
 
+// ── Qualifying mock feed (Phase 3, additive) ──
+// 위 buildMockMessages/buildMockFrame(Race 고정)는 그대로 두고, `?mock=quali` 전용 경로를
+// 별도로 추가한다. Qualifying 뷰는 positions(60Hz)를 구독하지 않으므로 positions=[]로 둔다.
+
+const QUALI_DRIVER_COUNT = DRIVER_SEEDS.length;
+/** 랩 1개 = 48틱(~12초, 250ms/틱). 실제 F1 퀄리 랩(~90s)보다 압축된 mock 전용 페이스 —
+ * dev 검증 중 랩 롤오버(섹터 누적기 S3 역산)를 짧은 시간 안에 여러 번 관찰하기 위함. */
+const QUALI_LAP_TICKS = 48;
+const QUALI_BASE_LAP_MS = 90_100;
+const QUALI_LAP_SPREAD_MS = 1_700; // 필드 스프레드 90.1s ~ 91.8s
+const QUALI_SECTOR1_RATIO = 0.338;
+const QUALI_SECTOR2_RATIO = 0.354;
+const QUALI_SESSION_START_SECONDS = 300;
+/** 세션 내내 출차하지 않는 드라이버(랩 미기록 엣지케이스 + driverStatus GAR 믹스 고정 확보). */
+const QUALI_GARAGE_INDICES = new Set<number>([17, 19]);
+
+type QualiLapQuality = 'out' | 'push' | 'in';
+
+/** 4랩 주기: OUT → FLYING → FLYING → IN, 드라이버별 index만큼 위상차(staggered). */
+function qualiLapQuality(driverIndex: number, lapNum: number): QualiLapQuality {
+  const phase = (lapNum - 1 + driverIndex) % 4;
+  if (phase === 0) return 'out';
+  if (phase === 3) return 'in';
+  return 'push';
+}
+
+function qualiDriverStatus(quality: QualiLapQuality): number {
+  if (quality === 'out') return 3;
+  if (quality === 'in') return 2;
+  return 1; // push → flying
+}
+
+function qualiBaseLapMs(driverIndex: number): number {
+  return Math.round(QUALI_BASE_LAP_MS + (driverIndex / (QUALI_DRIVER_COUNT - 1)) * QUALI_LAP_SPREAD_MS);
+}
+
+/** 해당 랩(lapNum)의 "확정" 랩타임. out/in은 push 대비 느리고, push는 소폭 지터를 갖는다. */
+function qualiFinalLapMs(driverIndex: number, lapNum: number): number {
+  const baseMs = qualiBaseLapMs(driverIndex);
+  const quality = qualiLapQuality(driverIndex, lapNum);
+  if (quality === 'out') return Math.round(baseMs * 1.12);
+  if (quality === 'in') return Math.round(baseMs * 1.18);
+  const jitter = Math.sin(lapNum * 0.9 + driverIndex * 0.5) * 180;
+  return Math.round(baseMs + jitter);
+}
+
+/** push(flying) 랩만 개인 최고기록 후보로 반영 — out/in 랩은 bestLapTime을 갱신하지 않는다. */
+function qualiBestLapMs(driverIndex: number, uptoLapInclusive: number): number {
+  let best = 0;
+  for (let n = 1; n <= uptoLapInclusive; n += 1) {
+    if (qualiLapQuality(driverIndex, n) !== 'push') continue;
+    const t = qualiFinalLapMs(driverIndex, n);
+    if (best === 0 || t < best) best = t;
+  }
+  return best;
+}
+
+function buildQualiGarageDriver(index: number, seed: DriverSeed): DriverInfo {
+  return {
+    index,
+    name: seed.name,
+    teamId: seed.teamId,
+    aiControlled: index !== PLAYER_INDEX && index % 7 === 0,
+    position: 0,
+    currentLapNum: 0,
+    speed: 0,
+    topSpeed: 0,
+    throttle: 0,
+    brake: 0,
+    gear: 0,
+    steering: 0,
+    drsActivated: false,
+    lastLapTime: 0,
+    bestLapTime: 0,
+    tireCompound: seed.tireCompound,
+    tireAge: seed.tireAge,
+    tireWear: [0, 0, 0, 0],
+    tireSurfaceTemp: [0, 0, 0, 0],
+    tireInnerTemp: [0, 0, 0, 0],
+    brakeTemp: [0, 0, 0, 0],
+    brakeBias: seed.brakeBias,
+    diffOnThrottle: seed.diffOnThrottle,
+    diffOffThrottle: seed.diffOffThrottle,
+    fuelInTank: 0,
+    fuelRemainingLaps: 0,
+    fuelMix: 2,
+    ersStoreEnergy: 2_000_000,
+    ersDeployMode: 1,
+    ersDeployedThisLap: 0,
+    ersHarvestedThisLap: 0,
+    ersEstimatePct: 100,
+    ersEstimateReady: true,
+    ersActualPct: 100,
+    ersActualReady: true,
+    sector1TimeMs: 0,
+    sector2TimeMs: 0,
+    currentSector: 0,
+    penalties: 0,
+    totalWarnings: 0,
+    cornerCuttingWarnings: 0,
+    numUnservedDriveThroughs: 0,
+    numUnservedStopGoPenalties: 0,
+    lapInvalid: false,
+    pitStatus: 0,
+    driverStatus: 0, // GARAGE
+    resultStatus: 0,
+    numPitStops: 0,
+    lapDistance: 0,
+    pitStopTimer: 0,
+  };
+}
+
+function buildQualiActiveDriver(index: number, seed: DriverSeed, tick: number): DriverInfo {
+  // 드라이버별 위상차(stagger) — 모든 차가 동시에 결승선을 통과하지 않도록.
+  const effectiveTick = tick + index * 3;
+  const lapProgress = effectiveTick / QUALI_LAP_TICKS;
+  const currentLapNum = Math.floor(lapProgress) + 1;
+  const lapFraction = fractional(lapProgress);
+  // lastLapTime/bestLapTime은 currentLapNum이 넘어가기 "한 틱 앞서" 갱신된다(실 텔레메트리
+  // 필드 갱신 타이밍 — 레거시 useSectorAccumulator의 롤오버 역산이 전제하는 바로 그 특성,
+  // Phase3 Spec §3.2). +1 오프셋으로 그 타이밍을 그대로 재현한다.
+  const lastLapCompletedNum = Math.floor((effectiveTick + 1) / QUALI_LAP_TICKS);
+
+  const curLapTotal = qualiFinalLapMs(index, currentLapNum);
+  const quality = qualiLapQuality(index, currentLapNum);
+  const s1Final = Math.round(curLapTotal * QUALI_SECTOR1_RATIO);
+  const s2Final = Math.round(curLapTotal * QUALI_SECTOR2_RATIO);
+
+  let sector1TimeMs: number;
+  let sector2TimeMs: number;
+  let currentSector: number;
+  if (lapFraction < QUALI_SECTOR1_RATIO) {
+    sector1TimeMs = Math.round((lapFraction / QUALI_SECTOR1_RATIO) * s1Final);
+    sector2TimeMs = 0;
+    currentSector = 0;
+  } else if (lapFraction < QUALI_SECTOR1_RATIO + QUALI_SECTOR2_RATIO) {
+    sector1TimeMs = s1Final;
+    sector2TimeMs = Math.round(((lapFraction - QUALI_SECTOR1_RATIO) / QUALI_SECTOR2_RATIO) * s2Final);
+    currentSector = 1;
+  } else {
+    sector1TimeMs = s1Final;
+    sector2TimeMs = s2Final;
+    currentSector = 2;
+  }
+
+  const lastLapTime = lastLapCompletedNum > 0 ? qualiFinalLapMs(index, lastLapCompletedNum) : 0;
+  const bestLapTime = lastLapCompletedNum > 0 ? qualiBestLapMs(index, lastLapCompletedNum) : 0;
+  const ersActualPct = clampInt(Math.round(70 + 25 * Math.sin(effectiveTick / 10 + index)), 15, 100);
+
+  return {
+    index,
+    name: seed.name,
+    teamId: seed.teamId,
+    aiControlled: index !== PLAYER_INDEX && index % 7 === 0,
+    position: 0, // buildQualiDriverFrames에서 bestLapTime 순위로 재배정
+    currentLapNum,
+    speed: 0,
+    topSpeed: 0,
+    throttle: 0,
+    brake: 0,
+    gear: 0,
+    steering: 0,
+    drsActivated: quality === 'push' && lapFraction > 0.5,
+    lastLapTime,
+    bestLapTime,
+    tireCompound: seed.tireCompound,
+    tireAge: seed.tireAge,
+    tireWear: [0, 0, 0, 0],
+    tireSurfaceTemp: [0, 0, 0, 0],
+    tireInnerTemp: [0, 0, 0, 0],
+    brakeTemp: [0, 0, 0, 0],
+    brakeBias: seed.brakeBias,
+    diffOnThrottle: seed.diffOnThrottle,
+    diffOffThrottle: seed.diffOffThrottle,
+    fuelInTank: 60,
+    fuelRemainingLaps: 8,
+    fuelMix: 2,
+    ersStoreEnergy: 2_500_000,
+    ersDeployMode: ((index + currentLapNum) % 3) + 1,
+    ersDeployedThisLap: Math.round(300_000 + lapFraction * 400_000),
+    ersHarvestedThisLap: Math.round(200_000 + (1 - lapFraction) * 200_000),
+    ersEstimatePct: ersActualPct,
+    ersEstimateReady: true,
+    ersActualPct,
+    ersActualReady: true,
+    sector1TimeMs,
+    sector2TimeMs,
+    currentSector,
+    penalties: 0,
+    totalWarnings: 0,
+    cornerCuttingWarnings: 0,
+    numUnservedDriveThroughs: 0,
+    numUnservedStopGoPenalties: 0,
+    lapInvalid: false,
+    pitStatus: 0,
+    driverStatus: qualiDriverStatus(quality),
+    resultStatus: 0,
+    numPitStops: 0,
+    lapDistance: round1(lapFraction * TRACK_LENGTH),
+    pitStopTimer: 0,
+  };
+}
+
+function buildQualiDriverFrames(tick: number): DriverInfo[] {
+  const drivers = DRIVER_SEEDS.map((seed, index) =>
+    QUALI_GARAGE_INDICES.has(index) ? buildQualiGarageDriver(index, seed) : buildQualiActiveDriver(index, seed, tick),
+  );
+
+  // 순위 재계산: 기록 있는 드라이버는 bestLapTime 오름차순, 미기록(GAR 등)은 하단(원 index 순).
+  const ranked = [...drivers].sort((a, b) => {
+    const aHas = a.bestLapTime > 0;
+    const bHas = b.bestLapTime > 0;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+    if (aHas) return a.bestLapTime - b.bestLapTime;
+    return a.index - b.index;
+  });
+  ranked.forEach((driver, i) => {
+    driver.position = i + 1;
+  });
+
+  return drivers;
+}
+
+function buildQualiSession(tick: number): SessionInfo {
+  return {
+    ...BASE_SESSION,
+    sessionType: 'Q1',
+    sessionTimeLeft: Math.max(0, Math.round(QUALI_SESSION_START_SECONDS - (tick * FRAME_INTERVAL_MS) / 1000)),
+    weatherForecast: BASE_FORECAST,
+  };
+}
+
+export function buildQualiMockFrame(tick: number): { pitwallState: PitwallState } {
+  const session = buildQualiSession(tick);
+  const drivers = buildQualiDriverFrames(tick);
+  const pitwallState: PitwallState = {
+    session,
+    drivers,
+    positions: [],
+    playerIndex: PLAYER_INDEX,
+    senderState: {
+      saveFiles: true,
+      trackRecording: false,
+      raceStorageMode: 'summary',
+    },
+    ersEstimateEnabled: true,
+    ersComparisonEnabled: true,
+  };
+  return { pitwallState };
+}
+
+/** `?mock=quali` 전용 메시지 빌더(Phase3 Spec §7.5). positions(60Hz)는 Qualifying 뷰가
+ * 구독하지 않으므로 별도 positionUpdate 메시지를 보내지 않는다. */
+export function buildQualiMockMessages(tick: number): string[] {
+  const frame = buildQualiMockFrame(tick);
+  return [encodeMessage('pitwallState', frame.pitwallState)];
+}
+
 function getAverageWear(compound: string, tireAge: number, tick: number, orderIndex: number): number {
   const rate = compound === 'soft' ? 4.3 : compound === 'medium' ? 3.1 : compound === 'hard' ? 2.5 : 3.3;
   return clamp100(tireAge * rate + Math.sin(tick / 10 + orderIndex * 0.6) * 1.8 + orderIndex * 0.35);
