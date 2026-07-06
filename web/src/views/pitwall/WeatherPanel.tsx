@@ -1,8 +1,8 @@
 import { PanelTitle, WeatherIcon } from '../../ui';
 import type { SessionInfo, WeatherForecast } from '../../types/telemetry';
 import { formatForecastLabel, getTrackCondition } from '../../utils/raceDisplay';
+import { WEATHER_STEP_OPTIONS } from './useDisplayPrefs';
 
-const STEP_OPTIONS = [1, 5, 10, 15];
 const RAIN_ALERT_THRESHOLD = 50;
 const RAIN_NEAR_TERM_MIN = 30;
 const TICK_COUNT = 4; // 5개 라벨(0..TICK_COUNT)
@@ -67,7 +67,7 @@ export function WeatherPanel({ session, weatherStep, onStepChange }: WeatherPane
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Interval</span>
         <div style={{ display: 'flex', gap: 4, flex: 1 }}>
-          {STEP_OPTIONS.map((m) => {
+          {WEATHER_STEP_OPTIONS.map((m) => {
             const active = weatherStep === m;
             return (
               <button
