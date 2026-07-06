@@ -1,4 +1,5 @@
 import { COL_ORDER, columnChipLabel, type ColumnKey } from './columns';
+import { DISPLAY_SETTINGS_ID } from './PitWallHeader';
 import type { PanelKey } from './useDisplayPrefs';
 
 const PANEL_CHIPS: Array<{ key: PanelKey; label: string }> = [
@@ -39,6 +40,7 @@ export interface DisplaySettingsProps {
 export function DisplaySettings({ cols, onToggleCol, panels, onTogglePanel, onResetWidths, is2026, onClose }: DisplaySettingsProps) {
   return (
     <div
+      id={DISPLAY_SETTINGS_ID}
       role="dialog"
       aria-label="Display settings"
       style={{

@@ -18,6 +18,8 @@ import type {
 import { getConnectionDetail, isConnectionFailure } from '../utils/connectionStatus';
 import { BroadcastView } from '../views/broadcast/BroadcastView';
 import { PlaceholderView } from '../views/PlaceholderView';
+import { PitWallView } from '../views/pitwall/PitWallView';
+import type { RequestFn } from '../views/pitwall/useStrategyGuide';
 import '../styles/theme.css';
 import { Stage } from './Stage';
 import type { ShellControls } from './types';
@@ -276,7 +278,7 @@ export function AppShell() {
 
   return (
     <>
-      <Stage>{renderView(controls)}</Stage>
+      <Stage>{renderView(controls, request)}</Stage>
       {archiveOpen ? (
         <RaceArchiveDrawer onClose={() => setArchiveOpen(false)} dataSource={raceArchiveDataSource} />
       ) : null}
@@ -285,12 +287,13 @@ export function AppShell() {
   );
 }
 
-function renderView(controls: ShellControls) {
+function renderView(controls: ShellControls, request: RequestFn) {
   // Phase 1~3 에서 각 뷰를 실제 구현으로 교체한다.
   switch (controls.view) {
     case 'broadcast':
       return <BroadcastView controls={controls} />;
     case 'pitwall':
+      return <PitWallView controls={controls} request={request} />;
     case 'qualifying':
     default:
       return <PlaceholderView controls={controls} />;
