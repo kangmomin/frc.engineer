@@ -20,9 +20,12 @@ interface Props {
   onGoMarket: () => void;
   onGoAnalysis: () => void;
   wallet?: RealWallet | null;
+  // Logged-in account's display name for the banner greeting. Absent (logged
+  // out / not yet loaded) → generic greeting.
+  persona?: string | null;
 }
 
-export function Overview({ t, data, featured, onGoMarket, onGoAnalysis, wallet }: Props) {
+export function Overview({ t, data, featured, onGoMarket, onGoAnalysis, wallet, persona }: Props) {
   // Real sessions carry true epoch timestamps, so relative time must be based on
   // the real clock, not format.ts's REF_NOW (which exists only to keep mock
   // demo times deterministic and would render every real session as "방금").
@@ -34,7 +37,7 @@ export function Overview({ t, data, featured, onGoMarket, onGoAnalysis, wallet }
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: t.acc }} />
         <div>
           <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.28em', color: t.accInk, marginBottom: 9 }}>SEASON 3 · 2026 — ACTIVE</div>
-          <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-.01em', color: t.t1 }}>돌아오셨어요, kangmomin</div>
+          <div style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-.01em', color: t.t1 }}>돌아오셨어요, {(persona && persona.trim()) || '드라이버'}</div>
           <div style={{ fontSize: 13.5, color: t.t2, marginTop: 5 }}>
             시즌 종료까지 <span style={{ color: t.t1, fontWeight: 600 }}>{data.seasonDaysLeft}일</span> 남았습니다. 지금 페이스면 실버스톤 TT 톱10 진입까지{' '}
             <span style={{ color: t.ok, fontWeight: 600 }}>{(data.ttGapToTop10Ms / 1000).toFixed(3)}s</span>.

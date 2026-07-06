@@ -122,7 +122,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
         <TopBar t={t} ctx={ctx} spendableCredits={overview?.spendableCredits ?? 0} escrowCredits={overview?.escrowCredits ?? 0} />
         <main style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
           {active === 'overview' && (overview ? (
-            <Overview t={t} data={overview} featured={featured} wallet={realWallet} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
+            <Overview t={t} data={overview} featured={featured} wallet={realWallet} persona={platformAccount?.persona} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
           ) : <Loading t={t} />)}
 
           {active === 'rankings' && (rankings ? (
