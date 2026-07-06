@@ -1,0 +1,296 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PostRaceDebrief } from '../components/debrief/PostRaceDebrief';
+import { RaceArchiveDrawer } from '../components/races/RaceArchiveDrawer';
+import type { RaceArchiveDataSource } from '../components/races/replayArchive';
+import { RemoteConnect } from '../components/remote/RemoteConnect';
+import { F1SetupManager } from '../components/setup/F1SetupManager';
+import { useMockTelemetry } from '../hooks/useMockTelemetry';
+import { useWebRTCDataChannel } from '../hooks/useWebRTCDataChannel';
+import { isMockMode } from '../runtimeFlags';
+import { startRaceMetaTracker } from '../store/raceMetaStore';
+import { useTelemetryStore } from '../store/telemetryStore';
+import type {
+  RaceListItem,
+  RaceSummary,
+  ReplayFrame,
+  ReplayStreamMeta,
+} from '../types/telemetry';
+import { getConnectionDetail, isConnectionFailure } from '../utils/connectionStatus';
+import { PlaceholderView } from '../views/PlaceholderView';
+import '../styles/theme.css';
+import { Stage } from './Stage';
+import type { ShellControls } from './types';
+import { persistView, readInitialView, viewToSenderView, type ViewId } from './viewNav';
+
+const RACE_ARCHIVE_LIST_TIMEOUT_MS = 60_000;
+const RACE_SUMMARY_TIMEOUT_MS = 60_000;
+const RACE_REPLAY_TIMEOUT_MS = 120_000;
+
+const QUALI_SESSION_RE = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i;
+
+interface RemoteRTCOptions {
+  signalingUrl: string;
+  roomId?: string;
+  roomCode?: string;
+  password: string;
+}
+
+function readRemoteQuery(): Partial<RemoteRTCOptions> {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    signalingUrl: params.get('signalingUrl') ?? '',
+    roomId: params.get('roomId') ?? '',
+    roomCode: params.get('roomCode') ?? '',
+  };
+}
+
+function buildInitialRemoteOptions(): RemoteRTCOptions | null {
+  const query = readRemoteQuery();
+  if ((query.roomId || query.roomCode) && query.signalingUrl) {
+    return {
+      signalingUrl: query.signalingUrl,
+      roomId: query.roomId,
+      roomCode: query.roomCode,
+      password: '',
+    };
+  }
+  return null;
+}
+
+function persistRemoteSession(options: RemoteRTCOptions) {
+  const params = new URLSearchParams(window.location.search);
+  params.set('remote', '1');
+  params.set('signalingUrl', options.signalingUrl);
+  if (options.roomId) params.set('roomId', options.roomId);
+  else params.delete('roomId');
+  if (options.roomCode) params.set('roomCode', options.roomCode);
+  else params.delete('roomCode');
+  const nextQuery = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
+}
+
+function clearRemoteQuery() {
+  window.history.replaceState(null, '', window.location.pathname);
+}
+
+export function AppShell() {
+  const mock = isMockMode;
+
+  const initialRemoteOptions = useMemo(() => buildInitialRemoteOptions(), []);
+  const [rtcOptions, setRtcOptions] = useState<RemoteRTCOptions | null>(initialRemoteOptions);
+  const [connectAttempted, setConnectAttempted] = useState(initialRemoteOptions !== null);
+  const [view, setView] = useState<ViewId>(() => readInitialView());
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+
+  const setConnectionMode = useTelemetryStore((s) => s.setConnectionMode);
+  const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
+  const setPitwallState = useTelemetryStore((s) => s.setPitwallState);
+  const clearNotifications = useTelemetryStore((s) => s.clearNotifications);
+  const clearRaceResult = useTelemetryStore((s) => s.clearRaceResult);
+  const connectionState = useTelemetryStore((s) => s.connectionState);
+  const raceResult = useTelemetryStore((s) => s.raceResult);
+  const sessionType = useTelemetryStore((s) => s.pitwallState?.session?.sessionType ?? '');
+  const isQualiSession = QUALI_SESSION_RE.test(sessionType);
+
+  // 그리드/노티 lap 추적 — 뷰보다 상위, 앱 수명 1회 구독
+  useEffect(() => {
+    startRaceMetaTracker();
+  }, []);
+
+  useEffect(() => {
+    setConnectionMode('remote');
+  }, [setConnectionMode]);
+
+  useEffect(() => {
+    window.sessionStorage.removeItem('frc_remote_session');
+    window.sessionStorage.removeItem('frc_signaling_url');
+    window.localStorage.removeItem('frc_signaling_url');
+  }, []);
+
+  // dev mock 피드 (?mock=1) — connected 상태로 스토어를 채운다
+  useMockTelemetry(mock);
+
+  const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
+  const {
+    connectionState: rtcConnectionState,
+    lastError: rtcLastError,
+    sendView,
+    request,
+    stream,
+    forceReconnect,
+  } = useWebRTCDataChannel(webrtcOpts);
+
+  // 재연결 후 'connected' 전이마다 현재 뷰 재전송 (peerView 는 재연결 시 cockpit 으로 리셋됨)
+  const sendViewRef = useRef(sendView);
+  sendViewRef.current = sendView;
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    if (connectionState === 'connected') {
+      sendViewRef.current(viewToSenderView(viewRef.current));
+    }
+  }, [connectionState]);
+
+  const raceArchiveDataSource = useMemo<RaceArchiveDataSource>(() => ({
+    listRaces: async (signal?: AbortSignal) => {
+      const items: RaceListItem[] = [];
+      await stream(
+        { type: 'getRaceArchiveList' },
+        {
+          signal,
+          timeoutMs: RACE_ARCHIVE_LIST_TIMEOUT_MS,
+          doneType: 'raceArchiveListDone',
+          onMessage: (response) => {
+            if (response.type !== 'raceArchiveList') return;
+            if (Array.isArray(response.data)) {
+              items.push(...(response.data as RaceListItem[]));
+              return;
+            }
+            const chunk = response.data as { items?: RaceListItem[] } | undefined;
+            if (Array.isArray(chunk?.items)) items.push(...chunk.items);
+          },
+        },
+      );
+      return items;
+    },
+    loadSummary: (id: string, signal?: AbortSignal) =>
+      request<RaceSummary>({ type: 'getRaceSummary', data: { id } }, { signal, timeoutMs: RACE_SUMMARY_TIMEOUT_MS }),
+    loadReplay: async (id: string, signal?: AbortSignal) => {
+      let meta: ReplayStreamMeta | null = null;
+      const frames: ReplayFrame[] = [];
+      await stream(
+        { type: 'getRaceReplay', data: { id } },
+        {
+          signal,
+          timeoutMs: RACE_REPLAY_TIMEOUT_MS,
+          doneType: 'raceReplayDone',
+          onMessage: (response) => {
+            if (response.type === 'raceReplayMeta') {
+              const nextMeta = response.data as Omit<ReplayStreamMeta, 'type'> & { type?: 'meta' };
+              meta = { ...nextMeta, type: 'meta' };
+              return;
+            }
+            if (response.type === 'raceReplayChunk') {
+              const chunk = response.data as { frames?: ReplayFrame[] } | undefined;
+              if (Array.isArray(chunk?.frames)) frames.push(...chunk.frames);
+            }
+          },
+        },
+      );
+      return { meta, frames };
+    },
+  }), [request, stream]);
+
+  const switchView = useCallback((next: ViewId) => {
+    setView(next);
+    persistView(next);
+    sendView(viewToSenderView(next));
+  }, [sendView]);
+
+  const handleRemoteConnect = useCallback((nextOptions: RemoteRTCOptions) => {
+    persistRemoteSession(nextOptions);
+    setRtcOptions(nextOptions);
+    setConnectAttempted(true);
+    setConnectionState('disconnected');
+    setPitwallState(null);
+    clearNotifications();
+    clearRaceResult();
+    forceReconnect();
+  }, [clearNotifications, clearRaceResult, forceReconnect, setConnectionState, setPitwallState]);
+
+  const openRoomPicker = useCallback(() => {
+    setRtcOptions(null);
+    setConnectionState('disconnected');
+    setPitwallState(null);
+    clearNotifications();
+    clearRaceResult();
+  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+
+  const goToMainScreen = useCallback(() => {
+    clearRemoteQuery();
+    setRtcOptions(null);
+    setConnectAttempted(false);
+    setConnectionState('disconnected');
+    setPitwallState(null);
+    clearNotifications();
+    clearRaceResult();
+  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+
+  const controls: ShellControls = {
+    view,
+    onNavigate: switchView,
+    onOpenRooms: openRoomPicker,
+    onOpenArchive: () => setArchiveOpen(true),
+    onOpenSetup: () => setSetupOpen(true),
+    onGoHome: goToMainScreen,
+    navDisabled: { qualifying: !isQualiSession },
+    roomsActive: true,
+  };
+
+  // 세팅 매니저는 전체 화면 대체 (overflow:hidden 독립 실행)
+  if (setupOpen) {
+    return <F1SetupManager onBack={() => setSetupOpen(false)} />;
+  }
+
+  // 라이브 모드 게이팅 (mock 모드는 건너뜀)
+  if (!mock && !rtcOptions) {
+    return (
+      <RemoteConnect
+        onConnect={handleRemoteConnect}
+        connectionState={connectionState}
+        title="P2P Telemetry Link"
+        subtitle="Pick an active sender room from the signaling server, then enter its password to join."
+        initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
+        initialRoomId={readRemoteQuery().roomId || ''}
+        initialRoomCode={readRemoteQuery().roomCode || ''}
+        initialPassword=""
+      />
+    );
+  }
+
+  if (
+    !mock &&
+    rtcOptions &&
+    connectionState !== 'reconnecting' &&
+    (rtcConnectionState === 'failed' ||
+      isConnectionFailure(connectionState) ||
+      (connectAttempted && connectionState === 'disconnected' && rtcConnectionState !== 'new'))
+  ) {
+    return (
+      <RemoteConnect
+        onConnect={handleRemoteConnect}
+        connectionState={connectionState}
+        onCancel={goToMainScreen}
+        cancelLabel="Main Screen"
+        title="P2P Telemetry Link"
+        subtitle={rtcLastError || getConnectionDetail(connectionState)}
+        initialSignalingUrl={rtcOptions.signalingUrl}
+        initialRoomId={rtcOptions.roomId}
+        initialRoomCode={rtcOptions.roomCode}
+        initialPassword={rtcOptions.password}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Stage>{renderView(controls)}</Stage>
+      {archiveOpen ? (
+        <RaceArchiveDrawer onClose={() => setArchiveOpen(false)} dataSource={raceArchiveDataSource} />
+      ) : null}
+      {raceResult ? <PostRaceDebrief result={raceResult} onClose={clearRaceResult} /> : null}
+    </>
+  );
+}
+
+function renderView(controls: ShellControls) {
+  // Phase 1~3 에서 각 뷰를 실제 구현으로 교체한다.
+  switch (controls.view) {
+    case 'broadcast':
+    case 'pitwall':
+    case 'qualifying':
+    default:
+      return <PlaceholderView controls={controls} />;
+  }
+}
