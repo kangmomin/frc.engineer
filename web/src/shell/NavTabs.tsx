@@ -27,6 +27,7 @@ export function NavTabs({ active, onNavigate, disabled }: NavTabsProps) {
             key={tab.id}
             type="button"
             className={`${styles.tab} ${isActive ? styles.active : ''}`.trim()}
+            aria-current={isActive ? 'page' : undefined}
             onClick={() => {
               if (!isActive && !isDisabled) onNavigate(tab.id);
             }}

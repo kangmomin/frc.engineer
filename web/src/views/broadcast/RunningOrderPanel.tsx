@@ -9,6 +9,13 @@ const ISSUE_COLOR: Record<Exclude<DriverIssue, null>, string> = {
   damage: 'var(--accent-soft)',
 };
 
+// 색상 전용 dot 의 접근성/hover 라벨 (색상 단독 의존 회피).
+const ISSUE_LABEL: Record<Exclude<DriverIssue, null>, string> = {
+  pit: 'In pit',
+  penalty: 'Penalty',
+  damage: 'Damage',
+};
+
 export interface OrderRow {
   index: number;
   pos: string;
@@ -62,7 +69,7 @@ export function RunningOrderPanel({ rows, detail }: { rows: OrderRow[]; detail: 
               <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 13.5, letterSpacing: '0.03em', color: 'var(--text-primary)' }}>{d.code}</span>
                 <span style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.team}</span>
-                {d.issue ? <span style={{ flex: 'none', width: 6, height: 6, borderRadius: '50%', background: ISSUE_COLOR[d.issue] }} /> : null}
+                {d.issue ? <span title={ISSUE_LABEL[d.issue]} aria-label={ISSUE_LABEL[d.issue]} style={{ flex: 'none', width: 6, height: 6, borderRadius: '50%', background: ISSUE_COLOR[d.issue] }} /> : null}
               </div>
               <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 12, color: 'var(--text-secondary)', textAlign: 'right' }}>{d.gapL}</span>
               <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 11.5, color: 'var(--text-muted)', textAlign: 'right' }}>{d.intv}</span>

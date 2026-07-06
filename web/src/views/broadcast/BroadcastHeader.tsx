@@ -93,7 +93,9 @@ export function BroadcastHeader({ controls, gpTitle, gpSubtitle, lap, fastest, a
             </span>
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 'var(--radius-md)', background: 'rgba(205,255,19,.1)', border: '1px solid rgba(205,255,19,.3)' }}>
+        {/* pill 배경은 tone 무관 중립 다크로 고정 — tone 색을 배경 틴트로 쓰면 red/info 텍스트
+            대비가 WCAG AA(4.5:1) 미달. tone 은 dot·텍스트·보더로 전달한다. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 'var(--radius-md)', background: 'rgba(14,14,15,.55)', border: `1px solid color-mix(in srgb, ${statusColor} 38%, transparent)` }}>
           <span className={styles.pulse} style={{ width: 9, height: 9, borderRadius: '50%', background: statusColor, boxShadow: `0 0 12px ${statusColor}` }} />
           <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 12.5, letterSpacing: '0.1em', color: statusColor }}>{status.label}</span>
         </div>

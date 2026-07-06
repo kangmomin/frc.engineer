@@ -21,7 +21,7 @@ export function IssueFeedPanel({ items }: { items: IssueItem[] }) {
   return (
     <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 13, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <PanelTitle title="Issue Feed" tone="secondary" detail="Live" />
-      <div className={styles.noScroll} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' }}>
+      <div className={styles.noScroll} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
         {items.length === 0 ? (
           <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>No race-control incidents</div>
         ) : (
