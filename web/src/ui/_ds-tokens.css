@@ -1,0 +1,83 @@
+/*
+ * design-sync 토큰 소스 (큐레이션본).
+ * web/src/styles/theme.css의 :root 토큰 + 브랜드 폰트만 추출한다.
+ * 앱 전역 reset/body 스타일은 의도적으로 제외 — 디자인 캔버스 오염 방지.
+ * MinmoPitwallUI 번들에만 사용되며, SPA 런타임은 이 파일을 import하지 않는다.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-primary: #131314;
+  --bg-secondary: #1c1b1c;
+  --bg-panel: rgba(32, 31, 32, 0.92);
+  --bg-panel-hover: rgba(42, 42, 43, 0.95);
+  --bg-panel-border: rgba(59, 73, 76, 0.15);
+  --bg-panel-accent: rgba(0, 229, 255, 0.08);
+  --bg-surface: #201f20;
+  --bg-surface-elevated: #2a2a2b;
+  --border-color: rgba(59, 73, 76, 0.22);
+
+  --text-primary: #e5e2e3;
+  --text-secondary: #bac9cc;
+  --text-muted: #849396;
+  --text-f1: #00e5ff;
+
+  --accent: #00e5ff;
+  --accent-cyan: #00e5ff;
+  --accent-red: #ff525c;
+  --accent-red-hover: #ff737a;
+  --accent-green: #cdff13;
+  --accent-yellow: #c3f5ff;
+  --accent-blue: #00daf3;
+  --accent-orange: #ffb3b2;
+  --accent-purple: #9cf0ff;
+  --accent-lime: #cdff13;
+  --accent-soft: #ffb3b2;
+
+  --delta-faster: #cdff13;
+  --delta-slower: #ff525c;
+  --delta-neutral: #e5e2e3;
+
+  --throttle-color: #cdff13;
+  --brake-color: #ff525c;
+
+  --rpm-low: #cdff13;
+  --rpm-mid: #c3f5ff;
+  --rpm-high: #ff525c;
+
+  --gear-reverse: #ff525c;
+  --gear-neutral: #c3f5ff;
+  --gear-forward: #e5e2e3;
+
+  --drs-active: #cdff13;
+  --drs-available: #c3f5ff;
+  --drs-inactive: #3b494c;
+
+  --sector-purple: #9cf0ff;
+  --sector-green: #cdff13;
+  --sector-yellow: #ffb3b2;
+
+  --chart-best-lap: #9cf0ff;
+  --chart-current-lap: #00e5ff;
+  --chart-grid: rgba(132, 147, 150, 0.1);
+  --chart-axis: #849396;
+
+  --font-racing: 'Space Grotesk', sans-serif;
+  --font-body: 'Inter', sans-serif;
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  --shadow-glow: 0 0 18px rgba(0, 229, 255, 0.18);
+  --shadow-panel: 0 20px 40px rgba(0, 229, 255, 0.08);
+
+  --f1-slant: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
+  --f1-slant-reverse: polygon(2% 0, 100% 0, 100% 100%, 0% 100%);
+}
