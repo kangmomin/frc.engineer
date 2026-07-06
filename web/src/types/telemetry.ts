@@ -426,7 +426,7 @@ export interface DriverInfo {
   // Sector times (current lap)
   sector1TimeMs: number;
   sector2TimeMs: number;
-  currentSector: number;
+  currentSector: number; // 0-based: 0=S1, 1=S2, 2=S3 (wire value, no transform — see internal/packets/lapdata.go Sector field)
 
   // Best sector times (from SessionHistory)
   bestSector1Ms?: number | null;

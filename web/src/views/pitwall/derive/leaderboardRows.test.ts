@@ -240,29 +240,34 @@ describe('derivePenaltyBadge', () => {
 
 // ── Sector cells ──
 
+// currentSector는 0-based 와이어 값이다(Go internal/packets/lapdata.go:28 `Sector uint8
+// //0=s1,1=s2,2=s3`, pitwall_manager.go:470 무변환). S1 완료(S2 진입)=currentSector>=1,
+// S2 완료(S3 진입)=currentSector>=2(FIX-1: 기존 >=2/>=3는 S2 셀을 영구 사망시키는 off-by-one).
 describe('deriveSectorCells', () => {
-  it('S1 shows "·" while still in sector 1', () => {
-    const d = makeDriver({ currentSector: 1, sector1TimeMs: 0 });
+  it('S1 shows "·" while still in sector 1 (currentSector=0)', () => {
+    const d = makeDriver({ currentSector: 0, sector1TimeMs: 0 });
     expect(deriveSectorCells(d, null).s1.text).toBe('·');
   });
-  it('S1 shows formatted time once currentSector advances past 1', () => {
-    const d = makeDriver({ currentSector: 2, sector1TimeMs: 28123 });
+  it('S1 shows formatted time once currentSector advances to S2 (currentSector=1)', () => {
+    const d = makeDriver({ currentSector: 1, sector1TimeMs: 28123 });
     expect(deriveSectorCells(d, null).s1.text).toBe('28.123');
   });
-  it('S2 requires currentSector >= 3', () => {
-    const d = makeDriver({ currentSector: 2, sector2TimeMs: 30000 });
+  it('S2 shows "·" while still in S1/S2 (currentSector=1, S3 not yet reached)', () => {
+    const d = makeDriver({ currentSector: 1, sector2TimeMs: 30000 });
     expect(deriveSectorCells(d, null).s2.text).toBe('·');
   });
-  it('S3 derives from lastLap - s1 - s2 when positive', () => {
-    const d = makeDriver({ lastLapTime: 90000, sector1TimeMs: 28000, sector2TimeMs: 32000 });
-    expect(deriveSectorCells(d, null).s3.text).toBe('30.000');
+  it('S2 shows formatted time once currentSector advances to S3 (currentSector=2)', () => {
+    const d = makeDriver({ currentSector: 2, sector2TimeMs: 30456 });
+    expect(deriveSectorCells(d, null).s2.text).toBe('30.456');
   });
-  it('S3 degrades to dash when subtraction is non-positive', () => {
-    const d = makeDriver({ lastLapTime: 90000, sector1TimeMs: 50000, sector2TimeMs: 50000 });
-    expect(deriveSectorCells(d, null).s3.text).toBe('—');
+  it('S3 always degrades to dash — no cross-lap fabrication from lastLap - s1 - s2', () => {
+    const d = makeDriver({ currentSector: 2, lastLapTime: 90000, sector1TimeMs: 28000, sector2TimeMs: 32000 });
+    const cells = deriveSectorCells(d, null);
+    expect(cells.s3.text).toBe('—');
+    expect(cells.s3.color).toBe('var(--text-muted)');
   });
   it('yellow flag zone overrides personal-best tone', () => {
-    const d = makeDriver({ currentSector: 2, sector1TimeMs: 28000, bestSector1Ms: 27000 });
+    const d = makeDriver({ currentSector: 1, sector1TimeMs: 28000, bestSector1Ms: 27000 });
     const session = makeSession({ marshalZones: [{ start: 0, flag: 3 }] });
     expect(deriveSectorCells(d, session).s1.color).toBe('#eab308');
   });

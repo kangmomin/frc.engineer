@@ -106,9 +106,12 @@ export function derivePenaltyBadge(driver: DriverInfo): { label: string; color: 
 }
 
 /**
- * Sector 컬럼(Spec §3.3, 복잡도 높음). S1/S2는 currentSector 진행도로 완료 여부를 판단하고,
- * S3는 직접 필드가 없어 lastLapTime - sector1TimeMs - sector2TimeMs로 역산한다(양수일 때만).
- * 불확실하면 조작하지 않고 '·'(진행 중)/'—'(불확실)로 degrade한다.
+ * Sector 컬럼(Spec §3.3, FIX-1로 정정). S1/S2는 currentSector 진행도로 완료 여부를 판단한다.
+ * currentSector는 와이어 기준 **0-based**다(Go internal/packets/lapdata.go:28
+ * `Sector uint8 //0=s1,1=s2,2=s3`, pitwall_manager.go:470에서 무변환 전달) — S1 완료(S2 진입)는
+ * currentSector>=1, S2 완료(S3 진입)는 currentSector>=2. S3는 전용 필드가 없고, sector1/2TimeMs
+ * (현재 랩 진행 중 값)와 lastLapTime(직전 완주 랩 총합)을 섞어 역산하면 서로 다른 랩의 값을
+ * 빼는 fabrication이 되므로(Spec §9 위반) 상시 '—'로 degrade한다.
  */
 function sectorTone(currentMs: number, bestMs: number | null | undefined, flag: number): string {
   if (flag === 3 || flag === 4) return flag === 3 ? '#eab308' : 'var(--accent-red)';
@@ -127,13 +130,9 @@ export function deriveSectorCells(
 ): { s1: SectorCellVM; s2: SectorCellVM; s3: SectorCellVM } {
   const flag1 = getSectorFlag(session?.marshalZones, 1);
   const flag2 = getSectorFlag(session?.marshalZones, 2);
-  const flag3 = getSectorFlag(session?.marshalZones, 3);
 
-  const s1Valid = driver.currentSector >= 2 && driver.sector1TimeMs > 0;
-  const s2Valid = driver.currentSector >= 3 && driver.sector2TimeMs > 0;
-  const s3Raw = driver.lastLapTime - driver.sector1TimeMs - driver.sector2TimeMs;
-  const s3Valid =
-    driver.lastLapTime > 0 && driver.sector1TimeMs > 0 && driver.sector2TimeMs > 0 && s3Raw > 0;
+  const s1Valid = driver.currentSector >= 1 && driver.sector1TimeMs > 0;
+  const s2Valid = driver.currentSector >= 2 && driver.sector2TimeMs > 0;
 
   return {
     s1: s1Valid
@@ -142,9 +141,7 @@ export function deriveSectorCells(
     s2: s2Valid
       ? { text: (driver.sector2TimeMs / 1000).toFixed(3), color: sectorTone(driver.sector2TimeMs, driver.bestSector2Ms, flag2) }
       : { text: DOT, color: 'var(--text-muted)' },
-    s3: s3Valid
-      ? { text: (s3Raw / 1000).toFixed(3), color: sectorTone(s3Raw, driver.bestSector3Ms, flag3) }
-      : { text: DASH, color: 'var(--text-muted)' },
+    s3: { text: DASH, color: 'var(--text-muted)' },
   };
 }
 
