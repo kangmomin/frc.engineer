@@ -132,6 +132,7 @@ describe('economy (3D1)', () => {
     [404, 'not-found'],
     [409, 'conflict'],
     [422, 'not-sellable'],
+    [429, 'rate-limited'],
   ];
   for (const [status, reason] of purchaseCases) {
     it(`purchase maps ${status} → ${reason}`, async () => {
@@ -159,6 +160,8 @@ describe('economy (3D1)', () => {
     await expect(mkt.createReview('L-1', { stars: 5, perf, body: 'x' })).rejects.toMatchObject({ reason: 'not-sellable' });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(409)));
     await expect(mkt.createReview('L-1', { stars: 5, perf, body: 'x' })).rejects.toMatchObject({ reason: 'conflict' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(429)));
+    await expect(mkt.createReview('L-1', { stars: 5, perf, body: 'x' })).rejects.toMatchObject({ reason: 'rate-limited' });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(201)));
     await expect(mkt.createReview('L-1', { stars: 5, perf, body: 'x' })).resolves.toBeUndefined();
   });

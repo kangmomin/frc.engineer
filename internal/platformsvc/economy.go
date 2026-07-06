@@ -187,13 +187,21 @@ func (s *Store) Purchase(ctx context.Context, buyerID, listingID string) (*Purch
 	}
 
 	// New purchase: resolve a purchasable listing (active + non-banned seller).
+	// FOR SHARE OF l holds a share lock on the listing row to commit, so a
+	// concurrent Delist (which UPDATEs the row → FOR UPDATE) serializes against
+	// this purchase: it either commits first (this SELECT then sees 'delisted' →
+	// ErrNotFound) or waits for us. No deadlock — the listing lock is taken before
+	// the wallet locks in every path and Delist takes only this one lock. (The
+	// seller-ban window is a different table and not closed here; a banned
+	// seller's credits stay frozen by the wallet-level ban gate.)
 	var sellerID, kind, snapshotID string
 	var price int64
 	err = tx.QueryRow(ctx, `
 		SELECT l.seller_id, l.kind, l.snapshot_id, l.price_credits
 		FROM platform.listings l
 		WHERE l.id = $1 AND l.status = 'active'
-		  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id = l.seller_id)`,
+		  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id = l.seller_id)
+		FOR SHARE OF l`,
 		listingID,
 	).Scan(&sellerID, &kind, &snapshotID, &price)
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -262,6 +262,8 @@ export class PlatformMarket {
         throw new ListingError('conflict', '구매 처리 중입니다 — 다시 시도하세요');
       case 422:
         throw new ListingError('not-sellable', '본인 리스팅은 구매할 수 없습니다');
+      case 429:
+        throw new ListingError('rate-limited', '잠시 후 다시 시도하세요');
       default:
         throw new ListingError('network', `구매 실패 (${res.status})`);
     }
@@ -290,6 +292,8 @@ export class PlatformMarket {
         throw new ListingError('not-sellable', '구매한 사용자만 리뷰할 수 있습니다');
       case 409:
         throw new ListingError('conflict', '이미 리뷰를 남겼습니다');
+      case 429:
+        throw new ListingError('rate-limited', '잠시 후 다시 시도하세요');
       default:
         throw new ListingError('network', `리뷰 실패 (${res.status})`);
     }

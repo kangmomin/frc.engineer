@@ -137,6 +137,41 @@ func TestIngestBadUpload(t *testing.T) {
 	if !errors.Is(err, ErrBadUpload) {
 		t.Fatalf("no laps err = %v, want ErrBadUpload", err)
 	}
+	// Lap ms in (2^31, 2^32): JSON-legal uint32 but overflows the int4 column.
+	// Must be a clean 400, not a 500 at INSERT time.
+	_, err = store.IngestRace(ctx, id, UploadRequest{SourceRaceID: "r3", TrackID: 99, GameFormat: "F1 26",
+		Laps: []UploadLap{{LapNumber: 1, LapMs: 3_000_000_000, Valid: true}}})
+	if !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("overflow lapMs err = %v, want ErrBadUpload", err)
+	}
+	// Sector ms overflowing int4.
+	_, err = store.IngestRace(ctx, id, UploadRequest{SourceRaceID: "r4", TrackID: 99, GameFormat: "F1 26",
+		Laps: []UploadLap{{LapNumber: 1, LapMs: 88000, S1Ms: 3_000_000_000, Valid: true}}})
+	if !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("overflow sector err = %v, want ErrBadUpload", err)
+	}
+	// Huge-but-JSON-legal setup float rounds to +Inf and would fail json.Marshal
+	// (→ 500). Must be a clean 400 before any DB work.
+	_, err = store.IngestRace(ctx, id, UploadRequest{SourceRaceID: "r5", TrackID: 99, GameFormat: "F1 26",
+		Laps: []UploadLap{vlap(1, 88000)}, Setup: &UploadSetup{FuelLoad: 1.7e308}})
+	if !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("non-finite setup err = %v, want ErrBadUpload", err)
+	}
+}
+
+// TestValidateLapBoundsSectors covers the per-sector magnitude gate: a single
+// garbage sector paired with a zero sector must invalidate the lap (it would
+// otherwise skip the sum gate and reach the public leaderboard raw), while
+// legitimate partial telemetry (one non-zero sector) stays valid.
+func TestValidateLapBoundsSectors(t *testing.T) {
+	garbage := UploadLap{LapNumber: 1, LapMs: 90000, S1Ms: 2_000_000_000, S2Ms: 0, S3Ms: 0, Valid: true}
+	if validateLap(garbage, genericMinLapMs, genericMaxLapMs) {
+		t.Fatal("lap with a 2e9 sector should be invalid")
+	}
+	partial := UploadLap{LapNumber: 1, LapMs: 90000, S1Ms: 30000, S2Ms: 0, S3Ms: 0, Valid: true}
+	if !validateLap(partial, genericMinLapMs, genericMaxLapMs) {
+		t.Fatal("partial-telemetry lap should stay valid")
+	}
 }
 
 func TestIngestTyreNormalized(t *testing.T) {

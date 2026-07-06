@@ -64,6 +64,20 @@ func TestReviewInputValidation(t *testing.T) {
 	}
 }
 
+// TestReviewBodyAllowsNewlines: the review UI is a multi-line textarea, so line
+// breaks must pass validation (they are stored/rendered as text); other control
+// chars are still rejected.
+func TestReviewBodyAllowsNewlines(t *testing.T) {
+	ok := CreateReviewRequest{Stars: 5, Perf: goodPerf(), Body: "great high-speed balance\nbit loose in slow corners"}
+	if err := ok.validate(); err != nil {
+		t.Fatalf("multi-line review body rejected: %v", err)
+	}
+	bad := CreateReviewRequest{Stars: 5, Perf: goodPerf(), Body: "nul\x00byte"}
+	if err := bad.validate(); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("control-char body err = %v, want ErrBadUpload", err)
+	}
+}
+
 // TestListReviewsMaskedOnDelist (F2): the public reviews endpoint honors the same
 // uniform-404 masking as GetListing/SimilarListings — a delisted listing's reviews
 // (and its existence) must not leak.

@@ -3,16 +3,21 @@ import {
   captureTokenFromFragment, getSessionToken, clearSessionToken, fetchMe,
 } from './session';
 
-// jsdom is not configured, so stand up a minimal window (localStorage +
-// location + history) for these DOM-touching helpers.
-function fakeWindow(hash = '') {
-  const store = new Map<string, string>();
+// jsdom is not configured, so stand up a minimal window (local/session storage +
+// location + history) for these DOM-touching helpers. `intent` seeds the
+// login-intent flag as if beginSteamLogin ran in this tab.
+function fakeWindow(hash = '', intent = false) {
+  const local = new Map<string, string>();
+  const session = new Map<string, string>();
+  if (intent) session.set('pitwall.loginIntent', '1');
+  const store = (m: Map<string, string>) => ({
+    getItem: (k: string) => m.get(k) ?? null,
+    setItem: (k: string, v: string) => void m.set(k, v),
+    removeItem: (k: string) => void m.delete(k),
+  });
   return {
-    localStorage: {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-    },
+    localStorage: store(local),
+    sessionStorage: store(session),
     location: { hash, pathname: '/hub', search: '' },
     history: { replaceState: vi.fn() },
   };
@@ -29,16 +34,26 @@ afterEach(() => {
 });
 
 describe('captureTokenFromFragment', () => {
-  it('extracts, stores, and strips the token fragment', () => {
-    const win = fakeWindow('#token=tok_abc');
+  it('extracts, stores, and strips the token fragment when login intent is set', () => {
+    const win = fakeWindow('#token=tok_abc', true);
     vi.stubGlobal('window', win);
     expect(captureTokenFromFragment()).toBe(true);
     expect(getSessionToken()).toBe('tok_abc');
     expect(win.history.replaceState).toHaveBeenCalledWith(null, '', '/hub');
+    // intent flag is one-shot: a second call (no fresh login) is rejected.
+    expect(win.sessionStorage.getItem('pitwall.loginIntent')).toBeNull();
+  });
+
+  it('rejects a planted token with no login intent but still strips the fragment', () => {
+    const win = fakeWindow('#token=attacker'); // no intent → crafted-link attack
+    vi.stubGlobal('window', win);
+    expect(captureTokenFromFragment()).toBe(false);
+    expect(getSessionToken()).toBeNull();
+    expect(win.history.replaceState).toHaveBeenCalledWith(null, '', '/hub');
   });
 
   it('returns false when no token fragment is present', () => {
-    vi.stubGlobal('window', fakeWindow('#other=1'));
+    vi.stubGlobal('window', fakeWindow('#other=1', true));
     expect(captureTokenFromFragment()).toBe(false);
     expect(getSessionToken()).toBeNull();
   });

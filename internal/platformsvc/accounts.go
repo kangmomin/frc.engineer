@@ -31,10 +31,11 @@ type Account struct {
 func (s *Store) UpsertSteamAccount(ctx context.Context, steamID64, persona, avatarURL string) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO platform.accounts (steam_id64, persona, avatar_url, kind)
+		INSERT INTO platform.accounts AS acc (steam_id64, persona, avatar_url, kind)
 		VALUES ($1, $2, $3, 'user')
 		ON CONFLICT (steam_id64) DO UPDATE
-		    SET persona = EXCLUDED.persona, avatar_url = EXCLUDED.avatar_url
+		    SET persona = COALESCE(NULLIF(EXCLUDED.persona, ''), acc.persona),
+		        avatar_url = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), acc.avatar_url)
 		RETURNING id`,
 		steamID64, persona, avatarURL,
 	).Scan(&id)

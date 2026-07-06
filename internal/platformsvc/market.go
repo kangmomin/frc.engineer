@@ -132,6 +132,21 @@ func hasControlChar(s string) bool {
 	return false
 }
 
+// hasControlCharAllowNewline is hasControlChar but also permits '\n'/'\r'. Used
+// for multi-line free text (review bodies) where line breaks are legitimate and
+// safe (stored as-is, rendered as text).
+func hasControlCharAllowNewline(s string) bool {
+	for _, r := range s {
+		if r == '\t' || r == '\n' || r == '\r' {
+			continue
+		}
+		if unicode.IsControl(r) {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateListing derives an immutable snapshot from the seller's OWN plausible
 // race (never from client input) and creates a listing, all in one transaction.
 // It touches no credits (economy is 3D1). Returns the new listing id.

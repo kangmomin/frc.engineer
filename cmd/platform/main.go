@@ -23,6 +23,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
 	"frc.engineer/internal/platformsvc"
 )
 
@@ -412,6 +414,9 @@ func (s *server) handleLeaderboardTT(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// Rows carry an Authorization-dependent `you` flag; key any shared cache on it.
+	w.Header().Add("Vary", "Authorization")
+	w.Header().Set("Cache-Control", marketCacheControl)
 	writeJSON(w, http.StatusOK, rows)
 }
 
@@ -430,6 +435,9 @@ func (s *server) handleLeaderboardPace(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	// Rows carry an Authorization-dependent `you` flag; key any shared cache on it.
+	w.Header().Add("Vary", "Authorization")
+	w.Header().Set("Cache-Control", marketCacheControl)
 	writeJSON(w, http.StatusOK, rows)
 }
 
@@ -585,7 +593,12 @@ func (s *server) handleGetListing(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	card, payload, err := s.store.GetListing(ctx, r.PathValue("id"), viewer)
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	card, payload, err := s.store.GetListing(ctx, id, viewer)
 	if errors.Is(err, platformsvc.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -602,7 +615,8 @@ func (s *server) handleGetListing(w http.ResponseWriter, r *http.Request) {
 	}
 	// This URL is owner-dependent (owner → no-store payload above), so a shared
 	// cache must key the public card on Authorization, never serve it to an owner.
-	w.Header().Set("Vary", "Authorization")
+	// Add (not Set) so withCORS's Vary: Origin is preserved, not overwritten.
+	w.Header().Add("Vary", "Authorization")
 	w.Header().Set("Cache-Control", marketCacheControl)
 	writeJSON(w, http.StatusOK, card)
 }
@@ -612,7 +626,12 @@ func (s *server) handleGetListing(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleSimilar(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	rows, err := s.store.SimilarListings(ctx, r.PathValue("id"))
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	rows, err := s.store.SimilarListings(ctx, id)
 	if errors.Is(err, platformsvc.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -639,7 +658,12 @@ func (s *server) handleDelist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "web session required", http.StatusForbidden)
 		return
 	}
-	err = s.store.Delist(ctx, p.AccountID, r.PathValue("id"))
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	err = s.store.Delist(ctx, p.AccountID, id)
 	if errors.Is(err, platformsvc.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -743,7 +767,12 @@ func (s *server) handlePurchase(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
-	res, err := s.store.Purchase(ctx, p.AccountID, r.PathValue("id"))
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	res, err := s.store.Purchase(ctx, p.AccountID, id)
 	switch {
 	case errors.Is(err, platformsvc.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
@@ -770,7 +799,12 @@ func (s *server) handlePurchase(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleListReviews(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	reviews, err := s.store.ListReviews(ctx, r.PathValue("id"))
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	reviews, err := s.store.ListReviews(ctx, id)
 	if errors.Is(err, platformsvc.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -811,12 +845,17 @@ func (s *server) handleCreateReview(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	var req platformsvc.CreateReviewRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, reviewMaxBytes)).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	err = s.store.CreateReview(ctx, p.AccountID, r.PathValue("id"), req)
+	err = s.store.CreateReview(ctx, p.AccountID, id, req)
 	switch {
 	case errors.Is(err, platformsvc.ErrBadUpload):
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -850,8 +889,21 @@ func (s *server) viewerStrict(ctx context.Context, r *http.Request) (string, err
 	return p.AccountID, nil
 }
 
+// pathUUID returns the {id} path value only if it is a syntactically valid UUID.
+// A malformed id must collapse to a uniform 404 rather than reach a UUID-typed
+// query, where Postgres raises SQLSTATE 22P02 → 500 + error-log spam on the
+// public (unauthenticated) listing endpoints.
+func pathUUID(r *http.Request) (string, bool) {
+	id := r.PathValue("id")
+	if _, err := uuid.Parse(id); err != nil {
+		return "", false
+	}
+	return id, true
+}
+
 // leaderboardParams parses the required track (int) and format (non-empty) query
-// params, GET-only.
+// params, GET-only. track is bounded to int32 so an out-of-range value is a 400
+// (via ok=false) rather than an int4 encode failure → 500 downstream.
 func leaderboardParams(r *http.Request) (int, string, bool) {
 	if r.Method != http.MethodGet {
 		return 0, "", false
@@ -861,11 +913,11 @@ func leaderboardParams(r *http.Request) (int, string, bool) {
 	if format == "" || trackStr == "" {
 		return 0, "", false
 	}
-	trackID, err := strconv.Atoi(trackStr)
+	trackID, err := strconv.ParseInt(trackStr, 10, 32)
 	if err != nil {
 		return 0, "", false
 	}
-	return trackID, format, true
+	return int(trackID), format, true
 }
 
 // optionalViewer resolves a Bearer token to an account id for you-highlighting.

@@ -7,6 +7,12 @@
 import { getPlatformBase, getPlatformUrl, isPlatformConfigured } from './platformBase';
 
 const TOKEN_KEY = 'pitwall.platformToken';
+// One-shot flag set in this tab's sessionStorage by beginSteamLogin, checked (and
+// cleared) by captureTokenFromFragment. It proves the token fragment belongs to a
+// login THIS browser initiated — a token planted in a crafted #token=… link has no
+// flag and is rejected (defeats login-CSRF / session fixation). sessionStorage is
+// tab+origin scoped, so an attacker cannot pre-seed it.
+const LOGIN_INTENT_KEY = 'pitwall.loginIntent';
 
 export interface PlatformAccount {
   id: string;
@@ -36,25 +42,35 @@ export function clearSessionToken(): void {
 
 // captureTokenFromFragment reads a token delivered in the URL fragment by the
 // OpenID callback, persists it, and strips it from the address bar (so it does
-// not linger in history or get shared). Returns true if a token was captured.
+// not linger in history or get shared). It only accepts a token for a login THIS
+// browser started (the one-shot LOGIN_INTENT flag): a token planted in a crafted
+// link has no flag and is rejected — but the fragment is stripped regardless.
+// Returns true only when a token was actually captured.
 export function captureTokenFromFragment(): boolean {
   if (typeof window === 'undefined') return false;
   const hash = window.location.hash;
   if (!hash || !hash.includes('token=')) return false;
   const token = new URLSearchParams(hash.replace(/^#/, '')).get('token');
-  if (!token) return false;
-  setSessionToken(token);
-  // Remove the fragment without reloading or adding a history entry.
+  // Strip the fragment without reloading or adding a history entry, even when we
+  // reject it, so a planted token never lingers in history or gets shared.
   const clean = window.location.pathname + window.location.search;
   window.history.replaceState(null, '', clean);
+  // Consume the one-shot login-intent flag; only proceed if this browser started
+  // the login that produced this token.
+  const intended = window.sessionStorage.getItem(LOGIN_INTENT_KEY) !== null;
+  window.sessionStorage.removeItem(LOGIN_INTENT_KEY);
+  if (!intended || !token) return false;
+  setSessionToken(token);
   return true;
 }
 
 // beginSteamLogin navigates the browser to the platform's Steam login. Full-page
 // redirect: the platform → Steam → platform callback → back here with a token
-// fragment.
+// fragment. It first marks login intent in this tab so captureTokenFromFragment
+// accepts the returned token (and rejects any it did not ask for).
 export function beginSteamLogin(): void {
   if (typeof window === 'undefined' || !isPlatformConfigured()) return;
+  window.sessionStorage.setItem(LOGIN_INTENT_KEY, '1');
   window.location.href = getPlatformBase() + '/auth/steam/login';
 }
 

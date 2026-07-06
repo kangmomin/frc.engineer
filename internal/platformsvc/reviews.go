@@ -49,7 +49,7 @@ func (r *CreateReviewRequest) validate() error {
 		return ErrBadUpload
 	}
 	r.Body = strings.TrimSpace(r.Body)
-	if len([]rune(r.Body)) > maxReviewLen || hasControlChar(r.Body) {
+	if len([]rune(r.Body)) > maxReviewLen || hasControlCharAllowNewline(r.Body) {
 		return ErrBadUpload
 	}
 	return nil

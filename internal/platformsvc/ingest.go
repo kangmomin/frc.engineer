@@ -90,10 +90,39 @@ func validateUpload(req *UploadRequest) error {
 		if _, dup := seen[lp.LapNumber]; dup {
 			return ErrBadUpload
 		}
+		// ms columns are int4: a value in (2^31, 2^32) is JSON-decodable into
+		// uint32 but overflows the column, turning a bad payload into a 500 at
+		// INSERT time. Reject here for a clean 400.
+		if lp.LapMs > math.MaxInt32 || lp.S1Ms > math.MaxInt32 || lp.S2Ms > math.MaxInt32 || lp.S3Ms > math.MaxInt32 {
+			return ErrBadUpload
+		}
 		seen[lp.LapNumber] = struct{}{}
 		lp.Tyre = normalizeTyre(lp.Tyre)
 	}
+	// A huge-but-JSON-legal setup float (|f| > ~1.8e305) rounds to ±Inf in
+	// canonicalizeSetup and fails json.Marshal → 500. Reject non-finite /
+	// implausible values here for a clean 400 before any DB work.
+	if req.Setup != nil && !setupFloatsFinite(req.Setup) {
+		return ErrBadUpload
+	}
 	return nil
+}
+
+// setupNumericMax bounds any single float setup field. Real setups are tiny
+// (camber ~ -3, tyre pressure ~ 20, fuel ~ 0..110); 1e6 is absurdly generous
+// while keeping round3 (×1000) finite so canonicalizeSetup never marshals ±Inf.
+const setupNumericMax = 1e6
+
+func floatFinite(f float64) bool {
+	return !math.IsNaN(f) && !math.IsInf(f, 0) && math.Abs(f) <= setupNumericMax
+}
+
+func setupFloatsFinite(s *UploadSetup) bool {
+	return floatFinite(s.FrontCamber) && floatFinite(s.RearCamber) &&
+		floatFinite(s.FrontToe) && floatFinite(s.RearToe) &&
+		floatFinite(s.RearLeftTyrePressure) && floatFinite(s.RearRightTyrePressure) &&
+		floatFinite(s.FrontLeftTyrePressure) && floatFinite(s.FrontRightTyrePressure) &&
+		floatFinite(s.FuelLoad)
 }
 
 // UploadLap is one lap in an ingest payload. Every field is attacker-controlled;
@@ -191,6 +220,13 @@ func round3(f float64) float64 {
 // bounds. Returns the server-decided validity (advisory).
 func validateLap(l UploadLap, minMs, maxMs uint32) bool {
 	if l.LapMs < minMs || l.LapMs > maxMs {
+		return false
+	}
+	// Bound each sector individually: a single garbage sector (e.g. 2e9 ms) paired
+	// with a zero sector would otherwise skip the sum gate below and be served raw
+	// on the public leaderboard. Partial telemetry (a zero sector) stays valid.
+	lapTol := int64(l.LapMs) + sectorSumToleranceMs
+	if int64(l.S1Ms) > lapTol || int64(l.S2Ms) > lapTol || int64(l.S3Ms) > lapTol {
 		return false
 	}
 	if l.S1Ms > 0 && l.S2Ms > 0 && l.S3Ms > 0 {
@@ -307,6 +343,8 @@ func (s *Store) IngestRace(ctx context.Context, accountID string, req UploadRequ
 }
 
 // existingRace returns the already-stored race for an idempotent re-upload.
+// StoredLaps/ValidLaps are left 0 on this path (the counts are not re-derived);
+// a client MUST treat Duplicate=true as "already synced" and not read lap counts.
 func (s *Store) existingRace(ctx context.Context, tx pgx.Tx, accountID, sourceRaceID string) (*UploadResult, error) {
 	res := &UploadResult{Duplicate: true}
 	var best *int32

@@ -106,7 +106,6 @@ export function MarketManage(p: Props) {
 
       {buyer && (
         <BuyerDetailModal t={t} market={market} card={buyer}
-          selfSeller={buyer.sellerPersona === account.persona}
           unlocked={purchased[buyer.id]}
           onPurchased={(payload) => markPurchased(buyer.id, payload)}
           onClose={() => setBuyer(null)} />
@@ -173,8 +172,8 @@ function BuyerBrowse({ t, market, defaultKind, onOpen, onError }: {
   );
 }
 
-function BuyerDetailModal({ t, market, card, selfSeller, unlocked, onPurchased, onClose }: {
-  t: HubTheme; market: PlatformMarket; card: PlatformListingCard; selfSeller: boolean;
+function BuyerDetailModal({ t, market, card, unlocked, onPurchased, onClose }: {
+  t: HubTheme; market: PlatformMarket; card: PlatformListingCard;
   unlocked: Payload | undefined; onPurchased: (payload: Payload) => void; onClose: () => void;
 }) {
   const [reviews, setReviews] = useState<PlatformReview[] | null>(null);
@@ -212,9 +211,9 @@ function BuyerDetailModal({ t, market, card, selfSeller, unlocked, onPurchased, 
         )}
 
         {!owned && (
-          <button onClick={buy} disabled={busy || selfSeller}
-            style={{ ...primaryBtn(t), width: '100%', opacity: busy || selfSeller ? 0.5 : 1, cursor: busy || selfSeller ? 'not-allowed' : 'pointer', marginBottom: 4 }}>
-            {selfSeller ? '본인 리스팅' : busy ? '구매 중…' : `⬢ ${card.priceCredits} 구매 · 언락`}
+          <button onClick={buy} disabled={busy}
+            style={{ ...primaryBtn(t), width: '100%', opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer', marginBottom: 4 }}>
+            {busy ? '구매 중…' : `⬢ ${card.priceCredits} 구매 · 언락`}
           </button>
         )}
         {err && <div style={{ fontSize: 11.5, color: '#e0392b', margin: '6px 0' }}>{err}</div>}
