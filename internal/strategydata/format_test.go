@@ -1,6 +1,9 @@
 package strategydata
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func newC6Track() *NormalizedTrackFile {
 	return &NormalizedTrackFile{
@@ -15,6 +18,10 @@ func newC6Track() *NormalizedTrackFile {
 	}
 }
 
+func hasAdjustment(adjustments []string, want string) bool {
+	return slices.Contains(adjustments, want)
+}
+
 func TestApplyGameFormat2026DowngradesC6(t *testing.T) {
 	track := newC6Track()
 	got := ApplyGameFormat(track, 2026)
@@ -24,6 +31,15 @@ func TestApplyGameFormat2026DowngradesC6(t *testing.T) {
 	// 다른 슬롯은 유지되어야 한다.
 	if got.TyreStrategy.Compounds["hard"] != "C4" {
 		t.Fatalf("hard compound = %q, want C4", got.TyreStrategy.Compounds["hard"])
+	}
+	if got.StrategyMeta == nil {
+		t.Fatal("2026 track must carry StrategyMeta")
+	}
+	if !hasAdjustment(got.StrategyMeta.Adjustments, "c6_downgraded_to_c5") {
+		t.Fatalf("adjustments %v missing c6_downgraded_to_c5", got.StrategyMeta.Adjustments)
+	}
+	if !hasAdjustment(got.StrategyMeta.Adjustments, "drs_abolished") {
+		t.Fatalf("adjustments %v missing drs_abolished", got.StrategyMeta.Adjustments)
 	}
 }
 
@@ -47,7 +63,7 @@ func TestApplyGameFormat2025ReturnsOriginal(t *testing.T) {
 	}
 }
 
-func TestApplyGameFormatNoC6ReturnsOriginal(t *testing.T) {
+func TestApplyGameFormatNoC6StillAnnotates(t *testing.T) {
 	track := &NormalizedTrackFile{
 		Track: "bahrain",
 		TyreStrategy: NormalizedTyreStrategy{
@@ -55,9 +71,23 @@ func TestApplyGameFormatNoC6ReturnsOriginal(t *testing.T) {
 		},
 	}
 	got := ApplyGameFormat(track, 2026)
-	// C6가 없으면 복사 없이 원본을 그대로 반환한다.
-	if got != track {
-		t.Fatal("track without C6 should return the original pointer (no copy)")
+	// C6가 없어도 26이면 애노테이션 메타를 붙인 복사본을 반환한다.
+	if got == track {
+		t.Fatal("2026 track should return an annotated copy, not the original pointer")
+	}
+	if got.StrategyMeta == nil {
+		t.Fatal("2026 track without C6 must still carry StrategyMeta")
+	}
+	if got.StrategyMeta.SourceGame != "f1_25_scrape" {
+		t.Fatalf("source_game = %q, want f1_25_scrape", got.StrategyMeta.SourceGame)
+	}
+	// C6 강등이 없었으므로 해당 adjustment는 없어야 한다.
+	if hasAdjustment(got.StrategyMeta.Adjustments, "c6_downgraded_to_c5") {
+		t.Fatalf("adjustments %v should not include c6_downgraded_to_c5", got.StrategyMeta.Adjustments)
+	}
+	// 원본은 메타가 붙지 않아야 한다(store 불변).
+	if track.StrategyMeta != nil {
+		t.Fatal("original store track must not be mutated with StrategyMeta")
 	}
 }
 

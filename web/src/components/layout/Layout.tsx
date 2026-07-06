@@ -85,7 +85,13 @@ function clearRemoteQuery() {
   window.history.replaceState(null, '', window.location.pathname);
 }
 
-export function Layout() {
+interface LayoutProps {
+  /** When provided, "go home" actions return to the Hub surface instead of the
+   * room picker (App.tsx switches surfaces). Absent → legacy standalone behavior. */
+  onExitToHub?: () => void;
+}
+
+export function Layout({ onExitToHub }: LayoutProps = {}) {
   const initialRemoteOptions = useMemo(() => buildInitialRemoteOptions(), []);
   const [rtcOptions, setRtcOptions] = useState<RemoteRTCOptions | null>(initialRemoteOptions);
   const [connectAttempted, setConnectAttempted] = useState(initialRemoteOptions !== null);
@@ -231,7 +237,8 @@ export function Layout() {
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+    onExitToHub?.();
+  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState, onExitToHub]);
 
   // Setup manager runs independently — no .shell wrapper (it has overflow:hidden)
   if (dashboardView === 'setup') {
@@ -243,6 +250,8 @@ export function Layout() {
       <RemoteConnect
         onConnect={handleRemoteConnect}
         connectionState={connectionState}
+        onCancel={onExitToHub}
+        cancelLabel={onExitToHub ? '홈' : undefined}
         title="P2P Telemetry Link"
         subtitle="Pick an active sender room from the signaling server, then enter its password to join."
         initialSignalingUrl={readRemoteQuery().signalingUrl || ''}

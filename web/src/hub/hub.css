@@ -1,0 +1,35 @@
+/* FRC Engineer Hub — the only non-inline styles.
+ * Everything is scoped under .hubRoot so it never leaks onto the telemetry
+ * surface, which loads its own theme.css (Fable B3). Keyframes are global by
+ * necessity (referenced by inline `animation`) but namespaced by name. */
+
+.hubRoot,
+.hubRoot *,
+.hubRoot *::before,
+.hubRoot *::after {
+  box-sizing: border-box;
+}
+
+.hubRoot button {
+  font-family: inherit;
+}
+
+@keyframes escpulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.hubRoot ::-webkit-scrollbar { width: 10px; height: 10px; }
+.hubRoot ::-webkit-scrollbar-thumb { background: #c2c8d0; border-radius: 6px; }
+.hubRoot ::-webkit-scrollbar-thumb:hover { background: #aab1bb; }
+.hubRoot ::-webkit-scrollbar-track { background: transparent; }
+
+/* Card hover — the design's `style-hover` attribute (dc-runtime) has no React
+ * equivalent, so it becomes a class. */
+.hubCard {
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.hubCard:hover {
+  border-color: var(--accBorder, rgba(224, 168, 61, 0.42));
+  transform: translateY(-1px);
+}
