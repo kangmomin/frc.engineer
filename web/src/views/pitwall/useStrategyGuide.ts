@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTelemetryStore } from '../../store/telemetryStore';
 import type { SessionInfo, StrategyGuideResponse, WSRequest } from '../../types/telemetry';
 
 export type StrategyGuideStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
@@ -21,6 +22,10 @@ const STRATEGY_GUIDE_TIMEOUT_MS = 15_000;
  * (신규 shell은 P2P RPC만 사용). 구 "Team Radio"(synthetic) 자리를 대체하는 실데이터 RPC.
  * trackId<0(트랙 미확정)이면 idle, 요청 중 loading, 성공 시 ready, 실패/타임아웃/mock
  * 미응답은 모두 동일하게 unavailable로 graceful degrade한다(Spec §4.4).
+ *
+ * connectionState를 effect deps에 포함한다(FIX-2) — 트랙이 바뀌지 않아도 연결이 끊겼다
+ * 살아나면(reconnecting→connected) 재조회하도록 해, 일시 단절 중 실패한 요청 때문에
+ * 'unavailable'에 영구 고착되는 문제를 해소한다.
  */
 export function useStrategyGuide(
   request: RequestFn,
@@ -30,6 +35,7 @@ export function useStrategyGuide(
   const [state, setState] = useState<StrategyGuideState>({ status: 'idle', data: null });
   const trackId = session?.trackId ?? -1;
   const trackName = session?.trackName ?? '';
+  const connectionState = useTelemetryStore((s) => s.connectionState);
 
   useEffect(() => {
     if (trackId < 0) {
@@ -52,7 +58,7 @@ export function useStrategyGuide(
       });
 
     return () => controller.abort();
-  }, [request, trackId, trackName, gameFormat]);
+  }, [request, trackId, trackName, gameFormat, connectionState]);
 
   return state;
 }

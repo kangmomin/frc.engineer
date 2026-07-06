@@ -29,7 +29,7 @@ export function StrategyGuidePanel({ state }: { state: StrategyGuideState }) {
       <PanelTitle title="Strategy Guide" tone="secondary" detail={track.track} />
       <div style={{ padding: '7px 9px', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderRadius: 3 }}>
         <div style={{ fontSize: 9.5, letterSpacing: '.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>50% Baseline</div>
-        <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 16 }}>{track.track_info.laps_50pct}L</div>
+        <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 16 }}>{track.track_info?.laps_50pct ?? '—'}L</div>
       </div>
       {tyreLife.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
