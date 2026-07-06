@@ -192,6 +192,8 @@ export interface LeaderRow {
   dmgFRc: string;
   dmgRW: string;
   dmgRWc: string;
+  dmgOTH: string;
+  dmgOTHc: string;
 }
 
 function rowBackground(tone: ReturnType<typeof getDriverRowTone>, index: number): string {
@@ -275,11 +277,14 @@ function damageCell(driver: DriverInfo): {
   dmgFRc: string;
   dmgRW: string;
   dmgRWc: string;
+  dmgOTH: string;
+  dmgOTHc: string;
 } {
   const items = getDamageSummaryItems(driver);
   const fl = items[0].value;
   const fr = items[1].value;
   const rw = items[2].value;
+  const oth = items[3].value;
   return {
     dmgFL: `${fl}%`,
     dmgFLc: damageTone(fl, 'FL'),
@@ -287,6 +292,8 @@ function damageCell(driver: DriverInfo): {
     dmgFRc: damageTone(fr, 'FR'),
     dmgRW: `${rw}%`,
     dmgRWc: damageTone(rw, 'RW'),
+    dmgOTH: `${oth}%`,
+    dmgOTHc: damageTone(oth, 'OTH'),
   };
 }
 
@@ -361,6 +368,8 @@ export function deriveLeaderboardRows(
       dmgFRc: dmg.dmgFRc,
       dmgRW: dmg.dmgRW,
       dmgRWc: dmg.dmgRWc,
+      dmgOTH: dmg.dmgOTH,
+      dmgOTHc: dmg.dmgOTHc,
     };
   });
 }
