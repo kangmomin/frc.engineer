@@ -1,6 +1,8 @@
 import { PanelTitle } from '../../ui';
-import { COL_ALIGN, COL_ORDER, columnHeadLabel, type ColumnKey } from './columns';
+import { COL_ALIGN, COL_ORDER, MAX_COL_WIDTH, MIN_COL_WIDTH, columnHeadLabel, type ColumnKey } from './columns';
 import type { LeaderRow } from './derive/leaderboardRows';
+
+const RESIZE_STEP_PX = 10;
 
 const headLabel: React.CSSProperties = {
   fontSize: 10,
@@ -18,10 +20,11 @@ export interface LeaderboardPanelProps {
   is2026: boolean;
   detail: string;
   onResizeStart: (key: ColumnKey, e: React.PointerEvent<HTMLDivElement>) => void;
+  onNudgeWidth: (key: ColumnKey, delta: number) => void;
 }
 
 /** 목업 리더보드 섹션의 가변 컬럼 레이아웃을 실데이터(LeaderRow)로 렌더하는 순수 컴포넌트. */
-export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeStart }: LeaderboardPanelProps) {
+export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeStart, onNudgeWidth }: LeaderboardPanelProps) {
   const active = COL_ORDER.filter((k) => cols[k]);
   const gridTemplate = `38px minmax(128px,1.1fr) ${active.map((k) => `${colW[k]}px`).join(' ')}`;
 
@@ -62,11 +65,27 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                   {columnHeadLabel(k, is2026)}
                 </span>
                 <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize ${columnHeadLabel(k, is2026)} column`}
+                  aria-valuenow={colW[k]}
+                  aria-valuemin={MIN_COL_WIDTH}
+                  aria-valuemax={MAX_COL_WIDTH}
+                  tabIndex={0}
                   onPointerDown={(e) => onResizeStart(k, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      onNudgeWidth(k, -RESIZE_STEP_PX);
+                    } else if (e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      onNudgeWidth(k, RESIZE_STEP_PX);
+                    }
+                  }}
                   title="Drag to resize column"
                   style={{ position: 'absolute', right: -6, top: -4, bottom: -4, width: 11, cursor: 'col-resize', zIndex: 5, display: 'flex', justifyContent: 'center' }}
                 >
-                  <span style={{ width: 2, background: 'var(--bg-panel-border)', borderRadius: 1 }} />
+                  <span style={{ width: 2, background: 'rgba(132,147,150,.35)', borderRadius: 1 }} />
                 </div>
               </div>
             ))}

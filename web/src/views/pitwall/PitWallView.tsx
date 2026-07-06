@@ -46,16 +46,20 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   const strategyGuide = useStrategyGuide(request, session, gameFormat);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // rows/myCar/lapCounter를 게이트 앞에서 useMemo로 고정한다(FIX-3/comp-H1) — 컬럼 리사이즈
+  // 드래그·설정 팝오버 토글 등 이 값들과 무관한 리렌더마다 파생 전체를 재계산하지 않도록 한다.
+  // 각 derive 함수는 session=null/drivers=[]에 안전하므로 게이트 이전에 호출해도 무방하다.
+  const rows = useMemo(() => deriveLeaderboardRows(drivers, player, is2026, session), [drivers, player, is2026, session]);
+  const myCar = useMemo(() => deriveMyCar(player, drivers, session), [player, drivers, session]);
+  const lapCounter = useMemo(() => deriveLapCounter(drivers, session), [drivers, session]);
+
   // ── 게이트(모든 hook 이후) ── Broadcast와 달리 비-Race 세션 게이트는 두지 않는다
   // (cockpit은 practice/race 모두 유효; quali는 QUALI 탭이 별도, Spec §1).
   if (!session || drivers.length === 0) {
     return <PitWallEmpty controls={controls} />;
   }
 
-  // ── 순수 파생 ──
-  const rows = deriveLeaderboardRows(drivers, player, is2026, session);
-  const myCar = deriveMyCar(player, drivers, session);
-  const lapCounter = deriveLapCounter(drivers, session);
+  // ── 순수 파생(메모이즈 대상 아님 — 저비용) ──
   const raceStatus = getRaceStatus(session);
   const cond = getTrackCondition(session.weather);
   const activeColCount = COL_ORDER.filter((k) => prefs.cols[k]).length;
@@ -98,6 +102,7 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
           is2026={is2026}
           detail={`${drivers.length} Cars · ${activeColCount} fields · ${is2026 ? 'F1 26' : 'F1 25'}`}
           onResizeStart={prefs.startResize}
+          onNudgeWidth={prefs.nudgeWidth}
         />
         <aside style={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 9, overflowY: 'auto' }}>
           {prefs.panels.myCar && <MyCarPanel car={myCar} detail={player ? player.name : '—'} />}
