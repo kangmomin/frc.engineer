@@ -16,6 +16,7 @@ import type {
   ReplayStreamMeta,
 } from '../types/telemetry';
 import { getConnectionDetail, isConnectionFailure } from '../utils/connectionStatus';
+import { BroadcastView } from '../views/broadcast/BroadcastView';
 import { PlaceholderView } from '../views/PlaceholderView';
 import '../styles/theme.css';
 import { Stage } from './Stage';
@@ -288,6 +289,7 @@ function renderView(controls: ShellControls) {
   // Phase 1~3 에서 각 뷰를 실제 구현으로 교체한다.
   switch (controls.view) {
     case 'broadcast':
+      return <BroadcastView controls={controls} />;
     case 'pitwall':
     case 'qualifying':
     default:
