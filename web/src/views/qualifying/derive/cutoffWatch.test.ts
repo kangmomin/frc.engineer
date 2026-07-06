@@ -114,6 +114,28 @@ describe('deriveCutoffWatch — Q3 (no cutoff, pole fight)', () => {
     expect(vm.marginText).toBe('—');
     expect(vm.cutoffPosText).toBe('—');
   });
+
+  it('SS3 mirrors Q3 and also shows "Fighting for pole"', () => {
+    const sorted = [makeDriver(0, 1, 89_500)];
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('SS3'), 300, new Map());
+    expect(vm.statusLabel).toBe('Fighting for pole');
+  });
+});
+
+describe('deriveCutoffWatch — non-standard noCutoff formats (Short Q/OSQ) never claim pole fight (scope L3)', () => {
+  it('Short Q has noCutoff but is not a pole shootout — status/advice degrade honestly, not "Fighting for pole"', () => {
+    const sorted = [makeDriver(0, 1, 89_500)];
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Short Q'), 300, new Map());
+    expect(vm.showCutoff).toBe(false);
+    expect(vm.statusLabel).toBe('—');
+    expect(vm.advice).toBe('Clear track ahead');
+  });
+
+  it('OSQ still respects the clock-warning branch over the honest degrade', () => {
+    const sorted = [makeDriver(0, 1, 89_500)];
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('OSQ'), 45, new Map());
+    expect(vm.advice).toBe("Under 90s — make sure you're on a lap");
+  });
 });
 
 describe('deriveCutoffWatch — advice priority (clock > segment > default)', () => {

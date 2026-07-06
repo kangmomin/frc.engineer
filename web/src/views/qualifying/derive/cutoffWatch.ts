@@ -21,11 +21,18 @@ export interface CutoffWatchVM {
   advice: string;
 }
 
+/** segment.noCutoff은 Q3/SS3(폴 슛아웃)뿐 아니라 Short Q/OSQ 등 비표준 포맷(구조를 알 수 없어
+ * safeCount가 null로 degrade된 경우)에서도 true다(qualiSegment.ts) — "폴을 다툰다"는 문구는
+ * 실제 폴 슛아웃(Q3/SS3)일 때만 정확하므로 별도로 구분한다(scope L3). */
+function isPoleShootout(segment: QualiSegmentVM): boolean {
+  return segment.segment === 'Q3' || segment.segment === 'SS3';
+}
+
 function deriveAdvice(segment: QualiSegmentVM, sessionTimeLeft: number | undefined): string {
   if (sessionTimeLeft != null && sessionTimeLeft < CLOCK_WARNING_SECONDS) {
     return "Under 90s — make sure you're on a lap";
   }
-  if (segment.noCutoff) return 'Final runs — one lap for pole';
+  if (isPoleShootout(segment)) return 'Final runs — one lap for pole';
   return 'Clear track ahead';
 }
 
@@ -64,12 +71,16 @@ export function deriveCutoffWatch(
   const showCutoff = !segment.noCutoff && segment.safeCount != null;
 
   if (!showCutoff) {
+    // "Fighting for pole"는 실제 폴 슛아웃(Q3/SS3)일 때만 정확하다(scope L3) — Short Q/OSQ 같은
+    // 비표준 포맷은 구조를 알 수 없으므로(noCutoff=true지만 폴 슛아웃이 아님) 정직하게 대시로
+    // degrade한다(조작 금지, qualiSegment.ts의 동일 철학).
+    const poleShootout = isPoleShootout(segment);
     return {
       hasPlayer: true,
       showCutoff: false,
       myPos,
-      statusLabel: 'Fighting for pole',
-      statusColor: 'var(--accent)',
+      statusLabel: poleShootout ? 'Fighting for pole' : DASH,
+      statusColor: poleShootout ? 'var(--accent)' : 'var(--text-muted)',
       marginText: DASH,
       marginColor: 'var(--text-muted)',
       cutoffPosText: DASH,

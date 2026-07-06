@@ -3,7 +3,6 @@ import type { DriverTryState } from '../../../components/qualifying/tryStatus';
 import { getTeamColor } from '../../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompounds';
 import type { DriverInfo } from '../../../types/telemetry';
-import { deriveDriverCodes } from '../../../utils/driverCodes';
 import { formatLapTime } from '../../../utils/formatters';
 import { formatSectorTime, type SectorAcc } from '../useSectorAccumulator';
 import type { QualiSegmentVM } from './qualiSegment';
@@ -69,10 +68,12 @@ function getDriverStatusInfo(pitStatus: number, driverStatus: number): { label: 
   }
 }
 
-/** 레거시 `formatGapToLeader`(123-128) 이식(순수 델타 포맷). 리더/POLE 표기는 호출부에서 조립한다. */
+/** 레거시 `formatGapToLeader`(123-128) 이식(순수 델타 포맷). 리더/POLE 표기는 호출부에서 조립한다.
+ * 동타이(비리더가 리더와 정확히 같은 best, 실제로 발생 가능한 0.000s 동률)는 빈 문자열이 아니라
+ * `+0.000`을 반환한다(comp m-6/scope L4) — 빈 문자열은 "값 없음"과 "0초 차"를 구분하지 못한다. */
 function formatGapDeltaMs(driverBest: number, leaderBest: number): string {
   if (driverBest <= 0 || leaderBest <= 0) return '--';
-  if (driverBest === leaderBest) return '';
+  if (driverBest === leaderBest) return '+0.000';
   const delta = driverBest - leaderBest;
   return `+${(delta / 1000).toFixed(3)}`;
 }
@@ -94,6 +95,14 @@ function sectorCell(value: number, overallBest: number): { text: string; color: 
   return { text, color };
 }
 
+/**
+ * [Assumption] Spec 시그니처는 `(sorted, accMap, tryMap, overallBest, segment, player,
+ * leaderBest)`이지만, 컨테이너(QualifyingView)가 이미 My Lap/Cutoff Watch와 공유하는
+ * `codes` Map을 그대로 받도록 파라미터를 추가했다(comp m-1) — 이전엔 이 함수가 매 렌더 `sorted`로
+ * `deriveDriverCodes`를 다시 호출해 O(n log n) 계산을 중복 수행했다. `deriveDriverCodes`는
+ * 입력 배열을 index 오름차순으로 재정렬 후 계산하므로 `sorted`(포지션 순)로 부르든 컨테이너의
+ * `allDrivers`(원본 순)로 부르든 결과 Map은 동일하다 — 재사용은 순수 성능 개선이다.
+ */
 export function deriveClassificationRows(
   sorted: DriverInfo[],
   accMap: Map<number, SectorAcc>,
@@ -102,9 +111,8 @@ export function deriveClassificationRows(
   segment: QualiSegmentVM,
   player: DriverInfo | null,
   leaderBest: number,
+  codes: Map<number, string>,
 ): ClassificationRow[] {
-  const codes = deriveDriverCodes(sorted);
-
   return sorted.map((d, i) => {
     const pos = i + 1;
     const isPlayer = player != null && d.index === player.index;

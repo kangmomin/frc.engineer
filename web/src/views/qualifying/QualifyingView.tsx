@@ -73,8 +73,8 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
   const leaderBest = getQualifyingBestLapTime(sortedDrivers[0]);
 
   const rows = useMemo(
-    () => deriveClassificationRows(sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest),
-    [sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest],
+    () => deriveClassificationRows(sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest, codes),
+    [sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest, codes],
   );
   const myLap = useMemo(
     () => deriveMyLap(player, playerAcc, tryMap, trackGap, session, codes, qualiState),

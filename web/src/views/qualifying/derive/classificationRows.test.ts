@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DriverTryState } from '../../../components/qualifying/tryStatus';
 import type { DriverInfo } from '../../../types/telemetry';
+import { deriveDriverCodes } from '../../../utils/driverCodes';
 import type { SectorAcc } from '../useSectorAccumulator';
 import { deriveClassificationRows } from './classificationRows';
 import { deriveQualiSegment } from './qualiSegment';
@@ -79,7 +80,7 @@ describe('deriveClassificationRows — pos/leader/player/drop coloring', () => {
   it('leader is purple, player is cyan, drop-zone is red, else muted', () => {
     const drivers = [makeDriver(0, { position: 1, bestLapTime: 90_000 }), makeDriver(1, { position: 2, bestLapTime: 91_000 })];
     const segment = deriveQualiSegment('Q1'); // safeCount=15, both inside safe zone here
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, drivers[1], 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, drivers[1], 90_000, deriveDriverCodes(drivers));
 
     expect(rows[0].posColor).toBe('var(--sector-purple)'); // leader
     expect(rows[1].posColor).toBe('var(--accent)'); // player (index 1)
@@ -92,7 +93,7 @@ describe('deriveClassificationRows — pos/leader/player/drop coloring', () => {
     const drivers = Array.from({ length: 16 }, (_, i) => makeDriver(i, { position: i + 1, bestLapTime: 90_000 + i * 100 }));
     const segment = deriveQualiSegment('Q1');
     const player = drivers[15];
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, player, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, player, 90_000, deriveDriverCodes(drivers));
 
     expect(rows[15].isDrop).toBe(true);
     expect(rows[15].posColor).toBe('var(--accent)'); // player wins over drop for text color (contrast)
@@ -103,7 +104,7 @@ describe('deriveClassificationRows — pos/leader/player/drop coloring', () => {
     // Q1 safeCount=15 — build 16 drivers so position 16 is the first drop.
     const drivers = Array.from({ length: 16 }, (_, i) => makeDriver(i, { position: i + 1, bestLapTime: 90_000 + i * 100 }));
     const segment = deriveQualiSegment('Q1');
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000, deriveDriverCodes(drivers));
 
     expect(rows[14].isDrop).toBe(false); // P15 safe
     expect(rows[15].isDrop).toBe(true); // P16 dropped
@@ -114,7 +115,7 @@ describe('deriveClassificationRows — pos/leader/player/drop coloring', () => {
   it('Q3 (no cutoff) never marks drop/cutoff regardless of position', () => {
     const drivers = Array.from({ length: 10 }, (_, i) => makeDriver(i, { position: i + 1, bestLapTime: 90_000 + i * 50 }));
     const segment = deriveQualiSegment('Q3');
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000, deriveDriverCodes(drivers));
     expect(rows.every((r) => !r.isDrop && !r.isCutoffMark)).toBe(true);
   });
 });
@@ -123,7 +124,7 @@ describe('deriveClassificationRows — gap column (POLE for leader, dash for no 
   it('leader shows POLE in purple; others show +delta', () => {
     const drivers = [makeDriver(0, { bestLapTime: 90_000 }), makeDriver(1, { bestLapTime: 91_234 })];
     const segment = deriveQualiSegment('Q1');
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000, deriveDriverCodes(drivers));
     expect(rows[0].gap).toBe('POLE');
     expect(rows[0].gapColor).toBe('var(--sector-purple)');
     expect(rows[1].gap).toBe('+1.234');
@@ -132,9 +133,17 @@ describe('deriveClassificationRows — gap column (POLE for leader, dash for no 
   it('drivers with no recorded lap show dash, not 0.000/NaN', () => {
     const drivers = [makeDriver(0, { bestLapTime: 90_000 }), makeDriver(1, { bestLapTime: 0, lastLapTime: 0 })];
     const segment = deriveQualiSegment('Q1');
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000, deriveDriverCodes(drivers));
     expect(rows[1].gap).toBe('—');
     expect(rows[1].best).not.toContain('0.000');
+  });
+
+  it('a non-leader tied exactly with the leader shows "+0.000", not an empty string (comp m-6/scope L4)', () => {
+    const drivers = [makeDriver(0, { bestLapTime: 90_000 }), makeDriver(1, { bestLapTime: 90_000 })];
+    const segment = deriveQualiSegment('Q1');
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, segment, null, 90_000, deriveDriverCodes(drivers));
+    expect(rows[0].gap).toBe('POLE');
+    expect(rows[1].gap).toBe('+0.000');
   });
 });
 
@@ -147,7 +156,7 @@ describe('deriveClassificationRows — sector purple highlight (overall best, no
     ]);
     const overallBest: SectorAcc = { bestS1: 29_500, bestS2: 31_000, bestS3: 28_000 };
     const segment = deriveQualiSegment('Q1');
-    const rows = deriveClassificationRows(drivers, accMap, new Map(), overallBest, segment, null, 90_000);
+    const rows = deriveClassificationRows(drivers, accMap, new Map(), overallBest, segment, null, 90_000, deriveDriverCodes(drivers));
 
     expect(rows[0].s1Color).toBe('var(--sector-purple)');
     expect(rows[0].s2Color).toBe('var(--sector-purple)');
@@ -158,7 +167,7 @@ describe('deriveClassificationRows — sector purple highlight (overall best, no
 
   it('missing sector data (no accumulator entry) renders dash, not 0.000', () => {
     const drivers = [makeDriver(0)];
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, deriveQualiSegment('Q1'), null, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, deriveQualiSegment('Q1'), null, 90_000, deriveDriverCodes(drivers));
     expect(rows[0].s1).toBe('—');
     expect(rows[0].s2).toBe('—');
     expect(rows[0].s3).toBe('—');
@@ -169,7 +178,7 @@ describe('deriveClassificationRows — Try/Status columns', () => {
   it('passes through tryMap label/tone and defaults to dash when absent', () => {
     const drivers = [makeDriver(0), makeDriver(1)];
     const tryMap = new Map([[0, makeTryState({ label: 'TRY', tone: 'attack' })]]);
-    const rows = deriveClassificationRows(drivers, new Map(), tryMap, EMPTY_ACC, deriveQualiSegment('Q1'), null, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), tryMap, EMPTY_ACC, deriveQualiSegment('Q1'), null, 90_000, deriveDriverCodes(drivers));
     expect(rows[0].tryLabel).toBe('TRY');
     expect(rows[1].tryLabel).toBe('—');
   });
@@ -182,11 +191,17 @@ describe('deriveClassificationRows — Try/Status columns', () => {
       makeDriver(3, { pitStatus: 0, driverStatus: 3 }),
       makeDriver(4, { pitStatus: 0, driverStatus: 0 }),
     ];
-    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, deriveQualiSegment('Q1'), null, 90_000);
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, deriveQualiSegment('Q1'), null, 90_000, deriveDriverCodes(drivers));
     expect(rows[0].statusLabel).toBe('PIT');
     expect(rows[1].statusLabel).toBe('FLY');
     expect(rows[2].statusLabel).toBe('IN');
     expect(rows[3].statusLabel).toBe('OUT');
     expect(rows[4].statusLabel).toBe('GAR');
+  });
+
+  it('driverStatus omitempty-absent (undefined, GARAGE) normalizes to GAR, not dash (M1)', () => {
+    const drivers = [makeDriver(0, { pitStatus: 0, driverStatus: undefined })];
+    const rows = deriveClassificationRows(drivers, new Map(), new Map(), EMPTY_ACC, deriveQualiSegment('Q1'), null, 90_000, deriveDriverCodes(drivers));
+    expect(rows[0].statusLabel).toBe('GAR');
   });
 });

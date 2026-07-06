@@ -14,7 +14,8 @@ const STATUS_COLOR: Record<StatusTone, string> = {
 };
 
 const CLOCK_WARNING_SECONDS = 90;
-const SEGMENT_CHIPS = ['Q1', 'Q2', 'Q3'] as const;
+const Q_SEGMENT_CHIPS = ['Q1', 'Q2', 'Q3'] as const;
+const SS_SEGMENT_CHIPS = ['SS1', 'SS2', 'SS3'] as const;
 
 /** 레거시 `formatTimeLeft`(QualifyingDashboard.tsx:500-505) 이식. */
 function formatTimeLeft(seconds?: number): string {
@@ -43,6 +44,12 @@ export interface QualifyingHeaderProps {
 export function QualifyingHeader({ controls, gpTitle, sessionType, segment, sessionTimeLeft, weather, status, is2026 }: QualifyingHeaderProps) {
   const statusColor = STATUS_COLOR[status.tone];
   const clockWarning = sessionTimeLeft != null && sessionTimeLeft > 0 && sessionTimeLeft < CLOCK_WARNING_SECONDS;
+  // 세그먼트 칩을 세그먼트 패밀리에 따라 동적화한다(scope M2) — 이전엔 Q1/Q2/Q3로 고정돼 있어
+  // SS1/SS2/SS3(스프린트 슛아웃) 세션에서는 어떤 칩도 active로 매칭되지 않아 지시자가 먹통이었다.
+  // segment.segment가 'SS'를 포함하면(SS1-3/Short SS/OSS) SS 칩을, 아니면 Q 칩을 보여준다 —
+  // Short SS/OSS처럼 구조를 알 수 없는 포맷은 세 칩 중 어느 것도 active로 매칭되지 않는데, 이는
+  // qualiSegment.ts의 "모르면 조작하지 않고 정직하게 degrade" 원칙과 일관된 동작이다.
+  const segmentChips = segment.segment.includes('SS') ? SS_SEGMENT_CHIPS : Q_SEGMENT_CHIPS;
 
   return (
     <header
@@ -81,7 +88,7 @@ export function QualifyingHeader({ controls, gpTitle, sessionType, segment, sess
             aria-label="Qualifying segment"
             style={{ display: 'flex', gap: 3, background: 'rgba(14,14,15,.6)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-md)', padding: 3 }}
           >
-            {SEGMENT_CHIPS.map((chip) => {
+            {segmentChips.map((chip) => {
               const active = segment.segment === chip;
               return (
                 <span
