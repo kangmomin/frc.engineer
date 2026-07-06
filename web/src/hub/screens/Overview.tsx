@@ -6,15 +6,23 @@ import type { HubOverview, HubMarketItem, HubSession, HubLedgerEntry } from '../
 
 const MONO = "'JetBrains Mono',monospace";
 
+// RealWallet overrides the mock wallet/ledger with the logged-in account's actual
+// platform balance and entries (Phase 3D1). Absent → mock demo.
+export interface RealWallet {
+  balance: number;
+  ledger: HubLedgerEntry[];
+}
+
 interface Props {
   t: HubTheme;
   data: HubOverview;
   featured: HubMarketItem[];
   onGoMarket: () => void;
   onGoAnalysis: () => void;
+  wallet?: RealWallet | null;
 }
 
-export function Overview({ t, data, featured, onGoMarket, onGoAnalysis }: Props) {
+export function Overview({ t, data, featured, onGoMarket, onGoAnalysis, wallet }: Props) {
   // Real sessions carry true epoch timestamps, so relative time must be based on
   // the real clock, not format.ts's REF_NOW (which exists only to keep mock
   // demo times deterministic and would render every real session as "방금").
@@ -86,27 +94,34 @@ export function Overview({ t, data, featured, onGoMarket, onGoAnalysis }: Props)
           <div style={{ background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12, padding: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}>
               <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.14em', color: t.t2, fontWeight: 600 }}>CREDIT WALLET</div>
-              {/* Credits/ledger have no backend yet (Phase 3) — flag them as demo so
-                  the mock ledger isn't read as real payouts about real sessions. */}
-              <span style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: '.08em', color: t.t3, border: `1px solid ${t.line2}`, borderRadius: 4, padding: '2px 6px' }}>데모</span>
+              {/* Real when logged in (3D1); demo otherwise so a mock ledger isn't
+                  read as real payouts about real sessions. */}
+              <span style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: '.08em', color: wallet ? t.accInk : t.t3, border: `1px solid ${wallet ? t.accBorder : t.line2}`, borderRadius: 4, padding: '2px 6px' }}>{wallet ? '실계정' : '데모'}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-              <span style={{ fontFamily: MONO, fontSize: 34, fontWeight: 700, color: t.accInk, lineHeight: 0.9 }}>⬢ {data.spendableCredits.toLocaleString('en-US')}</span>
+              <span style={{ fontFamily: MONO, fontSize: 34, fontWeight: 700, color: t.accInk, lineHeight: 0.9 }}>⬢ {(wallet ? wallet.balance : data.spendableCredits).toLocaleString('en-US')}</span>
               <span style={{ fontSize: 11, color: t.t3, paddingBottom: 4 }}>spendable</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '9px 12px', background: t.warnSoft, border: `1px dashed ${t.warnBorder}`, borderRadius: 8 }}>
-              <span style={{ color: t.warn, fontFamily: MONO, fontSize: 13, animation: 'escpulse 1.6s ease-in-out infinite' }}>◷</span>
-              <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: t.warn }}>{data.escrowCredits}</span>
-              <span style={{ fontSize: 11, color: t.warn, opacity: 0.85 }}>escrowed · 검증 수렴 대기</span>
-            </div>
+            {/* No escrow in 3D1 (immediate settlement) — the escrow row is mock-only. */}
+            {!wallet && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, padding: '9px 12px', background: t.warnSoft, border: `1px dashed ${t.warnBorder}`, borderRadius: 8 }}>
+                <span style={{ color: t.warn, fontFamily: MONO, fontSize: 13, animation: 'escpulse 1.6s ease-in-out infinite' }}>◷</span>
+                <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: t.warn }}>{data.escrowCredits}</span>
+                <span style={{ fontSize: 11, color: t.warn, opacity: 0.85 }}>escrowed · 검증 수렴 대기</span>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <button onClick={onGoAnalysis} style={{ flex: 1, background: t.acc, color: t.onAcc, border: 0, borderRadius: 8, padding: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>분석 unlock</button>
               <button onClick={onGoMarket} style={{ flex: 1, background: 'transparent', color: t.t1, border: `1px solid ${t.line2}`, borderRadius: 8, padding: 10, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>마켓 열기</button>
             </div>
             <div style={{ marginTop: 16, borderTop: `1px solid ${t.linesoft}`, paddingTop: 6 }}>
-              {data.ledger.map((l, i) => (
-                <LedgerRow key={i} t={t} l={l} />
-              ))}
+              {(wallet ? wallet.ledger : data.ledger).length === 0 ? (
+                <div style={{ fontFamily: MONO, fontSize: 10.5, color: t.t3, padding: '8px 0' }}>거래 내역 없음</div>
+              ) : (
+                (wallet ? wallet.ledger : data.ledger).map((l, i) => (
+                  <LedgerRow key={i} t={t} l={l} />
+                ))
+              )}
             </div>
           </div>
 

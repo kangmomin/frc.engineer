@@ -24,6 +24,7 @@ interface Props {
   myReviews: Record<string, HubReview[]>;
   onOpenSetup: (id: string) => void;
   onBuyStrategy: (id: string) => void;
+  onSell?: () => void; // opens the real "sell my race" flow (Phase 3C); omitted in mock-only builds
 }
 
 export function Market(p: Props) {
@@ -38,7 +39,7 @@ export function Market(p: Props) {
             {setups ? '유저 제작 셋업 · 불변 스냅샷 판매 · content_hash 검증 배지' : '크라우드소싱 레이스 전략 · valid 기록 기반 · 스틴트/피트 플랜'}
           </div>
         </div>
-        <button style={{ background: t.acc, color: t.onAcc, border: 0, borderRadius: 8, padding: '10px 16px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{setups ? '＋ 내 셋업 판매' : '＋ 내 전략 판매'}</button>
+        <button onClick={p.onSell} style={{ background: t.acc, color: t.onAcc, border: 0, borderRadius: 8, padding: '10px 16px', fontSize: 12.5, fontWeight: 700, cursor: p.onSell ? 'pointer' : 'default' }}>{setups ? '＋ 내 셋업 판매' : '＋ 내 전략 판매'}</button>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, background: t.panel2, border: `1px solid ${t.line}`, borderRadius: 9, padding: 4, width: 'fit-content' }}>

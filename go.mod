@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	frc.pitwall.parser/telemetry-go v0.0.0-20260414033605-9ce9091d20ce
 	github.com/energye/systray v1.0.3
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pion/webrtc/v4 v4.2.9
@@ -14,7 +15,6 @@ require (
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
