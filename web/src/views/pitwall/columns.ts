@@ -1,0 +1,123 @@
+/**
+ * Pit Wall 리더보드 가변 컬럼 정의. 목업(PitWall.dc.html)의 COL_ORDER/COL_W/COL_HEAD/
+ * COL_ALIGN 상수를 그대로 이식한다(색상/레이아웃 기준은 목업, 데이터 매핑은 Spec).
+ */
+
+export type ColumnKey =
+  | 'drs'
+  | 'ers'
+  | 'gap'
+  | 'interval'
+  | 'lastLap'
+  | 'penalty'
+  | 'tyre'
+  | 'pit'
+  | 'vmax'
+  | 'sector'
+  | 'damage';
+
+export const COL_ORDER: ColumnKey[] = [
+  'drs',
+  'ers',
+  'gap',
+  'interval',
+  'lastLap',
+  'penalty',
+  'tyre',
+  'pit',
+  'vmax',
+  'sector',
+  'damage',
+];
+
+/** 기본 컬럼폭(px). 리사이즈 시 useDisplayPrefs의 colW가 이 값을 덮어쓴다. */
+export const COL_W: Record<ColumnKey, number> = {
+  drs: 62,
+  ers: 104,
+  gap: 72,
+  interval: 78,
+  lastLap: 86,
+  penalty: 56,
+  tyre: 168,
+  pit: 56,
+  vmax: 64,
+  sector: 186,
+  damage: 150,
+};
+
+/** 테이블 헤더용 풀 라벨. */
+export const COL_HEAD: Record<ColumnKey, string> = {
+  drs: 'DRS',
+  ers: 'ERS',
+  gap: 'To You',
+  interval: 'Interval',
+  lastLap: 'Last Lap',
+  penalty: 'Pen',
+  tyre: 'Tyre · Life',
+  pit: 'Pit',
+  vmax: 'Vmax',
+  sector: 'S1 · S2 · S3',
+  damage: 'Damage',
+};
+
+/** Display Settings 토글 칩용 축약 라벨. */
+export const COL_LABEL: Record<ColumnKey, string> = {
+  drs: 'DRS',
+  ers: 'ERS',
+  gap: 'To You',
+  interval: 'Interval',
+  lastLap: 'Last',
+  penalty: 'Pen',
+  tyre: 'Tyre',
+  pit: 'Pit',
+  vmax: 'Vmax',
+  sector: 'Sector',
+  damage: 'DMG',
+};
+
+export type ColumnAlign = 'center' | 'flex-start' | 'flex-end';
+
+export const COL_ALIGN: Record<ColumnKey, ColumnAlign> = {
+  drs: 'center',
+  ers: 'flex-start',
+  gap: 'flex-end',
+  interval: 'flex-end',
+  lastLap: 'flex-end',
+  penalty: 'center',
+  tyre: 'flex-start',
+  pit: 'center',
+  vmax: 'flex-end',
+  sector: 'center',
+  damage: 'center',
+};
+
+/** 컬럼 헤더 라벨. drs는 2026에서 OVT로 표기(Spec §3). */
+export function columnHeadLabel(key: ColumnKey, is2026: boolean): string {
+  if (key === 'drs') return is2026 ? 'OVT' : 'DRS';
+  return COL_HEAD[key];
+}
+
+/** Display Settings 토글 칩 라벨. drs는 2026에서 OVT로 표기. */
+export function columnChipLabel(key: ColumnKey, is2026: boolean): string {
+  if (key === 'drs') return is2026 ? 'OVT' : 'DRS';
+  return COL_LABEL[key];
+}
+
+/** 기본 컬럼 가시성(목업 기준: drs/ers/gap/interval/lastLap/tyre=true, 나머지=false). */
+export const DEFAULT_COL_VISIBILITY: Record<ColumnKey, boolean> = {
+  drs: true,
+  ers: true,
+  gap: true,
+  interval: true,
+  lastLap: true,
+  penalty: false,
+  tyre: true,
+  pit: false,
+  vmax: false,
+  sector: false,
+  damage: false,
+};
+
+/** 리사이즈 클램프(Spec §3.5: min 40px). max는 목업 startResize 로직 이식(360px). */
+export const MIN_COL_WIDTH = 40;
+export const MAX_COL_WIDTH = 360;
