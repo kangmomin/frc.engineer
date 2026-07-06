@@ -17,9 +17,9 @@ import type {
 } from '../types/telemetry';
 import { getConnectionDetail, isConnectionFailure } from '../utils/connectionStatus';
 import { BroadcastView } from '../views/broadcast/BroadcastView';
-import { PlaceholderView } from '../views/PlaceholderView';
 import { PitWallView } from '../views/pitwall/PitWallView';
 import type { RequestFn } from '../views/pitwall/useStrategyGuide';
+import { QualifyingView } from '../views/qualifying/QualifyingView';
 import '../styles/theme.css';
 import { Stage } from './Stage';
 import type { ShellControls } from './types';
@@ -288,14 +288,13 @@ export function AppShell() {
 }
 
 function renderView(controls: ShellControls, request: RequestFn) {
-  // Phase 1~3 에서 각 뷰를 실제 구현으로 교체한다.
+  // Phase 1~3에서 각 뷰를 실제 구현으로 교체 완료(Broadcast/PitWall/Qualifying).
   switch (controls.view) {
     case 'broadcast':
       return <BroadcastView controls={controls} />;
     case 'pitwall':
       return <PitWallView controls={controls} request={request} />;
     case 'qualifying':
-    default:
-      return <PlaceholderView controls={controls} />;
+      return <QualifyingView controls={controls} />;
   }
 }
