@@ -8,6 +8,7 @@ import { deriveLapCounter } from '../broadcast/derive/fieldDerivations';
 import { COL_ORDER } from './columns';
 import { deriveLeaderboardRows } from './derive/leaderboardRows';
 import { deriveMyCar } from './derive/myCar';
+import { deriveWeather } from './derive/weather';
 import { DisplaySettings } from './DisplaySettings';
 import { LeaderboardPanel } from './LeaderboardPanel';
 import { MyCarPanel } from './MyCarPanel';
@@ -52,6 +53,8 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   const rows = useMemo(() => deriveLeaderboardRows(drivers, player, is2026, session), [drivers, player, is2026, session]);
   const myCar = useMemo(() => deriveMyCar(player, drivers, session), [player, drivers, session]);
   const lapCounter = useMemo(() => deriveLapCounter(drivers, session), [drivers, session]);
+  // WeatherPanel은 VM만 받는 순수 컴포넌트다(Spec §2 VM-only, FIX-4) — 컨테이너가 조립한다.
+  const weather = useMemo(() => deriveWeather(session, prefs.weatherStep), [session, prefs.weatherStep]);
 
   // ── 게이트(모든 hook 이후) ── Broadcast와 달리 비-Race 세션 게이트는 두지 않는다
   // (cockpit은 practice/race 모두 유효; quali는 QUALI 탭이 별도, Spec §1).
@@ -108,7 +111,7 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
           {prefs.panels.myCar && <MyCarPanel car={myCar} detail={player ? player.name : '—'} />}
           {prefs.panels.predictor && <TyrePredictorPanel player={player} />}
           {prefs.panels.weather && (
-            <WeatherPanel session={session} weatherStep={prefs.weatherStep} onStepChange={prefs.setWeatherStep} />
+            <WeatherPanel weather={weather} weatherStep={prefs.weatherStep} onStepChange={prefs.setWeatherStep} />
           )}
           {prefs.panels.strategy && <StrategyGuidePanel state={strategyGuide} />}
         </aside>
