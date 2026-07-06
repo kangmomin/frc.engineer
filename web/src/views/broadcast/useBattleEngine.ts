@@ -38,8 +38,6 @@ interface GapSample {
 interface PairHistory {
   samples: GapSample[];
   active: boolean;
-  enterSince: number | null;
-  exitSince: number | null;
   lastSeenAt: number;
 }
 
@@ -121,37 +119,25 @@ export function useBattleEngine(
 
       let h = history.get(key);
       if (!h) {
-        h = { samples: [], active: false, enterSince: null, exitSince: null, lastSeenAt: now };
+        h = { samples: [], active: false, lastSeenAt: now };
         history.set(key, h);
       }
       h.lastSeenAt = now;
 
-      if (!excluded) {
-        h.exitSince = null;
+      // gap-히스테리시스: 진입은 gap ≤ ENTER_MS(1s, 사정권), 유지는 gap ≤ EXIT_MS(1.2s)로
+      // 1s 경계 플리커를 완충. 핏/랩다운/무데이터 쌍은 제외하고 즉시 비활성화·샘플 폐기.
+      const threshold = h.active ? EXIT_MS : ENTER_MS;
+      if (!excluded && liveGapMs !== undefined && liveGapMs <= threshold) {
+        h.active = true;
         h.samples.push({ t: now, gapMs: liveGapMs });
         while (h.samples.length > 0 && now - h.samples[0].t > WINDOW_MS) h.samples.shift();
         if (h.samples.length > MAX_SAMPLES) h.samples.splice(0, h.samples.length - MAX_SAMPLES);
-
-        if (!h.active) {
-          if (h.enterSince === null) h.enterSince = now;
-          if (now - h.enterSince >= ENTER_MS) {
-            h.active = true;
-            h.enterSince = null;
-          }
-        }
       } else {
-        h.enterSince = null;
-        if (h.active) {
-          if (h.exitSince === null) h.exitSince = now;
-          if (now - h.exitSince >= EXIT_MS) {
-            h.active = false;
-            h.samples = [];
-            h.exitSince = null;
-          }
-        }
+        h.active = false;
+        h.samples = [];
       }
 
-      if (!h.active) continue;
+      if (!h.active || h.samples.length === 0) continue;
 
       // slope: 가장 오래된 샘플이 BASELINE_MS 이상 지난 경우에만 사용(짧은 노이즈 윈도우 배제).
       const newest = h.samples[h.samples.length - 1];
@@ -168,7 +154,11 @@ export function useBattleEngine(
 
       const currentGapMs = liveGapMs ?? newest.gapMs;
       const canArmDrs = driverCanArmDrs(attacker, is2026);
-      const confidencePct = battleConfidence(currentGapMs, rate, canArmDrs);
+      // trend이 stable(±40ms/s deadband 내)이면 rate를 신뢰도에 반영하지 않는다: 짧은 윈도우의
+      // slope를 랩당(≈90s)으로 외삽하면 노이즈 수준(±9ms/s)에도 rateScore가 포화돼 "Gap stable
+      // 인데 Overtake likely soon" 모순이 생긴다. closing/opening만 rate를 반영(stable은 0=중립).
+      const confRate = trend === 'stable' ? 0 : rate;
+      const confidencePct = battleConfidence(currentGapMs, confRate, canArmDrs);
       const range = rangeLabel(currentGapMs, is2026, attacker.overtakeAvailable);
       const predictionText =
         rate === null ? 'building read' : predictionTextForConfidence(confidencePct ?? 0);
