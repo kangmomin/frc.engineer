@@ -18,9 +18,7 @@ export function isDamaged(d: DriverInfo): boolean {
     dmg.diffuser >= BODY_DAMAGE_THRESHOLD ||
     dmg.sidepod >= BODY_DAMAGE_THRESHOLD ||
     dmg.engine >= POWERTRAIN_DAMAGE_THRESHOLD ||
-    dmg.gearbox >= POWERTRAIN_DAMAGE_THRESHOLD ||
-    dmg.drsFault ||
-    dmg.ersFault
+    dmg.gearbox >= POWERTRAIN_DAMAGE_THRESHOLD
   );
 }
 
@@ -118,7 +116,9 @@ export function deriveLapCounter(drivers: DriverInfo[], session: SessionInfo | n
 }
 
 const RED_ISSUE_PATTERN = /(drive[- ]?through|stop[- ]?go|disqualif|time penalty|penalty)/i;
-const SOFT_ISSUE_PATTERN = /collision|contact|off|wing/i;
+// Spec: "collision=soft". `off`(="Reversing off the start line") 등 광의 토큰은 critical
+// 페널티(예: "Black Flag Timer: Reversing off…")를 soft로 오분류하므로 collision 만 매치한다.
+const SOFT_ISSUE_PATTERN = /collision/i;
 const MUTED_ISSUE_PATTERN = /(corner cutting|track limits|lap.*invalid|blocking)/i;
 
 /** Issue Feed 항목 색상 분류. 메시지 텍스트 우선, 매치 없으면 severity로 폴백. */

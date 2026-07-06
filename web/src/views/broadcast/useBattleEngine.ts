@@ -54,8 +54,19 @@ function estimateLapSec(defender: DriverInfo, attacker: DriverInfo): number {
   return DEFAULT_LAP_SEC;
 }
 
-function isSafetyCarActive(safetyCar: string | undefined): boolean {
-  return safetyCar === 'full' || (safetyCar?.startsWith('virtual') ?? false);
+/** SC(full)·VSC(virtual*)·포메이션 랩은 갭이 인위적이라 배틀 판정을 중립화한다. */
+function isFieldNeutralized(safetyCar: string | undefined): boolean {
+  return (
+    safetyCar === 'full' ||
+    safetyCar === 'formation' ||
+    (safetyCar?.startsWith('virtual') ?? false)
+  );
+}
+
+function neutralizedLabel(safetyCar: string | undefined): string {
+  if (safetyCar === 'formation') return 'Formation — no racing';
+  if (safetyCar?.startsWith('virtual')) return 'VSC — gaps neutralised';
+  return 'SC — gaps neutralised';
 }
 
 /**
@@ -99,7 +110,7 @@ export function useBattleEngine(
     const now = Date.now();
     const history = historyRef.current;
     const sorted = [...drivers].sort((a, b) => a.position - b.position);
-    const scActive = isSafetyCarActive(safetyCar);
+    const neutralized = isFieldNeutralized(safetyCar);
 
     const frameKeys = new Set<string>();
     const candidates: BattleInfo[] = [];
@@ -176,13 +187,13 @@ export function useBattleEngine(
         predictionText,
       };
 
-      if (scActive) {
+      if (neutralized) {
         info = {
           ...info,
           trend: 'stable',
           ratePerLapMs: null,
           confidencePct: null,
-          predictionText: 'SC — gaps neutralised',
+          predictionText: neutralizedLabel(safetyCar),
         };
       }
 

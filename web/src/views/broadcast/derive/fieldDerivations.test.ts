@@ -123,9 +123,9 @@ describe('isDamaged', () => {
     expect(isDamaged(makeDriver({ damage: makeDamage({ gearbox: 30 }) }))).toBe(true);
   });
 
-  it('true when drsFault or ersFault is set regardless of numeric damage', () => {
-    expect(isDamaged(makeDriver({ damage: makeDamage({ drsFault: true }) }))).toBe(true);
-    expect(isDamaged(makeDriver({ damage: makeDamage({ ersFault: true }) }))).toBe(true);
+  it('ignores drsFault/ersFault — DAMAGED counts physical damage only (Spec)', () => {
+    expect(isDamaged(makeDriver({ damage: makeDamage({ drsFault: true }) }))).toBe(false);
+    expect(isDamaged(makeDriver({ damage: makeDamage({ ersFault: true }) }))).toBe(false);
   });
 });
 
@@ -224,8 +224,14 @@ describe('classifyIssue', () => {
     expect(classifyIssue('Stop go penalty served', 'info')).toBe('red');
   });
 
-  it('flags collision/contact text as soft', () => {
+  it('flags collision text as soft', () => {
     expect(classifyIssue('Collision between car 1 and car 2', 'info')).toBe('soft');
+  });
+
+  it('does not downgrade a critical penalty that merely contains "off"', () => {
+    // "Black Flag Timer: Reversing off the start line" — 과거 SOFT 패턴의 `off`가 먼저 매치돼
+    // soft 로 격하되던 회귀. 이제 severity=critical 폴백으로 red 유지.
+    expect(classifyIssue('Black Flag Timer: Reversing off the start line', 'critical')).toBe('red');
   });
 
   it('flags track-limits/corner-cutting text as muted', () => {
