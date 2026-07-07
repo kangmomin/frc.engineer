@@ -4,9 +4,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
-import { REF_NOW } from './format';
+import { REF_NOW, tyreLabel } from './format';
 import { MockHubDataSource } from './data/mock';
 import { CompositeHubDataSource } from './data/http';
+import { DEFAULT_TRACK_CONTEXT } from './data/tracks';
+import type { TrackContext } from './data/tracks';
 import { isForcedRemoteMode } from '../runtimeFlags';
 import type {
   HubOverview, HubRankings, HubSetupMarket, HubStrategyMarket, HubPerf, HubReview, HubLedgerEntry,
@@ -49,6 +51,8 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   const [active, setActive] = useState<HubScreen>('overview');
   const [rankTab, setRankTab] = useState<'tt' | 'pace'>('tt');
+  // Shared track+format context for the leaderboards (and, later, market browse).
+  const [trackCtx, setTrackCtx] = useState<TrackContext>(DEFAULT_TRACK_CONTEXT);
   const [mktCat, setMktCat] = useState<'setups' | 'strategy'>('setups');
   const [openSetup, setOpenSetup] = useState<string | null>(null);
   const [sellOpen, setSellOpen] = useState(false);
@@ -86,11 +90,41 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   useEffect(() => {
     let alive = true;
     void dataSource.getOverview().then((d) => { if (alive) setOverview(d); });
-    void dataSource.getRankings().then((d) => { if (alive) setRankings(d); });
     void dataSource.getSetupMarket().then((d) => { if (alive) setSetupMkt(d); });
     void dataSource.getStrategyMarket().then((d) => { if (alive) setStratMkt(d); });
     return () => { alive = false; };
   }, [dataSource]);
+
+  // Leaderboards come straight from the platform for the selected track+format.
+  // rankings === null renders as "loading"; a failed/empty fetch renders as the
+  // honest empty state (no mock fallback).
+  useEffect(() => {
+    if (!platformConfigured) { setRankings(null); return; }
+    let alive = true;
+    setRankings(null);
+    void Promise.all([
+      platformMkt.leaderboardTT(trackCtx.trackId, trackCtx.format),
+      platformMkt.leaderboardPace(trackCtx.trackId, trackCtx.format),
+    ]).then(([tt, pace]) => {
+      if (!alive) return;
+      setRankings({
+        tt: tt.map((r) => ({ handle: r.persona, lapMs: r.lapMs, s1Ms: r.s1Ms, s2Ms: r.s2Ms, s3Ms: r.s3Ms, fmt: trackCtx.format, you: r.you })),
+        pace: pace.map((r) => ({ handle: r.persona, avgMs: r.avgMs, tyre: tyreLabel(r.tyre), laps: r.laps, consistency: r.consistency, you: r.you })),
+      });
+    }).catch(() => { if (alive) setRankings({ tt: [], pace: [] }); });
+    return () => { alive = false; };
+  }, [platformConfigured, platformMkt, trackCtx]);
+
+  // Once logged in, default the track context to the viewer's most recent race
+  // so the board opens on a track they actually drive. Manual selection wins after.
+  useEffect(() => {
+    if (!platformConfigured || !platformAccount) return;
+    let alive = true;
+    void platformMkt.listMyRaces().then((races) => {
+      if (alive && races.length > 0) setTrackCtx({ trackId: races[0].trackId, format: races[0].gameFormat });
+    }).catch(() => { /* keep default context */ });
+    return () => { alive = false; };
+  }, [platformConfigured, platformAccount, platformMkt]);
 
   useEffect(() => {
     if (!platformConfigured) return;
@@ -125,9 +159,15 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             <Overview t={t} data={overview} featured={featured} wallet={realWallet} persona={platformAccount?.persona} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
           ) : <Loading t={t} />)}
 
-          {active === 'rankings' && (rankings ? (
-            <Rankings t={t} data={rankings} tab={rankTab} onSetTab={setRankTab} rowPad={rowPad} />
-          ) : <Loading t={t} />)}
+          {active === 'rankings' && (
+            <Rankings
+              t={t} data={rankings} configured={platformConfigured}
+              trackId={trackCtx.trackId} format={trackCtx.format}
+              onSetTrack={(id) => setTrackCtx((c) => ({ ...c, trackId: id }))}
+              onSetFormat={(f) => setTrackCtx((c) => ({ ...c, format: f }))}
+              tab={rankTab} onSetTab={setRankTab} rowPad={rowPad}
+            />
+          )}
 
           {active === 'market' && (setupMkt && stratMkt ? (
             <>

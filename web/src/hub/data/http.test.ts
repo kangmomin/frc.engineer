@@ -83,11 +83,10 @@ describe('CompositeHubDataSource.getOverview', () => {
 });
 
 describe('CompositeHubDataSource delegates other domains to mock', () => {
-  it('rankings / setup / strategy come from the mock unchanged', async () => {
+  it('setup / strategy come from the mock unchanged', async () => {
     const mock = new MockHubDataSource();
     // The type annotation is itself the compile-time HubDataSource conformance check.
     const ds: HubDataSource = new CompositeHubDataSource(mock);
-    expect(await ds.getRankings()).toEqual(await mock.getRankings());
     expect((await ds.getSetupMarket()).setups.length).toBe(6);
     expect((await ds.getStrategyMarket()).strategies.length).toBe(6);
   });

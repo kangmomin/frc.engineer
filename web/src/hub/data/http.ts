@@ -5,7 +5,7 @@
 // the platform domain exists (Phase 3). Everything degrades to mock when the
 // backend is unreachable — e.g. the Vercel standalone build has no Go server.
 import type {
-  HubDataSource, HubOverview, HubRankings, HubSetupMarket, HubStrategyMarket,
+  HubDataSource, HubOverview, HubSetupMarket, HubStrategyMarket,
 } from './types';
 
 // The hub only runs the composite in two contexts: the Vite dev server (which
@@ -65,10 +65,6 @@ export class CompositeHubDataSource implements HubDataSource {
       console.warn('hub overview: falling back to mock', e);
       return base;
     }
-  }
-
-  getRankings(): Promise<HubRankings> {
-    return this.mock.getRankings();
   }
 
   getSetupMarket(): Promise<HubSetupMarket> {

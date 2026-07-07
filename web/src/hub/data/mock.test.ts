@@ -16,15 +16,6 @@ describe('MockHubDataSource', () => {
     expect(o.recentSessions.every((s) => s.state === 'valid' || s.state === 'escrow')).toBe(true);
   });
 
-  it('TT rows keep s3 = lap - s1 - s2', async () => {
-    const r = await ds.getRankings();
-    expect(r.tt.length).toBeGreaterThan(0);
-    expect(r.pace.length).toBeGreaterThan(0);
-    for (const row of r.tt) {
-      expect(row.s3Ms).toBe(row.lapMs - row.s1Ms - row.s2Ms);
-    }
-  });
-
   it('setup market uses null price for unlisted items and precomputes review perf', async () => {
     const m = await ds.getSetupMarket();
     expect(m.setups.length).toBe(6);

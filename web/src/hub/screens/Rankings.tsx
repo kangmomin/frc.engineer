@@ -1,8 +1,8 @@
 // Rankings screen — Time Trial + Race Pace leaderboards (hub.dc.html:170-234).
 import type { HubTheme } from '../theme';
-import { teamColor } from '../theme';
 import { msToTime, secFmt, sectorColor, lapColor, gapLabel, tyreColor, consistencyColor } from '../format';
 import type { HubRankings, HubTTRow, HubPaceRow } from '../data/types';
+import { HUB_TRACKS, HUB_FORMATS } from '../data/tracks';
 
 const MONO = "'JetBrains Mono',monospace";
 const TT_COLS = '46px minmax(150px,1fr) 82px 82px 82px 94px 84px 64px';
@@ -10,13 +10,18 @@ const PACE_COLS = '46px minmax(150px,1fr) 100px 64px 54px minmax(96px,1fr) 84px'
 
 interface Props {
   t: HubTheme;
-  data: HubRankings;
+  data: HubRankings | null; // null = still loading
+  configured: boolean; // platform (VITE_PLATFORM_URL) present
+  trackId: number;
+  format: string;
+  onSetTrack: (id: number) => void;
+  onSetFormat: (format: string) => void;
   tab: 'tt' | 'pace';
   onSetTab: (tab: 'tt' | 'pace') => void;
   rowPad: string;
 }
 
-export function Rankings({ t, data, tab, onSetTab, rowPad }: Props) {
+export function Rankings({ t, data, configured, trackId, format, onSetTrack, onSetFormat, tab, onSetTab, rowPad }: Props) {
   return (
     <section>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -27,9 +32,10 @@ export function Rankings({ t, data, tab, onSetTab, rowPad }: Props) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <FilterChip t={t} label="TRACK" value="Silverstone GP" />
-          <FilterChip t={t} label="SEASON" value="S3" />
-          <FilterChip t={t} label="TEAM" value="All" />
+          <SelectChip t={t} label="TRACK" value={String(trackId)} onChange={(v) => onSetTrack(Number(v))}
+            options={HUB_TRACKS.map((tr) => ({ value: String(tr.id), label: tr.name }))} />
+          <SelectChip t={t} label="FORMAT" value={format} onChange={onSetFormat}
+            options={HUB_FORMATS.map((f) => ({ value: f, label: f }))} />
         </div>
       </div>
 
@@ -39,8 +45,27 @@ export function Rankings({ t, data, tab, onSetTab, rowPad }: Props) {
         <TabButton t={t} on={tab === 'pace'} label="RACE PACE" onClick={() => onSetTab('pace')} />
       </div>
 
-      {tab === 'tt' ? <TTTable t={t} rows={data.tt} rowPad={rowPad} /> : <PaceTable t={t} rows={data.pace} rowPad={rowPad} />}
+      {!configured ? (
+        <EmptyState t={t} title="플랫폼 미연결" note="리더보드는 Pitwall Cloud 플랫폼에 연결됐을 때 표시됩니다." />
+      ) : data === null ? (
+        <EmptyState t={t} title="불러오는 중…" note="" />
+      ) : tab === 'tt' ? (
+        data.tt.length > 0 ? <TTTable t={t} rows={data.tt} rowPad={rowPad} />
+          : <EmptyState t={t} title="기록 없음" note="이 트랙·포맷에 검증된 타임트라이얼 기록이 아직 없습니다." />
+      ) : (
+        data.pace.length > 0 ? <PaceTable t={t} rows={data.pace} rowPad={rowPad} />
+          : <EmptyState t={t} title="기록 없음" note="이 트랙·포맷에 집계된 레이스 페이스 기록이 아직 없습니다." />
+      )}
     </section>
+  );
+}
+
+function EmptyState({ t, title, note }: { t: HubTheme; title: string; note: string }) {
+  return (
+    <div style={{ background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12, padding: '48px 24px', textAlign: 'center' }}>
+      <div style={{ fontFamily: MONO, fontSize: 12, letterSpacing: '.1em', color: t.t2, fontWeight: 600 }}>{title}</div>
+      {note && <div style={{ fontSize: 12.5, color: t.t3, marginTop: 10, lineHeight: 1.6 }}>{note}</div>}
+    </div>
   );
 }
 
@@ -64,7 +89,7 @@ function TTTable({ t, rows, rowPad }: { t: HubTheme; rows: HubTTRow[]; rowPad: s
           <div key={r.handle} style={{ borderLeft: `2px solid ${r.you ? t.acc : 'transparent'}`, background: r.you ? t.accSoft : 'transparent' }}>
             <div style={{ display: 'grid', gridTemplateColumns: TT_COLS, alignItems: 'center', gap: 10, padding: `${rowPad} 18px`, borderTop: `1px solid ${t.linesoft}` }}>
               <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: posColor }}>{pos}</div>
-              <DriverCell t={t} handle={r.handle} team={r.team} you={r.you} />
+              <DriverCell t={t} handle={r.handle} you={r.you} />
               <SectorCell t={t} ms={r.s1Ms} min={s1[0]} max={s1[1]} />
               <SectorCell t={t} ms={r.s2Ms} min={s2[0]} max={s2[1]} />
               <SectorCell t={t} ms={r.s3Ms} min={s3[0]} max={s3[1]} />
@@ -103,7 +128,7 @@ function PaceTable({ t, rows, rowPad }: { t: HubTheme; rows: HubPaceRow[]; rowPa
           <div key={r.handle} style={{ borderLeft: `2px solid ${r.you ? t.acc : 'transparent'}`, background: r.you ? t.accSoft : 'transparent' }}>
             <div style={{ display: 'grid', gridTemplateColumns: PACE_COLS, alignItems: 'center', gap: 10, padding: `${rowPad} 18px`, borderTop: `1px solid ${t.linesoft}` }}>
               <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: posColor }}>{pos}</div>
-              <DriverCell t={t} handle={r.handle} team={r.team} you={r.you} />
+              <DriverCell t={t} handle={r.handle} you={r.you} />
               <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, textAlign: 'right', color: t.t1 }}>{msToTime(r.avgMs)}</div>
               <div style={{ textAlign: 'center' }}>
                 <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 700, color: tyreColor(r.tyre, t) }}>{r.tyre}</span>
@@ -125,10 +150,9 @@ function PaceTable({ t, rows, rowPad }: { t: HubTheme; rows: HubPaceRow[]; rowPa
   );
 }
 
-function DriverCell({ t, handle, team, you }: { t: HubTheme; handle: string; team: string; you: boolean }) {
+function DriverCell({ t, handle, you }: { t: HubTheme; handle: string; you: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-      <span style={{ width: 9, height: 9, borderRadius: 2, background: teamColor(team), flex: 'none' }} />
       <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: you ? t.accInk : t.t1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{handle}</span>
       {you && (
         <span style={{ fontFamily: MONO, fontSize: 8.5, fontWeight: 700, letterSpacing: '.08em', color: t.onAcc, background: t.acc, padding: '2px 5px', borderRadius: 4, flex: 'none' }}>YOU</span>
@@ -141,11 +165,23 @@ function SectorCell({ t, ms, min, max }: { t: HubTheme; ms: number; min: number;
   return <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, textAlign: 'right', color: sectorColor(ms, min, max, t) }}>{secFmt(ms)}</div>;
 }
 
-function FilterChip({ t, label, value }: { t: HubTheme; label: string; value: string }) {
+function SelectChip({ t, label, value, options, onChange }: {
+  t: HubTheme; label: string; value: string;
+  options: { value: string; label: string }[]; onChange: (value: string) => void;
+}) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: t.panel, border: `1px solid ${t.line}`, borderRadius: 8, padding: '8px 13px', fontSize: 12, color: t.t1 }}>
-      <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.1em', color: t.t3 }}>{label}</span> {value} <span style={{ color: t.t3 }}>▾</span>
-    </div>
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: t.panel, border: `1px solid ${t.line}`, borderRadius: 8, padding: '8px 13px', fontSize: 12, color: t.t1, cursor: 'pointer' }}>
+      <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.1em', color: t.t3 }}>{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ background: 'transparent', border: 0, color: t.t1, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', outline: 'none' }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value} style={{ color: '#111' }}>{o.label}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 

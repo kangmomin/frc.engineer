@@ -3,8 +3,6 @@
 // no handlers. Formatting lives in format.ts, colors in theme.ts, handlers in
 // the components. The HubDataSource interface is what a backend must satisfy;
 // a MockHubDataSource (mock.ts) and a future HttpHubDataSource implement it.
-import type { TyreCompound } from '../format';
-
 export type SessionState = 'valid' | 'escrow';
 export type LedgerState = 'settled' | 'escrow';
 export type StintCompound = 'S' | 'M' | 'H' | 'I' | 'W';
@@ -51,7 +49,6 @@ export interface HubOverview {
 
 export interface HubTTRow {
   handle: string;
-  team: string;
   lapMs: number;
   s1Ms: number;
   s2Ms: number;
@@ -62,9 +59,8 @@ export interface HubTTRow {
 
 export interface HubPaceRow {
   handle: string;
-  team: string;
   avgMs: number;
-  tyre: TyreCompound;
+  tyre: string; // display label ('SOFT'|'MED'|'HARD'|'INT'|'WET'|'—')
   laps: number;
   consistency: number; // 0..1
   you: boolean;
@@ -169,12 +165,13 @@ export interface HubStrategyMarket {
 }
 
 /**
- * The backend contract. Promise-based and domain-grouped so a composite
+ * The own-data + demo contract. Rankings now come straight from the platform
+ * leaderboard endpoints (see PlatformMarket.leaderboardTT/Pace), so they are no
+ * longer part of this source. Promise-based and domain-grouped so a composite
  * provider can swap one domain to HTTP while others stay mock (Fable B2/B5).
  */
 export interface HubDataSource {
   getOverview(): Promise<HubOverview>;
-  getRankings(): Promise<HubRankings>;
   getSetupMarket(): Promise<HubSetupMarket>;
   getStrategyMarket(): Promise<HubStrategyMarket>;
 }

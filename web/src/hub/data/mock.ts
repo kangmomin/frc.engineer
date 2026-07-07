@@ -5,7 +5,7 @@
 // pure functions in the screens (Fable C1); this file only supplies raw data.
 import { REF_NOW } from '../format';
 import type {
-  HubDataSource, HubOverview, HubRankings, HubSetupMarket, HubStrategyMarket,
+  HubDataSource, HubOverview, HubSetupMarket, HubStrategyMarket,
   HubMarketItem, HubReview, HubPerf, HubStrategyItem,
 } from './types';
 
@@ -14,34 +14,6 @@ const DAY = 86_400_000;
 const ago = (ms: number) => REF_NOW - ms;
 
 const RKEYS: (keyof HubPerf)[] = ['downforce', 'topSpeed', 'cornering', 'tyre', 'response'];
-
-// ---- Time Trial (hub.dc.html:613-626) ----
-const TT = [
-  { handle: 'APX_leon', team: 'RedBull', lapMs: 85912, s1Ms: 27412, s2Ms: 31288, you: false },
-  { handle: 'v_soo.r', team: 'Ferrari', lapMs: 86031, s1Ms: 27501, s2Ms: 31402, you: false },
-  { handle: 'nightPace', team: 'McLaren', lapMs: 86208, s1Ms: 27478, s2Ms: 31510, you: false },
-  { handle: 'kangmomin', team: 'Mercedes', lapMs: 86377, s1Ms: 27540, s2Ms: 31560, you: true },
-  { handle: 'drs_open', team: 'Aston', lapMs: 86442, s1Ms: 27612, s2Ms: 31489, you: false },
-  { handle: 'to_the_limit', team: 'Alpine', lapMs: 86588, s1Ms: 27655, s2Ms: 31602, you: false },
-  { handle: 'boxbox_77', team: 'Williams', lapMs: 86719, s1Ms: 27700, s2Ms: 31655, you: false },
-  { handle: 'late_braker', team: 'RB', lapMs: 86854, s1Ms: 27744, s2Ms: 31690, you: false },
-  { handle: 'apex_hunter', team: 'Sauber', lapMs: 87001, s1Ms: 27810, s2Ms: 31744, you: false },
-  { handle: 'tyrewhisperer', team: 'Haas', lapMs: 87233, s1Ms: 27888, s2Ms: 31810, you: false },
-  { handle: 'slow_in_fast', team: 'McLaren', lapMs: 87410, s1Ms: 27940, s2Ms: 31905, you: false },
-  { handle: 'grip_limited', team: 'Ferrari', lapMs: 87699, s1Ms: 28002, s2Ms: 32010, you: false },
-];
-
-// ---- Race pace (hub.dc.html:652-661) ----
-const PACE = [
-  { handle: 'nightPace', team: 'McLaren', avgMs: 89204, tyre: 'MED' as const, laps: 26, consistency: 0.94, you: false },
-  { handle: 'APX_leon', team: 'RedBull', avgMs: 89331, tyre: 'MED' as const, laps: 26, consistency: 0.91, you: false },
-  { handle: 'kangmomin', team: 'Mercedes', avgMs: 89588, tyre: 'HARD' as const, laps: 26, consistency: 0.89, you: true },
-  { handle: 'v_soo.r', team: 'Ferrari', avgMs: 89640, tyre: 'SOFT' as const, laps: 24, consistency: 0.86, you: false },
-  { handle: 'drs_open', team: 'Aston', avgMs: 89902, tyre: 'MED' as const, laps: 26, consistency: 0.88, you: false },
-  { handle: 'late_braker', team: 'RB', avgMs: 90145, tyre: 'HARD' as const, laps: 25, consistency: 0.90, you: false },
-  { handle: 'boxbox_77', team: 'Williams', avgMs: 90402, tyre: 'MED' as const, laps: 26, consistency: 0.83, you: false },
-  { handle: 'tyrewhisperer', team: 'Haas', avgMs: 90771, tyre: 'SOFT' as const, laps: 23, consistency: 0.80, you: false },
-];
 
 // ---- Recent sessions (hub.dc.html:676-682) ----
 const SESSIONS = [
@@ -230,12 +202,6 @@ export class MockHubDataSource implements HubDataSource {
   async getOverview(): Promise<HubOverview> {
     await delay(this.delayMs);
     return OVERVIEW;
-  }
-
-  async getRankings(): Promise<HubRankings> {
-    await delay(this.delayMs);
-    const tt = TT.map((r) => ({ ...r, s3Ms: r.lapMs - r.s1Ms - r.s2Ms, fmt: 'F1 25' }));
-    return { tt, pace: PACE };
   }
 
   async getSetupMarket(): Promise<HubSetupMarket> {

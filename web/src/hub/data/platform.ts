@@ -99,6 +99,32 @@ export interface CreateReviewInput {
   body: string;
 }
 
+// One Time Trial leaderboard row (GET /leaderboards/tt). Public; `you` is set
+// only when the request carries the viewer's Bearer token.
+export interface PlatformTTRow {
+  rank: number;
+  accountId: string;
+  persona: string;
+  lapMs: number;
+  s1Ms: number;
+  s2Ms: number;
+  s3Ms: number;
+  you: boolean;
+}
+
+// One Race Pace leaderboard row (GET /leaderboards/pace). tyre is a raw backend
+// compound ("Soft"/"Medium"/"Hard"/"Inter"/"Wet"/""), mapped to a label in the UI.
+export interface PlatformPaceRow {
+  rank: number;
+  accountId: string;
+  persona: string;
+  avgMs: number;
+  laps: number;
+  consistency: number; // 0..1
+  tyre: string;
+  you: boolean;
+}
+
 // ListingError carries a coarse, user-facing reason so the sell modal can show a
 // Korean message without re-deriving it from a raw status code.
 export type ListingErrorReason =
@@ -163,6 +189,20 @@ async function okJson<T>(res: Response, what: string): Promise<T> {
 
 // PlatformMarket is a thin, stateless client. Callers own loading/error UI state.
 export class PlatformMarket {
+  // --- Leaderboards (public; attach viewer token for the `you` highlight) ---
+
+  async leaderboardTT(trackId: number, format: string): Promise<PlatformTTRow[]> {
+    const res = await pfetchOpen(`/leaderboards/tt?track=${trackId}&format=${encodeURIComponent(format)}`);
+    if (res.status === 400) return [];
+    return okJson(res, '타임트라이얼 리더보드');
+  }
+
+  async leaderboardPace(trackId: number, format: string): Promise<PlatformPaceRow[]> {
+    const res = await pfetchOpen(`/leaderboards/pace?track=${trackId}&format=${encodeURIComponent(format)}`);
+    if (res.status === 400) return [];
+    return okJson(res, '레이스 페이스 리더보드');
+  }
+
   async listMyRaces(): Promise<PlatformSellableRace[]> {
     return okJson(await pfetch('/me/races'), '내 레이스');
   }

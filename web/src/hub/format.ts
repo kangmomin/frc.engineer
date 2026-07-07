@@ -65,11 +65,29 @@ export function lapColor(lapMs: number, leadMs: number, t: HubTheme): string {
   return t.normal;
 }
 
-export type TyreCompound = 'SOFT' | 'MED' | 'HARD';
-export function tyreColor(tyre: TyreCompound, t: HubTheme): string {
-  if (tyre === 'SOFT') return t.tyreRed;
-  if (tyre === 'MED') return t.yellow;
-  return t.tyreHard;
+// tyreLabel maps a raw backend pace-leaderboard compound
+// ("Soft"/"Medium"/"Hard"/"Inter"/"Wet"/"") to a short display label. An empty
+// or unrecognized value (mixed/unknown dominant tyre) renders as "—".
+export function tyreLabel(raw: string): string {
+  switch (raw) {
+    case 'Soft': return 'SOFT';
+    case 'Medium': return 'MED';
+    case 'Hard': return 'HARD';
+    case 'Inter': return 'INT';
+    case 'Wet': return 'WET';
+    default: return '—';
+  }
+}
+
+export function tyreColor(label: string, t: HubTheme): string {
+  switch (label) {
+    case 'SOFT': return t.tyreRed;
+    case 'MED': return t.yellow;
+    case 'HARD': return t.tyreHard;
+    case 'INT': return t.green;
+    case 'WET': return t.wetInk;
+    default: return t.t3;
+  }
 }
 
 /** Consistency ratio (0..1) → bar color, using accent for the mid band. */
