@@ -139,7 +139,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   return (
     <div className="hubRoot" style={rootStyle}>
-      <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} />
+      <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} account={platformAccount} />
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
         <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} />

@@ -1,5 +1,6 @@
 // Hub sidebar — logo, nav, user footer (hub.dc.html:29-48).
 import type { HubTheme } from '../theme';
+import type { PlatformAccount } from '../data/session';
 
 export type HubScreen = 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile';
 
@@ -19,9 +20,11 @@ interface Props {
   active: HubScreen;
   onNav: (id: HubScreen) => void;
   onLaunchLive: () => void;
+  // Logged-in platform account; null when logged out / platform unconfigured.
+  account: PlatformAccount | null;
 }
 
-export function Sidebar({ t, active, onNav, onLaunchLive }: Props) {
+export function Sidebar({ t, active, onNav, onLaunchLive, account }: Props) {
   return (
     <aside
       style={{
@@ -74,13 +77,31 @@ export function Sidebar({ t, active, onNav, onLaunchLive }: Props) {
         </button>
       </nav>
 
-      <div style={{ padding: '16px 20px', borderTop: `1px solid ${t.line}`, display: 'flex', alignItems: 'center', gap: 11, flex: 'none' }}>
-        <div style={{ width: 36, height: 36, borderRadius: 9, background: 'linear-gradient(135deg,#00cfb8,#0c7a6e)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontWeight: 700, fontSize: 12, color: '#04110f' }}>KM</div>
+      <button
+        onClick={() => onNav('profile')}
+        style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 11, flex: 'none', width: '100%', textAlign: 'left', background: 'transparent', border: 0, borderTop: `1px solid ${t.line}`, cursor: 'pointer' }}
+      >
+        {account?.avatarUrl ? (
+          <img src={account.avatarUrl} alt={account.persona} width={36} height={36} style={{ borderRadius: 9, flex: 'none', border: `1px solid ${t.line2}` }} />
+        ) : (
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: account ? 'linear-gradient(135deg,#00cfb8,#0c7a6e)' : t.panel2, border: account ? 0 : `1px solid ${t.line2}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: MONO, fontWeight: 700, fontSize: 13, color: account ? '#04110f' : t.t3 }}>
+            {account ? initials(account.persona) : '?'}
+          </div>
+        )}
         <div style={{ minWidth: 0, lineHeight: 1.3 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: t.t1, overflow: 'hidden', textOverflow: 'ellipsis' }}>kangmomin</div>
-          <div style={{ fontFamily: MONO, fontSize: 9.5, color: t.ok, display: 'flex', alignItems: 'center', gap: 4 }}>◆ STEAM · OWNED</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: t.t1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{account ? account.persona : '로그인'}</div>
+          <div style={{ fontFamily: MONO, fontSize: 9.5, color: account?.verified ? t.ok : t.t3, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {account ? (account.verified ? '◆ STEAM · OWNED' : 'STEAM · 미검증') : 'PROFILE에서 로그인'}
+          </div>
         </div>
-      </div>
+      </button>
     </aside>
   );
+}
+
+// initials returns up to two uppercase leading characters of a persona for the
+// avatar fallback (e.g. "kangmomin" → "KA").
+function initials(persona: string): string {
+  const s = persona.trim();
+  return s ? s.slice(0, 2).toUpperCase() : '?';
 }
