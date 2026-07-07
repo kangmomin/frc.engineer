@@ -1,15 +1,10 @@
 // FRC Engineer Hub — data contract.
 // These are RAW domain types (Fable B1): no preformatted strings, no colors,
 // no handlers. Formatting lives in format.ts, colors in theme.ts, handlers in
-// the components. The HubDataSource interface is what a backend must satisfy;
-// a MockHubDataSource (mock.ts) and a future HttpHubDataSource implement it.
+// the components. HubDataSource carries only the viewer's OWN telemetry summary
+// (leaderboards and market are served directly by the platform client).
 export type SessionState = 'valid' | 'escrow';
 export type LedgerState = 'settled' | 'escrow';
-export type StintCompound = 'S' | 'M' | 'H' | 'I' | 'W';
-
-export interface HubPerf {
-  downforce: number; topSpeed: number; cornering: number; tyre: number; response: number;
-}
 
 export interface HubSession {
   track: string;
@@ -77,107 +72,12 @@ export interface HubRankings {
   pace: HubPaceRow[];
 }
 
-export interface HubSetupParam {
-  k: string;
-  v: string; // raw setup value incl. units, e.g. "68%", "-2.9°", "23.5"
-}
-
-export interface HubReview {
-  reviewer: string;
-  stars: number;
-  verifiedBuyer: boolean;
-  text: string;
-  atMs: number;
-  perf?: HubPerf;
-}
-
-export interface HubRaceRow {
-  track: string;
-  pos: number;
-  lapMs: number;
-}
-
-export interface HubRaceSummary {
-  n: number;
-  avgFinish: number;
-  wins: number;
-  bestMs: number;
-  races: HubRaceRow[];
-}
-
-export interface HubMarketItem {
-  id: string;
-  title: string;
-  creator: string;
-  team: string;
-  track: string;
-  cond: string; // 'DRY' | 'WET'
-  fmt: string;
-  verified: boolean;
-  priceCredits: number | null; // null = not listed
-  rating: number;
-  reviewCount: number;
-  showRaces: boolean;
-  perf: HubPerf;
-  params: HubSetupParam[];
-  reviews: HubReview[];
-  raceSummary: HubRaceSummary;
-}
-
-export interface HubSimilarSetup {
-  handle: string;
-  team: string;
-  distPct: number;
-  priceCredits: number | null;
-}
-
-export interface HubSetupMarket {
-  setups: HubMarketItem[];
-  similar: HubSimilarSetup[];
-}
-
-export interface HubStint {
-  compound: StintCompound;
-  laps: number;
-}
-
-export interface HubStrategyItem {
-  id: string;
-  title: string;
-  creator: string;
-  team: string;
-  cond: string;
-  length: string; // '50% · 26L'
-  fmt: string;
-  verified: boolean;
-  priceCredits: number | null;
-  paceMs: number;
-  sample: number | null;
-  conf: string;
-  gain: number;
-  stints: HubStint[];
-}
-
-export interface HubSimilarStrategy {
-  handle: string;
-  gain: number;
-  sample: number | null;
-  priceCredits: number | null;
-}
-
-export interface HubStrategyMarket {
-  strategies: HubStrategyItem[];
-  similar: HubSimilarStrategy[];
-}
-
 /**
- * The own-data + demo contract. Rankings now come straight from the platform
- * leaderboard endpoints (see PlatformMarket.leaderboardTT/Pace), so they are no
- * longer part of this source. Promise-based and domain-grouped so a composite
- * provider can swap one domain to HTTP while others stay mock (Fable B2/B5).
+ * The own-data contract. Rankings come from the platform leaderboard endpoints
+ * and the marketplace from the platform market client (see platform.ts), so
+ * neither is part of this source — it carries only the viewer's own telemetry
+ * summary, served by the local desktop server (/api/hub/overview).
  */
 export interface HubDataSource {
   getOverview(): Promise<HubOverview>;
-  getSetupMarket(): Promise<HubSetupMarket>;
-  getStrategyMarket(): Promise<HubStrategyMarket>;
 }

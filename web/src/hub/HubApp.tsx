@@ -1,29 +1,23 @@
-// FRC Engineer Hub — root shell. Owns all top-level state (the design's
-// DCLogic.state, hub.dc.html:561) and wires the setup drawer. Data is loaded
-// async from a HubDataSource; screens render once their slice is ready.
+// FRC Engineer Hub — root shell. Owns top-level navigation + session state and
+// threads the shared track context into the leaderboard and marketplace. Data
+// is real: own telemetry (OwnHubDataSource), platform leaderboards, wallet, and
+// the hosted marketplace. Screens render explicit empty states, not demo data.
 import { useEffect, useMemo, useState } from 'react';
 import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
-import { REF_NOW, tyreLabel } from './format';
-import { MockHubDataSource } from './data/mock';
-import { CompositeHubDataSource } from './data/http';
+import { tyreLabel, relativeTime } from './format';
+import { OwnHubDataSource } from './data/http';
 import { DEFAULT_TRACK_CONTEXT, trackName } from './data/tracks';
 import type { TrackContext } from './data/tracks';
-import { isForcedRemoteMode } from '../runtimeFlags';
-import type {
-  HubOverview, HubRankings, HubSetupMarket, HubStrategyMarket, HubPerf, HubReview, HubLedgerEntry,
-} from './data/types';
+import type { HubOverview, HubRankings, HubLedgerEntry } from './data/types';
 import { Sidebar } from './components/Sidebar';
 import type { HubScreen } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { Overview } from './screens/Overview';
 import type { RealWallet } from './screens/Overview';
 import { Rankings } from './screens/Rankings';
-import { Market } from './screens/Market';
 import { MarketManage } from './screens/MarketManage';
 import { Profile } from './screens/Profile';
-import { SetupDrawer } from './SetupDrawer';
-import { relativeTime } from './format';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket } from './data/platform';
 import type { PlatformLedgerEntry } from './data/platform';
@@ -41,36 +35,22 @@ const PLACEHOLDER: Record<string, { title: string; note: string }> = {
 
 export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const t = useMemo(() => buildTheme('#e0a83d', 'light'), []);
-  // Desktop (embedded Go server) → composite: own data over HTTP, rest mock.
-  // Vercel standalone (no backend) → pure mock.
-  const dataSource = useMemo(() => {
-    const mock = new MockHubDataSource();
-    return isForcedRemoteMode ? mock : new CompositeHubDataSource(mock);
-  }, []);
+  // Own telemetry summary over HTTP; returns the honest empty state when the
+  // local desktop server is absent (Vercel standalone / remote viewing).
+  const dataSource = useMemo(() => new OwnHubDataSource(), []);
   const rowPad = rowPadFor('comfortable');
 
   const [active, setActive] = useState<HubScreen>('overview');
   const [rankTab, setRankTab] = useState<'tt' | 'pace'>('tt');
-  // Shared track+format context for the leaderboards (and, later, market browse).
+  // Shared track+format context for the leaderboards and the marketplace browse.
   const [trackCtx, setTrackCtx] = useState<TrackContext>(DEFAULT_TRACK_CONTEXT);
-  const [mktCat, setMktCat] = useState<'setups' | 'strategy'>('setups');
-  const [openSetup, setOpenSetup] = useState<string | null>(null);
-  const [sellOpen, setSellOpen] = useState(false);
   const platformMkt = useMemo(() => new PlatformMarket(), []);
-
-  const [ownedMap, setOwnedMap] = useState<Record<string, boolean>>({});
-  const [stratOwnedMap, setStratOwnedMap] = useState<Record<string, boolean>>({});
-  const [racesMap, setRacesMap] = useState<Record<string, boolean>>({});
-  const [perfMap, setPerfMap] = useState<Record<string, HubPerf>>({});
-  const [myReviews, setMyReviews] = useState<Record<string, HubReview[]>>({});
 
   const [overview, setOverview] = useState<HubOverview | null>(null);
   const [rankings, setRankings] = useState<HubRankings | null>(null);
-  const [setupMkt, setSetupMkt] = useState<HubSetupMarket | null>(null);
-  const [stratMkt, setStratMkt] = useState<HubStrategyMarket | null>(null);
 
-  // Hosted platform session (Steam login). Distinct from the mock/own-data
-  // sources: null account = logged out. Unconfigured platform → login disabled.
+  // Hosted platform session (Steam login). null account = logged out.
+  // Unconfigured platform → login disabled.
   const platformConfigured = useMemo(() => isPlatformConfigured(), []);
   const [platformAccount, setPlatformAccount] = useState<PlatformAccount | null>(null);
   const [platformLoading, setPlatformLoading] = useState(platformConfigured);
@@ -82,7 +62,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     if (!platformConfigured || !platformAccount) { setRealWallet(null); return; }
     void Promise.all([platformMkt.getWallet(), platformMkt.getLedger()])
       .then(([balance, ledger]) => setRealWallet({ balance, ledger: ledger.map(toHubLedger) }))
-      .catch(() => { /* keep prior/mock on transient error */ });
+      .catch(() => { /* keep prior on transient error */ });
   }, [platformConfigured, platformAccount, platformMkt]);
 
   useEffect(() => { refreshWallet(); }, [refreshWallet]);
@@ -90,14 +70,14 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   useEffect(() => {
     let alive = true;
     void dataSource.getOverview().then((d) => { if (alive) setOverview(d); });
-    void dataSource.getSetupMarket().then((d) => { if (alive) setSetupMkt(d); });
-    void dataSource.getStrategyMarket().then((d) => { if (alive) setStratMkt(d); });
     return () => { alive = false; };
   }, [dataSource]);
 
   // Leaderboards come straight from the platform for the selected track+format.
   // rankings === null renders as "loading"; a failed/empty fetch renders as the
-  // honest empty state (no mock fallback).
+  // honest empty state (no mock fallback). platformAccount is a dependency so
+  // login/logout re-fetches with (or without) the Bearer token — that's what
+  // toggles the `you` highlight and the Overview rank card.
   useEffect(() => {
     if (!platformConfigured) { setRankings(null); return; }
     let alive = true;
@@ -113,7 +93,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
       });
     }).catch(() => { if (alive) setRankings({ tt: [], pace: [] }); });
     return () => { alive = false; };
-  }, [platformConfigured, platformMkt, trackCtx]);
+  }, [platformConfigured, platformMkt, trackCtx, platformAccount]);
 
   // Once logged in, default the track context to the viewer's most recent race
   // so the board opens on a track they actually drive. Manual selection wins after.
@@ -137,8 +117,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   const handleLogout = () => { void platformLogout().then(() => setPlatformAccount(null)); };
 
-  const ctx = ctxLabel(active, mktCat, trackCtx);
-  const featured = useMemo(() => (setupMkt ? setupMkt.setups.filter((c) => c.priceCredits != null).slice(0, 2) : []), [setupMkt]);
+  const ctx = ctxLabel(active, trackCtx);
 
   // The viewer's standing on the current TT board, derived from the live
   // leaderboard (the `you` row). null when logged out or not yet ranked here.
@@ -158,8 +137,6 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     background: t.bg, color: t.t1, fontFamily: FONT,
   } as React.CSSProperties;
 
-  const openItem = openSetup && setupMkt ? setupMkt.setups.find((c) => c.id === openSetup) ?? null : null;
-
   return (
     <div className="hubRoot" style={rootStyle}>
       <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} />
@@ -168,7 +145,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
         <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} />
         <main style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
           {active === 'overview' && (overview ? (
-            <Overview t={t} data={overview} featured={featured} wallet={realWallet} persona={platformAccount?.persona} rankInfo={rankInfo} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
+            <Overview t={t} data={overview} wallet={realWallet} persona={platformAccount?.persona} rankInfo={rankInfo} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
           ) : <Loading t={t} />)}
 
           {active === 'rankings' && (
@@ -181,25 +158,13 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             />
           )}
 
-          {active === 'market' && (setupMkt && stratMkt ? (
-            <>
-              <MarketManage
-                t={t} configured={platformConfigured} account={platformAccount}
-                market={platformMkt} defaultKind={mktCat === 'setups' ? 'setup' : 'strategy'}
-                sellOpen={sellOpen} onCloseSell={() => setSellOpen(false)}
-                onEconomyChange={refreshWallet}
-              />
-              <Market
-                t={t} cat={mktCat} onSetCat={setMktCat}
-                setups={setupMkt.setups} setupSimilar={setupMkt.similar}
-                strategies={stratMkt.strategies} strategySimilar={stratMkt.similar}
-                ownedMap={ownedMap} stratOwnedMap={stratOwnedMap} myReviews={myReviews}
-                onOpenSetup={setOpenSetup}
-                onBuyStrategy={(id) => setStratOwnedMap((s) => ({ ...s, [id]: true }))}
-                onSell={platformConfigured && platformAccount ? () => setSellOpen(true) : undefined}
-              />
-            </>
-          ) : <Loading t={t} />)}
+          {active === 'market' && (
+            <MarketManage
+              t={t} configured={platformConfigured} account={platformAccount}
+              market={platformMkt} trackCtx={trackCtx} onSetTrackCtx={setTrackCtx}
+              onEconomyChange={refreshWallet}
+            />
+          )}
 
           {active === 'profile' && (
             <Profile
@@ -218,26 +183,6 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
           )}
         </main>
       </div>
-
-      {openItem && (
-        <SetupDrawer
-          key={openItem.id}
-          t={t}
-          item={openItem}
-          owned={!!ownedMap[openItem.id]}
-          racesShown={openItem.id in racesMap ? racesMap[openItem.id] : openItem.showRaces}
-          sellerPerf={perfMap[openItem.id] ?? openItem.perf}
-          reviews={[...(myReviews[openItem.id] ?? []), ...openItem.reviews]}
-          onClose={() => setOpenSetup(null)}
-          onBuyUnlock={() => setOwnedMap((s) => ({ ...s, [openItem.id]: true }))}
-          onToggleRaces={() => setRacesMap((s) => ({ ...s, [openItem.id]: !(openItem.id in s ? s[openItem.id] : openItem.showRaces) }))}
-          onSetPerf={(key, value) => setPerfMap((s) => ({ ...s, [openItem.id]: { ...(s[openItem.id] ?? openItem.perf), [key]: value } }))}
-          onSubmitReview={(r) => setMyReviews((s) => ({
-            ...s,
-            [openItem.id]: [{ reviewer: 'kangmomin', stars: r.stars, verifiedBuyer: true, text: r.text, atMs: REF_NOW, perf: r.perf }, ...(s[openItem.id] ?? [])],
-          }))}
-        />
-      )}
     </div>
   );
 }
@@ -262,11 +207,11 @@ function toHubLedger(e: PlatformLedgerEntry): HubLedgerEntry {
   };
 }
 
-function ctxLabel(active: HubScreen, mktCat: 'setups' | 'strategy', trackCtx: TrackContext): string {
+function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
   switch (active) {
     case 'overview': return 'OVERVIEW';
     case 'rankings': return `RANKINGS · ${trackName(trackCtx.trackId).toUpperCase()} · ${trackCtx.format}`;
-    case 'market': return `MARKET · ${mktCat === 'setups' ? 'SETUP' : 'STRATEGY'} EXCHANGE`;
+    case 'market': return 'MARKETPLACE';
     case 'setups': return 'MY SETUPS';
     case 'analysis': return 'ANALYSIS';
     case 'profile': return 'PROFILE';

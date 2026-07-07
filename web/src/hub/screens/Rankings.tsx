@@ -3,6 +3,7 @@ import type { HubTheme } from '../theme';
 import { msToTime, secFmt, sectorColor, lapColor, gapLabel, tyreColor, consistencyColor } from '../format';
 import type { HubRankings, HubTTRow, HubPaceRow } from '../data/types';
 import { HUB_TRACKS, HUB_FORMATS } from '../data/tracks';
+import { SelectChip } from '../components/SelectChip';
 
 const MONO = "'JetBrains Mono',monospace";
 const TT_COLS = '46px minmax(150px,1fr) 82px 82px 82px 94px 84px 64px';
@@ -163,26 +164,6 @@ function DriverCell({ t, handle, you }: { t: HubTheme; handle: string; you: bool
 
 function SectorCell({ t, ms, min, max }: { t: HubTheme; ms: number; min: number; max: number }) {
   return <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, textAlign: 'right', color: sectorColor(ms, min, max, t) }}>{secFmt(ms)}</div>;
-}
-
-function SelectChip({ t, label, value, options, onChange }: {
-  t: HubTheme; label: string; value: string;
-  options: { value: string; label: string }[]; onChange: (value: string) => void;
-}) {
-  return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: t.panel, border: `1px solid ${t.line}`, borderRadius: 8, padding: '8px 13px', fontSize: 12, color: t.t1, cursor: 'pointer' }}>
-      <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.1em', color: t.t3 }}>{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ background: 'transparent', border: 0, color: t.t1, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer', outline: 'none' }}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value} style={{ color: '#111' }}>{o.label}</option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 function TabButton({ t, on, label, onClick }: { t: HubTheme; on: boolean; label: string; onClick: () => void }) {

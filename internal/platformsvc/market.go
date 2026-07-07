@@ -41,17 +41,32 @@ var (
 // ListingCard is the PUBLIC marketplace shape. It deliberately has NO payload,
 // content_hash, or params_canonical field — masking is enforced by type
 // absence, not by nulling, so it cannot regress into leaking the product.
+// Rating/ReviewCount are public review aggregates (0 when a listing has no
+// reviews); reviews from banned authors are excluded to match ListReviews.
 type ListingCard struct {
-	ID            string `json:"id"`
-	Kind          string `json:"kind"`
-	Title         string `json:"title"`
-	SellerPersona string `json:"sellerPersona"`
-	TrackID       int    `json:"trackId"`
-	GameFormat    string `json:"gameFormat"`
-	PriceCredits  int64  `json:"priceCredits"`
-	Status        string `json:"status"`
-	CreatedAt     string `json:"createdAt"`
+	ID            string  `json:"id"`
+	Kind          string  `json:"kind"`
+	Title         string  `json:"title"`
+	SellerPersona string  `json:"sellerPersona"`
+	TrackID       int     `json:"trackId"`
+	GameFormat    string  `json:"gameFormat"`
+	PriceCredits  int64   `json:"priceCredits"`
+	Status        string  `json:"status"`
+	CreatedAt     string  `json:"createdAt"`
+	Rating        float64 `json:"rating"`
+	ReviewCount   int     `json:"reviewCount"`
 }
+
+// reviewAggJoin is the review rating/count aggregate joined into every card
+// query. Banned authors are excluded so a banned reviewer can't skew a rating.
+// Reference the joined columns as coalesce(rv.rating, 0), coalesce(rv.review_count, 0).
+const reviewAggJoin = `
+	LEFT JOIN (
+		SELECT r.listing_id, avg(r.stars)::float8 AS rating, count(*)::int AS review_count
+		FROM platform.reviews r
+		WHERE NOT EXISTS (SELECT 1 FROM platform.account_bans ab WHERE ab.account_id = r.author_id)
+		GROUP BY r.listing_id
+	) rv ON rv.listing_id = l.id`
 
 // OwnerListing is the OWNER-ONLY detail shape: a card plus the revealed payload.
 // It is produced only when the viewer owns the listing (later: or has purchased
@@ -270,9 +285,10 @@ func (s *Store) deriveSnapshot(ctx context.Context, tx pgx.Tx, kind, raceID stri
 func (s *Store) BrowseListings(ctx context.Context, kind string, trackID int, format string) ([]ListingCard, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT l.id, l.kind, l.title, a.persona, l.track_id, l.game_format,
-		       l.price_credits, l.status, l.created_at
+		       l.price_credits, l.status, l.created_at,
+		       coalesce(rv.rating, 0), coalesce(rv.review_count, 0)
 		FROM platform.listings l
-		JOIN platform.accounts a ON a.id = l.seller_id
+		JOIN platform.accounts a ON a.id = l.seller_id`+reviewAggJoin+`
 		WHERE l.kind = $1 AND l.track_id = $2 AND l.game_format = $3 AND l.status = 'active'
 		  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id = l.seller_id)
 		ORDER BY l.created_at DESC
@@ -298,14 +314,16 @@ func (s *Store) GetListing(ctx context.Context, id, viewerID string) (*ListingCa
 	err := s.pool.QueryRow(ctx, `
 		SELECT l.id, l.kind, l.title, a.persona, l.track_id, l.game_format,
 		       l.price_credits, l.status, l.created_at, l.seller_id, l.snapshot_id,
-		       (b.account_id IS NOT NULL)
+		       (b.account_id IS NOT NULL),
+		       coalesce(rv.rating, 0), coalesce(rv.review_count, 0)
 		FROM platform.listings l
 		JOIN platform.accounts a ON a.id = l.seller_id
-		LEFT JOIN platform.account_bans b ON b.account_id = l.seller_id
+		LEFT JOIN platform.account_bans b ON b.account_id = l.seller_id`+reviewAggJoin+`
 		WHERE l.id = $1`,
 		id,
 	).Scan(&card.ID, &card.Kind, &card.Title, &card.SellerPersona, &card.TrackID,
-		&card.GameFormat, &card.PriceCredits, &card.Status, &createdAt, &sellerID, &snapshotID, &sellerBanned)
+		&card.GameFormat, &card.PriceCredits, &card.Status, &createdAt, &sellerID, &snapshotID, &sellerBanned,
+		&card.Rating, &card.ReviewCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, ErrNotFound
 	}
@@ -355,9 +373,10 @@ func (s *Store) SimilarListings(ctx context.Context, id string) ([]ListingCard, 
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT l.id, l.kind, l.title, a.persona, l.track_id, l.game_format,
-		       l.price_credits, l.status, l.created_at
+		       l.price_credits, l.status, l.created_at,
+		       coalesce(rv.rating, 0), coalesce(rv.review_count, 0)
 		FROM platform.listings l
-		JOIN platform.accounts a ON a.id = l.seller_id
+		JOIN platform.accounts a ON a.id = l.seller_id`+reviewAggJoin+`
 		WHERE l.kind = $1 AND l.track_id = $2 AND l.game_format = $3 AND l.status = 'active'
 		  AND l.id <> $4
 		  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id = l.seller_id)
@@ -423,9 +442,10 @@ func (s *Store) ListMyRaces(ctx context.Context, accountID string) ([]SellableRa
 func (s *Store) ListMyListings(ctx context.Context, sellerID string) ([]ListingCard, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT l.id, l.kind, l.title, a.persona, l.track_id, l.game_format,
-		       l.price_credits, l.status, l.created_at
+		       l.price_credits, l.status, l.created_at,
+		       coalesce(rv.rating, 0), coalesce(rv.review_count, 0)
 		FROM platform.listings l
-		JOIN platform.accounts a ON a.id = l.seller_id
+		JOIN platform.accounts a ON a.id = l.seller_id`+reviewAggJoin+`
 		WHERE l.seller_id = $1
 		ORDER BY l.created_at DESC
 		LIMIT $2`,
@@ -461,7 +481,7 @@ func scanCards(rows pgx.Rows) ([]ListingCard, error) {
 		var c ListingCard
 		var createdAt time.Time
 		if err := rows.Scan(&c.ID, &c.Kind, &c.Title, &c.SellerPersona, &c.TrackID,
-			&c.GameFormat, &c.PriceCredits, &c.Status, &createdAt); err != nil {
+			&c.GameFormat, &c.PriceCredits, &c.Status, &createdAt, &c.Rating, &c.ReviewCount); err != nil {
 			return nil, fmt.Errorf("platformsvc: scan card: %w", err)
 		}
 		c.CreatedAt = createdAt.Format(time.RFC3339)

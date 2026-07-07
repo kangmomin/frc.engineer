@@ -25,6 +25,7 @@ export interface PlatformSellableRace {
 }
 
 // A public/owner listing card — never carries payload or content_hash.
+// rating/reviewCount are public review aggregates (0 when a listing has none).
 export interface PlatformListingCard {
   id: string;
   kind: ListingKind;
@@ -35,6 +36,8 @@ export interface PlatformListingCard {
   priceCredits: number;
   status: string; // 'active' | 'delisted'
   createdAt: string;
+  rating: number;
+  reviewCount: number;
 }
 
 // Owner detail: a card plus the revealed product. payload is the setup params

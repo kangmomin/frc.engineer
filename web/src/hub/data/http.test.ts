@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CompositeHubDataSource } from './http';
-import { MockHubDataSource } from './mock';
-import type { HubDataSource } from './types';
+import { OwnHubDataSource } from './http';
 
 const OWN = {
   recentSessions: [
@@ -23,10 +21,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('CompositeHubDataSource.getOverview', () => {
+describe('OwnHubDataSource.getOverview', () => {
   it('returns own data on 200 (sessions valid, no credit ledger)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(OWN)));
-    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    const o = await new OwnHubDataSource().getOverview();
 
     expect(o.recentSessions).toHaveLength(2);
     expect(o.recentSessions[0].track).toBe('Silverstone');
@@ -40,14 +38,14 @@ describe('CompositeHubDataSource.getOverview', () => {
 
   it('surfaces a real seasonBestMs 0 (no demo masking)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse({ ...OWN, seasonBestMs: 0, seasonBestTrack: '' })));
-    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    const o = await new OwnHubDataSource().getOverview();
     expect(o.seasonBestMs).toBe(0);
     expect(o.seasonBestTrack).toBe('');
   });
 
   it('returns the empty overview when own recentSessions is empty', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse({ ...OWN, recentSessions: [] })));
-    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    const o = await new OwnHubDataSource().getOverview();
     expect(o.recentSessions).toEqual([]);
     expect(o.verifiedSessions).toBe(0);
   });
@@ -55,7 +53,7 @@ describe('CompositeHubDataSource.getOverview', () => {
   it('returns the empty overview and warns on a non-ok response', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 } as unknown as Response));
-    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    const o = await new OwnHubDataSource().getOverview();
     expect(o.recentSessions).toEqual([]);
     expect(warn).toHaveBeenCalled();
   });
@@ -63,18 +61,8 @@ describe('CompositeHubDataSource.getOverview', () => {
   it('returns the empty overview and warns on a network error', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    const o = await new OwnHubDataSource().getOverview();
     expect(o.recentSessions).toEqual([]);
     expect(warn).toHaveBeenCalled();
-  });
-});
-
-describe('CompositeHubDataSource delegates other domains to mock', () => {
-  it('setup / strategy come from the mock unchanged', async () => {
-    const mock = new MockHubDataSource();
-    // The type annotation is itself the compile-time HubDataSource conformance check.
-    const ds: HubDataSource = new CompositeHubDataSource(mock);
-    expect((await ds.getSetupMarket()).setups.length).toBe(6);
-    expect((await ds.getStrategyMarket()).strategies.length).toBe(6);
   });
 });

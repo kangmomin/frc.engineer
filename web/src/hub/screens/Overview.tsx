@@ -5,9 +5,9 @@
 // Fields that had no backend source (season rank, credits earned, setups sold,
 // pace trend) were removed rather than mocked.
 import type { HubTheme } from '../theme';
-import { rgba, teamColor } from '../theme';
+import { rgba } from '../theme';
 import { msToTime, relativeTime, signed } from '../format';
-import type { HubOverview, HubMarketItem, HubSession, HubLedgerEntry } from '../data/types';
+import type { HubOverview, HubSession, HubLedgerEntry } from '../data/types';
 
 const MONO = "'JetBrains Mono',monospace";
 
@@ -29,7 +29,6 @@ export interface RankInfo {
 interface Props {
   t: HubTheme;
   data: HubOverview;
-  featured: HubMarketItem[];
   onGoMarket: () => void;
   onGoAnalysis: () => void;
   wallet?: RealWallet | null;
@@ -39,7 +38,7 @@ interface Props {
   rankInfo?: RankInfo | null;
 }
 
-export function Overview({ t, data, featured, onGoMarket, onGoAnalysis, wallet, persona, rankInfo }: Props) {
+export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, rankInfo }: Props) {
   // Real sessions carry true epoch timestamps, so relative time uses the real clock.
   const now = Date.now();
   return (
@@ -138,26 +137,6 @@ export function Overview({ t, data, featured, onGoMarket, onGoAnalysis, wallet, 
               </div>
             )}
           </div>
-
-          {/* featured market */}
-          {featured.length > 0 && (
-            <div style={{ background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12, padding: 18 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.14em', color: t.t2, fontWeight: 600 }}>추천 셋업</div>
-                <button onClick={onGoMarket} style={{ background: 'transparent', border: 0, color: t.accInk, fontFamily: MONO, fontSize: 10, letterSpacing: '.08em', cursor: 'pointer' }}>ALL →</button>
-              </div>
-              {featured.map((c) => (
-                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: `1px solid ${t.linesoft}` }}>
-                  <span style={{ width: 9, height: 9, borderRadius: 2, background: teamColor(c.team), flex: 'none' }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: t.t1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
-                    <div style={{ fontFamily: MONO, fontSize: 10, color: t.t3, marginTop: 3 }}>{c.creator} · ★ {c.rating}</div>
-                  </div>
-                  <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: t.accInk, flex: 'none' }}>⬢ {c.priceCredits}</div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </section>

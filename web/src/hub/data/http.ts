@@ -1,18 +1,15 @@
-// FRC Engineer Hub — HTTP-backed composite data source.
+// FRC Engineer Hub — HTTP-backed own-data source.
 // Sources the user's OWN data (recent sessions, season best, session counts)
 // from the backend's /api/hub/overview. When the backend is unreachable, the
 // own data is empty, or a session list is missing, it returns the honest empty
-// overview (EMPTY_OVERVIEW) — never demo data. Market domains still delegate to
-// the injected source until they are wired to the platform.
-import type {
-  HubDataSource, HubOverview, HubSetupMarket, HubStrategyMarket,
-} from './types';
+// overview (EMPTY_OVERVIEW) — never demo data.
+import type { HubDataSource, HubOverview } from './types';
 import { EMPTY_OVERVIEW } from './types';
 
-// The hub only runs the composite in two contexts: the Vite dev server (which
-// proxies /api → backend) and the embedded Go server (same origin). A relative
-// path is correct for both and, unlike a hardcoded base, survives the embedded
-// server auto-incrementing its port on conflict. (Matches replayArchive.ts.)
+// The hub runs this in two contexts: the Vite dev server (which proxies /api →
+// backend) and the embedded Go server (same origin). A relative path is correct
+// for both and, unlike a hardcoded base, survives the embedded server
+// auto-incrementing its port on conflict. (Matches replayArchive.ts.)
 const OVERVIEW_URL = '/api/hub/overview';
 
 interface OwnSession {
@@ -32,9 +29,7 @@ interface OwnOverview {
   sessionsThisWeek: number;
 }
 
-export class CompositeHubDataSource implements HubDataSource {
-  constructor(private readonly mock: HubDataSource) {}
-
+export class OwnHubDataSource implements HubDataSource {
   async getOverview(): Promise<HubOverview> {
     try {
       const res = await fetch(OVERVIEW_URL);
@@ -60,13 +55,5 @@ export class CompositeHubDataSource implements HubDataSource {
       console.warn('hub overview: unavailable, showing empty', e);
       return EMPTY_OVERVIEW;
     }
-  }
-
-  getSetupMarket(): Promise<HubSetupMarket> {
-    return this.mock.getSetupMarket();
-  }
-
-  getStrategyMarket(): Promise<HubStrategyMarket> {
-    return this.mock.getStrategyMarket();
   }
 }
