@@ -1,12 +1,12 @@
-// Hosted marketplace client (cmd/platform, Phase 3C). This is the "sell flow"
-// vertical: a logged-in seller lists one of their own plausible races, views the
-// owner-only revealed payload, finds similar listings, and delists. The public
-// browse grid stays on mock (rating/perf/reviews are Phase 3D1); only what the
-// 3C backend fully supports is wired here.
+// Hosted platform client (cmd/platform). Covers the full marketplace + economy
+// vertical — public leaderboards, browse/buy/review, and the seller flow (list
+// one of your own plausible races, view the owner-only payload, find similar,
+// delist) — plus the credit wallet/ledger.
 //
-// Auth is the Bearer token from session.ts. All calls require a web session; the
-// backend enforces web scope + ownership, so this layer only shapes requests and
-// maps status codes to user-facing outcomes.
+// Auth is the Bearer token from session.ts. Public GETs (leaderboards, browse,
+// reviews) attach it when present for the `you`/owner view but don't require it;
+// mutating and owner calls do. This layer only shapes requests and maps status
+// codes to user-facing outcomes.
 import { getPlatformUrl, isPlatformConfigured } from './platformBase';
 import { getSessionToken } from './session';
 

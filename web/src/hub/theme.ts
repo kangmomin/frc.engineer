@@ -47,17 +47,6 @@ export interface HubTheme {
 
 export const ACCENT_OPTIONS = ['#e0a83d', '#3fb6c9', '#e0533d', '#9a7cff'] as const;
 
-// Hub team palette (hub.dc.html:604-608). Keyed by the mock's string team names,
-// independent of the game-id-based TEAM_COLORS in src/constants (different values).
-export const HUB_TEAM_COLORS: Record<string, string> = {
-  RedBull: '#2b57e0', Ferrari: '#e8352b', McLaren: '#ff8000', Mercedes: '#00b7a2',
-  Aston: '#1f9c6b', Alpine: '#2f7fe0', Williams: '#3a8fe0', RB: '#6472d6',
-  Sauber: '#4caf50', Haas: '#8b9099',
-};
-export function teamColor(name: string): string {
-  return HUB_TEAM_COLORS[name] ?? '#888888';
-}
-
 export function buildTheme(accent: string, mode: ThemeMode = 'light'): HubTheme {
   const dark = mode === 'dark';
   const ACC = accent || '#e0a83d';
