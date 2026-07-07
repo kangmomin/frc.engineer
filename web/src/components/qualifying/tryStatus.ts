@@ -39,7 +39,11 @@ function formatSignedDelta(deltaMs: number): string {
 }
 
 function buildSectorDelta(currentMs: number, bestMs: number): number | null {
-  if (currentMs <= 0 || bestMs <= 0) return null;
+  // 유한성 가드(H1): sector1/2TimeMs는 Go DTO에서 omitempty라 완주 전에는 값이 0이 아니라
+  // 필드 자체가 부재(undefined)한다. `undefined <= 0`은 false라 아래 가드를 그냥 통과해버리고
+  // `undefined - bestMs`가 NaN을 반환해 My Lap Δ타일/summary/Try title에 "+NaN"이 표시되던
+  // 버그를 막는다. NaN 등 비유한값도 동일하게 차단한다.
+  if (!Number.isFinite(currentMs) || !Number.isFinite(bestMs) || currentMs <= 0 || bestMs <= 0) return null;
   return currentMs - bestMs;
 }
 
@@ -57,7 +61,7 @@ function getErsModeLabel(driver: DriverInfo): string | null {
     case 1:
       return 'ERS MED';
     default:
-      return driver.ersActualReady ? `ERS ${driver.ersActualPct}%` : null;
+      return driver.ersActualReady ? `ERS ${driver.ersActualPct ?? 0}%` : null;
   }
 }
 
@@ -65,14 +69,17 @@ export function evaluateDriverTryState(
   driver: DriverInfo,
   baseline: TrySectorBaseline,
 ): DriverTryState {
-  const sectorDelta1Ms = buildSectorDelta(driver.sector1TimeMs, baseline.s1);
-  const sectorDelta2Ms = buildSectorDelta(driver.sector2TimeMs, baseline.s2);
+  // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화한다(0=invalid).
+  const s1Ms = driver.sector1TimeMs ?? 0;
+  const s2Ms = driver.sector2TimeMs ?? 0;
+  const sectorDelta1Ms = buildSectorDelta(s1Ms, baseline.s1);
+  const sectorDelta2Ms = buildSectorDelta(s2Ms, baseline.s2);
   const combinedDeltaMs =
-    driver.sector1TimeMs > 0
-      && driver.sector2TimeMs > 0
+    s1Ms > 0
+      && s2Ms > 0
       && baseline.s1 > 0
       && baseline.s2 > 0
-      ? (driver.sector1TimeMs + driver.sector2TimeMs) - (baseline.s1 + baseline.s2)
+      ? (s1Ms + s2Ms) - (baseline.s1 + baseline.s2)
       : null;
 
   const competitiveSectorCount = [sectorDelta1Ms, sectorDelta2Ms].filter(hasCompetitiveSector).length;
@@ -80,11 +87,14 @@ export function evaluateDriverTryState(
 
   const isPit = driver.pitStatus !== 0;
   const isInvalid = driver.lapInvalid;
-  const isGarage = driver.driverStatus === 0;
-  const isInLap = driver.driverStatus === 2;
-  const isOutLap = driver.driverStatus === 3;
-  const isFlying = driver.driverStatus === 1;
-  const isTrack = driver.driverStatus === 4;
+  // driverStatus는 Go DTO omitempty라 GARAGE(0)가 값이 아니라 undefined로 전달된다 — `?? 0`으로
+  // 정규화하지 않으면 `=== 0`이 false가 되어 실 개러지 드라이버를 놓친다(classificationRows.ts 선례).
+  const driverStatus = driver.driverStatus ?? 0;
+  const isGarage = driverStatus === 0;
+  const isInLap = driverStatus === 2;
+  const isOutLap = driverStatus === 3;
+  const isFlying = driverStatus === 1;
+  const isTrack = driverStatus === 4;
 
   // 2026 모드에서는 overtakeActive가 DRS 신호를 대체한다 (omitempty라 false면 생략).
   const hasDrsSignal = driver.drsActivated || driver.overtakeActive === true;
@@ -92,7 +102,7 @@ export function evaluateDriverTryState(
   const isDeployingErs =
     driver.ersDeployedThisLap > 0
     && driver.ersDeployedThisLap >= driver.ersHarvestedThisLap + ERS_DEPLOY_MARGIN_J;
-  const hasUsableErs = !driver.ersActualReady || driver.ersActualPct >= TRY_MIN_ERS_PCT;
+  const hasUsableErs = !driver.ersActualReady || (driver.ersActualPct ?? 0) >= TRY_MIN_ERS_PCT;
   const recentCompetitiveLap =
     driver.lastLapTime > 0
     && driver.bestLapTime > 0

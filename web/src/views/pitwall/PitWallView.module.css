@@ -1,0 +1,16 @@
+/* Pit Wall(RACE) 뷰 — 목업의 공유 애니메이션 유틸.
+   나머지 스타일은 목업 충실도를 위해 컴포넌트 인라인 스타일로 둔다(Broadcast와 동일 컨벤션). */
+
+@keyframes pw-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.pulse {
+  animation: pw-pulse 1.6s ease-in-out infinite;
+}

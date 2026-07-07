@@ -120,4 +120,37 @@ describe('evaluateDriverTryState', () => {
     expect(state.sectorDelta1Ms).toBe(-80);
     expect(state.sectorDelta2Ms).toBe(-120);
   });
+
+  it('omitempty-absent sector1/2TimeMs (undefined) yields null deltas, never NaN (H1)', () => {
+    const state = evaluateDriverTryState(
+      makeDriver({ sector1TimeMs: undefined, sector2TimeMs: undefined }),
+      { s1: 27_100, s2: 28_300, s3: 25_700 },
+    );
+
+    expect(state.sectorDelta1Ms).toBeNull();
+    expect(state.sectorDelta2Ms).toBeNull();
+    expect(state.summary).not.toContain('NaN');
+  });
+
+  it('a non-finite sector time (NaN) yields a null delta, never NaN (H1)', () => {
+    const state = evaluateDriverTryState(
+      makeDriver({ sector1TimeMs: NaN }),
+      { s1: 27_100, s2: 28_300, s3: 25_700 },
+    );
+
+    expect(state.sectorDelta1Ms).toBeNull();
+    expect(state.summary).not.toContain('NaN');
+  });
+
+  it('omitempty-absent driverStatus (undefined) is treated as GARAGE, not misclassified', () => {
+    // 실 캡처(test-sets)에서 개러지 드라이버는 DriverStatus=0 → Go omitempty로 undefined 전달.
+    // `?? 0` 정규화가 없으면 `=== 0`이 false가 되어 개러지를 놓친다.
+    const state = evaluateDriverTryState(
+      makeDriver({ driverStatus: undefined, pitStatus: 0, sector1TimeMs: 0, sector2TimeMs: 0 }),
+      { s1: 27_100, s2: 28_300, s3: 25_700 },
+    );
+
+    expect(state.label).toBe('COOL');
+    expect(state.summary).toBe('Garage');
+  });
 });

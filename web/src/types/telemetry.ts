@@ -371,7 +371,8 @@ export interface DriverInfo {
   aiControlled: boolean;
   position: number;
   currentLapNum: number;
-  speed: number;
+  // Go DTO omitempty: 정지(speed=0)는 필드 부재(undefined)로 전달된다 — Math.round(undefined)=NaN 방지.
+  speed?: number;
   topSpeed: number;
   throttle: number;
   brake: number;
@@ -406,9 +407,10 @@ export interface DriverInfo {
   ersDeployMode: number;
   ersDeployedThisLap: number;
   ersHarvestedThisLap: number;
-  ersEstimatePct: number;
+  // Go DTO omitempty: pct=0(배터리 고갈)은 필드 부재(undefined)로 전달된다 — Math.round(undefined)=NaN 방지.
+  ersEstimatePct?: number;
   ersEstimateReady: boolean;
-  ersActualPct: number;
+  ersActualPct?: number;
   ersActualReady: boolean;
 
   // TyreSets (Commentary)
@@ -424,9 +426,11 @@ export interface DriverInfo {
   damage?: CarDamage;
 
   // Sector times (current lap)
-  sector1TimeMs: number;
-  sector2TimeMs: number;
-  currentSector: number;
+  // Go DTO omitempty: 값이 0이면 와이어에서 필드가 부재(undefined)한다. 실 캡처(test-sets)에서
+  // 아웃랩/라인통과 직후 Sector1/2TimeInMS=0 확인 — 타입을 실측에 맞춰 optional로 선언한다.
+  sector1TimeMs?: number;
+  sector2TimeMs?: number;
+  currentSector: number; // 0-based: 0=S1, 1=S2, 2=S3 (wire value, no transform — see internal/packets/lapdata.go Sector field)
 
   // Best sector times (from SessionHistory)
   bestSector1Ms?: number | null;
@@ -448,8 +452,11 @@ export interface DriverInfo {
 
   // Pit
   pitStatus: number;
-  driverStatus: number;
-  resultStatus: number;
+  // Go DTO omitempty: driverStatus=0(GARAGE)/resultStatus=0(비활성)은 필드 부재(undefined)로 전달된다.
+  // 실 캡처(test-sets)에서 개러지 드라이버 DriverStatus=0 확인 — `=== 0` 비교가 undefined에서 어긋나므로
+  // 소비처는 `?? 0`으로 정규화해야 한다(classificationRows.ts 선례).
+  driverStatus?: number;
+  resultStatus?: number;
   numPitStops: number;
   lapDistance: number;
   pitStopTimer: number;

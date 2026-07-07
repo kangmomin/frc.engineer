@@ -1,41 +1,35 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMockTelemetry } from '../../hooks/useMockTelemetry';
-import { usePitwallWebSocket } from '../../hooks/usePitwallWebSocket';
-import { useWebRTCDataChannel } from '../../hooks/useWebRTCDataChannel';
-import { useTelemetryStore } from '../../store/telemetryStore';
-import { getConnectionDetail, isConnectionFailure } from '../../utils/connectionStatus';
-import { CockpitDashboard } from '../cockpit/CockpitDashboard';
-import { PostRaceDebrief } from '../debrief/PostRaceDebrief';
-import { QualifyingDashboard } from '../qualifying/QualifyingDashboard';
-import { RaceArchiveDrawer } from '../races/RaceArchiveDrawer';
-import type { RaceArchiveDataSource } from '../races/replayArchive';
-import { RemoteConnect } from '../remote/RemoteConnect';
-import { F1SetupManager } from '../setup/F1SetupManager';
-import styles from './Layout.module.css';
-import type { RaceListItem, RaceSummary, ReplayFrame, ReplayStreamMeta } from '../../types/telemetry';
-
-type DashboardView = 'cockpit' | 'qualifying' | 'setup' | 'races';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PostRaceDebrief } from '../components/debrief/PostRaceDebrief';
+import { RaceArchiveDrawer } from '../components/races/RaceArchiveDrawer';
+import type { RaceArchiveDataSource } from '../components/races/replayArchive';
+import { RemoteConnect } from '../components/remote/RemoteConnect';
+import { F1SetupManager } from '../components/setup/F1SetupManager';
+import { useMockTelemetry } from '../hooks/useMockTelemetry';
+import { useWebRTCDataChannel } from '../hooks/useWebRTCDataChannel';
+import { isMockMode, mockScenario } from '../runtimeFlags';
+import { startRaceMetaTracker } from '../store/raceMetaStore';
+import { useTelemetryStore } from '../store/telemetryStore';
+import type {
+  RaceListItem,
+  RaceSummary,
+  ReplayFrame,
+  ReplayStreamMeta,
+} from '../types/telemetry';
+import { getConnectionDetail, isConnectionFailure } from '../utils/connectionStatus';
+import { BroadcastView } from '../views/broadcast/BroadcastView';
+import { PitWallView } from '../views/pitwall/PitWallView';
+import type { RequestFn } from '../views/pitwall/useStrategyGuide';
+import { QualifyingView } from '../views/qualifying/QualifyingView';
+import '../styles/theme.css';
+import { Stage } from './Stage';
+import type { ShellControls } from './types';
+import { persistView, readInitialView, viewToSenderView, type ViewId } from './viewNav';
 
 const RACE_ARCHIVE_LIST_TIMEOUT_MS = 60_000;
 const RACE_SUMMARY_TIMEOUT_MS = 60_000;
 const RACE_REPLAY_TIMEOUT_MS = 120_000;
 
-function readInitialView(): DashboardView {
-  const params = new URLSearchParams(window.location.search);
-  const view = params.get('view');
-  if (view === 'qualifying') return 'qualifying';
-  if (view === 'races') return 'races';
-  if (view === 'setup') return 'setup';
-  return 'cockpit';
-}
-
-function persistView(view: DashboardView) {
-  const params = new URLSearchParams(window.location.search);
-  if (view === 'cockpit') params.delete('view');
-  else params.set('view', view);
-  const nextQuery = params.toString();
-  window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
-}
+const QUALI_SESSION_RE = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i;
 
 interface RemoteRTCOptions {
   signalingUrl: string;
@@ -55,7 +49,6 @@ function readRemoteQuery(): Partial<RemoteRTCOptions> {
 
 function buildInitialRemoteOptions(): RemoteRTCOptions | null {
   const query = readRemoteQuery();
-
   if ((query.roomId || query.roomCode) && query.signalingUrl) {
     return {
       signalingUrl: query.signalingUrl,
@@ -64,7 +57,6 @@ function buildInitialRemoteOptions(): RemoteRTCOptions | null {
       password: '',
     };
   }
-
   return null;
 }
 
@@ -76,7 +68,6 @@ function persistRemoteSession(options: RemoteRTCOptions) {
   else params.delete('roomId');
   if (options.roomCode) params.set('roomCode', options.roomCode);
   else params.delete('roomCode');
-
   const nextQuery = params.toString();
   window.history.replaceState(null, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`);
 }
@@ -85,32 +76,40 @@ function clearRemoteQuery() {
   window.history.replaceState(null, '', window.location.pathname);
 }
 
-interface LayoutProps {
+interface AppShellProps {
   /** When provided, "go home" actions return to the Hub surface instead of the
    * room picker (App.tsx switches surfaces). Absent → legacy standalone behavior. */
   onExitToHub?: () => void;
 }
 
-export function Layout({ onExitToHub }: LayoutProps = {}) {
+export function AppShell({ onExitToHub }: AppShellProps = {}) {
+  const mock = isMockMode;
+
   const initialRemoteOptions = useMemo(() => buildInitialRemoteOptions(), []);
   const [rtcOptions, setRtcOptions] = useState<RemoteRTCOptions | null>(initialRemoteOptions);
   const [connectAttempted, setConnectAttempted] = useState(initialRemoteOptions !== null);
+  const [view, setView] = useState<ViewId>(() => readInitialView());
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
 
-  const setConnectionMode = useTelemetryStore((state) => state.setConnectionMode);
-  const setConnectionState = useTelemetryStore((state) => state.setConnectionState);
-  const setPitwallState = useTelemetryStore((state) => state.setPitwallState);
-  const clearNotifications = useTelemetryStore((state) => state.clearNotifications);
-  const clearRaceResult = useTelemetryStore((state) => state.clearRaceResult);
-  const setPlaybackActive = useTelemetryStore((state) => state.setPlaybackActive);
-  const connectionState = useTelemetryStore((state) => state.connectionState);
-  const raceResult = useTelemetryStore((state) => state.raceResult);
-  const sessionType = useTelemetryStore((state) => state.pitwallState?.session?.sessionType ?? '');
-  const isQualiSession = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i.test(sessionType);
-  const showQualifying = isQualiSession;
+  const setConnectionMode = useTelemetryStore((s) => s.setConnectionMode);
+  const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
+  const setPitwallState = useTelemetryStore((s) => s.setPitwallState);
+  const clearNotifications = useTelemetryStore((s) => s.clearNotifications);
+  const clearRaceResult = useTelemetryStore((s) => s.clearRaceResult);
+  const connectionState = useTelemetryStore((s) => s.connectionState);
+  const raceResult = useTelemetryStore((s) => s.raceResult);
+  const sessionType = useTelemetryStore((s) => s.pitwallState?.session?.sessionType ?? '');
+  const isQualiSession = QUALI_SESSION_RE.test(sessionType);
 
-  const [dashboardView, setDashboardView] = useState<DashboardView>(() => {
-    return readInitialView();
-  });
+  // 그리드/노티 lap 추적 — 뷰보다 상위, 앱 수명 1회 구독
+  useEffect(() => {
+    startRaceMetaTracker();
+  }, []);
+
+  useEffect(() => {
+    setConnectionMode('remote');
+  }, [setConnectionMode]);
 
   useEffect(() => {
     window.sessionStorage.removeItem('frc_remote_session');
@@ -118,12 +117,8 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
     window.localStorage.removeItem('frc_signaling_url');
   }, []);
 
-  useEffect(() => {
-    setConnectionMode('remote');
-  }, [setConnectionMode]);
-
-  usePitwallWebSocket({ url: '' });
-  useMockTelemetry(false);
+  // dev mock 피드 (?mock=1 race / ?mock=quali) — connected 상태로 스토어를 채운다
+  useMockTelemetry(mock, mockScenario);
 
   const webrtcOpts = useMemo(() => rtcOptions, [rtcOptions]);
   const {
@@ -135,10 +130,20 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
     forceReconnect,
   } = useWebRTCDataChannel(webrtcOpts);
 
+  // 재연결 후 'connected' 전이마다 현재 뷰 재전송 (peerView 는 재연결 시 cockpit 으로 리셋됨)
+  const sendViewRef = useRef(sendView);
+  sendViewRef.current = sendView;
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    if (connectionState === 'connected') {
+      sendViewRef.current(viewToSenderView(viewRef.current));
+    }
+  }, [connectionState]);
+
   const raceArchiveDataSource = useMemo<RaceArchiveDataSource>(() => ({
     listRaces: async (signal?: AbortSignal) => {
       const items: RaceListItem[] = [];
-
       await stream(
         { type: 'getRaceArchiveList' },
         {
@@ -146,33 +151,23 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
           timeoutMs: RACE_ARCHIVE_LIST_TIMEOUT_MS,
           doneType: 'raceArchiveListDone',
           onMessage: (response) => {
-            if (response.type !== 'raceArchiveList') {
-              return;
-            }
+            if (response.type !== 'raceArchiveList') return;
             if (Array.isArray(response.data)) {
               items.push(...(response.data as RaceListItem[]));
               return;
             }
             const chunk = response.data as { items?: RaceListItem[] } | undefined;
-            if (Array.isArray(chunk?.items)) {
-              items.push(...chunk.items);
-            }
+            if (Array.isArray(chunk?.items)) items.push(...chunk.items);
           },
         },
       );
-
       return items;
     },
-    loadSummary: (id: string, signal?: AbortSignal) => {
-      return request<RaceSummary>(
-        { type: 'getRaceSummary', data: { id } },
-        { signal, timeoutMs: RACE_SUMMARY_TIMEOUT_MS },
-      );
-    },
+    loadSummary: (id: string, signal?: AbortSignal) =>
+      request<RaceSummary>({ type: 'getRaceSummary', data: { id } }, { signal, timeoutMs: RACE_SUMMARY_TIMEOUT_MS }),
     loadReplay: async (id: string, signal?: AbortSignal) => {
       let meta: ReplayStreamMeta | null = null;
       const frames: ReplayFrame[] = [];
-
       await stream(
         { type: 'getRaceReplay', data: { id } },
         {
@@ -187,26 +182,20 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
             }
             if (response.type === 'raceReplayChunk') {
               const chunk = response.data as { frames?: ReplayFrame[] } | undefined;
-              if (Array.isArray(chunk?.frames)) {
-                frames.push(...chunk.frames);
-              }
+              if (Array.isArray(chunk?.frames)) frames.push(...chunk.frames);
             }
           },
         },
       );
-
       return { meta, frames };
     },
   }), [request, stream]);
 
-  const switchView = useCallback((view: DashboardView) => {
-    if (dashboardView === 'races' && view !== 'races') {
-      setPlaybackActive(false);
-    }
-    setDashboardView(view);
-    persistView(view);
-    sendView(view);
-  }, [dashboardView, sendView, setPlaybackActive]);
+  const switchView = useCallback((next: ViewId) => {
+    setView(next);
+    persistView(next);
+    sendView(viewToSenderView(next));
+  }, [sendView]);
 
   const handleRemoteConnect = useCallback((nextOptions: RemoteRTCOptions) => {
     persistRemoteSession(nextOptions);
@@ -216,8 +205,6 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
     setPitwallState(null);
     clearNotifications();
     clearRaceResult();
-    // Bump the hook's nonce so reconnecting to the SAME room after a terminal
-    // failure (auto-retries exhausted) still re-runs the connection effect.
     forceReconnect();
   }, [clearNotifications, clearRaceResult, forceReconnect, setConnectionState, setPitwallState]);
 
@@ -240,12 +227,24 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
     onExitToHub?.();
   }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState, onExitToHub]);
 
-  // Setup manager runs independently — no .shell wrapper (it has overflow:hidden)
-  if (dashboardView === 'setup') {
-    return <F1SetupManager onBack={() => switchView('cockpit')} />;
+  const controls: ShellControls = {
+    view,
+    onNavigate: switchView,
+    onOpenRooms: openRoomPicker,
+    onOpenArchive: () => setArchiveOpen(true),
+    onOpenSetup: () => setSetupOpen(true),
+    onGoHome: goToMainScreen,
+    navDisabled: { qualifying: !isQualiSession },
+    roomsActive: true,
+  };
+
+  // 세팅 매니저는 전체 화면 대체 (overflow:hidden 독립 실행)
+  if (setupOpen) {
+    return <F1SetupManager onBack={() => setSetupOpen(false)} />;
   }
 
-  if (!rtcOptions) {
+  // 라이브 모드 게이팅 (mock 모드는 건너뜀)
+  if (!mock && !rtcOptions) {
     return (
       <RemoteConnect
         onConnect={handleRemoteConnect}
@@ -263,6 +262,8 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
   }
 
   if (
+    !mock &&
+    rtcOptions &&
     connectionState !== 'reconnecting' &&
     (rtcConnectionState === 'failed' ||
       isConnectionFailure(connectionState) ||
@@ -284,32 +285,25 @@ export function Layout({ onExitToHub }: LayoutProps = {}) {
     );
   }
 
-  const remoteAction = { label: 'Rooms', onClick: openRoomPicker, active: true };
-
   return (
-    <div className={styles.shell}>
-      {dashboardView === 'qualifying' && showQualifying ? (
-        <QualifyingDashboard
-          onSwitchToCockpit={() => switchView('cockpit')}
-          onSwitchToRaces={() => switchView('races')}
-          onGoHome={goToMainScreen}
-          remoteAction={remoteAction}
-        />
-      ) : (
-        <CockpitDashboard
-          onOpenSettings={() => {}}
-          showSettingsButton={false}
-          requestP2P={request}
-          remoteAction={remoteAction}
-          onSwitchToQualifying={showQualifying ? () => switchView('qualifying') : undefined}
-          onSwitchToRaces={() => switchView('races')}
-          onGoHome={goToMainScreen}
-        />
-      )}
-      {dashboardView === 'races' ? (
-        <RaceArchiveDrawer onClose={() => switchView('cockpit')} dataSource={raceArchiveDataSource} />
+    <>
+      <Stage>{renderView(controls, request)}</Stage>
+      {archiveOpen ? (
+        <RaceArchiveDrawer onClose={() => setArchiveOpen(false)} dataSource={raceArchiveDataSource} />
       ) : null}
       {raceResult ? <PostRaceDebrief result={raceResult} onClose={clearRaceResult} /> : null}
-    </div>
+    </>
   );
+}
+
+function renderView(controls: ShellControls, request: RequestFn) {
+  // Phase 1~3에서 각 뷰를 실제 구현으로 교체 완료(Broadcast/PitWall/Qualifying).
+  switch (controls.view) {
+    case 'broadcast':
+      return <BroadcastView controls={controls} />;
+    case 'pitwall':
+      return <PitWallView controls={controls} request={request} />;
+    case 'qualifying':
+      return <QualifyingView controls={controls} />;
+  }
 }
