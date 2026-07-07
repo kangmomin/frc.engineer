@@ -1,5 +1,6 @@
 import { useEffect, useMemo, type CSSProperties } from 'react';
 import { getTyreColor } from '../../constants/tyreCompounds';
+import { resolveSummarySchema } from '../../types/telemetry';
 import type { RaceControlNotification, RaceSummary } from '../../types/telemetry';
 import { formatLapTime, formatPosition } from '../../utils/formatters';
 import styles from './PostRaceDebrief.module.css';
@@ -49,6 +50,20 @@ function formatLapCount(value?: number): string {
   return `${value} laps`;
 }
 
+function formatSector(ms: number): string {
+  if (!ms) {
+    return '--';
+  }
+  return (ms / 1000).toFixed(3);
+}
+
+function formatStintRange(startLap?: number, endLap?: number): string {
+  if (!startLap || !endLap) {
+    return '';
+  }
+  return `L${startLap}–${endLap} · `;
+}
+
 function formatTimestamp(timestamp: number): string {
   if (!timestamp) {
     return '--:--:--';
@@ -93,6 +108,15 @@ export function PostRaceDebrief({
     [result.drivers],
   );
   const leaders = sortedDrivers.slice(0, 5);
+  // Rich sections render only for versioned (schemaVersion>=1) summaries that carry a
+  // detail block. Legacy (v0) summaries lack detail and fall through unchanged; an
+  // unknown-future version still renders the fields it recognises here.
+  const schema = resolveSummarySchema(result);
+  const detail = result.detail;
+  const showRich = schema !== 'legacy' && !!detail;
+  const lapTimings = detail?.laps ?? [];
+  const dynamics = detail?.dynamics ?? [];
+  const issues = detail?.events ?? [];
   const stints = result.player.stints ?? [];
   const lastStint = stints.length > 0 ? stints[stints.length - 1] : undefined;
   const totalStintLaps = stints.reduce((sum, stint) => sum + stint.laps, 0);
@@ -166,6 +190,7 @@ export function PostRaceDebrief({
         </div>
 
         <div className={styles.metaRow}>
+          {result.gameFormat ? <div className={styles.metaPill}>{result.gameFormat}</div> : null}
           <div className={styles.metaPill}>Classified {result.debrief?.classifiedDrivers ?? result.drivers.length}</div>
           <div className={styles.metaPill}>Weather {result.session.weather || '--'}</div>
           <div className={styles.metaPill}>Track {formatTemperature(result.session.trackTemp)}</div>
@@ -256,7 +281,11 @@ export function PostRaceDebrief({
                           style={{ backgroundColor: getTyreColor(stint.compound) }}
                         />
                         <strong>{stint.compound}</strong>
-                        <span>{stint.laps} laps</span>
+                        <span>
+                          {formatStintRange(stint.startLap, stint.endLap)}
+                          {stint.laps} laps
+                          {typeof stint.tireWearPct === 'number' ? ` · ${stint.tireWearPct}% wear` : ''}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -325,6 +354,113 @@ export function PostRaceDebrief({
             </section>
           </div>
         </div>
+
+        {showRich && (lapTimings.length > 0 || dynamics.length > 0 || issues.length > 0) ? (
+          <div className={styles.richGrid}>
+            {lapTimings.length > 0 ? (
+              <section className={styles.sectionCard}>
+                <div className={styles.sectionHeader}>
+                  <h3>Lap Timing</h3>
+                  <span>{lapTimings.length} laps</span>
+                </div>
+                <div className={styles.tableScroll}>
+                  <table className={styles.dataTable}>
+                    <thead>
+                      <tr>
+                        <th>Lap</th>
+                        <th>Time</th>
+                        <th>S1</th>
+                        <th>S2</th>
+                        <th>S3</th>
+                        <th>Tyre</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lapTimings.map((lap) => (
+                        <tr key={lap.lapNumber} className={lap.valid ? '' : styles.invalidLap}>
+                          <td>{lap.lapNumber}</td>
+                          <td>{formatLapTime(lap.lapMs)}</td>
+                          <td>{formatSector(lap.s1Ms)}</td>
+                          <td>{formatSector(lap.s2Ms)}</td>
+                          <td>{formatSector(lap.s3Ms)}</td>
+                          <td>
+                            {lap.tyre ? (
+                              <span className={styles.tyreTag}>
+                                <span className={styles.stintSwatch} style={{ backgroundColor: getTyreColor(lap.tyre) }} />
+                                {lap.tyre}
+                              </span>
+                            ) : (
+                              '--'
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
+
+            {dynamics.length > 0 ? (
+              <section className={styles.sectionCard}>
+                <div className={styles.sectionHeader}>
+                  <h3>Lap Dynamics</h3>
+                  <span>Understeer / oversteer balance</span>
+                </div>
+                <div className={styles.tableScroll}>
+                  <table className={styles.dataTable}>
+                    <thead>
+                      <tr>
+                        <th>Lap</th>
+                        <th>Understeer</th>
+                        <th>Oversteer</th>
+                        <th>Lockups</th>
+                        <th>Spins</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dynamics.map((lap) => (
+                        <tr key={lap.lapNum}>
+                          <td>{lap.lapNum}</td>
+                          <td>{lap.understeerPct.toFixed(1)}%</td>
+                          <td>{lap.oversteerPct.toFixed(1)}%</td>
+                          <td>{lap.lockupCount}</td>
+                          <td>{lap.spinCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ) : null}
+
+            {issues.length > 0 ? (
+              <section className={styles.sectionCard}>
+                <div className={styles.sectionHeader}>
+                  <h3>Issues &amp; Incidents</h3>
+                  <span>{issues.length} events</span>
+                </div>
+                <div className={styles.timeline}>
+                  {issues.map((entry, index) => (
+                    <article
+                      key={entry.id || `issue-${index}`}
+                      className={`${styles.timelineEntry} ${getTimelineTone(entry)}`}
+                    >
+                      <div className={styles.timelineStamp}>
+                        <span>{entry.lap ? `Lap ${entry.lap}` : formatTimestamp(entry.timestamp)}</span>
+                        <small>{entry.category}</small>
+                      </div>
+                      <div className={styles.timelineBody}>
+                        <strong>{entry.driverName || entry.category.toUpperCase()}</strong>
+                        <p>{entry.message}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </div>
   );

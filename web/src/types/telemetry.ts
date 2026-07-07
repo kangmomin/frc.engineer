@@ -105,6 +105,9 @@ export interface RaceListItem {
 export interface RaceStint {
   compound: string;
   laps: number;
+  startLap?: number;
+  endLap?: number;
+  tireWearPct?: number;
 }
 
 export interface RacePlayerSummary {
@@ -169,10 +172,59 @@ export interface RaceDebrief {
   timeline?: RaceControlNotification[];
 }
 
+export interface LapTiming {
+  lapNumber: number;
+  lapMs: number;
+  s1Ms: number;
+  s2Ms: number;
+  s3Ms: number;
+  tyre?: string;
+  valid: boolean;
+}
+
+export interface CarSetup {
+  frontWing: number;
+  rearWing: number;
+  onThrottle: number;
+  offThrottle: number;
+  frontCamber: number;
+  rearCamber: number;
+  frontToe: number;
+  rearToe: number;
+  frontSuspension: number;
+  rearSuspension: number;
+  frontAntiRollBar: number;
+  rearAntiRollBar: number;
+  frontSuspensionHeight: number;
+  rearSuspensionHeight: number;
+  brakePressure: number;
+  brakeBias: number;
+  engineBraking: number;
+  rearLeftTyrePressure: number;
+  rearRightTyrePressure: number;
+  frontLeftTyrePressure: number;
+  frontRightTyrePressure: number;
+  ballast: number;
+  fuelLoad: number;
+}
+
+// RaceDetail mirrors internal/races.RaceDetail — the rich, player-centric sub-block
+// present only on schemaVersion>=1 summaries. Every field is optional so legacy (v0)
+// and unknown-future readers degrade gracefully.
+export interface RaceDetail {
+  laps?: LapTiming[];
+  dynamics?: DynamicsLap[];
+  events?: RaceControlNotification[];
+  setup?: CarSetup;
+}
+
 export interface RaceSummary {
   id: string;
   savedAtLocal: string;
   sessionUID: number;
+  schemaVersion?: number;
+  gameFormat?: string;
+  detail?: RaceDetail;
   dataStorageMode?: DataStorageMode;
   track: {
     trackId: number;
@@ -204,6 +256,29 @@ export interface RaceSummary {
     session?: SessionInfo;
     frames: ReplayFrame[];
   };
+}
+
+// Highest single-document schema version this client fully understands. Mirrors the
+// Go constant races.RaceSummarySchemaVersion — bump both together when the summary /
+// detail structure changes.
+export const RACE_SUMMARY_SCHEMA_VERSION = 1;
+
+export type RaceSummarySchema = 'legacy' | 'rich' | 'unknownFuture';
+
+// resolveSummarySchema classifies a stored summary by its schemaVersion so readers
+// dispatch on it instead of guessing from field presence. Mirrors the writer's
+// stamp-always / reader-preserve contract: 0 (or absent) is a legacy pre-versioning
+// summary, versions we know are rich, and any higher version is unknown-future — the
+// caller still renders the fields it recognises and never crashes.
+export function resolveSummarySchema(summary: Pick<RaceSummary, 'schemaVersion'>): RaceSummarySchema {
+  const version = summary.schemaVersion ?? 0;
+  if (version <= 0) {
+    return 'legacy';
+  }
+  if (version <= RACE_SUMMARY_SCHEMA_VERSION) {
+    return 'rich';
+  }
+  return 'unknownFuture';
 }
 
 export interface ReplayFrame {
@@ -613,6 +688,7 @@ export interface RaceControlNotification {
   severity: 'critical' | 'warning' | 'info';
   driverName?: string;
   timestamp: number;
+  lap?: number;
 }
 
 /**
