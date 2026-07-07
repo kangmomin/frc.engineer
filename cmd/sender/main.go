@@ -55,6 +55,9 @@ type senderConfig struct {
 	OverlayPresets       []overlayPreset          `json:"overlayPresets,omitempty"`
 	OverlayHotkeys       *overlayHotkeys          `json:"overlayHotkeys,omitempty"`
 	OverlayWindows       *overlayWindowSettings   `json:"overlayWindows,omitempty"`
+	PlatformBaseURL      string                   `json:"platformBaseUrl,omitempty"`
+	UploadToken          string                   `json:"uploadToken,omitempty"`
+	AutoUpload           bool                     `json:"autoUpload,omitempty"`
 }
 
 const senderLogTailMaxBytes int64 = 64 * 1024
@@ -406,6 +409,9 @@ func main() {
 	cfgOverlayHotkeys := defaultedOverlayHotkeys(nil)
 	overlayWindowDefaults := defaultedOverlayWindowSettings(nil)
 	cfgOverlayWindows := overlayWindowDefaults
+	cfgPlatformBaseURL := normalizePlatformBaseURL("")
+	cfgUploadToken := ""
+	cfgAutoUpload := false
 	if saved := savedConfig; saved != nil && len(saved.ForwardTargets) > 0 {
 		cfgForwardTargets = saved.ForwardTargets
 		forwarder.UpdateTargets(cfgForwardTargets)
@@ -416,6 +422,9 @@ func main() {
 		cfgOverlayPresets = normalizeOverlayPresets(saved.OverlayPresets)
 		cfgOverlayHotkeys = defaultedOverlayHotkeys(saved.OverlayHotkeys)
 		cfgOverlayWindows = defaultedOverlayWindowSettings(saved.OverlayWindows)
+		cfgPlatformBaseURL = normalizePlatformBaseURL(saved.PlatformBaseURL)
+		cfgUploadToken = saved.UploadToken
+		cfgAutoUpload = saved.AutoUpload
 	}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
@@ -932,7 +941,7 @@ func main() {
 		logger.Warn("pitwall connection skipped (permission denied or nickname banned)")
 	}
 
-	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState) error {
+	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState, detail *dto.RaceDetailInput) error {
 		cfgMu.Lock()
 		rs := raceStorage
 		saveEnabled := cfgSaveFiles
@@ -946,7 +955,7 @@ func main() {
 			Penalty: counts.Penalty,
 			Warning: counts.Warning,
 			Info:    counts.Info,
-		}, timeline, time.Now())
+		}, timeline, detail, time.Now())
 		summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(storageMode)
 		if summary.DataStorageMode == rtconfig.DataStorageModeSummary || summary.DataStorageMode == rtconfig.DataStorageModeAdvanced {
 			if replay := processor.GetReplayTimeline(sessionUID); replay != nil {
@@ -975,7 +984,33 @@ func main() {
 			logger.Error("failed to save race summary", "error", err)
 		}
 
-		broadcaster.BroadcastRaceResult(summary)
+		// Strip the (potentially large) replay frames before the DataChannel push —
+		// the rich Detail (~50-60KB player-centric) stays within the SCTP budget,
+		// but the full replay would not. Mirrors cmd/server's broadcast strip.
+		broadcastSummary := *summary
+		broadcastSummary.Replay = nil
+		broadcaster.BroadcastRaceResult(&broadcastSummary)
+
+		// Optional auto-upload: fire-and-forget so a slow/failed network never
+		// blocks the save path. Only when paired and the race carries rich detail.
+		cfgMu.Lock()
+		autoUpload := cfgAutoUpload
+		token := cfgUploadToken
+		base := cfgPlatformBaseURL
+		cfgMu.Unlock()
+		if autoUpload && token != "" {
+			if req, ok := buildUploadRequest(summary); ok {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), uploadHTTPTimeout)
+					defer cancel()
+					if _, status, err := uploadRace(ctx, base, token, req); err != nil {
+						logger.Warn("auto-upload failed", "id", summary.ID, "status", status, "error", err)
+					} else {
+						logger.Info("race auto-uploaded", "id", summary.ID)
+					}
+				}()
+			}
+		}
 		return nil
 	})
 
@@ -1043,6 +1078,9 @@ func main() {
 			OverlayPresets:       presets,
 			OverlayHotkeys:       cloneOverlayHotkeys(cfgOverlayHotkeys),
 			OverlayWindows:       cloneOverlayWindowSettings(cfgOverlayWindows),
+			PlatformBaseURL:      cfgPlatformBaseURL,
+			UploadToken:          cfgUploadToken,
+			AutoUpload:           cfgAutoUpload,
 		}
 	}
 
@@ -1349,6 +1387,122 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(summary)
+	})
+
+	// ── Platform upload (device pairing → token → authenticated POST /races) ──
+	mux.HandleFunc("POST /api/upload/pair", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Code string `json:"code"`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil || strings.TrimSpace(body.Code) == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "페어링 코드를 입력하세요"})
+			return
+		}
+		cfgMu.Lock()
+		base := cfgPlatformBaseURL
+		cfgMu.Unlock()
+		ctx, cancel := context.WithTimeout(r.Context(), uploadHTTPTimeout)
+		defer cancel()
+		token, err := exchangePairing(ctx, base, body.Code)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		cfgMu.Lock()
+		cfgUploadToken = token
+		saveErr := saveSenderConfig(buildSenderConfigSnapshot())
+		cfgMu.Unlock()
+		if saveErr != nil {
+			logger.Warn("failed to persist upload token", "error", saveErr)
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"paired": true})
+	})
+
+	mux.HandleFunc("GET /api/upload/status", func(w http.ResponseWriter, r *http.Request) {
+		cfgMu.Lock()
+		paired := cfgUploadToken != ""
+		base := cfgPlatformBaseURL
+		autoUpload := cfgAutoUpload
+		cfgMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"paired":          paired,
+			"platformBaseUrl": base,
+			"autoUpload":      autoUpload,
+		})
+	})
+
+	mux.HandleFunc("POST /api/upload/auto", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			AutoUpload bool `json:"autoUpload"`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid body"})
+			return
+		}
+		cfgMu.Lock()
+		cfgAutoUpload = body.AutoUpload
+		saveErr := saveSenderConfig(buildSenderConfigSnapshot())
+		cfgMu.Unlock()
+		if saveErr != nil {
+			logger.Warn("failed to persist auto-upload flag", "error", saveErr)
+		}
+		json.NewEncoder(w).Encode(map[string]bool{"autoUpload": body.AutoUpload})
+	})
+
+	mux.HandleFunc("POST /api/races/{id}/upload", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.PathValue("id"))
+		w.Header().Set("Content-Type", "application/json")
+		if id == "" || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid race id"})
+			return
+		}
+		cfgMu.Lock()
+		token := cfgUploadToken
+		base := cfgPlatformBaseURL
+		cfgMu.Unlock()
+		if token == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"error": "먼저 페어링하세요"})
+			return
+		}
+		summary, err := loadRaceSummaryWithoutReplay(id)
+		if err != nil {
+			if os.IsNotExist(err) {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
+			} else {
+				logger.Error("failed to load race summary for upload", "id", id, "error", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
+			}
+			return
+		}
+		req, ok := buildUploadRequest(summary)
+		if !ok {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			json.NewEncoder(w).Encode(map[string]string{"error": "이 레이스에는 업로드할 랩 데이터가 없습니다"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), uploadHTTPTimeout)
+		defer cancel()
+		result, status, err := uploadRace(ctx, base, token, req)
+		if err != nil {
+			code := http.StatusBadGateway
+			if status == http.StatusUnauthorized || status == http.StatusForbidden {
+				code = http.StatusUnauthorized
+			}
+			w.WriteHeader(code)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		json.NewEncoder(w).Encode(result)
 	})
 
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {

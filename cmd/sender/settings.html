@@ -928,6 +928,29 @@
     <div class="track-list" id="trackList"></div>
   </div>
 
+  <!-- Platform Upload (Pitwall Cloud) -->
+  <div class="section">
+    <div class="section-title">Pitwall Cloud 업로드</div>
+    <div class="tracks-summary">
+      <span class="stat-label">페어링 상태</span>
+      <span class="tracks-count" id="uploadPairStatus">확인 중…</span>
+    </div>
+    <div class="field">
+      <label for="pairCode">페어링 코드</label>
+      <input type="text" id="pairCode" maxlength="64" placeholder="웹 허브에서 발급한 코드">
+    </div>
+    <button class="secondary-btn" id="pairBtn" type="button">기기 페어링</button>
+    <div class="field" style="margin-top:12px">
+      <div class="toggle-row">
+        <label>레이스 종료 시 자동 업로드</label>
+        <label class="toggle">
+          <input type="checkbox" id="autoUpload">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+
 
   <button class="save-btn" id="saveBtn">Save</button>
 </div>
@@ -2010,6 +2033,61 @@
       btn.textContent = 'Strategy Overlay';
     }
   }
+  // ── Platform upload (Pitwall Cloud pairing) ──
+  const $pairStatus = document.getElementById('uploadPairStatus');
+  const $pairCode = document.getElementById('pairCode');
+  const $pairBtn = document.getElementById('pairBtn');
+  const $autoUpload = document.getElementById('autoUpload');
+
+  async function loadUploadStatus() {
+    try {
+      const r = await fetch('/api/upload/status');
+      const d = await r.json();
+      $pairStatus.textContent = d.paired ? '페어링됨' : '미페어링';
+      $autoUpload.checked = !!d.autoUpload;
+    } catch (e) {
+      $pairStatus.textContent = '상태 확인 실패';
+    }
+  }
+
+  $pairBtn.addEventListener('click', async () => {
+    const code = ($pairCode.value || '').trim();
+    if (!code) { showToast('페어링 코드를 입력하세요', false); return; }
+    $pairBtn.disabled = true;
+    try {
+      const r = await fetch('/api/upload/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const d = await r.json();
+      if (r.ok && d.paired) {
+        showToast('페어링 완료', true);
+        $pairCode.value = '';
+        loadUploadStatus();
+      } else {
+        showToast(d.error || '페어링 실패', false);
+      }
+    } catch (e) {
+      showToast('네트워크 오류', false);
+    } finally {
+      $pairBtn.disabled = false;
+    }
+  });
+
+  $autoUpload.addEventListener('change', async () => {
+    try {
+      await fetch('/api/upload/auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoUpload: $autoUpload.checked }),
+      });
+      showToast($autoUpload.checked ? '자동 업로드 켜짐' : '자동 업로드 꺼짐', true);
+    } catch (e) {
+      showToast('저장 실패', false);
+    }
+  });
+
   renderOverlayStatePills();
   renderPresets();
   renderHotkeys();
@@ -2017,6 +2095,7 @@
   loadConfig();
   loadLocalOpsSettings();
   loadTracks();
+  loadUploadStatus();
   pollStatus();
   setInterval(pollStatus, 2000);
 </script>

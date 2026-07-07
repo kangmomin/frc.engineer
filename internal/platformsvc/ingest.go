@@ -45,6 +45,13 @@ const (
 	maxGameFormatLen  = 32
 	maxSessionTypeLen = 48
 	maxTrackNameLen   = 64
+
+	// Rich Detail caps (player-centric; worst-case 2026 24-car/78-lap fits well
+	// under the 512 KiB body cap).
+	maxDetailStints   = 30
+	maxDetailDynamics = 500
+	maxDetailEvents   = 200
+	maxSchemaVersion  = 32767 // SMALLINT ceiling (race_detail.schema_version)
 )
 
 // validTyres whitelists the compound strings that may reach the public pace
@@ -104,6 +111,21 @@ func validateUpload(req *UploadRequest) error {
 	// implausible values here for a clean 400 before any DB work.
 	if req.Setup != nil && !setupFloatsFinite(req.Setup) {
 		return ErrBadUpload
+	}
+	// schema_version is a SMALLINT column: a value past its range would 500 at
+	// INSERT (mirrors the int4 lap-ms guard above). Detail requires a real version.
+	if req.SchemaVersion < 0 || req.SchemaVersion > maxSchemaVersion {
+		return ErrBadUpload
+	}
+	if req.Detail != nil {
+		if req.SchemaVersion < 1 {
+			return ErrBadUpload
+		}
+		if len(req.Detail.Stints) > maxDetailStints ||
+			len(req.Detail.Dynamics) > maxDetailDynamics ||
+			len(req.Detail.Events) > maxDetailEvents {
+			return ErrBadUpload
+		}
 	}
 	return nil
 }
@@ -167,15 +189,58 @@ type UploadSetup struct {
 
 // UploadRequest is the POST /races body. sourceRaceId is the local
 // RaceSummary.ID; (account, sourceRaceId) is unique so re-upload is a no-op
-// reject.
+// reject. Laps feed the (public) leaderboards; Setup is the private sellable
+// snapshot; Detail is the private rich document (stints/dynamics/events) stored
+// opaquely in race_detail and never surfaced on a public endpoint.
 type UploadRequest struct {
-	SourceRaceID string       `json:"sourceRaceId"`
-	TrackID      int          `json:"trackId"`
-	TrackName    string       `json:"trackName"`
-	SessionType  string       `json:"sessionType"`
-	GameFormat   string       `json:"gameFormat"`
-	Laps         []UploadLap  `json:"laps"`
-	Setup        *UploadSetup `json:"setup,omitempty"`
+	SourceRaceID  string        `json:"sourceRaceId"`
+	TrackID       int           `json:"trackId"`
+	TrackName     string        `json:"trackName"`
+	SessionType   string        `json:"sessionType"`
+	GameFormat    string        `json:"gameFormat"`
+	Laps          []UploadLap   `json:"laps"`
+	Setup         *UploadSetup  `json:"setup,omitempty"`
+	SchemaVersion int           `json:"schemaVersion,omitempty"`
+	Detail        *UploadDetail `json:"detail,omitempty"`
+}
+
+// UploadDetail is the rich, private per-race document stored (versioned) in
+// race_detail. Per-lap timing lives in Laps (leaderboard) and the setup in Setup,
+// so Detail carries only what has no relational home: stints, per-lap dynamics,
+// and the event/issue timeline. Stored opaquely — validated for size, re-marshaled
+// canonically, never trusted for any server-derived value.
+type UploadDetail struct {
+	Stints   []UploadStint   `json:"stints,omitempty"`
+	Dynamics []UploadDynamic `json:"dynamics,omitempty"`
+	Events   []UploadEvent   `json:"events,omitempty"`
+}
+
+// UploadStint mirrors races.RaceStint.
+type UploadStint struct {
+	Compound    string `json:"compound"`
+	Laps        int    `json:"laps"`
+	StartLap    int    `json:"startLap,omitempty"`
+	EndLap      int    `json:"endLap,omitempty"`
+	TireWearPct int    `json:"tireWearPct,omitempty"`
+}
+
+// UploadDynamic mirrors dto.DynamicsLapDTO.
+type UploadDynamic struct {
+	LapNum        int     `json:"lapNum"`
+	UndersteerPct float64 `json:"understeerPct"`
+	OversteerPct  float64 `json:"oversteerPct"`
+	LockupCount   int     `json:"lockupCount"`
+	SpinCount     int     `json:"spinCount"`
+}
+
+// UploadEvent mirrors dto.RaceControlNotification (the race lap tag + text).
+type UploadEvent struct {
+	Lap        int    `json:"lap,omitempty"`
+	Timestamp  int64  `json:"timestamp,omitempty"`
+	Category   string `json:"category"`
+	Message    string `json:"message"`
+	Severity   string `json:"severity"`
+	DriverName string `json:"driverName,omitempty"`
 }
 
 // UploadResult is the ingest response. Plausible reports whether the race
@@ -319,6 +384,22 @@ func (s *Store) IngestRace(ctx context.Context, accountID string, req UploadRequ
 			raceID, canon, hash,
 		); err != nil {
 			return nil, fmt.Errorf("platformsvc: insert setup: %w", err)
+		}
+	}
+
+	// Rich detail (versioned JSONB), in the same tx as races/laps/setup. Only on
+	// the new-race path — a duplicate re-upload returns via existingRace above, so
+	// the PK=race_id row is written exactly once with no ON CONFLICT needed.
+	if req.Detail != nil {
+		payload, err := json.Marshal(req.Detail)
+		if err != nil {
+			return nil, fmt.Errorf("platformsvc: marshal race detail: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO platform.race_detail (race_id, schema_version, payload) VALUES ($1, $2, $3)`,
+			raceID, req.SchemaVersion, string(payload),
+		); err != nil {
+			return nil, fmt.Errorf("platformsvc: insert race detail: %w", err)
 		}
 	}
 

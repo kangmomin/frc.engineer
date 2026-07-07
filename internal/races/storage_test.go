@@ -52,6 +52,48 @@ func TestFileStorageSaveAndLoad(t *testing.T) {
 	}
 }
 
+func TestFileStorageSchemaVersionStampAndPreserve(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewFileStorage(dir, nil)
+	if err != nil {
+		t.Fatalf("NewFileStorage() error = %v", err)
+	}
+
+	// A fresh save with an unset version is stamped to the current version (writer
+	// always stamps — a reader never has to guess).
+	id, err := store.Save(&RaceSummary{
+		SessionUID: 1,
+		Track:      TrackInfo{TrackName: "Bahrain"},
+		Session:    SessionSummary{SessionType: "Race"},
+		Player:     PlayerSummary{Name: "P", FinalPosition: 1},
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	got, err := store.Load(id)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.SchemaVersion != RaceSummarySchemaVersion {
+		t.Fatalf("stamped SchemaVersion = %d, want %d", got.SchemaVersion, RaceSummarySchemaVersion)
+	}
+
+	// A pre-versioning file on disk (no schemaVersion key) must load as 0 — the
+	// reader preserves the stored value and never force-promotes it.
+	legacyID := "20260101_000000_legacy_1"
+	legacy := []byte(`{"id":"` + legacyID + `","sessionUID":2,"track":{"trackName":"Imola"},"player":{"name":"Old"}}`)
+	if err := os.WriteFile(filepath.Join(dir, legacyID+".json"), legacy, 0o644); err != nil {
+		t.Fatalf("write legacy file: %v", err)
+	}
+	loaded, err := store.Load(legacyID)
+	if err != nil {
+		t.Fatalf("Load(legacy) error = %v", err)
+	}
+	if loaded.SchemaVersion != 0 {
+		t.Fatalf("legacy SchemaVersion = %d, want 0 (preserved, not promoted)", loaded.SchemaVersion)
+	}
+}
+
 func TestFileStorageLoadRejectsUnsafeID(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewFileStorage(dir, nil)

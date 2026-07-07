@@ -47,13 +47,16 @@ type ReplayTimeline struct {
 }
 
 const (
-	maxReplayRaceControl   = 50
-	maxRaceSummaryTimeline = 20
-	replayFrameIntervalMS  = 500
+	maxReplayRaceControl       = 50
+	maxRaceSummaryTimeline     = 20  // base Debrief.Timeline (broadcast + DataChannel)
+	maxRaceSummaryRichTimeline = 150 // Detail.Events (persisted rich summary only)
+	replayFrameIntervalMS      = 500
 )
 
-// RaceSummarySaveCallback is invoked once per session on race-end events.
-type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState) error
+// RaceSummarySaveCallback is invoked once per session on race-end events. detail
+// carries the rich, player-centric inputs (per-lap timings, setup, lap-tagged
+// events) gathered from PitwallManager accessors; it is never nil.
+type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState, detail *dto.RaceDetailInput) error
 
 // PitwallStateObserver is invoked when a new pitwall snapshot is emitted.
 type PitwallStateObserver func(sessionUID uint64, capturedAt time.Time, state *dto.PitwallState)
@@ -89,8 +92,9 @@ type Processor struct {
 	raceSummarySave     RaceSummarySaveCallback
 	raceSummarySession  uint64
 	raceSummarySaved    bool
-	raceSummaryCounters RaceSummaryCounts
-	raceSummaryTimeline []dto.RaceControlNotification
+	raceSummaryCounters     RaceSummaryCounts
+	raceSummaryTimeline     []dto.RaceControlNotification
+	raceSummaryRichTimeline []dto.RaceControlNotification
 
 	// Atomic counter for unique race-control notification IDs
 	rcSeq atomic.Int64
@@ -630,6 +634,7 @@ func (p *Processor) observeSessionUID(sessionUID uint64) {
 		p.raceSummarySaved = false
 		p.raceSummaryCounters = RaceSummaryCounts{}
 		p.raceSummaryTimeline = nil
+		p.raceSummaryRichTimeline = nil
 	}
 }
 
@@ -712,10 +717,17 @@ func (p *Processor) recordRaceSummaryNotification(notification *dto.RaceControlN
 		return
 	}
 
+	// Lap-tag at emit time (the race lap this event occurred on). "When" for the
+	// event timeline; "where" (track position) is not carried by the event packet.
+	tagged := *notification
+	if tagged.Lap == 0 {
+		tagged.Lap = p.pitwallManager.GetPlayerCurrentLap()
+	}
+
 	p.raceSummaryMu.Lock()
 	defer p.raceSummaryMu.Unlock()
 
-	switch notification.Category {
+	switch tagged.Category {
 	case "penalty":
 		p.raceSummaryCounters.Penalty++
 	case "warning":
@@ -724,9 +736,17 @@ func (p *Processor) recordRaceSummaryNotification(notification *dto.RaceControlN
 		p.raceSummaryCounters.Info++
 	}
 
-	p.raceSummaryTimeline = append(p.raceSummaryTimeline, *notification)
+	p.raceSummaryTimeline = append(p.raceSummaryTimeline, tagged)
 	if len(p.raceSummaryTimeline) > maxRaceSummaryTimeline {
 		p.raceSummaryTimeline = append([]dto.RaceControlNotification(nil), p.raceSummaryTimeline[len(p.raceSummaryTimeline)-maxRaceSummaryTimeline:]...)
+	}
+
+	// Separate, larger buffer for the persisted rich summary's event timeline.
+	// Kept apart from the base timeline so raising its cap never grows the base
+	// Debrief.Timeline that rides the broadcast / DataChannel payload.
+	p.raceSummaryRichTimeline = append(p.raceSummaryRichTimeline, tagged)
+	if len(p.raceSummaryRichTimeline) > maxRaceSummaryRichTimeline {
+		p.raceSummaryRichTimeline = append([]dto.RaceControlNotification(nil), p.raceSummaryRichTimeline[len(p.raceSummaryRichTimeline)-maxRaceSummaryRichTimeline:]...)
 	}
 }
 
@@ -741,11 +761,20 @@ func (p *Processor) trySaveRaceSummary(sessionUID uint64, trigger string) {
 	save := p.raceSummarySave
 	counts := p.raceSummaryCounters
 	timeline := append([]dto.RaceControlNotification(nil), p.raceSummaryTimeline...)
+	richEvents := append([]dto.RaceControlNotification(nil), p.raceSummaryRichTimeline...)
 	p.raceSummarySaved = true
 	p.raceSummaryMu.Unlock()
 
+	// Gather rich, player-centric inputs after BuildState releases the lock (this
+	// runs on the processor's single goroutine, so no TOCTOU on the player index).
 	state := p.pitwallManager.BuildState()
-	if err := save(sessionUID, counts, timeline, state); err != nil {
+	playerIdx := state.PlayerIndex
+	detail := &dto.RaceDetailInput{
+		PlayerLaps:  p.pitwallManager.PlayerLapTimings(playerIdx),
+		PlayerSetup: p.pitwallManager.PlayerSetup(playerIdx),
+		RichEvents:  richEvents,
+	}
+	if err := save(sessionUID, counts, timeline, state, detail); err != nil {
 		p.logger.Error("failed to save race summary", "sessionUID", sessionUID, "trigger", trigger, "error", err)
 		p.raceSummaryMu.Lock()
 		if p.raceSummarySession == sessionUID {

@@ -1,6 +1,7 @@
 package races
 
 import (
+	"strings"
 	"time"
 
 	rtconfig "frc.engineer/internal/config"
@@ -14,19 +15,43 @@ type NotificationCounts struct {
 	Info    int `json:"info"`
 }
 
-// RaceSummary is the persisted, non-raw race result snapshot.
+// RaceSummarySchemaVersion is the single document version stamped on every
+// persisted summary. Bump when the summary/Detail structure changes so readers can
+// discriminate. 0 = legacy (pre-versioning, no Detail); 1 = rich Detail.
+const RaceSummarySchemaVersion = 1
+
+// RaceSummary is the persisted, non-raw race result snapshot. SchemaVersion is
+// always emitted (a single document version is an explicit signal, so readers
+// never have to guess). GameFormat and Detail are the rich, player-centric
+// enrichments; GameFormat in particular is the leaderboard/market partition key,
+// so it must be present from v1 (the local JSON is immutable history).
 type RaceSummary struct {
 	ID              string                   `json:"id"`
+	SchemaVersion   int                      `json:"schemaVersion"`
 	SavedAtLocal    string                   `json:"savedAtLocal"`
 	SessionUID      uint64                   `json:"sessionUID"`
 	DataStorageMode rtconfig.DataStorageMode `json:"dataStorageMode,omitempty"`
+	GameFormat      string                   `json:"gameFormat,omitempty"`
 	Track           TrackInfo                `json:"track"`
 	Session         SessionSummary           `json:"session"`
 	Player          PlayerSummary            `json:"player"`
 	Drivers         []DriverSummary          `json:"drivers"`
 	Highlights      RaceHighlights           `json:"highlights"`
 	Debrief         *RaceDebrief             `json:"debrief,omitempty"`
+	Detail          *RaceDetail              `json:"detail,omitempty"`
 	Replay          *ReplayTimeline          `json:"replay,omitempty"`
+}
+
+// RaceDetail is the rich, player-centric sub-block (per-lap timings/dynamics, the
+// event timeline, and the car setup). Kept as one optional pointer block — like
+// Replay — so the base summary is unchanged for legacy/resultOnly readers and the
+// whole block maps 1:1 onto the platform race_detail JSONB payload. Player-centric
+// on purpose: all-24-car per-lap data would overflow the DataChannel SCTP budget.
+type RaceDetail struct {
+	Laps     []dto.LapTimingDTO            `json:"laps,omitempty"`
+	Dynamics []dto.DynamicsLapDTO          `json:"dynamics,omitempty"`
+	Events   []dto.RaceControlNotification `json:"events,omitempty"`
+	Setup    *dto.CarSetupDTO              `json:"setup,omitempty"`
 }
 
 // TrackInfo describes the track for a stored race summary.
@@ -45,10 +70,14 @@ type SessionSummary struct {
 	TrackTemp   float32 `json:"trackTemp"`
 }
 
-// RaceStint summarises one completed tire stint.
+// RaceStint summarises one tire stint. StartLap/EndLap/TireWearPct are rich
+// enrichments (omitempty) — zero on legacy summaries.
 type RaceStint struct {
-	Compound string `json:"compound"`
-	Laps     int    `json:"laps"`
+	Compound    string `json:"compound"`
+	Laps        int    `json:"laps"`
+	StartLap    int    `json:"startLap,omitempty"`
+	EndLap      int    `json:"endLap,omitempty"`
+	TireWearPct int    `json:"tireWearPct,omitempty"`
 }
 
 // PlayerSummary captures player-centric race result metrics.
@@ -156,9 +185,13 @@ type RaceListItem struct {
 	FrameCount      int                      `json:"frameCount"`
 }
 
-// BuildSummary creates a race summary from the latest pitwall snapshot.
-func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts NotificationCounts, timeline []dto.RaceControlNotification, savedAt time.Time) *RaceSummary {
+// BuildSummary creates a race summary from the latest pitwall snapshot plus the
+// rich, player-centric detail gathered by the caller (per-lap timings, setup,
+// lap-tagged events). detail may be nil (e.g. a caller with no rich inputs);
+// SchemaVersion is stamped unconditionally.
+func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts NotificationCounts, timeline []dto.RaceControlNotification, detail *dto.RaceDetailInput, savedAt time.Time) *RaceSummary {
 	out := &RaceSummary{
+		SchemaVersion:   RaceSummarySchemaVersion,
 		SavedAtLocal:    savedAt.Format("2006-01-02 15:04:05"),
 		SessionUID:      sessionUID,
 		DataStorageMode: rtconfig.DataStorageModeResultOnly,
@@ -170,6 +203,8 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 	if state == nil {
 		return out
 	}
+
+	out.GameFormat = gameFormatLabel(state.GameFormat)
 
 	if state.Session != nil {
 		out.Track = TrackInfo{
@@ -201,12 +236,7 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 				TireCompound:  d.TireCompound,
 				TireAge:       d.TireAge,
 			}
-			if len(d.StintHistory) > 0 {
-				driver.Stints = make([]RaceStint, len(d.StintHistory))
-				for i, s := range d.StintHistory {
-					driver.Stints[i] = RaceStint{Compound: s.Compound, Laps: s.Laps}
-				}
-			}
+			driver.Stints = stintsFromDTO(d.StintHistory)
 			out.Drivers = append(out.Drivers, driver)
 
 			if d.BestLapTime > 0 && (out.Highlights.FastestLapMS == 0 || uint32(d.BestLapTime) < out.Highlights.FastestLapMS) {
@@ -228,17 +258,135 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 				LastLapMS:     uint32(maxf32(p.LastLapTime, 0)),
 				PitStops:      p.NumPitStops,
 			}
-			if len(p.StintHistory) > 0 {
-				out.Player.Stints = make([]RaceStint, len(p.StintHistory))
-				for i, s := range p.StintHistory {
-					out.Player.Stints[i] = RaceStint{Compound: s.Compound, Laps: s.Laps}
-				}
-			}
+			// The player's stints drive the rich Detail's per-lap tyre mapping, so
+			// synthesize the final in-progress stint (StintHistory only closes on a
+			// compound change — the last, ongoing stint is otherwise missing).
+			out.Player.Stints = appendCurrentStint(stintsFromDTO(p.StintHistory), p)
 			out.Debrief = buildDebrief(p, state, out.Highlights.FastestLapMS, timeline)
+
+			out.Detail = buildDetail(detail, p, out.Player.Stints)
 		}
 	}
 
 	return out
+}
+
+// gameFormatLabel maps the packet format year to the platform's game_format label
+// ("F1 25"/"F1 26") — the leaderboard/market partition key. Unknown → "".
+func gameFormatLabel(format int) string {
+	switch format {
+	case 2025:
+		return "F1 25"
+	case 2026:
+		return "F1 26"
+	default:
+		return ""
+	}
+}
+
+// stintsFromDTO copies stint DTOs, carrying the StartLap/EndLap/wear enrichments.
+func stintsFromDTO(src []dto.StintInfoDTO) []RaceStint {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]RaceStint, len(src))
+	for i, s := range src {
+		out[i] = RaceStint{
+			Compound:    s.Compound,
+			Laps:        s.Laps,
+			StartLap:    s.StartLap,
+			EndLap:      s.EndLap,
+			TireWearPct: s.TireWearPct,
+		}
+	}
+	return out
+}
+
+// appendCurrentStint appends the player's ongoing (unclosed) stint so the stint
+// list spans the whole race — StintHistory only closes a stint on a compound
+// change, so the last, in-progress stint is otherwise missing. StartLap continues
+// from the last closed stint; wear is the current 4-corner average.
+func appendCurrentStint(stints []RaceStint, p dto.DriverInfo) []RaceStint {
+	if p.TireCompound == "" || p.TireCompound == "unknown" {
+		return stints
+	}
+	lastEnd := 0
+	if n := len(stints); n > 0 {
+		lastEnd = stints[n-1].EndLap
+	}
+	start := lastEnd + 1
+	end := p.CurrentLapNum
+	if end < start {
+		return stints // no completed lap in the current stint yet
+	}
+	return append(stints, RaceStint{
+		Compound:    p.TireCompound,
+		Laps:        end - start + 1,
+		StartLap:    start,
+		EndLap:      end,
+		TireWearPct: avgTireWear(p.TireWear),
+	})
+}
+
+// avgTireWear returns the rounded mean of the 4-corner wear percentages.
+func avgTireWear(w [4]int) int {
+	return (w[0] + w[1] + w[2] + w[3] + 2) / 4
+}
+
+// buildDetail assembles the rich Detail sub-block from the injected inputs plus the
+// player's dynamics (already on the driver DTO). Per-lap tyre is derived by joining
+// each lap number against the player's stint ranges (the session-history packet
+// carries no per-lap compound). Returns nil when there is nothing rich to store.
+func buildDetail(in *dto.RaceDetailInput, p dto.DriverInfo, stints []RaceStint) *RaceDetail {
+	if in == nil {
+		return nil
+	}
+	laps := in.PlayerLaps
+	if len(laps) > 0 {
+		laps = append([]dto.LapTimingDTO(nil), laps...)
+		for i := range laps {
+			laps[i].Tyre = tyreForLap(laps[i].LapNumber, stints)
+		}
+	}
+	detail := &RaceDetail{
+		Laps:     laps,
+		Dynamics: p.Dynamics,
+		Events:   in.RichEvents,
+		Setup:    in.PlayerSetup,
+	}
+	if len(detail.Laps) == 0 && len(detail.Dynamics) == 0 && len(detail.Events) == 0 && detail.Setup == nil {
+		return nil
+	}
+	return detail
+}
+
+// tyreForLap returns the canonical compound of the stint covering lapNum, or "".
+func tyreForLap(lapNum int, stints []RaceStint) string {
+	for _, s := range stints {
+		if lapNum >= s.StartLap && lapNum <= s.EndLap {
+			return canonicalTyre(s.Compound)
+		}
+	}
+	return ""
+}
+
+// canonicalTyre maps an internal lowercase compound to the platform's whitelisted
+// capitalized form (Soft/Medium/Hard/Inter/Wet); unknown → "".
+func canonicalTyre(compound string) string {
+	switch strings.ToLower(compound) {
+	case "soft":
+		return "Soft"
+	case "medium":
+		return "Medium"
+	case "hard":
+		return "Hard"
+	case "inter", "intermediate":
+		return "Inter"
+	case "wet":
+		return "Wet"
+	default:
+		return ""
+	}
 }
 
 func buildDebrief(player dto.DriverInfo, state *dto.PitwallState, fastestLapMS uint32, timeline []dto.RaceControlNotification) *RaceDebrief {

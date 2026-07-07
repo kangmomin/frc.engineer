@@ -3,6 +3,7 @@ package platformsvc
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -174,6 +175,73 @@ func TestValidateLapBoundsSectors(t *testing.T) {
 	}
 }
 
+// TestValidateUploadDetail exercises the versioned-detail acceptance gates directly
+// (no DB): schema_version range, the Detail count caps, and the version floor that a
+// Detail block requires. It mirrors the int4/setup-finite guards — a bad payload must
+// be a clean 400 (ErrBadUpload), never a 500 at INSERT time.
+func TestValidateUploadDetail(t *testing.T) {
+	base := func() *UploadRequest {
+		return &UploadRequest{
+			SourceRaceID: "r1", TrackID: 99, GameFormat: "F1 26",
+			Laps: []UploadLap{vlap(1, 88000)},
+		}
+	}
+
+	// A well-formed v1 request with a small Detail passes.
+	ok := base()
+	ok.SchemaVersion = 1
+	ok.Detail = &UploadDetail{
+		Stints:   []UploadStint{{Compound: "Soft", Laps: 25, StartLap: 1, EndLap: 25, TireWearPct: 60}},
+		Dynamics: []UploadDynamic{{LapNum: 1, UndersteerPct: 5}},
+		Events:   []UploadEvent{{Lap: 3, Category: "penalty", Message: "x", Severity: "warning"}},
+	}
+	if err := validateUpload(ok); err != nil {
+		t.Fatalf("valid v1 detail rejected: %v", err)
+	}
+
+	// schema_version past the SMALLINT ceiling → 400 (would overflow the column).
+	over := base()
+	over.SchemaVersion = maxSchemaVersion + 1
+	if err := validateUpload(over); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("over-range schema_version err = %v, want ErrBadUpload", err)
+	}
+
+	// A Detail block with no real version (v0) → 400.
+	noVer := base()
+	noVer.Detail = &UploadDetail{Events: []UploadEvent{{Category: "info", Message: "x", Severity: "info"}}}
+	if err := validateUpload(noVer); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("v0 detail err = %v, want ErrBadUpload", err)
+	}
+
+	// Over the event cap → 400.
+	fatEvents := base()
+	fatEvents.SchemaVersion = 1
+	events := make([]UploadEvent, maxDetailEvents+1)
+	for i := range events {
+		events[i] = UploadEvent{Category: "info", Message: "x", Severity: "info"}
+	}
+	fatEvents.Detail = &UploadDetail{Events: events}
+	if err := validateUpload(fatEvents); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("over-cap events err = %v, want ErrBadUpload", err)
+	}
+
+	// Over the dynamics cap → 400.
+	fatDyn := base()
+	fatDyn.SchemaVersion = 1
+	fatDyn.Detail = &UploadDetail{Dynamics: make([]UploadDynamic, maxDetailDynamics+1)}
+	if err := validateUpload(fatDyn); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("over-cap dynamics err = %v, want ErrBadUpload", err)
+	}
+
+	// Over the stint cap → 400.
+	fatStints := base()
+	fatStints.SchemaVersion = 1
+	fatStints.Detail = &UploadDetail{Stints: make([]UploadStint, maxDetailStints+1)}
+	if err := validateUpload(fatStints); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("over-cap stints err = %v, want ErrBadUpload", err)
+	}
+}
+
 func TestIngestTyreNormalized(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
@@ -191,6 +259,60 @@ func TestIngestTyreNormalized(t *testing.T) {
 	rows.Close()
 	if len(tyres) != 2 || tyres[0] != "" || tyres[1] != "Soft" {
 		t.Fatalf("tyres = %v, want [\"\" \"Soft\"]", tyres)
+	}
+}
+
+// TestIngestRaceDetailIdempotent verifies the versioned Detail lands in
+// platform.race_detail exactly once and a re-upload does not write a second row
+// (the Detail INSERT is on the new-race path only).
+func TestIngestRaceDetailIdempotent(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	id, _ := store.UpsertSteamAccount(ctx, steamA, "P", "")
+
+	req := UploadRequest{
+		SourceRaceID: "rd1", TrackID: 99, TrackName: "X", SessionType: "Race", GameFormat: "F1 26",
+		Laps: []UploadLap{vlap(1, 88000), vlap(2, 89000)}, SchemaVersion: 1,
+		Detail: &UploadDetail{
+			Stints:   []UploadStint{{Compound: "Soft", Laps: 2, StartLap: 1, EndLap: 2, TireWearPct: 40}},
+			Dynamics: []UploadDynamic{{LapNum: 1, UndersteerPct: 5.5}},
+			Events:   []UploadEvent{{Lap: 1, Category: "penalty", Message: "5s", Severity: "warning"}},
+		},
+	}
+	first, err := store.IngestRace(ctx, id, req)
+	if err != nil {
+		t.Fatalf("ingest first: %v", err)
+	}
+
+	var version int
+	var payload string
+	if err := store.pool.QueryRow(ctx,
+		`SELECT schema_version, payload::text FROM platform.race_detail WHERE race_id=$1`, first.RaceID,
+	).Scan(&version, &payload); err != nil {
+		t.Fatalf("query race_detail: %v", err)
+	}
+	if version != 1 {
+		t.Fatalf("race_detail.schema_version = %d, want 1", version)
+	}
+	if !strings.Contains(payload, "understeerPct") || !strings.Contains(payload, "stints") {
+		t.Fatalf("race_detail.payload missing rich keys: %s", payload)
+	}
+
+	// Re-upload the same source race: idempotent, and no second detail row.
+	second, err := store.IngestRace(ctx, id, req)
+	if err != nil {
+		t.Fatalf("ingest second: %v", err)
+	}
+	if !second.Duplicate || second.RaceID != first.RaceID {
+		t.Fatalf("re-upload not idempotent: %+v", second)
+	}
+	var n int
+	if err := store.pool.QueryRow(ctx,
+		`SELECT count(*) FROM platform.race_detail WHERE race_id=$1`, first.RaceID).Scan(&n); err != nil {
+		t.Fatalf("count race_detail: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("race_detail rows = %d, want 1 (no duplicate)", n)
 	}
 }
 

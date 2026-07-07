@@ -186,10 +186,15 @@ type DriverInfo struct {
 	PitLaneTime       int     `json:"pitLaneTime,omitempty"`
 }
 
-// StintInfoDTO represents a completed tire stint
+// StintInfoDTO represents a completed tire stint. StartLap/EndLap/TireWearPct are
+// summary-only enrichments (StrategyManager-derived) and stay omitempty so the
+// live broadcast DTO is unchanged when they are zero.
 type StintInfoDTO struct {
-	Compound string `json:"compound"`
-	Laps     int    `json:"laps"`
+	Compound    string `json:"compound"`
+	Laps        int    `json:"laps"`
+	StartLap    int    `json:"startLap,omitempty"`
+	EndLap      int    `json:"endLap,omitempty"`
+	TireWearPct int    `json:"tireWearPct,omitempty"`
 }
 
 // TyreSetBrief summarizes available tyre sets for a compound

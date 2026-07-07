@@ -21,7 +21,7 @@ func TestRaceSummarySavedOncePerSession(t *testing.T) {
 	p := NewProcessor(parser, hub, 0, logger, nil)
 
 	saveCount := 0
-	p.SetRaceSummarySaveCallback(func(sessionUID uint64, counts RaceSummaryCounts, _ []dto.RaceControlNotification, _ *dto.PitwallState) error {
+	p.SetRaceSummarySaveCallback(func(sessionUID uint64, counts RaceSummaryCounts, _ []dto.RaceControlNotification, _ *dto.PitwallState, _ *dto.RaceDetailInput) error {
 		saveCount++
 		if sessionUID == 0 {
 			t.Fatal("sessionUID should be non-zero")
@@ -53,7 +53,7 @@ func TestRaceSummaryRespectsDisabledFlag(t *testing.T) {
 	p := NewProcessor(parser, hub, 0, logger, nil)
 
 	saveCount := 0
-	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, _ []dto.RaceControlNotification, _ *dto.PitwallState) error {
+	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, _ []dto.RaceControlNotification, _ *dto.PitwallState, _ *dto.RaceDetailInput) error {
 		saveCount++
 		return nil
 	})
@@ -72,7 +72,7 @@ func TestRaceSummaryTimelineResetsPerSession(t *testing.T) {
 	p := NewProcessor(parser, hub, 0, logger, nil)
 
 	var savedTimeline []dto.RaceControlNotification
-	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, timeline []dto.RaceControlNotification, _ *dto.PitwallState) error {
+	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, timeline []dto.RaceControlNotification, _ *dto.PitwallState, _ *dto.RaceDetailInput) error {
 		savedTimeline = append([]dto.RaceControlNotification(nil), timeline...)
 		return nil
 	})

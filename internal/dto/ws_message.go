@@ -25,7 +25,9 @@ const (
 	MessageTypePositionUpdate      = "positionUpdate"
 )
 
-// RaceControlNotification represents a race control event sent to clients
+// RaceControlNotification represents a race control event sent to clients. Lap is
+// a summary-only enrichment (race lap at emit time) and stays omitempty so the
+// live broadcast payload is unchanged when it is zero.
 type RaceControlNotification struct {
 	ID         string `json:"id,omitempty"`
 	Category   string `json:"category"` // "penalty", "warning", "info"
@@ -33,6 +35,7 @@ type RaceControlNotification struct {
 	Severity   string `json:"severity"` // "critical", "warning", "info"
 	DriverName string `json:"driverName,omitempty"`
 	Timestamp  int64  `json:"timestamp,omitempty"`
+	Lap        int    `json:"lap,omitempty"`
 }
 
 // WSRequest represents a client request message

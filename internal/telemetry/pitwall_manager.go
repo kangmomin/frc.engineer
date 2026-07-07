@@ -239,11 +239,13 @@ func (pm *PitwallManager) UpdateCarSetups(cs *packets.PacketCarSetupData) {
 	pm.mu.Unlock()
 }
 
-// UpdateCarDamage stores the latest car damage packet
+// UpdateCarDamage stores the latest car damage packet and feeds per-car tyre wear
+// into the strategy manager's stint tracking (peak wear per stint).
 func (pm *PitwallManager) UpdateCarDamage(cd *packets.PacketCarDamageData) {
 	pm.mu.Lock()
 	pm.carDamage = cd
 	pm.mu.Unlock()
+	pm.strategyMgr.UpdateTyreWear(cd)
 }
 
 // UpdateTyreSets stores the latest tyre sets packet for a specific car
@@ -511,7 +513,17 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 			if len(ds.StintHistory) > 0 {
 				d.StintHistory = make([]dto.StintInfoDTO, len(ds.StintHistory))
 				for si, s := range ds.StintHistory {
-					d.StintHistory[si] = dto.StintInfoDTO{Compound: s.Compound, Laps: s.Laps}
+					endLap := s.StartLap + s.Laps - 1
+					if endLap < s.StartLap {
+						endLap = s.StartLap
+					}
+					d.StintHistory[si] = dto.StintInfoDTO{
+						Compound:    s.Compound,
+						Laps:        s.Laps,
+						StartLap:    s.StartLap,
+						EndLap:      endLap,
+						TireWearPct: s.TireWearPct,
+					}
 				}
 			}
 
@@ -795,6 +807,90 @@ func (pm *PitwallManager) GetPlayerName() string {
 		return ""
 	}
 	return pm.participants.Participants[pm.playerIndex].GetName()
+}
+
+// GetPlayerCurrentLap returns the player's current lap number, or 0 if unknown.
+// Used to lap-tag race-control notifications for the persisted summary.
+func (pm *PitwallManager) GetPlayerCurrentLap() int {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	idx := int(pm.playerIndex)
+	if pm.lapData == nil || idx < 0 || idx >= packets.MaxCars {
+		return 0
+	}
+	return int(pm.lapData.LapData[idx].CurrentLapNum)
+}
+
+// PlayerLapTimings returns completed-lap timings for the given car from the game's
+// session-history packet. Tyre is left empty (derived from stint ranges in
+// BuildSummary — the session-history packet carries no per-lap compound); nil or
+// short history yields an empty slice. Pure read, safe to call after BuildState.
+func (pm *PitwallManager) PlayerLapTimings(idx int) []dto.LapTimingDTO {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	if idx < 0 || idx >= packets.MaxCars {
+		return nil
+	}
+	sh := pm.sessionHistory[idx]
+	if sh == nil {
+		return nil
+	}
+	numLaps := int(sh.NumLaps)
+	if numLaps > packets.MaxNumLapsInHistory {
+		numLaps = packets.MaxNumLapsInHistory
+	}
+	out := make([]dto.LapTimingDTO, 0, numLaps)
+	for i := 0; i < numLaps; i++ {
+		lh := sh.LapHistoryData[i]
+		if lh.LapTimeInMS == 0 {
+			continue // lap not completed
+		}
+		out = append(out, dto.LapTimingDTO{
+			LapNumber: i + 1,
+			LapMs:     lh.LapTimeInMS,
+			S1Ms:      uint32(lh.Sector1Ms()),
+			S2Ms:      uint32(lh.Sector2Ms()),
+			S3Ms:      uint32(lh.Sector3Ms()),
+			Valid:     lh.LapValidBitFlags&0x01 != 0,
+		})
+	}
+	return out
+}
+
+// PlayerSetup returns the car setup (23 fields) for the given car, or nil if the
+// setup packet was never received. Pure read, safe to call after BuildState.
+func (pm *PitwallManager) PlayerSetup(idx int) *dto.CarSetupDTO {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	if pm.carSetups == nil || idx < 0 || idx >= packets.MaxCars {
+		return nil
+	}
+	s := &pm.carSetups.CarSetupData[idx]
+	return &dto.CarSetupDTO{
+		FrontWing:              int(s.FrontWing),
+		RearWing:               int(s.RearWing),
+		OnThrottle:             int(s.OnThrottle),
+		OffThrottle:            int(s.OffThrottle),
+		FrontCamber:            float64(s.FrontCamber),
+		RearCamber:             float64(s.RearCamber),
+		FrontToe:               float64(s.FrontToe),
+		RearToe:                float64(s.RearToe),
+		FrontSuspension:        int(s.FrontSuspension),
+		RearSuspension:         int(s.RearSuspension),
+		FrontAntiRollBar:       int(s.FrontAntiRollBar),
+		RearAntiRollBar:        int(s.RearAntiRollBar),
+		FrontSuspensionHeight:  int(s.FrontSuspensionHeight),
+		RearSuspensionHeight:   int(s.RearSuspensionHeight),
+		BrakePressure:          int(s.BrakePressure),
+		BrakeBias:              int(s.BrakeBias),
+		EngineBraking:          int(s.EngineBraking),
+		RearLeftTyrePressure:   float64(s.RearLeftTyrePressure),
+		RearRightTyrePressure:  float64(s.RearRightTyrePressure),
+		FrontLeftTyrePressure:  float64(s.FrontLeftTyrePressure),
+		FrontRightTyrePressure: float64(s.FrontRightTyrePressure),
+		Ballast:                int(s.Ballast),
+		FuelLoad:               float64(s.FuelLoad),
+	}
 }
 
 // BuildPositions returns car positions from the latest motion packet.

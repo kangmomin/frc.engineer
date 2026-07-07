@@ -15,11 +15,14 @@ const (
 	crossoverHistoryDepth  = 3
 )
 
-// StintInfo records a completed stint on a single tire compound
+// StintInfo records a completed stint on a single tire compound. TireWearPct is
+// the peak average tyre wear (0-100) observed during the stint, snapshotted when
+// the stint closes.
 type StintInfo struct {
-	Compound string
-	StartLap int
-	Laps     int
+	Compound    string
+	StartLap    int
+	Laps        int
+	TireWearPct int
 }
 
 type completedLap struct {
@@ -39,6 +42,7 @@ type DriverStrategy struct {
 	lastSeenLapNum      int
 	lastProcessedLapNum int
 	lastSeenNumPitStops int
+	currentStintWear    int // peak average tyre wear (0-100) of the running stint
 }
 
 // CrossoverPrediction summarizes the latest dry-vs-wet crossover model.
@@ -138,16 +142,47 @@ func (sm *StrategyManager) Update(carStatus *packets.PacketCarStatusData, lapDat
 					startLap = 1
 				}
 				ds.StintHistory = append(ds.StintHistory, StintInfo{
-					Compound: ds.CurrentCompound,
-					StartLap: startLap,
-					Laps:     ds.CurrentStintLaps,
+					Compound:    ds.CurrentCompound,
+					StartLap:    startLap,
+					Laps:        ds.CurrentStintLaps,
+					TireWearPct: ds.currentStintWear,
 				})
 			}
 			ds.CurrentCompound = compound
+			// Reset the peak-wear accumulator for the new stint. The fresh tyre's
+			// low wear rebuilds the peak from here (UpdateTyreWear uses max, so an
+			// early ~0% frame that arrives before this reset can't corrupt the
+			// stint just closed).
+			ds.currentStintWear = 0
 		}
 
 		ds.NumPitStops = numPitStops
 		ds.CurrentStintLaps = tireAge
+	}
+}
+
+// UpdateTyreWear feeds the latest per-car tyre wear into each running stint's peak
+// accumulator. Called on every CarDamage packet. Uses the max (peak) of the
+// 4-corner average so a fresh-tyre ~0% frame landing between the pit stop and the
+// compound-change detection cannot lower the wear recorded for the stint that just
+// closed.
+func (sm *StrategyManager) UpdateTyreWear(cd *packets.PacketCarDamageData) {
+	if cd == nil {
+		return
+	}
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	for i := range packets.MaxCars {
+		w := cd.CarDamageData[i].TyresWear
+		avg := int((float64(w[0])+float64(w[1])+float64(w[2])+float64(w[3]))/4 + 0.5)
+		if avg < 0 {
+			avg = 0
+		} else if avg > 100 {
+			avg = 100
+		}
+		if ds := &sm.drivers[i]; avg > ds.currentStintWear {
+			ds.currentStintWear = avg
+		}
 	}
 }
 

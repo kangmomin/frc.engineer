@@ -88,6 +88,11 @@ func (s *FileStorage) Save(summary *RaceSummary) (string, error) {
 		summary.SavedAtLocal = time.Now().Format("2006-01-02 15:04:05")
 	}
 	summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(summary.DataStorageMode)
+	// Backstop: BuildSummary already stamps this, but a summary constructed by
+	// another path still persists with the current document version.
+	if summary.SchemaVersion == 0 {
+		summary.SchemaVersion = RaceSummarySchemaVersion
+	}
 
 	path := s.filePath(id)
 	data, err := json.MarshalIndent(summary, "", "  ")
