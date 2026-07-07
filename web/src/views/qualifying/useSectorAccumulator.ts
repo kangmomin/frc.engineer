@@ -53,12 +53,15 @@ export function useSectorAccumulator(drivers: DriverInfo[], session: SessionInfo
         let acc = next.get(d.index) ?? { bestS1: 0, bestS2: 0, bestS3: 0 };
         let accChanged = false;
 
-        if (d.sector1TimeMs > 0 && (acc.bestS1 === 0 || d.sector1TimeMs < acc.bestS1)) {
-          acc = { ...acc, bestS1: d.sector1TimeMs };
+        // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화(0=미완주, `> 0` 가드가 배제).
+        const s1 = d.sector1TimeMs ?? 0;
+        const s2 = d.sector2TimeMs ?? 0;
+        if (s1 > 0 && (acc.bestS1 === 0 || s1 < acc.bestS1)) {
+          acc = { ...acc, bestS1: s1 };
           accChanged = true;
         }
-        if (d.sector2TimeMs > 0 && (acc.bestS2 === 0 || d.sector2TimeMs < acc.bestS2)) {
-          acc = { ...acc, bestS2: d.sector2TimeMs };
+        if (s2 > 0 && (acc.bestS2 === 0 || s2 < acc.bestS2)) {
+          acc = { ...acc, bestS2: s2 };
           accChanged = true;
         }
         if (snap && d.currentLapNum > snap.currentLapNum && snap.lastLapTime > 0 && snap.sector1TimeMs > 0 && snap.sector2TimeMs > 0) {
@@ -83,8 +86,8 @@ export function useSectorAccumulator(drivers: DriverInfo[], session: SessionInfo
       nextPrev.set(d.index, {
         currentLapNum: d.currentLapNum,
         lastLapTime: d.lastLapTime,
-        sector1TimeMs: d.sector1TimeMs,
-        sector2TimeMs: d.sector2TimeMs,
+        sector1TimeMs: d.sector1TimeMs ?? 0,
+        sector2TimeMs: d.sector2TimeMs ?? 0,
       });
     }
     prevRef.current = nextPrev;

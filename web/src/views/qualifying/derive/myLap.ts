@@ -121,8 +121,11 @@ export function deriveMyLap(
 
   // currentSector는 0-based 와이어 값(Phase2 FIX-1 교훈 계승) — S1 완료(S2 진입)는 >=1, S2
   // 완료(S3 진입)는 >=2. S3는 라이브 필드가 없어 진행 중 표시(●●●)만 하고 역산하지 않는다.
-  const s1Live = player.currentSector >= 1 && player.sector1TimeMs > 0;
-  const s2Live = player.currentSector >= 2 && player.sector2TimeMs > 0;
+  // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화(0=미완주).
+  const s1Ms = player.sector1TimeMs ?? 0;
+  const s2Ms = player.sector2TimeMs ?? 0;
+  const s1Live = player.currentSector >= 1 && s1Ms > 0;
+  const s2Live = player.currentSector >= 2 && s2Ms > 0;
 
   const ahead = trackGap.aheadDriver;
   const behind = trackGap.behindDriver;
@@ -139,10 +142,10 @@ export function deriveMyLap(
     deltaText,
     deltaColor,
     progressPct,
-    s1Text: s1Live ? formatSectorTime(player.sector1TimeMs) : DASH,
-    s1Color: s1Live ? sectorTone(player.sector1TimeMs, playerAcc?.bestS1) : 'var(--text-muted)',
-    s2Text: s2Live ? formatSectorTime(player.sector2TimeMs) : DASH,
-    s2Color: s2Live ? sectorTone(player.sector2TimeMs, playerAcc?.bestS2) : 'var(--text-muted)',
+    s1Text: s1Live ? formatSectorTime(s1Ms) : DASH,
+    s1Color: s1Live ? sectorTone(s1Ms, playerAcc?.bestS1) : 'var(--text-muted)',
+    s2Text: s2Live ? formatSectorTime(s2Ms) : DASH,
+    s2Color: s2Live ? sectorTone(s2Ms, playerAcc?.bestS2) : 'var(--text-muted)',
     s3Text: player.currentSector === 2 ? '•••' : DASH,
     aheadCode: ahead ? codes.get(ahead.index) ?? DASH : DASH,
     aheadGapText: formatDistance(trackGap.gapAheadM),

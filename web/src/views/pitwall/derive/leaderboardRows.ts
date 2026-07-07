@@ -124,15 +124,18 @@ export function deriveSectorCells(
   const flag1 = getSectorFlag(session?.marshalZones, 1);
   const flag2 = getSectorFlag(session?.marshalZones, 2);
 
-  const s1Valid = driver.currentSector >= 1 && driver.sector1TimeMs > 0;
-  const s2Valid = driver.currentSector >= 2 && driver.sector2TimeMs > 0;
+  // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화(0=미완주=DOT).
+  const s1Ms = driver.sector1TimeMs ?? 0;
+  const s2Ms = driver.sector2TimeMs ?? 0;
+  const s1Valid = driver.currentSector >= 1 && s1Ms > 0;
+  const s2Valid = driver.currentSector >= 2 && s2Ms > 0;
 
   return {
     s1: s1Valid
-      ? { text: (driver.sector1TimeMs / 1000).toFixed(3), color: sectorTone(driver.sector1TimeMs, driver.bestSector1Ms, flag1) }
+      ? { text: (s1Ms / 1000).toFixed(3), color: sectorTone(s1Ms, driver.bestSector1Ms, flag1) }
       : { text: DOT, color: 'var(--text-muted)' },
     s2: s2Valid
-      ? { text: (driver.sector2TimeMs / 1000).toFixed(3), color: sectorTone(driver.sector2TimeMs, driver.bestSector2Ms, flag2) }
+      ? { text: (s2Ms / 1000).toFixed(3), color: sectorTone(s2Ms, driver.bestSector2Ms, flag2) }
       : { text: DOT, color: 'var(--text-muted)' },
     s3: { text: DASH, color: 'var(--text-muted)' },
   };

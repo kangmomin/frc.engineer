@@ -69,14 +69,17 @@ export function evaluateDriverTryState(
   driver: DriverInfo,
   baseline: TrySectorBaseline,
 ): DriverTryState {
-  const sectorDelta1Ms = buildSectorDelta(driver.sector1TimeMs, baseline.s1);
-  const sectorDelta2Ms = buildSectorDelta(driver.sector2TimeMs, baseline.s2);
+  // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화한다(0=invalid).
+  const s1Ms = driver.sector1TimeMs ?? 0;
+  const s2Ms = driver.sector2TimeMs ?? 0;
+  const sectorDelta1Ms = buildSectorDelta(s1Ms, baseline.s1);
+  const sectorDelta2Ms = buildSectorDelta(s2Ms, baseline.s2);
   const combinedDeltaMs =
-    driver.sector1TimeMs > 0
-      && driver.sector2TimeMs > 0
+    s1Ms > 0
+      && s2Ms > 0
       && baseline.s1 > 0
       && baseline.s2 > 0
-      ? (driver.sector1TimeMs + driver.sector2TimeMs) - (baseline.s1 + baseline.s2)
+      ? (s1Ms + s2Ms) - (baseline.s1 + baseline.s2)
       : null;
 
   const competitiveSectorCount = [sectorDelta1Ms, sectorDelta2Ms].filter(hasCompetitiveSector).length;
@@ -84,11 +87,14 @@ export function evaluateDriverTryState(
 
   const isPit = driver.pitStatus !== 0;
   const isInvalid = driver.lapInvalid;
-  const isGarage = driver.driverStatus === 0;
-  const isInLap = driver.driverStatus === 2;
-  const isOutLap = driver.driverStatus === 3;
-  const isFlying = driver.driverStatus === 1;
-  const isTrack = driver.driverStatus === 4;
+  // driverStatus는 Go DTO omitempty라 GARAGE(0)가 값이 아니라 undefined로 전달된다 — `?? 0`으로
+  // 정규화하지 않으면 `=== 0`이 false가 되어 실 개러지 드라이버를 놓친다(classificationRows.ts 선례).
+  const driverStatus = driver.driverStatus ?? 0;
+  const isGarage = driverStatus === 0;
+  const isInLap = driverStatus === 2;
+  const isOutLap = driverStatus === 3;
+  const isFlying = driverStatus === 1;
+  const isTrack = driverStatus === 4;
 
   // 2026 모드에서는 overtakeActive가 DRS 신호를 대체한다 (omitempty라 false면 생략).
   const hasDrsSignal = driver.drsActivated || driver.overtakeActive === true;
