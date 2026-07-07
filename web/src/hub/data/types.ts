@@ -28,24 +28,30 @@ export interface HubLedgerEntry {
   state: LedgerState;
 }
 
+// The viewer's OWN telemetry summary (from the local desktop server's
+// /api/hub/overview). Platform-derived numbers — credits/ledger (wallet),
+// leaderboard rank/gap — are NOT here: they come from the platform endpoints
+// and are threaded into the Overview screen separately. Fields that had no
+// backend source (season rank, credits earned, setups sold, pace trend) were
+// removed rather than mocked.
 export interface HubOverview {
-  seasonDaysLeft: number;
-  ttGapToTop10Ms: number;
-  seasonRank: number;
-  silverstoneTT: number;
   verifiedSessions: number;
-  verifiedSessionsDelta: number;
+  verifiedSessionsDelta: number; // this week
   seasonBestMs: number;
   seasonBestTrack: string;
-  creditsSeason: number;
-  setupsSold: number;
-  setupsNetProfit: number;
-  spendableCredits: number;
-  escrowCredits: number;
-  paceTrend: number[]; // relative bar magnitudes, last 3 are "recent"
   recentSessions: HubSession[];
-  ledger: HubLedgerEntry[];
 }
+
+// EMPTY_OVERVIEW is the honest zero-state: no local sessions yet, or no backend
+// reachable (Vercel standalone). Screens render explicit empty states from it
+// rather than falling back to demo data.
+export const EMPTY_OVERVIEW: HubOverview = {
+  verifiedSessions: 0,
+  verifiedSessionsDelta: 0,
+  seasonBestMs: 0,
+  seasonBestTrack: '',
+  recentSessions: [],
+};
 
 export interface HubTTRow {
   handle: string;

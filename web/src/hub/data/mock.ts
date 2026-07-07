@@ -8,31 +8,12 @@ import type {
   HubDataSource, HubOverview, HubSetupMarket, HubStrategyMarket,
   HubMarketItem, HubReview, HubPerf, HubStrategyItem,
 } from './types';
+import { EMPTY_OVERVIEW } from './types';
 
-const HOUR = 3_600_000;
 const DAY = 86_400_000;
 const ago = (ms: number) => REF_NOW - ms;
 
 const RKEYS: (keyof HubPerf)[] = ['downforce', 'topSpeed', 'cornering', 'tyre', 'response'];
-
-// ---- Recent sessions (hub.dc.html:676-682) ----
-const SESSIONS = [
-  { track: 'Silverstone', type: 'TIME TRIAL', pos: 4, lapMs: 86377, state: 'valid' as const, crDelta: 45, atMs: ago(2 * HOUR) },
-  { track: 'Monza', type: 'GRAND PRIX', pos: 2, lapMs: 80115, state: 'valid' as const, crDelta: 80, atMs: ago(26 * HOUR) },
-  { track: 'Suzuka', type: 'QUALIFYING', pos: 1, lapMs: 88402, state: 'escrow' as const, crDelta: 60, atMs: ago(30 * HOUR) },
-  { track: 'Spa-Francorchamps', type: 'GRAND PRIX', pos: 5, lapMs: 103220, state: 'valid' as const, crDelta: 35, atMs: ago(2 * DAY + HOUR) },
-  { track: 'Imola', type: 'TIME TRIAL', pos: 3, lapMs: 74905, state: 'valid' as const, crDelta: 40, atMs: ago(3 * DAY + HOUR) },
-];
-
-// ---- Ledger (hub.dc.html:689-694) ----
-const LEDGER = [
-  { label: 'race_verified', sub: 'Monza · GRAND PRIX', amount: 80, state: 'settled' as const },
-  { label: 'sale_payout', sub: '셋업 판매 · 수수료 -15%', amount: 204, state: 'settled' as const },
-  { label: 'sink_unlock', sub: '분석 unlock · Silverstone', amount: -120, state: 'settled' as const },
-  { label: 'race_verified', sub: 'Suzuka · 검증 대기', amount: 60, state: 'escrow' as const },
-];
-
-const PACE_TREND = [40, 45, 43, 52, 49, 58, 55, 62, 60, 70, 76, 82];
 
 // ---- Setup params helper (hub.dc.html:709) ----
 const PARAM_KEYS = ['F.WING', 'R.WING', 'DIFF·ON', 'DIFF·OFF', 'CAMBER·F', 'CAMBER·R', 'TOE·F', 'TOE·R', 'TYRE·P', 'BRK·BIAS'];
@@ -175,33 +156,16 @@ const SIMILAR_STRATEGIES = [
   { handle: 'APX_leon', gain: 1, sample: 188, priceCredits: 240 },
 ];
 
-const OVERVIEW: HubOverview = {
-  seasonDaysLeft: 18,
-  ttGapToTop10Ms: 221,
-  seasonRank: 128,
-  silverstoneTT: 4,
-  verifiedSessions: 47,
-  verifiedSessionsDelta: 6,
-  seasonBestMs: 86377,
-  seasonBestTrack: 'Silverstone · TT',
-  creditsSeason: 1420,
-  setupsSold: 12,
-  setupsNetProfit: 204,
-  spendableCredits: 1240,
-  escrowCredits: 180,
-  paceTrend: PACE_TREND,
-  recentSessions: SESSIONS,
-  ledger: LEDGER,
-};
-
 const delay = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
 
 export class MockHubDataSource implements HubDataSource {
   constructor(private readonly delayMs = 0) {}
 
+  // Own-data overview has no demo: an unconfigured/standalone build shows the
+  // honest empty state, not fabricated sessions.
   async getOverview(): Promise<HubOverview> {
     await delay(this.delayMs);
-    return OVERVIEW;
+    return EMPTY_OVERVIEW;
   }
 
   async getSetupMarket(): Promise<HubSetupMarket> {

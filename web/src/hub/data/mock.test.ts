@@ -7,13 +7,11 @@ import type { HubDataSource } from './types';
 const ds: HubDataSource = new MockHubDataSource();
 
 describe('MockHubDataSource', () => {
-  it('overview returns raw numeric values, not preformatted strings', async () => {
+  it('overview is the honest empty state (own data has no demo)', async () => {
     const o = await ds.getOverview();
-    expect(o.recentSessions.length).toBeGreaterThan(0);
-    expect(o.ledger.length).toBeGreaterThan(0);
-    expect(typeof o.spendableCredits).toBe('number');
-    expect(typeof o.recentSessions[0].lapMs).toBe('number');
-    expect(o.recentSessions.every((s) => s.state === 'valid' || s.state === 'escrow')).toBe(true);
+    expect(o.recentSessions).toEqual([]);
+    expect(o.verifiedSessions).toBe(0);
+    expect(o.seasonBestMs).toBe(0);
   });
 
   it('setup market uses null price for unlisted items and precomputes review perf', async () => {

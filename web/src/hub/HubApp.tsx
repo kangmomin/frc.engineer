@@ -7,7 +7,7 @@ import { buildTheme, hubCssVars, rowPadFor } from './theme';
 import { REF_NOW, tyreLabel } from './format';
 import { MockHubDataSource } from './data/mock';
 import { CompositeHubDataSource } from './data/http';
-import { DEFAULT_TRACK_CONTEXT } from './data/tracks';
+import { DEFAULT_TRACK_CONTEXT, trackName } from './data/tracks';
 import type { TrackContext } from './data/tracks';
 import { isForcedRemoteMode } from '../runtimeFlags';
 import type {
@@ -137,8 +137,20 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   const handleLogout = () => { void platformLogout().then(() => setPlatformAccount(null)); };
 
-  const ctx = ctxLabel(active, mktCat);
+  const ctx = ctxLabel(active, mktCat, trackCtx);
   const featured = useMemo(() => (setupMkt ? setupMkt.setups.filter((c) => c.priceCredits != null).slice(0, 2) : []), [setupMkt]);
+
+  // The viewer's standing on the current TT board, derived from the live
+  // leaderboard (the `you` row). null when logged out or not yet ranked here.
+  const rankInfo = useMemo(() => {
+    if (!rankings || !platformAccount) return null;
+    const idx = rankings.tt.findIndex((r) => r.you);
+    if (idx < 0) return null;
+    const rank = idx + 1;
+    const tenth = rankings.tt[9];
+    const gapMs = tenth && rank > 10 ? rankings.tt[idx].lapMs - tenth.lapMs : 0;
+    return { rank, gapMs, trackName: trackName(trackCtx.trackId) };
+  }, [rankings, platformAccount, trackCtx]);
 
   const rootStyle = {
     ...hubCssVars(t),
@@ -153,10 +165,10 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
       <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} />
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <TopBar t={t} ctx={ctx} spendableCredits={overview?.spendableCredits ?? 0} escrowCredits={overview?.escrowCredits ?? 0} />
+        <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} />
         <main style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
           {active === 'overview' && (overview ? (
-            <Overview t={t} data={overview} featured={featured} wallet={realWallet} persona={platformAccount?.persona} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
+            <Overview t={t} data={overview} featured={featured} wallet={realWallet} persona={platformAccount?.persona} rankInfo={rankInfo} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
           ) : <Loading t={t} />)}
 
           {active === 'rankings' && (
@@ -250,10 +262,10 @@ function toHubLedger(e: PlatformLedgerEntry): HubLedgerEntry {
   };
 }
 
-function ctxLabel(active: HubScreen, mktCat: 'setups' | 'strategy'): string {
+function ctxLabel(active: HubScreen, mktCat: 'setups' | 'strategy', trackCtx: TrackContext): string {
   switch (active) {
     case 'overview': return 'OVERVIEW';
-    case 'rankings': return 'RANKINGS · SILVERSTONE GP · F1 25';
+    case 'rankings': return `RANKINGS · ${trackName(trackCtx.trackId).toUpperCase()} · ${trackCtx.format}`;
     case 'market': return `MARKET · ${mktCat === 'setups' ? 'SETUP' : 'STRATEGY'} EXCHANGE`;
     case 'setups': return 'MY SETUPS';
     case 'analysis': return 'ANALYSIS';

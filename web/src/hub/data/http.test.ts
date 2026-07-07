@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('CompositeHubDataSource.getOverview', () => {
-  it('merges own data over the mock overview on 200, keeping platform fields mock', async () => {
+  it('returns own data on 200 (sessions valid, no credit ledger)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(OWN)));
     const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
 
@@ -35,49 +35,36 @@ describe('CompositeHubDataSource.getOverview', () => {
     expect(o.seasonBestMs).toBe(80115);
     expect(o.seasonBestTrack).toBe('Monza');
     expect(o.verifiedSessions).toBe(12);
-    expect(o.verifiedSessionsDelta).toBe(3); // sessionsThisWeek override
-
-    // platform fields remain from the mock
-    expect(o.ledger.length).toBeGreaterThan(0);
-    expect(typeof o.spendableCredits).toBe('number');
+    expect(o.verifiedSessionsDelta).toBe(3); // sessionsThisWeek
   });
 
-  it('does not mask a real seasonBestMs 0 with the mock value (all-or-nothing)', async () => {
-    const mockBest = (await new MockHubDataSource().getOverview()).seasonBestMs;
-    expect(mockBest).toBeGreaterThan(0); // sanity: the mock carries a real best
-
+  it('surfaces a real seasonBestMs 0 (no demo masking)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse({ ...OWN, seasonBestMs: 0, seasonBestTrack: '' })));
     const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
     expect(o.seasonBestMs).toBe(0);
     expect(o.seasonBestTrack).toBe('');
   });
 
-  it('keeps the full mock overview when own recentSessions is empty', async () => {
+  it('returns the empty overview when own recentSessions is empty', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse({ ...OWN, recentSessions: [] })));
-    const mock = new MockHubDataSource();
-    const expected = await mock.getOverview();
-    const o = await new CompositeHubDataSource(mock).getOverview();
-    expect(o.recentSessions).toEqual(expected.recentSessions);
-    expect(o.verifiedSessions).toBe(expected.verifiedSessions);
+    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    expect(o.recentSessions).toEqual([]);
+    expect(o.verifiedSessions).toBe(0);
   });
 
-  it('falls back to mock and warns on a non-ok response', async () => {
+  it('returns the empty overview and warns on a non-ok response', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 } as unknown as Response));
-    const mock = new MockHubDataSource();
-    const expected = await mock.getOverview();
-    const o = await new CompositeHubDataSource(mock).getOverview();
-    expect(o.recentSessions).toEqual(expected.recentSessions);
+    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    expect(o.recentSessions).toEqual([]);
     expect(warn).toHaveBeenCalled();
   });
 
-  it('falls back to mock and warns on a network error', async () => {
+  it('returns the empty overview and warns on a network error', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-    const mock = new MockHubDataSource();
-    const expected = await mock.getOverview();
-    const o = await new CompositeHubDataSource(mock).getOverview();
-    expect(o.recentSessions).toEqual(expected.recentSessions);
+    const o = await new CompositeHubDataSource(new MockHubDataSource()).getOverview();
+    expect(o.recentSessions).toEqual([]);
     expect(warn).toHaveBeenCalled();
   });
 });

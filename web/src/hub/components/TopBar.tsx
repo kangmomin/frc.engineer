@@ -7,11 +7,11 @@ const MONO = "'JetBrains Mono',monospace";
 interface Props {
   t: HubTheme;
   ctx: string;
-  spendableCredits: number;
-  escrowCredits: number;
+  // Logged-in account's real spendable balance; null when logged out (chip hidden).
+  credits: number | null;
 }
 
-export function TopBar({ t, ctx, spendableCredits, escrowCredits }: Props) {
+export function TopBar({ t, ctx, credits }: Props) {
   return (
     <header
       style={{
@@ -24,18 +24,12 @@ export function TopBar({ t, ctx, spendableCredits, escrowCredits }: Props) {
         <span style={{ fontSize: 15, lineHeight: 1 }}>⌕</span>
         <span>셋업 · 드라이버 · 트랙 검색</span>
       </div>
-      <div style={{ display: 'flex', border: `1px solid ${t.line2}`, borderRadius: 7, overflow: 'hidden', fontFamily: MONO, fontSize: 10.5, fontWeight: 600 }}>
-        <span style={{ padding: '6px 12px', background: t.acc, color: t.onAcc }}>F1 25</span>
-        <span style={{ padding: '6px 12px', color: t.t2 }}>F1 26</span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 13px', background: t.panel2, border: `1px solid ${t.line}`, borderRadius: 9 }}>
-        <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 13, color: t.accInk, letterSpacing: '.01em' }}>⬢ {spendableCredits.toLocaleString('en-US')}</span>
-        <span style={{ width: 1, height: 16, background: t.line2 }} />
-        <span style={{ fontFamily: MONO, fontSize: 11, color: t.warn, display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ animation: 'escpulse 1.6s ease-in-out infinite' }}>◷</span>
-          {escrowCredits} <span style={{ color: t.t3, fontWeight: 500, letterSpacing: '.05em' }}>ESCROW</span>
-        </span>
-      </div>
+      {credits != null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 13px', background: t.panel2, border: `1px solid ${t.line}`, borderRadius: 9 }}>
+          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 13, color: t.accInk, letterSpacing: '.01em' }}>⬢ {credits.toLocaleString('en-US')}</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: t.t3, fontWeight: 500, letterSpacing: '.05em' }}>CREDITS</span>
+        </div>
+      )}
     </header>
   );
 }

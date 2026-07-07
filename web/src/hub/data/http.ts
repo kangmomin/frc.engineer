@@ -1,12 +1,13 @@
-// FRC Engineer Hub — HTTP-backed composite data source (Phase 2).
+// FRC Engineer Hub — HTTP-backed composite data source.
 // Sources the user's OWN data (recent sessions, season best, session counts)
-// from the backend's /api/hub/overview and merges it over the mock overview,
-// keeping every platform field (credits, ledger, ranks, market) on mock until
-// the platform domain exists (Phase 3). Everything degrades to mock when the
-// backend is unreachable — e.g. the Vercel standalone build has no Go server.
+// from the backend's /api/hub/overview. When the backend is unreachable, the
+// own data is empty, or a session list is missing, it returns the honest empty
+// overview (EMPTY_OVERVIEW) — never demo data. Market domains still delegate to
+// the injected source until they are wired to the platform.
 import type {
   HubDataSource, HubOverview, HubSetupMarket, HubStrategyMarket,
 } from './types';
+import { EMPTY_OVERVIEW } from './types';
 
 // The hub only runs the composite in two contexts: the Vite dev server (which
 // proxies /api → backend) and the embedded Go server (same origin). A relative
@@ -35,35 +36,29 @@ export class CompositeHubDataSource implements HubDataSource {
   constructor(private readonly mock: HubDataSource) {}
 
   async getOverview(): Promise<HubOverview> {
-    const base = await this.mock.getOverview();
     try {
       const res = await fetch(OVERVIEW_URL);
       if (!res.ok) {
-        console.warn('hub overview: falling back to mock', res.status);
-        return base;
+        console.warn('hub overview: unavailable, showing empty', res.status);
+        return EMPTY_OVERVIEW;
       }
       const own = (await res.json()) as OwnOverview;
-      if (!own.recentSessions?.length) return base; // fresh/empty local → keep demo
+      if (!own.recentSessions?.length) return EMPTY_OVERVIEW; // fresh/empty local
 
-      // All-or-nothing merge: when own data exists, the whole own-data field
-      // group comes from it — no per-field `||` fallback. A real 0 (e.g. no
-      // valid lap → seasonBestMs 0) must NOT be masked by a mock value sitting
-      // next to the user's real sessions.
       return {
-        ...base,
+        verifiedSessions: own.sessionCount,
+        verifiedSessionsDelta: own.sessionsThisWeek,
+        seasonBestMs: own.seasonBestMs,
+        seasonBestTrack: own.seasonBestTrack,
         recentSessions: own.recentSessions.map((s) => ({
           ...s,
           state: 'valid' as const,
           crDelta: 0,
         })),
-        seasonBestMs: own.seasonBestMs,
-        seasonBestTrack: own.seasonBestTrack,
-        verifiedSessions: own.sessionCount,
-        verifiedSessionsDelta: own.sessionsThisWeek,
       };
     } catch (e) {
-      console.warn('hub overview: falling back to mock', e);
-      return base;
+      console.warn('hub overview: unavailable, showing empty', e);
+      return EMPTY_OVERVIEW;
     }
   }
 
