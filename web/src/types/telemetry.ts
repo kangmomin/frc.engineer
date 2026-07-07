@@ -371,7 +371,8 @@ export interface DriverInfo {
   aiControlled: boolean;
   position: number;
   currentLapNum: number;
-  speed: number;
+  // Go DTO omitempty: 정지(speed=0)는 필드 부재(undefined)로 전달된다 — Math.round(undefined)=NaN 방지.
+  speed?: number;
   topSpeed: number;
   throttle: number;
   brake: number;
@@ -406,9 +407,10 @@ export interface DriverInfo {
   ersDeployMode: number;
   ersDeployedThisLap: number;
   ersHarvestedThisLap: number;
-  ersEstimatePct: number;
+  // Go DTO omitempty: pct=0(배터리 고갈)은 필드 부재(undefined)로 전달된다 — Math.round(undefined)=NaN 방지.
+  ersEstimatePct?: number;
   ersEstimateReady: boolean;
-  ersActualPct: number;
+  ersActualPct?: number;
   ersActualReady: boolean;
 
   // TyreSets (Commentary)

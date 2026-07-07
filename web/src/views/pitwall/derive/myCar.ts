@@ -143,7 +143,7 @@ export function deriveMyCar(
     lastLapText: formatLapTime(player.lastLapTime),
     deltaText,
     deltaColor: deltaMsForTone == null ? 'var(--text-secondary)' : deltaTone(deltaMsForTone),
-    ersText: player.ersActualReady ? `${Math.round(player.ersActualPct)}%` : player.ersEstimateReady ? `${Math.round(player.ersEstimatePct)}%` : DASH,
+    ersText: player.ersActualReady ? `${Math.round(player.ersActualPct ?? 0)}%` : player.ersEstimateReady ? `${Math.round(player.ersEstimatePct ?? 0)}%` : DASH,
     compound: getTyreShortLabel(player.tireCompound),
     compoundColor: getTyreColor(player.tireCompound),
     compoundName: compoundName(player.tireCompound),

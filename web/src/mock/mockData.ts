@@ -511,9 +511,9 @@ function buildDashboardTelemetry(player: DriverInfo, driverFrames: DriverFrame[]
   const currentLapTime = Math.round(currentLapTarget * lapProgress);
 
   return {
-    speed: player.speed,
+    speed: player.speed ?? 0,
     gear: player.gear,
-    rpm: clampInt(Math.round(7_400 + player.speed * 22 + player.throttle * 680), 7_200, 12_100),
+    rpm: clampInt(Math.round(7_400 + (player.speed ?? 0) * 22 + player.throttle * 680), 7_200, 12_100),
     throttle: player.throttle,
     brake: player.brake,
     deltaPersonalBest: Math.round((player.lastLapTime - player.bestLapTime) * lapProgress + Math.sin(tick / 6) * 18),
@@ -525,7 +525,7 @@ function buildDashboardTelemetry(player: DriverInfo, driverFrames: DriverFrame[]
     bestLapTime: player.bestLapTime,
     position: player.position,
     drs: (player.deltaToCarInFront ?? 0) > 0 && (player.deltaToCarInFront ?? 0) <= 1000 && isDrsZone(lapProgress),
-    revLights: clampInt(Math.round(((player.speed - 120) / 210) * 100), 0, 100),
+    revLights: clampInt(Math.round((((player.speed ?? 0) - 120) / 210) * 100), 0, 100),
     sector: player.currentSector,
     lapInvalid: (player.penalties ?? 0) > 0 && player.currentSector === 2,
     timestamp: Date.now(),

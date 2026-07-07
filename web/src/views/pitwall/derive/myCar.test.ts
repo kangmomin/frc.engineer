@@ -122,6 +122,13 @@ describe('deriveMyCar', () => {
     expect(vm?.gapBehind).toBe('+0.80s');
   });
 
+  it('omitempty-absent ersActualPct (undefined) renders "0%", never "NaN%" (anti-fabrication)', () => {
+    // 배터리 고갈 시 ersActualPct=0 → Go omitempty로 undefined 전달 → Math.round(undefined)=NaN 방지.
+    const player = makeDriver({ index: 0, position: 1, ersActualReady: true, ersActualPct: undefined });
+    const vm = deriveMyCar(player, [player], null);
+    expect(vm?.ersText).toBe('0%');
+  });
+
   it('leader (no ahead car) degrades delta tile to dash — deltaPersonalBest does not exist on DriverInfo', () => {
     const player = makeDriver({ index: 0, position: 1 });
     const behind = makeDriver({ index: 1, position: 2 });

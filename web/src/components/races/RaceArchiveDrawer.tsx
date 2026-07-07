@@ -880,7 +880,7 @@ function ReplayStage({
               </article>
               <article className={styles.statCard}>
                 <span className={styles.label}>Speed</span>
-                <strong className={styles.statValue}>{player ? `${Math.round(player.speed)} km/h` : '--'}</strong>
+                <strong className={styles.statValue}>{player ? `${Math.round(player.speed ?? 0)} km/h` : '--'}</strong>
               </article>
               <article className={styles.statCard}>
                 <span className={styles.label}>Safety Car</span>

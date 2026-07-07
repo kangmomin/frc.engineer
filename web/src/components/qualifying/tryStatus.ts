@@ -61,7 +61,7 @@ function getErsModeLabel(driver: DriverInfo): string | null {
     case 1:
       return 'ERS MED';
     default:
-      return driver.ersActualReady ? `ERS ${driver.ersActualPct}%` : null;
+      return driver.ersActualReady ? `ERS ${driver.ersActualPct ?? 0}%` : null;
   }
 }
 
@@ -102,7 +102,7 @@ export function evaluateDriverTryState(
   const isDeployingErs =
     driver.ersDeployedThisLap > 0
     && driver.ersDeployedThisLap >= driver.ersHarvestedThisLap + ERS_DEPLOY_MARGIN_J;
-  const hasUsableErs = !driver.ersActualReady || driver.ersActualPct >= TRY_MIN_ERS_PCT;
+  const hasUsableErs = !driver.ersActualReady || (driver.ersActualPct ?? 0) >= TRY_MIN_ERS_PCT;
   const recentCompetitiveLap =
     driver.lastLapTime > 0
     && driver.bestLapTime > 0
