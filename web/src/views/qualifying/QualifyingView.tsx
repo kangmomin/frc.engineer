@@ -6,6 +6,7 @@ import { useQualifyingState } from '../../hooks/useQualifyingState';
 import { useTrackGaps } from '../../hooks/useTrackGaps';
 import { NavTabs } from '../../shell/NavTabs';
 import type { ShellControls } from '../../shell/types';
+import { useRaceMetaStore } from '../../store/raceMetaStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { deriveDriverCodes } from '../../utils/driverCodes';
 import { getRaceStatus } from '../../utils/raceDisplay';
@@ -55,7 +56,9 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
 
   // ── 재사용 도메인 모듈 + lift 누적기(모두 게이트 이전 — session=null/drivers=[]에 안전) ──
   const sortedDrivers = useMemo(() => sortQualifyingDrivers(allDrivers, sessionType), [allDrivers, sessionType]);
-  const accMap = useSectorAccumulator(allDrivers, session);
+  // 세션 리스타트/리플레이 rewind 시 누적기 리셋 키로 쓰이는 epoch (raceMetaStore).
+  const epoch = useRaceMetaStore((s) => s.epoch);
+  const accMap = useSectorAccumulator(allDrivers, session, epoch);
   const qualiState = useQualifyingState(player, player?.lapInvalid ?? false, isQualifying);
   const trackGap = useTrackGaps(allDrivers, trackLength, playerIndex);
 

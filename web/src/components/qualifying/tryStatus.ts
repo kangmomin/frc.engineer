@@ -99,9 +99,12 @@ export function evaluateDriverTryState(
   // 2026 모드에서는 overtakeActive가 DRS 신호를 대체한다 (omitempty라 false면 생략).
   const hasDrsSignal = driver.drsActivated || driver.overtakeActive === true;
   const hasAggressiveErsMode = driver.ersDeployMode >= 2;
+  // ersDeployedThisLap/ersHarvestedThisLap도 omitempty라 undefined일 수 있다 — ?? 0으로 정규화.
+  const deployedJ = driver.ersDeployedThisLap ?? 0;
+  const harvestedJ = driver.ersHarvestedThisLap ?? 0;
   const isDeployingErs =
-    driver.ersDeployedThisLap > 0
-    && driver.ersDeployedThisLap >= driver.ersHarvestedThisLap + ERS_DEPLOY_MARGIN_J;
+    deployedJ > 0
+    && deployedJ >= harvestedJ + ERS_DEPLOY_MARGIN_J;
   const hasUsableErs = !driver.ersActualReady || (driver.ersActualPct ?? 0) >= TRY_MIN_ERS_PCT;
   const recentCompetitiveLap =
     driver.lastLapTime > 0

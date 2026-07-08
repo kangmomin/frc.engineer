@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DriverInfo, RaceControlNotification, SessionInfo } from '../types/telemetry';
+import type { DriverInfo, PitwallState, RaceControlNotification, SessionInfo } from '../types/telemetry';
 import { useTelemetryStore } from './telemetryStore';
 
 /**
@@ -144,14 +144,23 @@ export const useRaceMetaStore = create<RaceMetaState>((set) => ({
 }));
 
 let trackerStarted = false;
+// 재생 중 마지막으로 관측한 리플레이 프레임 — 재생 종료 직후 pitwallState 에
+// 그대로 남아 있으면 라이브로 오인해 ingest 하지 않도록 기억한다.
+let lastReplayState: PitwallState | null = null;
 
 /** telemetryStore 를 1회 구독해 그리드/노티 lap 을 추적한다 (idempotent, 앱 수명). */
 export function startRaceMetaTracker(): void {
   if (trackerStarted) return;
   trackerStarted = true;
   const run = () => {
-    const { pitwallState, raceControlNotifications } = useTelemetryStore.getState();
+    const { pitwallState, raceControlNotifications, playbackActive } = useTelemetryStore.getState();
+    if (playbackActive) {
+      lastReplayState = pitwallState;
+      return;
+    }
     if (!pitwallState?.session) return;
+    if (pitwallState === lastReplayState) return;
+    lastReplayState = null;
     useRaceMetaStore
       .getState()
       .ingest(pitwallState.session, pitwallState.drivers, raceControlNotifications);

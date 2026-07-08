@@ -2,7 +2,7 @@
 // threads the shared track context into the leaderboard and marketplace. Data
 // is real: own telemetry (OwnHubDataSource), platform leaderboards, wallet, and
 // the hosted marketplace. Screens render explicit empty states, not demo data.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
 import { tyreLabel, relativeTime } from './format';
@@ -58,10 +58,17 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   // Load the real wallet + ledger for a logged-in account (3D1). refreshWallet is
   // also handed to the market so a purchase updates the Overview wallet card.
+  // walletGen: 로그아웃 직후 늦게 도착한 in-flight 응답이 지갑을 되살리지 못하도록
+  // 세대 토큰으로 stale 응답을 무시한다.
+  const walletGen = useRef(0);
   const refreshWallet = useMemo(() => () => {
+    const gen = ++walletGen.current;
     if (!platformConfigured || !platformAccount) { setRealWallet(null); return; }
     void Promise.all([platformMkt.getWallet(), platformMkt.getLedger()])
-      .then(([balance, ledger]) => setRealWallet({ balance, ledger: ledger.map(toHubLedger) }))
+      .then(([balance, ledger]) => {
+        if (gen !== walletGen.current) return;
+        setRealWallet({ balance, ledger: ledger.map(toHubLedger) });
+      })
       .catch(() => { /* keep prior on transient error */ });
   }, [platformConfigured, platformAccount, platformMkt]);
 

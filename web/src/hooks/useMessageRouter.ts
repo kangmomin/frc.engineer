@@ -60,6 +60,11 @@ export function routeMessage(
         if (!refs.positionsRaf.current) {
           refs.positionsRaf.current = requestAnimationFrame(() => {
             refs.positionsRaf.current = 0;
+            // rAF 대기 중 재생이 시작됐으면 pending 프레임 폐기 (리플레이 오염 방지)
+            if (useTelemetryStore.getState().playbackActive) {
+              refs.pendingPositions.current = null;
+              return;
+            }
             if (refs.pendingPositions.current) {
               actions.updatePositions(refs.pendingPositions.current);
               refs.pendingPositions.current = null;
@@ -74,6 +79,11 @@ export function routeMessage(
         if (!refs.pitwallRaf.current) {
           refs.pitwallRaf.current = requestAnimationFrame(() => {
             refs.pitwallRaf.current = 0;
+            // rAF 대기 중 재생이 시작됐으면 pending 프레임 폐기 (리플레이 오염 방지)
+            if (useTelemetryStore.getState().playbackActive) {
+              refs.pendingPitwall.current = null;
+              return;
+            }
             if (refs.pendingPitwall.current) {
               actions.setPitwallState(refs.pendingPitwall.current);
               refs.pendingPitwall.current = null;

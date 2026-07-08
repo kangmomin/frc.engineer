@@ -43,13 +43,39 @@ interface TelemetryState {
 
 const MAX_NOTIFICATIONS = 50;
 
+// 리플레이 진입(false→true) 시점의 라이브 상태 스냅샷 — 재생 종료 시 복원해
+// 리플레이 프레임이 라이브 상태를 오염시키지 않도록 한다.
+let liveSnapshot: {
+  pitwallState: PitwallState | null;
+  raceControlNotifications: RaceControlNotification[];
+} | null = null;
+
 export const useTelemetryStore = create<TelemetryState>((set) => ({
   connectionState: 'disconnected',
   setConnectionState: (state) => set({ connectionState: state }),
   connectionMode: 'local',
   setConnectionMode: (mode) => set({ connectionMode: mode }),
   playbackActive: false,
-  setPlaybackActive: (active) => set({ playbackActive: active }),
+  setPlaybackActive: (active) =>
+    set((state) => {
+      // 프레임마다 발화하는 중복 호출 무시 — 전이 시점에만 스냅샷/복원
+      if (active === state.playbackActive) return state;
+      if (active) {
+        liveSnapshot = {
+          pitwallState: state.pitwallState,
+          raceControlNotifications: state.raceControlNotifications,
+        };
+        return { playbackActive: true };
+      }
+      const restored = liveSnapshot;
+      liveSnapshot = null;
+      if (!restored) return { playbackActive: false };
+      return {
+        playbackActive: false,
+        pitwallState: restored.pitwallState,
+        raceControlNotifications: restored.raceControlNotifications,
+      };
+    }),
 
   pitwallState: null,
   setPitwallState: (state) => set({ pitwallState: state }),

@@ -9,7 +9,10 @@ import type { DriverInfo, SessionInfo } from '../../types/telemetry';
  * 랩 롤오버(currentLapNum 증가) 시 "직전 스냅샷"의 lastLapTime - sector1TimeMs - sector2TimeMs로
  * 역산한다. 이 세 필드는 롤오버 직전 틱에 이미 "같은 랩" 값으로 갱신되어 있다(실 텔레메트리
  * 필드 갱신 타이밍) — Pit Wall(Phase 2)이 포기하고 '—'로 degrade했던 정확한 S3를 Qualifying은
- * 이 역산으로 얻는다. sessionKey(trackId|sessionType) 변경 시 리셋.
+ * 이 역산으로 얻는다. sessionKey(trackId|sessionType|epoch) 변경 시 리셋 — epoch는
+ * raceMetaStore가 라이브 세션 리스타트(리더 랩 되감김) 시 증가시키는 값이다. 리플레이
+ * 재생 중에는 ingest가 스킵되어 epoch가 갱신되지 않으므로, 리플레이 rewind는 아래
+ * 효과에서 랩 번호 되감김을 직접 감지해 별도로 리셋한다.
  */
 
 export interface SectorAcc {
@@ -25,22 +28,38 @@ interface PrevSnap {
   sector2TimeMs: number;
 }
 
-export function useSectorAccumulator(drivers: DriverInfo[], session: SessionInfo | null) {
+export function useSectorAccumulator(drivers: DriverInfo[], session: SessionInfo | null, epoch: number) {
   const [accMap, setAccMap] = useState<Map<number, SectorAcc>>(() => new Map());
   const prevRef = useRef<Map<number, PrevSnap>>(new Map());
   const sessionKeyRef = useRef('');
+  const maxLapRef = useRef(0);
 
-  const sessionKey = `${session?.trackId ?? ''}|${session?.sessionType ?? ''}`;
+  const sessionKey = `${session?.trackId ?? ''}|${session?.sessionType ?? ''}|${epoch}`;
   useEffect(() => {
     if (sessionKeyRef.current && sessionKeyRef.current !== sessionKey) {
       setAccMap(new Map());
       prevRef.current = new Map();
+      maxLapRef.current = 0;
     }
     sessionKeyRef.current = sessionKey;
   }, [sessionKey]);
 
   useEffect(() => {
     if (drivers.length === 0) return;
+
+    // 리플레이 rewind 감지: 재생 중에는 raceMetaStore가 ingest를 건너뛰어 epoch가 갱신되지
+    // 않으므로(sessionKey 불변) 세션 리셋이 걸리지 않는다. 랩 번호 되감김을 직접 감지해
+    // 이전 구간의 베스트 섹터가 잔류하지 않게 accMap/prevRef를 비운다.
+    let maxLap = 0;
+    for (const d of drivers) {
+      const lap = d.currentLapNum ?? 0;
+      if (lap > maxLap) maxLap = lap;
+    }
+    if (maxLap < maxLapRef.current) {
+      setAccMap(new Map());
+      prevRef.current = new Map();
+    }
+    maxLapRef.current = maxLap;
 
     // Capture previous snapshots BEFORE the state update — not inside the updater
     const capturedPrev = prevRef.current;

@@ -73,6 +73,8 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
   const [activeMode, setActiveMode] = useState<RaceArchiveOpenMode | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
+  // 같은 레이스 재클릭/Retry 시 요약 fetch 를 강제 재실행하기 위한 nonce
+  const [summaryFetchNonce, setSummaryFetchNonce] = useState(0);
   const [selectedSummary, setSelectedSummary] = useState<RaceSummary | null>(null);
   const [replayLoading, setReplayLoading] = useState(false);
   const [replayError, setReplayError] = useState('');
@@ -212,7 +214,7 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     return () => {
       controller.abort();
     };
-  }, [activeMode, selectedRace, source]);
+  }, [activeMode, selectedRace, source, summaryFetchNonce]);
 
   useEffect(() => {
     setPlaying(false);
@@ -391,6 +393,7 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     setSelectedRaceId(race.id);
     setSummaryError('');
     setSelectedSummary(null);
+    setSummaryFetchNonce((nonce) => nonce + 1);
     const nextMode = resolveRaceArchiveOpenMode(race);
     setActiveMode(nextMode);
     setBrowserOpen(nextMode !== 'replay');
