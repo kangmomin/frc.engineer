@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -93,19 +94,18 @@ func resolveSenderStoragePath(parts ...string) string {
 func resolveSenderAssetPaths(parts ...string) []string {
 	paths := make([]string, 0, 4)
 
-	paths = append(paths, resolveSenderStoragePath(parts...))
-	paths = append(paths, filepath.Join(parts...))
-
-	exePath, err := os.Executable()
-	if err != nil {
-		return paths
+	// 읽기 전용 배포 자산(strategy/normalized 등)은 업데이트로 갱신되는
+	// exe 옆 번들 사본을 userData(FRC_STORAGE_DIR)의 stale 사본보다 우선한다.
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		paths = append(paths,
+			filepath.Join(append([]string{exeDir}, parts...)...),
+			filepath.Join(append([]string{exeDir, "..", ".."}, parts...)...),
+		)
 	}
 
-	exeDir := filepath.Dir(exePath)
-	paths = append(paths,
-		filepath.Join(append([]string{exeDir}, parts...)...),
-		filepath.Join(append([]string{exeDir, "..", ".."}, parts...)...),
-	)
+	paths = append(paths, resolveSenderStoragePath(parts...))
+	paths = append(paths, filepath.Join(parts...))
 
 	return paths
 }
@@ -175,7 +175,8 @@ func loadSenderConfig() *senderConfig {
 		return nil
 	}
 	var cfg senderConfig
-	if json.Unmarshal(data, &cfg) != nil {
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		slog.Warn("failed to parse sender config, using defaults", "path", senderConfigFilePath(), "error", err)
 		return nil
 	}
 	return &cfg
@@ -191,7 +192,17 @@ func saveSenderConfig(cfg senderConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	// tmp+rename 원자적 교체: 저장 중 크래시가 나도 기존 config가 깨지지 않게 한다.
+	// (races.FileStorage.Save와 동일 패턴)
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func buildSenderState(saveFiles, trackRecording bool, dataStorageMode rtconfig.DataStorageMode) dto.SenderState {
@@ -1712,6 +1723,14 @@ func main() {
 				json.NewEncoder(w).Encode(map[string]string{"error": "invalid forward target: host required, port 1-65535"})
 				return
 			}
+			// 텔레메트리 유출 방지: 포워딩 대상은 로컬/사설 범위만 허용한다.
+			// 공인 IP 등 외부 호스트로의 포워딩을 거부해 유출 반경을 줄인다.
+			if !isForwardHostAllowed(ft.Host) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "forward target host must be a local/private address (loopback, LAN, or .local)"})
+				return
+			}
 		}
 
 		cfgMu.Lock()
@@ -1845,7 +1864,8 @@ func main() {
 	})
 
 	mux.HandleFunc("GET /api/debug", func(w http.ResponseWriter, r *http.Request) {
-		state := processor.PitwallManager().BuildState()
+		// 디버그 덤프는 읽기 전용 — 브로드캐스트 트랙맵 페이싱 상태를 소모하지 않는 변형 사용
+		state := processor.PitwallManager().BuildStateReadOnly()
 		stateJSON, _ := json.Marshal(state)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -1904,7 +1924,9 @@ func main() {
 	// Try settingsPort, then auto-increment up to 10 times on conflict.
 	// In the embedded driver pack, keep the API contract pinned to the requested port.
 	actualSettingsPort := settingsPort
-	settingsSrv := &http.Server{Handler: mux}
+	// ReadHeaderTimeout만 설정한다 — 전역 WriteTimeout은 장수명 SSE 스트림을
+	// 끊어버리므로 쓰기 데드라인은 SSE 핸들러의 per-write 데드라인으로 처리한다.
+	settingsSrv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		basePort := 0
 		fmt.Sscanf(settingsPort, "%d", &basePort)
@@ -1918,7 +1940,10 @@ func main() {
 		for attempt := range maxAttempts {
 			port := basePort + attempt
 			actualSettingsPort = fmt.Sprintf("%d", port)
-			settingsSrv.Addr = ":" + actualSettingsPort
+			// 루프백 전용 바인드: LAN 공격자가 설정/디버그 API(PUT /api/config 등)로
+			// 접근해 forwardTargets를 바꿔 텔레메트리를 탈취하는 것을 차단한다.
+			// 로컬 UI는 http://localhost, 오버레이는 same-origin 상대 EventSource라 영향 없음.
+			settingsSrv.Addr = "127.0.0.1:" + actualSettingsPort
 			logger.Info("settings server starting", "port", actualSettingsPort)
 			err := settingsSrv.ListenAndServe()
 			if err != nil && err != http.ErrServerClosed {
@@ -1952,12 +1977,38 @@ func main() {
 	forwarder.Close()
 	peerManager.Close()
 	compareMonitor.Close()
+	// 핸들러(PUT /api/config)가 packetLogger를 만지므로, 먼저 서버를 드레인한 뒤
+	// cfgMu로 감싸 packetLogger를 정리해 종료 레이스를 막는다.
+	// 단, radar/weather/strategy SSE 핸들러는 클라 연결 종료 시에만 끝나므로
+	// Shutdown에 타임아웃을 둬 무한 대기를 막는다(초과 시 정리로 진행 후 프로세스 종료).
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 3*time.Second)
+	settingsSrv.Shutdown(shutdownCtx)
+	cancelShutdown()
+	cfgMu.Lock()
 	if packetLogger != nil {
 		packetLogger.Close()
 	}
-	settingsSrv.Shutdown(context.Background())
+	cfgMu.Unlock()
 	logger.Info("sender shutdown complete")
 	logFile.Close()
+}
+
+// isForwardHostAllowed는 UDP 텔레메트리 포워딩 대상이 로컬/사설 범위인지 검사한다.
+// 공인 IP나 임의 외부 호스트로의 포워딩을 막아 LAN 텔레메트리 유출 반경을 줄인다.
+// 허용: localhost, *.local(mDNS), 루프백/사설/링크로컬 IP. (preferHTTPDashboardURL과 동일 정책)
+func isForwardHostAllowed(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".local") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
 func cleanF32(v float32) float32 {

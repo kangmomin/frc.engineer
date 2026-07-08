@@ -26,10 +26,12 @@ func (h *StrategySSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// per-write 데드라인용 — 전역 WriteTimeout은 SSE를 끊으므로 쓰기마다 갱신한다.
+	rc := http.NewResponseController(w)
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	flusher.Flush()
 
 	ticker := time.NewTicker(1 * time.Second)
@@ -50,6 +52,9 @@ func (h *StrategySSEHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			payload, err := json.Marshal(data)
 			if err != nil {
 				continue
+			}
+			if err := rc.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				return
 			}
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
 				return

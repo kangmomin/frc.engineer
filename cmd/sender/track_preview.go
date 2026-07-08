@@ -80,7 +80,8 @@ type senderProcessorTrackState struct {
 }
 
 func (s senderProcessorTrackState) currentSession() *senderTrackSession {
-	state := s.processor.PitwallManager().BuildState()
+	// 읽기 전용: 트랙 프리뷰는 Session만 필요하므로 브로드캐스트 트랙맵 전송 슬롯을 소모하지 않는 변형 사용
+	state := s.processor.PitwallManager().BuildStateReadOnly()
 	if state == nil || state.Session == nil {
 		return nil
 	}

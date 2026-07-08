@@ -136,7 +136,54 @@
     '</div>';
   }
 
+  // strategy_overlay_windows.go tryToneColor 미러
+  function tryToneColor(tone, label) {
+    if (tone === 'attack') return '#cdff13';
+    if (tone === 'watch') return '#ffb3b2';
+    return label === 'TRY' ? '#cdff13' : '#505050';
+  }
+
+  function sectorDeltaHtml(label, deltaMs) {
+    if (deltaMs === undefined || deltaMs === null) return '';
+    var sign = deltaMs < 0 ? '-' : deltaMs > 0 ? '+' : '';
+    return '<span>' + label + ' ' + sign + (Math.abs(deltaMs) / 1000).toFixed(3) + '</span>';
+  }
+
+  // strategy_overlay_windows.go paintQualifyingCar 미러
+  function qualiCarBlock(car, label, arrowClass) {
+    if (!car) return '<div class="car-block"><div class="car-header"><span class="car-arrow ' + arrowClass + '">' + label + '</span><span class="car-name" style="color:#444">---</span></div></div>';
+    var tc = TIRE_CLASS[car.tireCompound] || '';
+    var tl = TIRE_LABEL[car.tireCompound] || '---';
+    var nameShort = car.name && car.name.length > 3 ? car.name.slice(-3) : (car.name || '---');
+    var tryHtml = car.tryLabel ? '<span class="car-gap" style="color:' + tryToneColor(car.tryTone, car.tryLabel) + '">' + car.tryLabel + '</span>' : '';
+    var summary = car.trySummary || 'No live push signal';
+
+    return '<div class="car-block">' +
+      '<div class="car-header">' +
+        '<span class="car-arrow ' + arrowClass + '">' + label + '</span>' +
+        '<span class="car-name">' + nameShort + '</span>' +
+        '<span class="car-gap">+' + (car.gapMeters || 0) + 'm</span>' +
+        tryHtml +
+      '</div>' +
+      '<div class="car-details">' +
+        '<span class="tire ' + tc + '">' + tl + ' ' + car.tireAge + 'L</span>' +
+        '<span>SPD ' + (car.speedKph || 0) + 'kph</span>' +
+        sectorDeltaHtml('S1', car.sectorDelta1Ms) +
+        sectorDeltaHtml('S2', car.sectorDelta2Ms) +
+      '</div>' +
+      '<div class="car-details">' + summary + '</div>' +
+    '</div>';
+  }
+
   function render(d) {
+    // 퀄리 모드: pit rejoin/undercut/train 대신 근접 차량의 push try 신호를 표시
+    if (d.mode === 'qualifying') {
+      posInfo.textContent = 'QUALI TRY  ' + (d.sessionType || '') + '  P' + d.playerPosition;
+      content.innerHTML = qualiCarBlock(d.carAhead, '▲ AHEAD', 'ahead') +
+        qualiCarBlock(d.carBehind, '▼ BEHIND', 'behind');
+      return;
+    }
+
     posInfo.textContent = 'P' + d.playerPosition + '  ' + d.playerLap + '/' + d.totalLaps + 'L';
 
     var pitColor = d.pitRejoinPosition <= d.playerPosition ? '#cdff13' : '#ffb3b2';
