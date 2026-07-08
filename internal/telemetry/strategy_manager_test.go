@@ -71,6 +71,47 @@ func TestStrategyManagerStintWearPeakOnClose(t *testing.T) {
 	}
 }
 
+// TestStrategyManagerSkipsZeroLapUsedSetSwap reproduces the quali ghost-stint bug:
+// mounting a *used* set and swapping it off without driving a lap must NOT record a
+// stint, while a set driven >= 1 lap records exactly its driven laps.
+func TestStrategyManagerSkipsZeroLapUsedSetSwap(t *testing.T) {
+	const (
+		visualSoft   = 16
+		visualMedium = 17
+		visualHard   = 18
+	)
+	sm := NewStrategyManager()
+
+	// Start of session: fresh soft (age 0) at lap 1.
+	sm.Update(carStatusFor(visualSoft, 0), lapDataFor(1, 0))
+	// Drive 8 laps on soft, then fit a USED medium (age 3) at lap 9 — closes soft.
+	sm.Update(carStatusFor(visualSoft, 8), lapDataFor(9, 0))
+	sm.Update(carStatusFor(visualMedium, 3), lapDataFor(9, 1))
+	// Immediately swap to hard without driving the medium (still age 3) — must NOT
+	// record a medium stint (0 laps on this fitting).
+	sm.Update(carStatusFor(visualHard, 0), lapDataFor(9, 2))
+
+	hist := sm.drivers[0].StintHistory
+	if len(hist) != 1 {
+		t.Fatalf("stint history len = %d, want 1 (only the driven soft stint)", len(hist))
+	}
+	if hist[0].Compound != "soft" || hist[0].Laps != 8 || hist[0].StartLap != 1 {
+		t.Fatalf("soft stint = %+v, want soft L1 (8 laps)", hist[0])
+	}
+
+	// Now actually drive the hard for 2 laps, then fit soft — hard records 2 laps.
+	sm.Update(carStatusFor(visualHard, 2), lapDataFor(11, 2))
+	sm.Update(carStatusFor(visualSoft, 5), lapDataFor(11, 3)) // used soft (age 5) fitted
+
+	hist = sm.drivers[0].StintHistory
+	if len(hist) != 2 {
+		t.Fatalf("stint history len = %d, want 2 (soft + driven hard)", len(hist))
+	}
+	if hist[1].Compound != "hard" || hist[1].Laps != 2 {
+		t.Fatalf("hard stint = %+v, want hard (2 laps driven this fitting)", hist[1])
+	}
+}
+
 func TestStrategyManagerCrossoverPrediction(t *testing.T) {
 	sm := NewStrategyManager()
 	sm.drivers[0].RecentLaps = []completedLap{

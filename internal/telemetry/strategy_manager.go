@@ -43,6 +43,10 @@ type DriverStrategy struct {
 	lastProcessedLapNum int
 	lastSeenNumPitStops int
 	currentStintWear    int // peak average tyre wear (0-100) of the running stint
+	// ageAtFit is the tyre's TyresAgeLaps at the moment this compound was fitted.
+	// A stint's laps-driven = CurrentStintLaps - ageAtFit, so mounting a *used* set
+	// and swapping it off without driving (0 laps) records no ghost stint.
+	ageAtFit int
 }
 
 // CrossoverPrediction summarizes the latest dry-vs-wet crossover model.
@@ -129,26 +133,36 @@ func (sm *StrategyManager) Update(carStatus *packets.PacketCarStatusData, lapDat
 		if !ds.initialized {
 			ds.CurrentCompound = compound
 			ds.CurrentStintLaps = tireAge
+			// ageAtFit stays 0 at init: without an observed fit event we attribute the
+			// tyre's whole current age to this stint (matches pre-existing behaviour for
+			// mid-stream joins / race starts). Only a real compound change captures a
+			// used set's carried-over age below.
+			ds.ageAtFit = 0
 			ds.NumPitStops = numPitStops
 			ds.initialized = true
 			continue
 		}
 
-		// Compound changed: push previous stint to history only if it had track time.
+		// Compound changed: push previous stint to history only if it was actually
+		// driven >= 1 lap on this fitting. laps-driven = CurrentStintLaps - ageAtFit
+		// excludes the carried-over age of a used set (mounting then swapping off a
+		// used set without a lap records nothing; a fresh set has ageAtFit 0).
 		if compound != ds.CurrentCompound {
-			if ds.CurrentStintLaps > 0 {
-				startLap := currentLap - ds.CurrentStintLaps
+			lapsThisFitting := ds.CurrentStintLaps - ds.ageAtFit
+			if lapsThisFitting >= 1 {
+				startLap := currentLap - lapsThisFitting
 				if startLap < 1 {
 					startLap = 1
 				}
 				ds.StintHistory = append(ds.StintHistory, StintInfo{
 					Compound:    ds.CurrentCompound,
 					StartLap:    startLap,
-					Laps:        ds.CurrentStintLaps,
+					Laps:        lapsThisFitting,
 					TireWearPct: ds.currentStintWear,
 				})
 			}
 			ds.CurrentCompound = compound
+			ds.ageAtFit = tireAge
 			// Reset the peak-wear accumulator for the new stint. The fresh tyre's
 			// low wear rebuilds the peak from here (UpdateTyreWear uses max, so an
 			// early ~0% frame that arrives before this reset can't corrupt the
