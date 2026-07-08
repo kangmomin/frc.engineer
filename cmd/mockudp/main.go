@@ -243,6 +243,7 @@ type recordingEntry struct {
 	sessionType  string
 	path         string
 	embeddedPath string
+	paths        []string // 여러 raw.bin을 순서대로 이어붙여 재생 (test-sets 시나리오 병합용)
 }
 
 const minRecordingSize = 30 * 1024 * 1024 // 30 MB
@@ -253,6 +254,18 @@ type cleanupSummary struct {
 }
 
 func (r recordingEntry) loadData() ([]byte, error) {
+	if len(r.paths) > 0 {
+		// size 합계로 미리 할당해 재할당을 피한다.
+		buf := make([]byte, 0, r.size)
+		for _, p := range r.paths {
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return nil, fmt.Errorf("read %s: %w", p, err)
+			}
+			buf = append(buf, b...)
+		}
+		return buf, nil
+	}
 	if r.path != "" {
 		return os.ReadFile(r.path)
 	}
@@ -326,6 +339,10 @@ func listRecordings() ([]recordingEntry, cleanupSummary) {
 		}
 	}
 
+	// test-sets/ 큐레이션 시나리오 (각 시나리오의 캡처들을 병합한 단일 항목).
+	// cleanupSmallRecordings 루트에는 test-sets를 넣지 않으므로 tail이 삭제되지 않는다.
+	entries = append(entries, collectTestSetScenarios([]string{"test-sets", "../test-sets", "../../test-sets"}, seen)...)
+
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].size == entries[j].size {
 			return entries[i].name < entries[j].name
@@ -333,6 +350,64 @@ func listRecordings() ([]recordingEntry, cleanupSummary) {
 		return entries[i].size > entries[j].size
 	})
 	return entries, cleanup
+}
+
+// collectTestSetScenarios surfaces the curated test-sets/ captures as merged replay entries.
+// 레이아웃: test-sets/<scenario>/<capture>/raw.bin — 한 시나리오의 캡처들(main + tail)을
+// 이름 오름차순(=시간순)으로 이어붙여 tail 전용 SEND/최종순위 패킷까지 포함시킨다.
+// 30MB 필터는 건너뛴다(tail은 설계상 작음). [Assumption] 시나리오 디렉토리 1개 = 한 세션의 캡처들.
+func collectTestSetScenarios(roots []string, seen map[string]struct{}) []recordingEntry {
+	var entries []recordingEntry
+	for _, root := range roots {
+		scenarios, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, s := range scenarios {
+			if !s.IsDir() {
+				continue
+			}
+			key := "testset::" + s.Name() // 일반 recording 이름과 충돌하지 않도록 네임스페이스
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			scenarioDir := filepath.Join(root, s.Name())
+			captures, err := os.ReadDir(scenarioDir)
+			if err != nil {
+				continue
+			}
+			names := make([]string, 0, len(captures))
+			for _, c := range captures {
+				if c.IsDir() {
+					names = append(names, c.Name())
+				}
+			}
+			sort.Strings(names) // 캡처 dir명 오름차순 = 시간순 (main 먼저, tail 나중)
+
+			var paths []string
+			var total int64
+			for _, n := range names {
+				rawPath := filepath.Join(scenarioDir, n, "raw.bin")
+				info, err := os.Stat(rawPath)
+				if err != nil {
+					continue // raw.bin 없는 캡처는 관대하게 건너뜀
+				}
+				paths = append(paths, rawPath)
+				total += info.Size()
+			}
+			if len(paths) == 0 {
+				continue // 재생 가능한 캡처가 없는 시나리오는 스킵
+			}
+			seen[key] = struct{}{}
+			entries = append(entries, recordingEntry{
+				name:        s.Name(),
+				size:        total,
+				sessionType: s.Name(), // 표시 라벨 = 시나리오명 (Race 2종 구분)
+				paths:       paths,
+			})
+		}
+	}
+	return entries
 }
 
 func collectDiskRecordings(root string, seen map[string]struct{}) []recordingEntry {
