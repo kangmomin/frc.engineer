@@ -11,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -584,7 +585,8 @@ func main() {
 	// Debug: dump current pitwall state
 	mux.HandleFunc("/api/debug/pitwall", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		state := processor.PitwallManager().BuildState()
+		// 읽기 전용: 디버그 조회가 브로드캐스트 트랙맵 전송 슬롯을 소모하지 않도록
+		state := processor.PitwallManager().BuildStateReadOnly()
 		json.NewEncoder(w).Encode(state)
 	})
 
@@ -734,13 +736,54 @@ func main() {
 	logger.Info("server shutdown complete")
 }
 
+// allowedPitwallOrigins는 로컬 서버의 /api/*를 교차출처로 호출할 수 있는 웹 Origin
+// 허용목록이다. 배포 pitwall 도메인이 레포 상수로 존재하지 않으므로
+// ALLOWED_PITWALL_ORIGINS(콤마 구분) env로 주입하며, localhost(loopback) 개발
+// Origin은 포트와 무관하게 항상 허용한다.
+var allowedPitwallOrigins = parsePitwallOrigins(os.Getenv("ALLOWED_PITWALL_ORIGINS"))
+
+func parsePitwallOrigins(raw string) map[string]struct{} {
+	origins := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		if o := strings.ToLower(strings.TrimSpace(part)); o != "" {
+			origins[o] = struct{}{}
+		}
+	}
+	return origins
+}
+
+// pitwallOriginAllowed는 교차출처 /api 응답(ACAO/Private-Network)을 받을 자격이
+// 있는 Origin인지 판별한다. loopback(로컬 개발) 또는 ALLOWED_PITWALL_ORIGINS
+// 허용목록에 있는 Origin만 통과한다.
+func pitwallOriginAllowed(origin string) bool {
+	if _, ok := allowedPitwallOrigins[strings.ToLower(origin)]; ok {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := u.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
 func allowRemotePitwallAPI(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
-			if origin := r.Header.Get("Origin"); origin != "" {
+			// 허용목록(localhost 개발 + ALLOWED_PITWALL_ORIGINS) Origin만 교차출처
+			// 응답을 받는다. Allow-Methods를 GET/OPTIONS로 제한해 브라우저가 교차출처
+			// 상태변경(PUT /api/config 등)을 preflight 단계에서 차단하도록 하고,
+			// same-origin 요청(로컬 프런트엔드)만 상태변경을 수행할 수 있게 남긴다.
+			if origin := r.Header.Get("Origin"); origin != "" && pitwallOriginAllowed(origin) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 				w.Header().Set("Access-Control-Allow-Private-Network", "true")
 			}
