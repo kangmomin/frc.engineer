@@ -1,0 +1,131 @@
+/* 트랙 전장을 1차원으로 편 진행 막대 — 코너 밴드 / 섹터 바 / 드라이버 마커 3층.
+   focused 링·스타트/피니시 마커는 currentColor를 쓰므로 색은 tone 클래스가 제공한다. */
+.strip {
+  position: relative;
+  width: 100%;
+  padding-bottom: 16px;
+  font-family: var(--font-body);
+}
+
+/* 위층(raised) 라벨까지 수용하는 높이 — label 10 + gap 2 + tick 15. */
+.cornerBand {
+  position: relative;
+  height: 28px;
+}
+
+.corner {
+  position: absolute;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transform: translateX(-50%);
+}
+
+.cornerLabel {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.cornerTick {
+  width: 1px;
+  height: 5px;
+  background: var(--text-muted);
+  opacity: 0.55;
+}
+
+/* 위층 코너: 틱을 길게 늘여 라벨만 한 단 위로 올린다. */
+.raised .cornerTick {
+  height: 15px;
+}
+
+.bar {
+  position: relative;
+  height: 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+
+.sector {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* 틴트를 섹터 색(currentColor)에서 파생 — 토큰 리튠 시 라벨 색과 자동 동조. */
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.sector + .sector {
+  border-left: 1px solid color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
+/* 섹터 색 — 라벨·틴트가 currentColor로 함께 따른다. */
+.sector1 { color: var(--accent-cyan); }
+.sector2 { color: var(--accent-soft); }
+.sector3 { color: var(--accent-lime); }
+
+.sectorLabel {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: currentColor;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* 스타트/피니시 라인 — 막대보다 위아래로 살짝 길게, tone 색. */
+.startFinish {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 0;
+  width: 2px;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.driver {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid var(--bg-primary);
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.focused {
+  z-index: 2;
+  box-shadow: 0 0 0 2px currentColor, 0 0 12px currentColor;
+}
+
+.inPit {
+  opacity: 0.35;
+}
+
+.driverCode {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-racing);
+  font-size: 9px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
