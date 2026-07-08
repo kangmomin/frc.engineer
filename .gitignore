@@ -24,10 +24,22 @@ Thumbs.db
 data/packets/
 data/races/
 data/races.zip
+# 루트에 생성되는 런타임 트랙 녹화(예: monza_recorded.txt). data/tracks/*_recorded.txt 는 의도적으로 추적하므로 루트 앵커 사용
+/data/*_recorded.txt
 
 # Binaries
 *.exe
+*.exe.old
 nul
+
+# Runtime logs (sender 등이 루트에 생성)
+/logs/
+
+# Go 툴체인은 개발 환경 준비물이지 소스가 아님 (GOROOT는 시스템 Go 사용)
+.tools/
+
+# 루트 스텁 package-lock.json (루트에 package.json 없음). web/·apps/* 의 lock 파일은 추적 유지
+/package-lock.json
 
 # Playwright smoke-test artifacts (dev only)
 .playwright-mcp/
