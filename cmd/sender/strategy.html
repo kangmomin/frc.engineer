@@ -114,9 +114,15 @@
     return '<span class="pace-faster">' + sec.toFixed(1) + 's</span>';
   }
 
-  function carBlock(car, label, arrowClass) {
+  function carBlock(car, label, arrowClass, isThreat) {
     if (!car) return '<div class="car-block"><div class="car-header"><span class="car-arrow ' + arrowClass + '">' + label + '</span><span class="car-name" style="color:#444">---</span></div></div>';
-    var gapSec = (car.gapMs / 1000).toFixed(1);
+    // threat 모드(퀄리, 플레이어 개러지)엔 트랙 거리 갭이 없다 — 베스트랩 델타(0=미상 '--')를 표시.
+    var gapText;
+    if (isThreat) {
+      gapText = car.paceDeltaMs ? (car.paceDeltaMs > 0 ? '+' : '-') + Math.abs(car.paceDeltaMs / 1000).toFixed(3) + 's' : '--';
+    } else {
+      gapText = '+' + (car.gapMs / 1000).toFixed(1) + 's';
+    }
     var tc = TIRE_CLASS[car.tireCompound] || '';
     var tl = TIRE_LABEL[car.tireCompound] || '---';
     var pitLabel = car.pitStops > 0 ? car.pitStops + ' stop' + (car.pitStops > 1 ? 's' : '') : '0 stops';
@@ -126,7 +132,7 @@
       '<div class="car-header">' +
         '<span class="car-arrow ' + arrowClass + '">' + label + '</span>' +
         '<span class="car-name">' + nameShort + '</span>' +
-        '<span class="car-gap">+' + gapSec + 's</span>' +
+        '<span class="car-gap">' + gapText + '</span>' +
       '</div>' +
       '<div class="car-details">' +
         '<span class="tire ' + tc + '">' + tl + ' ' + car.tireAge + 'L</span>' +
@@ -190,8 +196,14 @@
     var html = '<div class="section"><div class="section-label">Pit Rejoin</div>' +
       '<div class="pit-rejoin"><span class="pit-pos" style="color:' + pitColor + '">P' + d.pitRejoinPosition + '</span></div></div>';
 
-    html += carBlock(d.carAhead, '\u25B2 AHEAD', 'ahead');
-    html += carBlock(d.carBehind, '\u25BC BEHIND', 'behind');
+    // aroundMode==='threat': \uD004\uB9AC\uC5D0\uC11C \uD50C\uB808\uC774\uC5B4\uAC00 \uAC1C\uB7EC\uC9C0/\uD54F\uC77C \uB54C \uC2AC\uB86F\uC740 \uC55E\uB4A4\uCC28\uAC00 \uC544\uB2C8\uB77C
+    // \uC704\uD611 \uB7AD\uD0B9 \uC0C1\uC704 2\uB300\uB2E4 \u2014 \uB77C\uBCA8\uC744 '\uBB3C\uB9AC\uC801 \uC55E/\uB4A4'\uB85C \uC624\uD45C\uAE30\uD558\uC9C0 \uC54A\uB3C4\uB85D \uAD6C\uBD84\uD55C\uB2E4.
+    var isThreat = d.aroundMode === 'threat';
+    var slotLabel = function(car, fallback) {
+      return isThreat ? (car ? '\u26A0 P' + car.position : '\u26A0') : fallback;
+    };
+    html += carBlock(d.carAhead, slotLabel(d.carAhead, '\u25B2 AHEAD'), 'ahead', isThreat);
+    html += carBlock(d.carBehind, slotLabel(d.carBehind, '\u25BC BEHIND'), 'behind', isThreat);
 
     html += '<div class="verdicts">' +
       '<div class="verdict-item"><span class="verdict-label">Undercut</span><span class="verdict-value ' + verdictClass(d.undercutVerdict) + '">' + d.undercutVerdict + '</span></div>' +

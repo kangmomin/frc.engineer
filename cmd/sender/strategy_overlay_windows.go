@@ -303,19 +303,24 @@ func (o *strategyOverlay) paint(hwnd uintptr) {
 		o.drawSep(mem, pad, ww-pad, y)
 		y += o.px(6)
 
+		// threat \uBAA8\uB4DC: \uD50C\uB808\uC774\uC5B4\uAC00 \uAC1C\uB7EC\uC9C0/\uD54F\uC774\uB77C \uC55E\uB4A4\uCC28 \uB300\uC2E0 \uC704\uD611 \uB7AD\uD0B9 \uC0C1\uC704 2\uB300\uAC00 \uC2E4\uB824 \uC788\uB2E4.
+		threat := data.AroundMode == "threat"
 		gSelectObj.Call(mem, fSmall)
 		gSetTextColor.Call(mem, rgb(132, 147, 150))
 		lapLabel := fmt.Sprintf("TRACK AROUND YOU   L%d", data.PlayerLap)
+		if threat {
+			lapLabel = "THREAT WATCH"
+		}
 		o.drawStr(mem, lapLabel, pad, y, ww-pad, y+o.px(14))
 		y += o.px(20)
 
 		o.drawSep(mem, pad, ww-pad, y)
 		y += o.px(6)
-		y = o.paintQualifyingCar(mem, data.CarAhead, "\u25B2 AHEAD", y, ww, pad)
+		y = o.paintQualifyingCar(mem, data.CarAhead, qualiSlotLabel(data.CarAhead, "\u25B2 AHEAD", threat), threat, y, ww, pad)
 
 		o.drawSep(mem, pad, ww-pad, y)
 		y += o.px(6)
-		y = o.paintQualifyingCar(mem, data.CarBehind, "\u25BC BEHIND", y, ww, pad)
+		y = o.paintQualifyingCar(mem, data.CarBehind, qualiSlotLabel(data.CarBehind, "\u25BC BEHIND", threat), threat, y, ww, pad)
 		goto cleanup
 	}
 
@@ -456,7 +461,17 @@ func (o *strategyOverlay) paintCar(mem uintptr, car *dto.StrategyCar, label stri
 	return y
 }
 
-func (o *strategyOverlay) paintQualifyingCar(mem uintptr, car *dto.StrategyCar, label string, y, ww, pad int32) int32 {
+func qualiSlotLabel(car *dto.StrategyCar, trackLabel string, threat bool) string {
+	if !threat {
+		return trackLabel
+	}
+	if car == nil {
+		return "⚠"
+	}
+	return fmt.Sprintf("⚠ P%d", car.Position)
+}
+
+func (o *strategyOverlay) paintQualifyingCar(mem uintptr, car *dto.StrategyCar, label string, threat bool, y, ww, pad int32) int32 {
 	fBody := o.mkFont(14, 600)
 	fSmall := o.mkFont(11, 600)
 	defer gDeleteObj.Call(fBody)
@@ -469,8 +484,17 @@ func (o *strategyOverlay) paintQualifyingCar(mem uintptr, car *dto.StrategyCar, 
 		return y + o.px(24)
 	}
 
+	// threat 모드 갭 자리엔 베스트랩 델타(0=미상 → '--')를 쓴다 — 트랙 거리 갭이 없다.
+	gapText := fmt.Sprintf("+%dm", car.GapMeters)
+	if threat {
+		gapText = "--"
+		if car.PaceDeltaMs != 0 {
+			gapText = formatSignedOverlayDelta(int(car.PaceDeltaMs)) + "s"
+		}
+	}
+
 	gSetTextColor.Call(mem, rgb(229, 226, 227))
-	line1 := fmt.Sprintf("%s  %s  +%dm", label, abbreviateDriverOverlay(car.Name), car.GapMeters)
+	line1 := fmt.Sprintf("%s  %s  %s", label, abbreviateDriverOverlay(car.Name), gapText)
 	o.drawStr(mem, line1, pad, y, ww-pad-o.px(54), y+o.px(16))
 
 	gSetTextColor.Call(mem, tryToneColor(car.TryTone, car.TryLabel))
