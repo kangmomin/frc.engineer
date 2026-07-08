@@ -1,8 +1,8 @@
 # design-sync NOTES — minmo-pitwall-ui (MinmoPitwallUI)
 
 이 레포는 **디자인 시스템 패키지가 아니라 Vite SPA**(`web/`)다. design-sync용으로
-`web/src/ui/`의 프레젠테이셔널 컴포넌트 4종(PanelTitle / StatRibbon / MetricTile /
-WeatherIcon)만 synth 번들로 동기화한다.
+`web/src/ui/`의 프레젠테이셔널 컴포넌트 5종(PanelTitle / StatRibbon / MetricTile /
+WeatherIcon / TrackStrip)만 synth 번들로 동기화한다.
 
 ## 빌드 셋업 (재현 핵심)
 
@@ -24,7 +24,7 @@ WeatherIcon)만 synth 번들로 동기화한다.
     [--remote .design-sync/.cache/remote-sync.json]
   ```
 - **props는 `cfg.dtsPropsFor`로 손수 작성**: 라이브러리 `.d.ts` 빌드가 없어
-  ts-morph가 소스 `interface ...Props`를 못 읽는다. componentSrcMap이 4종을
+  ts-morph가 소스 `interface ...Props`를 못 읽는다. componentSrcMap이 5종을
   명시 등록하고, dtsPropsFor가 props body를 공급한다.
 - **CSS modules**: esbuild 기본값(`.module.css` → local-css)이 그대로 처리.
   `_ds_bundle.css`가 자동 생성된다 (cfg.cssEntry 불필요).
@@ -51,8 +51,14 @@ WeatherIcon)만 synth 번들로 동기화한다.
 
 - 다크 테마 DS라 각 프리뷰를 다크 surface(`#131314`)로 감싼다 (프리뷰 HTML body는 흰색).
 - WeatherIcon은 100%×100% + currentColor → 프리뷰에서 sized 컬러 박스로 감싸야 보임.
+- TrackStrip은 가로로 긴 풀폭 컴포넌트 → `cfg.overrides.TrackStrip = {cardMode: 'column'}`.
+  프리뷰 surface에 minWidth 560 지정 (좁은 셀에서 코너 라벨 겹침 방지).
 
 ## Re-sync risks (다음 실행이 주의할 것)
+
+- **스테이징 스크립트 버전이 바뀌면(scriptsSha 변경) 기존 컴포넌트 전원이 canary
+  `render_churn`으로 뜬다** — 파이프라인 churn이므로 그레이드는 유지되고, spot-check
+  시트만 눈으로 확인하고 진행하면 된다 (2026-07-08 v2.1.202 갱신 때 4/4 churn, 시트 전부 정상).
 
 - **`web/src/ui/_ds-tokens.css`는 `web/src/styles/theme.css`의 `:root` + 브랜드 폰트를
   손으로 추린 사본**이다. theme.css 토큰이 바뀌면 `_ds-tokens.css`도 수동 동기화해야

@@ -9,13 +9,18 @@
     "PanelTitle": "src/ui/PanelTitle.tsx",
     "StatRibbon": "src/ui/StatRibbon.tsx",
     "MetricTile": "src/ui/MetricTile.tsx",
-    "WeatherIcon": "src/ui/WeatherIcon.tsx"
+    "WeatherIcon": "src/ui/WeatherIcon.tsx",
+    "TrackStrip": "src/ui/TrackStrip.tsx"
   },
   "dtsPropsFor": {
     "PanelTitle": "  title: string;\n  tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';\n  detail?: string;\n  endContent?: React.ReactNode;",
     "StatRibbon": "  label: string;\n  value: string;\n  detail: string;\n  tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';\n  /** Narrow padding + smaller value font variant. */\n  dense?: boolean;\n  className?: string;",
     "MetricTile": "  label: string;\n  value: string;\n  tone: 'primary' | 'secondary' | 'tertiary' | 'neutral';\n  note?: string;\n  /** Narrow padding + smaller font variant. */\n  compact?: boolean;\n  className?: string;",
-    "WeatherIcon": "  /** Weather state: 'clear' | 'light cloud' | 'overcast' | 'storm' | (anything else renders the rain icon). Spaces or underscores accepted. */\n  weather: string;"
+    "WeatherIcon": "  /** Weather state: 'clear' | 'light cloud' | 'overcast' | 'storm' | (anything else renders the rain icon). Spaces or underscores accepted. */\n  weather: string;",
+    "TrackStrip": "  /** Total track length in meters — the bar's coordinate space. */\n  trackLength: number;\n  /** Sector boundaries as lapDistance in meters: [end of S1, end of S2]. S3 ends at trackLength. */\n  sectorSplits: [number, number];\n  /** Corner markers drawn above the bar as T{number} labels + ticks. distance = apex lapDistance (m). */\n  corners?: { number: number; distance: number }[];\n  /** Driver dots. color = team color (falls back to the tone accent); focused adds a ring + code label; inPit dims the dot. */\n  drivers?: { code: string; distance: number; color?: string; focused?: boolean; inPit?: boolean }[];\n  /** Accent for the focused ring and start/finish marker. Default 'primary'. */\n  tone?: 'primary' | 'secondary' | 'tertiary' | 'neutral';\n  className?: string;"
+  },
+  "overrides": {
+    "TrackStrip": { "cardMode": "column" }
   },
   "readmeHeader": ".design-sync/conventions.md"
 }

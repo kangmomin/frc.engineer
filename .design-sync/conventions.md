@@ -2,9 +2,9 @@
 
 `MinmoPitwallUI` is a small set of **presentational** pit-wall / cockpit
 telemetry components (an F1-style dark racing HUD): `PanelTitle`, `StatRibbon`,
-`MetricTile`, `WeatherIcon`. They are pure props-in components — **no provider,
-no context, no internal state**. Load the bundle and read them off
-`window.MinmoPitwallUI`.
+`MetricTile`, `WeatherIcon`, `TrackStrip`. They are pure props-in components —
+**no provider, no context, no internal state**. Load the bundle and read them
+off `window.MinmoPitwallUI`.
 
 ## Theme & setup
 
@@ -37,6 +37,12 @@ custom properties).
   `<div style={{ width: 28, height: 28, color: 'var(--accent)' }}><WeatherIcon weather="storm" /></div>`.
   Accepted `weather` values: `clear`, `light cloud`, `overcast`, `storm`
   (anything else renders the rain icon).
+- **`TrackStrip` is meter-based.** Feed it raw telemetry units: `trackLength`,
+  `sectorSplits` (`[end of S1, end of S2]`) and per-item `distance`, all in
+  meters — it converts to percentages internally. Driver dots carry their own
+  `color` (team color; falls back to the tone accent); `tone` colors the
+  focused-driver ring and the start/finish marker. It is a full-width bar —
+  give it a wide container (≥ 560px; below that, dense corner labels crowd).
 
 ## Tokens (use these for your own layout)
 
