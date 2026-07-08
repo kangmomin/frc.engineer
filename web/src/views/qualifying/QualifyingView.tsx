@@ -80,8 +80,8 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
     [sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest, codes],
   );
   const myLap = useMemo(
-    () => deriveMyLap(player, playerAcc, tryMap, trackGap, session, codes, qualiState),
-    [player, playerAcc, tryMap, trackGap, session, codes, qualiState],
+    () => deriveMyLap(player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState),
+    [player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState],
   );
   const cutoffWatch = useMemo(
     () => deriveCutoffWatch(player, sortedDrivers, segment, session?.sessionTimeLeft, codes),

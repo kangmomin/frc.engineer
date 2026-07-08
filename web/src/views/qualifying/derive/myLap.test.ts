@@ -85,7 +85,7 @@ const EMPTY_GAP: TrackGap = { gapAheadM: null, gapBehindM: null, aheadDriver: nu
 
 describe('deriveMyLap — no player (spectating)', () => {
   it('degrades to dashes without crashing', () => {
-    const vm = deriveMyLap(null, undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(null, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.hasPlayer).toBe(false);
     expect(vm.bestText).toBe('—');
     expect(vm.aheadSummary).toBe('No car ahead');
@@ -97,7 +97,7 @@ describe('deriveMyLap — phase/attempt passthrough', () => {
   it('reflects useQualifyingState phase/attempt/push-streak as-is', () => {
     const player = makeDriver();
     const qs = makeQualiState({ phase: 'COOLDOWN', attemptNumber: 4, consecutivePushLaps: 0 });
-    const vm = deriveMyLap(player, undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), qs);
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), qs);
     expect(vm.phaseLabel).toBe('COOLDOWN');
     expect(vm.attemptNumber).toBe(4);
     expect(vm.consecutivePushLaps).toBe(0);
@@ -107,7 +107,7 @@ describe('deriveMyLap — phase/attempt passthrough', () => {
 describe('deriveMyLap — best + live partial delta (no "Projected" fabrication)', () => {
   it('shows dash delta when no sector delta signal is available', () => {
     const player = makeDriver();
-    const vm = deriveMyLap(player, undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.deltaText).toBe('—');
     expect(vm.deltaColor).toBe('var(--text-muted)');
   });
@@ -117,7 +117,7 @@ describe('deriveMyLap — best + live partial delta (no "Projected" fabrication)
     const tryMap = new Map<number, DriverTryState>([
       [5, { label: 'TRY', tone: 'attack', summary: 'S1 -0.200', score: 3, sectorDelta1Ms: -200, sectorDelta2Ms: null }],
     ]);
-    const vm = deriveMyLap(player, undefined, tryMap, EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(player, [], undefined, tryMap, EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.deltaText).toBe('-0.200');
     expect(vm.deltaColor).toBe('var(--delta-faster)');
   });
@@ -127,7 +127,7 @@ describe('deriveMyLap — best + live partial delta (no "Projected" fabrication)
     const tryMap = new Map<number, DriverTryState>([
       [5, { label: 'COOL', tone: 'standby', summary: 'S1 +0.100 | S2 +0.050', score: -1, sectorDelta1Ms: 100, sectorDelta2Ms: 50 }],
     ]);
-    const vm = deriveMyLap(player, undefined, tryMap, EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(player, [], undefined, tryMap, EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.deltaText).toBe('+0.150');
     expect(vm.deltaColor).toBe('var(--delta-slower)');
   });
@@ -136,21 +136,21 @@ describe('deriveMyLap — best + live partial delta (no "Projected" fabrication)
 describe('deriveMyLap — live sectors (0-based currentSector gating, no S3 reconstruction)', () => {
   it('S1 hidden before sector1 completes (currentSector 0)', () => {
     const player = makeDriver({ currentSector: 0, sector1TimeMs: 15_000 });
-    const vm = deriveMyLap(player, undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.s1Text).toBe('—');
   });
 
   it('S1 shown once currentSector >= 1', () => {
     const player = makeDriver({ currentSector: 1, sector1TimeMs: 30_123, sector2TimeMs: 0 });
     const acc: SectorAcc = { bestS1: 30_000, bestS2: 0, bestS3: 0 };
-    const vm = deriveMyLap(player, acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.s1Text).toBe('30.123');
     expect(vm.s2Text).toBe('—');
   });
 
   it('S2 shown once currentSector >= 2; S3 never shows a reconstructed time — only in-progress dots or dash', () => {
     const player = makeDriver({ currentSector: 2, sector1TimeMs: 30_000, sector2TimeMs: 31_500 });
-    const vm = deriveMyLap(player, undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.s2Text).toBe('31.500');
     expect(vm.s3Text).toBe('•••');
     // S3 is never a formatted numeric string — the live wire has no such field (Spec §9 anti-fabrication).
@@ -169,7 +169,7 @@ describe('deriveMyLap — ahead/behind meters', () => {
       [9, { label: 'COOL', tone: 'standby', summary: 'In lap', score: -1, sectorDelta1Ms: null, sectorDelta2Ms: null }],
     ]);
     const codes = new Map([[7, 'AHD'], [9, 'BHD']]);
-    const vm = deriveMyLap(player, undefined, tryMap, trackGap, makeSession(), codes, makeQualiState());
+    const vm = deriveMyLap(player, [], undefined, tryMap, trackGap, makeSession(), codes, makeQualiState());
 
     expect(vm.aheadCode).toBe('AHD');
     expect(vm.aheadGapText).toBe('120m');
@@ -183,9 +183,53 @@ describe('deriveMyLap — ahead/behind meters', () => {
 
   it('no car ahead/behind renders dash + explicit copy, not a crash', () => {
     const player = makeDriver();
-    const vm = deriveMyLap(player, undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.aheadCode).toBe('—');
     expect(vm.aheadGapText).toBe('—');
+    expect(vm.aheadSummary).toBe('No car ahead');
+  });
+
+  it('on-track player keeps track mode (threat fallback must not fire)', () => {
+    const player = makeDriver({ pitStatus: 0, lapDistance: 1200 });
+    const other = makeDriver({ index: 4, position: 12, resultStatus: 2 });
+    const vm = deriveMyLap(player, [player, other], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    expect(vm.aroundMode).toBe('track');
+    expect(vm.aheadPos).toBe('');
+  });
+});
+
+describe('deriveMyLap — threat watch fallback (player off-track)', () => {
+  const attack: DriverTryState = { label: 'TRY', tone: 'attack', summary: 'Flying | ERS OVT', score: 5, sectorDelta1Ms: null, sectorDelta2Ms: null };
+  const standby: DriverTryState = { label: 'COOL', tone: 'standby', summary: 'In lap', score: -1, sectorDelta1Ms: null, sectorDelta2Ms: null };
+
+  it('switches slots to ranked threats with best-lap deltas when the player is garaged', () => {
+    const player = makeDriver({ index: 2, position: 8, pitStatus: 1, lapDistance: -1, bestLapTime: 72_000 });
+    const flyingThreat = makeDriver({ index: 4, position: 12, resultStatus: 2, bestLapTime: 72_500 });
+    const coolThreat = makeDriver({ index: 6, position: 10, resultStatus: 2, bestLapTime: 73_000 });
+    const leaderFlyer = makeDriver({ index: 1, position: 1, resultStatus: 2, bestLapTime: 70_000 });
+    const tryMap = new Map<number, DriverTryState>([[4, attack], [6, standby], [1, attack]]);
+    const codes = new Map([[4, 'FLY'], [6, 'COL'], [1, 'LEA']]);
+
+    const vm = deriveMyLap(player, [leaderFlyer, player, coolThreat, flyingThreat], undefined, tryMap, EMPTY_GAP, makeSession(), codes, makeQualiState());
+
+    expect(vm.aroundMode).toBe('threat');
+    // 슬롯1: 포지션 위협(P12>P8) + attack. 갭은 거리(m)가 아니라 베스트랩 델타.
+    expect(vm.aheadCode).toBe('FLY');
+    expect(vm.aheadPos).toBe('P12');
+    expect(vm.aheadGapText).toBe('+0.500');
+    expect(vm.aheadSummary).toBe('Flying | ERS OVT');
+    // 슬롯2: standby라도 포지션 위협(P10)이 비위협 attack(P1)보다 우선.
+    expect(vm.behindCode).toBe('COL');
+    expect(vm.behindPos).toBe('P10');
+    expect(vm.behindGapText).toBe('+1.000');
+  });
+
+  it('degrades to track-mode dashes when the garaged player has no on-track candidates', () => {
+    const player = makeDriver({ pitStatus: 1, lapDistance: -1 });
+    const pittedOther = makeDriver({ index: 4, position: 12, pitStatus: 1, resultStatus: 2 });
+    const vm = deriveMyLap(player, [player, pittedOther], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    expect(vm.aroundMode).toBe('track');
+    expect(vm.aheadCode).toBe('—');
     expect(vm.aheadSummary).toBe('No car ahead');
   });
 });
