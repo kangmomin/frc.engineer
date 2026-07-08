@@ -1,6 +1,6 @@
-import { getTeamColor } from '../../../constants/teamColors';
+import { getTeamColor, getTeamShort } from '../../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompounds';
-import type { DriverInfo, SessionInfo } from '../../../types/telemetry';
+import type { DriverInfo, PenaltyLogEntry, SessionInfo } from '../../../types/telemetry';
 import { deriveDriverCodes } from '../../../utils/driverCodes';
 import { formatLapTime } from '../../../utils/formatters';
 import { driverCanArmDrs, formatInterval, getSectorFlag } from '../../../utils/raceDisplay';
@@ -148,6 +148,7 @@ export interface LeaderRow {
   teamColor: string;
   rowBg: string;
   name: string;
+  teamShort: string;
   nameColor: string;
   aiShow: boolean;
   drsLabel: string;
@@ -163,9 +164,15 @@ export interface LeaderRow {
   interval: string;
   lastLap: string;
   lastColor: string;
+  bestLap: string;
+  bestLapColor: string;
+  fuel: string;
+  fuelColor: string;
   penLabel: string;
   penColor: string;
   penBg: string;
+  /** 페널티 셀 hover 상세용 원시 로그(포맷은 셀에서 lazy). 없으면 빈 배열. */
+  penaltyLog: PenaltyLogEntry[];
   /** name: 원시 compound 문자열(legacy CockpitDashboard 표기 선례 준수, 매핑 이름 아님). 색만으로
    * 스틴트 구분을 전달하지 않도록 title/aria-label("Stint N: <name>", FIX-6) 조립에 쓰인다. */
   stintDots: Array<{ color: string; name: string }>;
@@ -229,6 +236,21 @@ function ersCell(driver: DriverInfo): { pct: string; width: string; color: strin
     pct: `${rounded}%`,
     width: `${rounded}%`,
     color: rounded < ERS_LOW_PCT ? 'var(--accent-soft)' : 'var(--accent)',
+  };
+}
+
+/** Fuel margin in laps (+ = spare, − = short). Exact 0.0 is a valid "on-target"
+ * reading (non-omitempty), so it is shown, not dashed; near-zero renders unsigned
+ * "0.0" to avoid a misleading "-0.0". */
+function fuelCell(driver: DriverInfo): { text: string; color: string } {
+  const v = driver.fuelRemainingLaps;
+  if (!Number.isFinite(v) || Math.abs(v) < 0.05) {
+    return { text: '0.0', color: 'var(--text-secondary)' };
+  }
+  const sign = v > 0 ? '+' : '-';
+  return {
+    text: `${sign}${Math.abs(v).toFixed(1)}`,
+    color: v < 0 ? 'var(--accent-red)' : 'var(--text-secondary)',
   };
 }
 
@@ -310,8 +332,12 @@ export function deriveLeaderboardRows(
 ): LeaderRow[] {
   const validLaps = drivers.map((d) => d.lastLapTime).filter((t) => t > 0);
   const fastestMs = validLaps.length ? Math.min(...validLaps) : null;
-  // Broadcast(WORLD)와 동일 코드 파생 공유(FIX-5) — 별도 구현이던 codeFromName을 제거하고
-  // deriveDriverCodes로 통일해 두 뷰의 동일 드라이버 코드 표기가 항상 일치하게 한다.
+  // Session-best lap across drivers, guarded to positive times so early all-zero
+  // frames don't paint P1 purple (bestLapTime is 0 before a lap is set).
+  const validBests = drivers.map((d) => d.bestLapTime).filter((t) => t > 0);
+  const bestFastestMs = validBests.length ? Math.min(...validBests) : null;
+  // deriveDriverCodes: still used as the driver-cell fallback when name is blank,
+  // and shared with the World feed for consistent codes.
   const codes = deriveDriverCodes(drivers);
 
   return drivers.map((driver, i) => {
@@ -326,7 +352,12 @@ export function deriveLeaderboardRows(
     const pit = pitCell(driver);
     const sector = deriveSectorCells(driver, session);
     const dmg = damageCell(driver);
+    const fuel = fuelCell(driver);
     const isFastestLap = fastestMs != null && driver.lastLapTime > 0 && driver.lastLapTime === fastestMs;
+    const isSessionBest = bestFastestMs != null && driver.bestLapTime > 0 && driver.bestLapTime === bestFastestMs;
+    // Full name (uppercased in the panel) with a code/CAR fallback — the backend
+    // sends an empty name before participants arrive or for blank garage slots.
+    const displayName = driver.name.trim() || codes.get(driver.index) || `CAR ${driver.index + 1}`;
 
     return {
       index: driver.index,
@@ -334,7 +365,8 @@ export function deriveLeaderboardRows(
       posColor: posColor(isLeader, isPlayer),
       teamColor: getTeamColor(driver.teamId),
       rowBg: rowBackground(tone, i),
-      name: codes.get(driver.index) ?? DASH,
+      name: displayName,
+      teamShort: getTeamShort(driver.teamId),
       nameColor: isPlayer ? 'var(--accent)' : 'var(--text-primary)',
       aiShow: driver.aiControlled,
       drsLabel: drs.label,
@@ -349,9 +381,14 @@ export function deriveLeaderboardRows(
       interval: formatInterval(driver, isLeader),
       lastLap: formatLapTime(driver.lastLapTime),
       lastColor: isFastestLap ? 'var(--sector-purple)' : isPlayer ? 'var(--accent)' : 'var(--text-secondary)',
+      bestLap: formatLapTime(driver.bestLapTime),
+      bestLapColor: isSessionBest ? 'var(--sector-purple)' : isPlayer ? 'var(--accent)' : 'var(--text-secondary)',
+      fuel: fuel.text,
+      fuelColor: fuel.color,
       penLabel: pen.label,
       penColor: pen.color,
       penBg: pen.bg,
+      penaltyLog: driver.penaltyLog ?? [],
       stintDots: tyre.stintDots,
       compound: tyre.compound,
       compoundColor: tyre.compoundColor,

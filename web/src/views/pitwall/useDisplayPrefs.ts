@@ -1,16 +1,25 @@
 import { useMemo, useState } from 'react';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { clamp } from '../../utils/formatters';
-import { COL_ORDER, COL_W, DEFAULT_COL_VISIBILITY, MAX_COL_WIDTH, MIN_COL_WIDTH, type ColumnKey } from './columns';
+import { COL_ORDER, COL_W, DEFAULT_COL_VISIBILITY, DRIVER_COL_W, MAX_COL_WIDTH, MIN_COL_WIDTH, type ColumnKey, type WidthKey } from './columns';
 
-export type PanelKey = 'myCar' | 'predictor' | 'strategy' | 'weather';
+/** Every resizable width key: the visible columns plus the fixed Driver column. */
+const WIDTH_KEYS: WidthKey[] = [...COL_ORDER, 'driver'];
 
-/** 기본 우측 레일 패널 가시성(Spec §4: myCar/predictor/strategy=true, weather=false). */
+/** Default width for any width key (Driver has its own default, not in COL_W). */
+function defaultWidth(key: WidthKey): number {
+  return key === 'driver' ? DRIVER_COL_W : COL_W[key];
+}
+
+export type PanelKey = 'myCar' | 'predictor' | 'strategy' | 'weather' | 'tyres';
+
+/** 기본 패널 가시성. tyres는 좌측 리더보드 하단의 4휠 마모/온도 스트립(기본 표시). */
 export const DEFAULT_PANEL_VISIBILITY: Record<PanelKey, boolean> = {
   myCar: true,
   predictor: true,
   strategy: true,
   weather: false,
+  tyres: true,
 };
 
 export const WEATHER_STEP_OPTIONS = [1, 5, 10, 15] as const;
@@ -31,11 +40,11 @@ function validateCols(parsed: unknown): Record<ColumnKey, boolean> | null {
  * `typeof`/범위 검증 없이 그대로 신뢰해 손상된 값("abc" 등)이 `${colW[k]}px` 템플릿에
  * 그대로 들어가 grid를 깨뜨릴 수 있었다(comp-L2).
  */
-function validateColW(parsed: unknown): Partial<Record<ColumnKey, number>> | null {
+function validateColW(parsed: unknown): Partial<Record<WidthKey, number>> | null {
   if (!parsed || typeof parsed !== 'object') return null;
-  const result: Partial<Record<ColumnKey, number>> = {};
-  for (const key of COL_ORDER) {
-    const value = (parsed as Partial<Record<ColumnKey, unknown>>)[key];
+  const result: Partial<Record<WidthKey, number>> = {};
+  for (const key of WIDTH_KEYS) {
+    const value = (parsed as Partial<Record<WidthKey, unknown>>)[key];
     if (typeof value === 'number' && Number.isFinite(value)) {
       result[key] = clamp(value, MIN_COL_WIDTH, MAX_COL_WIDTH);
     }
@@ -55,9 +64,9 @@ function validateWeatherStep(parsed: unknown): number | null {
 export interface DisplayPrefs {
   cols: Record<ColumnKey, boolean>;
   toggleCol: (key: ColumnKey) => void;
-  colW: Record<ColumnKey, number>;
-  startResize: (key: ColumnKey, e: React.PointerEvent<HTMLDivElement>) => void;
-  nudgeWidth: (key: ColumnKey, delta: number) => void;
+  colW: Record<WidthKey, number>;
+  startResize: (key: WidthKey, e: React.PointerEvent<HTMLDivElement>) => void;
+  nudgeWidth: (key: WidthKey, delta: number) => void;
   resetWidths: () => void;
   panels: Record<PanelKey, boolean>;
   togglePanel: (key: PanelKey) => void;
@@ -66,7 +75,7 @@ export interface DisplayPrefs {
 }
 
 interface DragState {
-  key: ColumnKey;
+  key: WidthKey;
   width: number;
 }
 
@@ -77,7 +86,7 @@ interface DragState {
  */
 export function useDisplayPrefs(): DisplayPrefs {
   const [cols, setCols] = useLocalStorage<Record<ColumnKey, boolean>>('pw_cols', DEFAULT_COL_VISIBILITY, validateCols);
-  const [colW, setColW] = useLocalStorage<Partial<Record<ColumnKey, number>>>('pw_colw', {}, validateColW);
+  const [colW, setColW] = useLocalStorage<Partial<Record<WidthKey, number>>>('pw_colw', {}, validateColW);
   const [panels, setPanels] = useLocalStorage<Record<PanelKey, boolean>>('pw_panels', DEFAULT_PANEL_VISIBILITY, validatePanels);
   const [weatherStep, setWeatherStep] = useLocalStorage<number>('pw_wstep', 5, validateWeatherStep);
   // 드래그 중 실시간 시각 폭(비영속, plain state). pointermove마다 이 state만 갱신하고,
@@ -90,9 +99,9 @@ export function useDisplayPrefs(): DisplayPrefs {
   const resetWidths = () => setColW({});
 
   /** 키보드 리사이즈(←/→ ±10px 등)용. 드래그와 동일하게 clamp를 재사용하고, no-op이면 setColW를 생략한다. */
-  const nudgeWidth = (key: ColumnKey, delta: number) => {
+  const nudgeWidth = (key: WidthKey, delta: number) => {
     setColW((prev) => {
-      const current = prev[key] ?? COL_W[key];
+      const current = prev[key] ?? defaultWidth(key);
       const next = Math.round(clamp(current + delta, MIN_COL_WIDTH, MAX_COL_WIDTH));
       return current === next ? prev : { ...prev, [key]: next };
     });
@@ -101,14 +110,14 @@ export function useDisplayPrefs(): DisplayPrefs {
   // 목업 startResize(pointerdown→document pointermove/pointerup) 패턴 이식 + FIX-3 보강:
   // ① no-op 가드(반올림 폭이 이전과 같으면 state 갱신 생략) ② pointerup에서만 영속 커밋
   // ③ pointercancel(OS 제스처 인터럽트 등)은 커밋 없이 드래그 취소 ④ 핸들에 pointer capture.
-  const startResize = (key: ColumnKey, e: React.PointerEvent<HTMLDivElement>) => {
+  const startResize = (key: WidthKey, e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     const handle = e.currentTarget;
     const pointerId = e.pointerId;
     handle.setPointerCapture?.(pointerId);
     const startX = e.clientX;
-    const startW = colW[key] ?? COL_W[key];
+    const startW = colW[key] ?? defaultWidth(key);
     let liveWidth = startW;
 
     const onMove = (ev: PointerEvent) => {
@@ -139,8 +148,8 @@ export function useDisplayPrefs(): DisplayPrefs {
   };
 
   const resolvedColW = useMemo(() => {
-    const result = {} as Record<ColumnKey, number>;
-    for (const k of COL_ORDER) result[k] = colW[k] ?? COL_W[k];
+    const result = {} as Record<WidthKey, number>;
+    for (const k of WIDTH_KEYS) result[k] = colW[k] ?? defaultWidth(k);
     if (dragState) result[dragState.key] = dragState.width;
     return result;
   }, [colW, dragState]);

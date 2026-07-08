@@ -290,12 +290,16 @@ describe('deriveLeaderboardRows', () => {
     const rows = deriveLeaderboardRows([d], null, false, null);
     expect(rows[0].vmax).toBe('—');
   });
-  it('driver code (name field) comes from the shared deriveDriverCodes — dedup consistent with Broadcast (FIX-5)', () => {
-    const a = makeDriver({ index: 0, position: 1, name: 'Max Verstappen' });
-    const b = makeDriver({ index: 1, position: 2, name: 'Liam Verstappen' });
-    const rows = deriveLeaderboardRows([a, b], null, false, null);
-    expect(rows.find((r) => r.index === 0)!.name).toBe('VER');
-    expect(rows.find((r) => r.index === 1)!.name).toBe('VE2');
+  it('driver cell shows the full name (FE-1), with the shared code as the blank-name fallback', () => {
+    const named = makeDriver({ index: 0, position: 1, name: 'Max Verstappen', teamId: 2 });
+    const blank = makeDriver({ index: 1, position: 2, name: '   ' });
+    const rows = deriveLeaderboardRows([named, blank], null, false, null);
+    // Full name preserved (the panel uppercases it) + team short badge.
+    expect(rows.find((r) => r.index === 0)!.name).toBe('Max Verstappen');
+    expect(rows.find((r) => r.index === 0)!.teamShort).toBe('RBR');
+    // Blank name degrades to the derived code (never empty).
+    expect(rows.find((r) => r.index === 1)!.name).not.toBe('');
+    expect(rows.find((r) => r.index === 1)!.name.length).toBeGreaterThan(0);
   });
   it('drs title communicates active/armed/inactive via text, not color alone (FIX-6 a11y)', () => {
     const active = makeDriver({ index: 0, position: 1, drsActivated: true });
@@ -308,5 +312,46 @@ describe('deriveLeaderboardRows', () => {
     const d = makeDriver({ index: 0, position: 1, stintHistory: [{ compound: 'Soft', laps: 10 }, { compound: 'Medium', laps: 20 }] });
     const rows = deriveLeaderboardRows([d], null, false, null);
     expect(rows[0].stintDots.map((s) => s.name)).toEqual(['Soft', 'Medium']);
+  });
+
+  it('fuel: signed laps margin; negative is red; near-zero is unsigned "0.0" (no "-0.0")', () => {
+    const spare = makeDriver({ index: 0, position: 1, fuelRemainingLaps: 1.24 });
+    const short = makeDriver({ index: 1, position: 2, fuelRemainingLaps: -0.3 });
+    const nearZero = makeDriver({ index: 2, position: 3, fuelRemainingLaps: -0.02 });
+    const exactZero = makeDriver({ index: 3, position: 4, fuelRemainingLaps: 0 });
+    const rows = deriveLeaderboardRows([spare, short, nearZero, exactZero], null, false, null);
+    expect(rows.find((r) => r.index === 0)!.fuel).toBe('+1.2');
+    const s = rows.find((r) => r.index === 1)!;
+    expect(s.fuel).toBe('-0.3');
+    expect(s.fuelColor).toBe('var(--accent-red)');
+    expect(rows.find((r) => r.index === 2)!.fuel).toBe('0.0');
+    // Exactly 0 is unsigned "0.0" (never "-0.0"/"+0.0") and not flagged red.
+    const z = rows.find((r) => r.index === 3)!;
+    expect(z.fuel).toBe('0.0');
+    expect(z.fuelColor).not.toBe('var(--accent-red)');
+  });
+
+  it('bestLap: session-best (positive) is purple; all-zero early frames are not', () => {
+    const a = makeDriver({ index: 0, position: 1, bestLapTime: 91_200 });
+    const b = makeDriver({ index: 1, position: 2, bestLapTime: 90_800 });
+    const rows = deriveLeaderboardRows([a, b], null, false, null);
+    expect(rows.find((r) => r.index === 1)!.bestLapColor).toBe('var(--sector-purple)');
+    expect(rows.find((r) => r.index === 0)!.bestLapColor).not.toBe('var(--sector-purple)');
+
+    const zeroed = deriveLeaderboardRows(
+      [makeDriver({ index: 0, position: 1, bestLapTime: 0 }), makeDriver({ index: 1, position: 2, bestLapTime: 0 })],
+      null,
+      false,
+      null,
+    );
+    expect(zeroed.every((r) => r.bestLapColor !== 'var(--sector-purple)')).toBe(true);
+  });
+
+  it('penaltyLog passes through (empty array when absent)', () => {
+    const withLog = makeDriver({ index: 0, position: 1, penaltyLog: [{ lap: 12, pen: 4, inf: 7, sec: 5 }] });
+    const without = makeDriver({ index: 1, position: 2 });
+    const rows = deriveLeaderboardRows([withLog, without], null, false, null);
+    expect(rows.find((r) => r.index === 0)!.penaltyLog).toHaveLength(1);
+    expect(rows.find((r) => r.index === 1)!.penaltyLog).toEqual([]);
   });
 });

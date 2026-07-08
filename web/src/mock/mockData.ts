@@ -42,6 +42,7 @@ interface DriverSeed {
   penalties?: number;
   warnings?: number;
   cornerCuts?: number;
+  penaltyLog?: DriverInfo['penaltyLog'];
   damage?: CarDamage;
 }
 
@@ -190,7 +191,7 @@ const DRIVER_SEEDS: DriverSeed[] = [
   seed(7, 'Carlos Sainz', 3, 'medium', 12, 1_190, 93_241, 92_488, { fuelBias: -0.1, ersBias: 60_000, brakeBias: 57, diffOnThrottle: 53 }),
   seed(8, 'Alexander Albon', 3, 'medium', 11, 860, 93_402, 92_775, { fuelBias: -0.1, ersBias: 45_000, brakeBias: 56 }),
   seed(9, 'Lance Stroll', 4, 'hard', 20, 740, 93_688, 92_904, { fuelBias: 0.3, ersBias: -10_000, brakeBias: 55 }),
-  seed(10, 'Pierre Gasly', 5, 'medium', 13, 950, 93_944, 93_141, { fuelBias: 0, ersBias: 15_000, brakeBias: 56, warnings: 1, cornerCuts: 1 }),
+  seed(10, 'Pierre Gasly', 5, 'medium', 13, 950, 93_944, 93_141, { fuelBias: 0, ersBias: 15_000, brakeBias: 56, warnings: 1, cornerCuts: 1, penaltyLog: [{ lap: 8, pen: 5, inf: 7 }] }),
   seed(11, 'Yuki Tsunoda', 6, 'medium', 12, 820, 94_118, 93_304, { fuelBias: -0.2, ersBias: 55_000, brakeBias: 57 }),
   seed(12, 'Esteban Ocon', 7, 'hard', 18, 1_520, 94_402, 93_577, { fuelBias: 0.1, ersBias: -35_000, brakeBias: 55 }),
   seed(13, 'Nico Hulkenberg', 9, 'hard', 17, 1_140, 94_622, 93_810, { fuelBias: 0.2, ersBias: -25_000, brakeBias: 56 }),
@@ -203,6 +204,11 @@ const DRIVER_SEEDS: DriverSeed[] = [
     warnings: 2,
     cornerCuts: 1,
     penalties: 5,
+    penaltyLog: [
+      { lap: 4, pen: 5, inf: 7 },
+      { lap: 11, pen: 4, inf: 4, sec: 5 },
+      { lap: 19, pen: 5, inf: 12 },
+    ],
   }),
   seed(17, 'Jack Doohan', 5, 'soft', 6, 690, 95_588, 94_744, { fuelBias: -0.5, ersBias: 70_000, brakeBias: 58 }),
   seed(18, 'Andrea Kimi Antonelli', 0, 'medium', 11, 820, 95_862, 95_055, { fuelBias: 0.1, ersBias: 25_000, brakeBias: 56 }),
@@ -418,6 +424,7 @@ function buildDriverFrames(tick: number, leaderTotalLaps: number): DriverFrame[]
       cornerCuttingWarnings: seed.cornerCuts ?? 0,
       numUnservedDriveThroughs: 0,
       numUnservedStopGoPenalties: 0,
+      penaltyLog: seed.penaltyLog,
       lapInvalid: false,
       pitStatus: 0,
       driverStatus: 1,

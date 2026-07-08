@@ -9,6 +9,8 @@ export type ColumnKey =
   | 'gap'
   | 'interval'
   | 'lastLap'
+  | 'bestLap'
+  | 'fuel'
   | 'penalty'
   | 'tyre'
   | 'pit'
@@ -16,12 +18,17 @@ export type ColumnKey =
   | 'sector'
   | 'damage';
 
+/** Width-adjustable key: any resizable column plus the fixed-width Driver column. */
+export type WidthKey = ColumnKey | 'driver';
+
 export const COL_ORDER: ColumnKey[] = [
   'drs',
   'ers',
   'gap',
   'interval',
   'lastLap',
+  'bestLap',
+  'fuel',
   'penalty',
   'tyre',
   'pit',
@@ -30,6 +37,11 @@ export const COL_ORDER: ColumnKey[] = [
   'damage',
 ];
 
+/** Default Driver column width (px). Fixed-width so its resize handle follows the
+ * cursor and left/right columns don't reflow (FIX: was minmax(128px,1.1fr) which
+ * absorbed every resize). Wide enough for "VERSTAPPEN [RBR]". */
+export const DRIVER_COL_W = 232;
+
 /** 기본 컬럼폭(px). 리사이즈 시 useDisplayPrefs의 colW가 이 값을 덮어쓴다. */
 export const COL_W: Record<ColumnKey, number> = {
   drs: 62,
@@ -37,6 +49,8 @@ export const COL_W: Record<ColumnKey, number> = {
   gap: 72,
   interval: 78,
   lastLap: 86,
+  bestLap: 86,
+  fuel: 64,
   penalty: 56,
   tyre: 168,
   pit: 56,
@@ -52,6 +66,8 @@ export const COL_HEAD: Record<ColumnKey, string> = {
   gap: 'To You',
   interval: 'Interval',
   lastLap: 'Last Lap',
+  bestLap: 'Best Lap',
+  fuel: 'Fuel',
   penalty: 'Pen',
   tyre: 'Tyre · Life',
   pit: 'Pit',
@@ -67,6 +83,8 @@ export const COL_LABEL: Record<ColumnKey, string> = {
   gap: 'To You',
   interval: 'Interval',
   lastLap: 'Last',
+  bestLap: 'Best',
+  fuel: 'Fuel',
   penalty: 'Pen',
   tyre: 'Tyre',
   pit: 'Pit',
@@ -83,6 +101,8 @@ export const COL_ALIGN: Record<ColumnKey, ColumnAlign> = {
   gap: 'flex-end',
   interval: 'flex-end',
   lastLap: 'flex-end',
+  bestLap: 'flex-end',
+  fuel: 'flex-end',
   penalty: 'center',
   tyre: 'flex-start',
   pit: 'center',
@@ -110,6 +130,8 @@ export const DEFAULT_COL_VISIBILITY: Record<ColumnKey, boolean> = {
   gap: true,
   interval: true,
   lastLap: true,
+  bestLap: true,
+  fuel: true,
   penalty: false,
   tyre: true,
   pit: false,

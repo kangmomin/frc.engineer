@@ -1,6 +1,9 @@
+import { useState } from 'react';
+import { formatPenaltyEntry } from '../../constants/penalties';
 import { PanelTitle } from '../../ui';
-import { COL_ALIGN, COL_ORDER, MAX_COL_WIDTH, MIN_COL_WIDTH, columnHeadLabel, type ColumnKey } from './columns';
+import { COL_ALIGN, COL_ORDER, MAX_COL_WIDTH, MIN_COL_WIDTH, columnHeadLabel, type ColumnKey, type WidthKey } from './columns';
 import type { LeaderRow } from './derive/leaderboardRows';
+import type { PenaltyLogEntry } from '../../types/telemetry';
 
 const RESIZE_STEP_PX = 10;
 
@@ -13,24 +16,54 @@ const headLabel: React.CSSProperties = {
 
 const raceFont: React.CSSProperties = { fontFamily: 'var(--font-racing)', fontWeight: 700 };
 
+interface PenaltyPopover {
+  index: number;
+  entries: PenaltyLogEntry[];
+  x: number;
+  y: number;
+  above: boolean;
+}
+
 export interface LeaderboardPanelProps {
   rows: LeaderRow[];
   cols: Record<ColumnKey, boolean>;
-  colW: Record<ColumnKey, number>;
+  colW: Record<WidthKey, number>;
   is2026: boolean;
   detail: string;
-  onResizeStart: (key: ColumnKey, e: React.PointerEvent<HTMLDivElement>) => void;
-  onNudgeWidth: (key: ColumnKey, delta: number) => void;
+  onResizeStart: (key: WidthKey, e: React.PointerEvent<HTMLDivElement>) => void;
+  onNudgeWidth: (key: WidthKey, delta: number) => void;
 }
 
 /** 목업 리더보드 섹션의 가변 컬럼 레이아웃을 실데이터(LeaderRow)로 렌더하는 순수 컴포넌트. */
 export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeStart, onNudgeWidth }: LeaderboardPanelProps) {
   const active = COL_ORDER.filter((k) => cols[k]);
-  const gridTemplate = `38px minmax(128px,1.1fr) ${active.map((k) => `${colW[k]}px`).join(' ')}`;
+  // All-fixed tracks so a resize handle follows the cursor (was minmax(…,1.1fr)),
+  // + a trailing flex spacer so row backgrounds/borders span the panel and there's
+  // no dead gap when the columns are narrower than the panel.
+  const gridTemplate = `38px ${colW.driver}px ${active.map((k) => `${colW[k]}px`).join(' ')} minmax(0,1fr)`;
+
+  // Penalty hover/focus detail. Anchored via fixed positioning read from the cell
+  // rect on enter; a row reorder (≈once per lap) leaves it briefly stale until the
+  // next hover — acceptable for a tooltip. Cleared on leave/blur.
+  const [penaltyPopover, setPenaltyPopover] = useState<PenaltyPopover | null>(null);
+
+  function openPenaltyPopover(row: LeaderRow, el: HTMLElement) {
+    if (row.penaltyLog.length === 0) return;
+    const rect = el.getBoundingClientRect();
+    const above = rect.top > window.innerHeight / 2;
+    setPenaltyPopover({
+      index: row.index,
+      entries: row.penaltyLog,
+      x: rect.left + rect.width / 2,
+      y: above ? rect.top : rect.bottom,
+      above,
+    });
+  }
 
   return (
     <section
       style={{
+        flex: 1,
         minHeight: 0,
         background: 'var(--bg-panel)',
         border: '1px solid var(--bg-panel-border)',
@@ -64,37 +97,19 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
             }}
           >
             <span role="columnheader" style={headLabel}>Pos</span>
-            <span role="columnheader" style={headLabel}>Driver</span>
+            <div role="columnheader" style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+              <span style={{ ...headLabel, letterSpacing: '.08em' }}>Driver</span>
+              <ResizeHandle label="Driver" width={colW.driver} onResizeStart={(e) => onResizeStart('driver', e)} onNudge={(d) => onNudgeWidth('driver', d)} />
+            </div>
             {active.map((k) => (
               <div key={k} role="columnheader" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: COL_ALIGN[k], minWidth: 0 }}>
                 <span style={{ ...headLabel, letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {columnHeadLabel(k, is2026)}
                 </span>
-                <div
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label={`Resize ${columnHeadLabel(k, is2026)} column`}
-                  aria-valuenow={colW[k]}
-                  aria-valuemin={MIN_COL_WIDTH}
-                  aria-valuemax={MAX_COL_WIDTH}
-                  tabIndex={0}
-                  onPointerDown={(e) => onResizeStart(k, e)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'ArrowLeft') {
-                      e.preventDefault();
-                      onNudgeWidth(k, -RESIZE_STEP_PX);
-                    } else if (e.key === 'ArrowRight') {
-                      e.preventDefault();
-                      onNudgeWidth(k, RESIZE_STEP_PX);
-                    }
-                  }}
-                  title="Drag to resize column"
-                  style={{ position: 'absolute', right: -6, top: -4, bottom: -4, width: 11, cursor: 'col-resize', zIndex: 5, display: 'flex', justifyContent: 'center' }}
-                >
-                  <span style={{ width: 2, background: 'rgba(132,147,150,.35)', borderRadius: 1 }} />
-                </div>
+                <ResizeHandle label={columnHeadLabel(k, is2026)} width={colW[k]} onResizeStart={(e) => onResizeStart(k, e)} onNudge={(d) => onNudgeWidth(k, d)} />
               </div>
             ))}
+            <span role="presentation" aria-hidden="true" />
           </div>
           <div role="rowgroup" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
             {rows.map((row) => (
@@ -113,12 +128,18 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                 }}
               >
                 <span role="cell" style={{ ...raceFont, fontWeight: 800, fontSize: 15, color: row.posColor }}>{row.pos}</span>
-                <div role="cell" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ ...raceFont, fontWeight: 800, fontSize: 14, letterSpacing: '.04em', color: row.nameColor, whiteSpace: 'nowrap' }}>
+                <div role="cell" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ ...raceFont, fontWeight: 800, fontSize: 14, letterSpacing: '.04em', color: row.nameColor, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
                     {row.name}
                   </span>
+                  <span
+                    title={row.teamShort}
+                    style={{ flex: 'none', fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: row.teamColor, border: `1px solid ${row.teamColor}`, borderRadius: 3, padding: '1px 4px', opacity: 0.9 }}
+                  >
+                    {row.teamShort}
+                  </span>
                   {row.aiShow && (
-                    <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-muted)', border: '1px solid var(--bg-panel-border)', borderRadius: 3, padding: '1px 4px' }}>
+                    <span style={{ flex: 'none', fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-muted)', border: '1px solid var(--bg-panel-border)', borderRadius: 3, padding: '1px 4px' }}>
                       AI
                     </span>
                   )}
@@ -141,23 +162,30 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                 {cols.gap && <span role="cell" style={{ ...raceFont, fontSize: 13, color: row.toYouColor, textAlign: 'right' }}>{row.toYou}</span>}
                 {cols.interval && <span role="cell" style={{ ...raceFont, fontSize: 13, color: 'var(--text-secondary)', textAlign: 'right' }}>{row.interval}</span>}
                 {cols.lastLap && <span role="cell" style={{ ...raceFont, fontSize: 13, color: row.lastColor, textAlign: 'right' }}>{row.lastLap}</span>}
+                {cols.bestLap && <span role="cell" style={{ ...raceFont, fontSize: 13, color: row.bestLapColor, textAlign: 'right' }}>{row.bestLap}</span>}
+                {cols.fuel && <span role="cell" style={{ ...raceFont, fontSize: 13, color: row.fuelColor, textAlign: 'right' }}>{row.fuel}</span>}
                 {cols.penalty && (
                   <div role="cell" style={{ display: 'flex', justifyContent: 'center' }}>
-                    <span style={{ ...raceFont, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: row.penBg, color: row.penColor }}>{row.penLabel}</span>
+                    {row.penaltyLog.length > 0 ? (
+                      <button
+                        type="button"
+                        aria-label={`${row.name} penalties: ${row.penaltyLog.length}. Show detail`}
+                        onMouseEnter={(e) => openPenaltyPopover(row, e.currentTarget)}
+                        onMouseLeave={() => setPenaltyPopover(null)}
+                        onFocus={(e) => openPenaltyPopover(row, e.currentTarget)}
+                        onBlur={() => setPenaltyPopover(null)}
+                        style={{ ...raceFont, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: row.penBg, color: row.penColor, border: 'none', cursor: 'pointer' }}
+                      >
+                        {row.penLabel}
+                      </button>
+                    ) : (
+                      <span style={{ ...raceFont, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: row.penBg, color: row.penColor }}>{row.penLabel}</span>
+                    )}
                   </div>
                 )}
                 {cols.tyre && (
+                  // 순서: 현재 컴파운드 서클 → age → life → 스틴트 히스토리 dots(오래된→최근).
                   <div role="cell" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                    <div style={{ display: 'flex', gap: 2 }}>
-                      {row.stintDots.map((dot, i) => (
-                        <span
-                          key={i}
-                          title={`Stint ${i + 1}: ${dot.name}`}
-                          aria-label={`Stint ${i + 1}: ${dot.name}`}
-                          style={{ width: 7, height: 7, borderRadius: '50%', background: dot.color }}
-                        />
-                      ))}
-                    </div>
                     <span
                       style={{
                         flex: 'none',
@@ -181,6 +209,16 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                     </span>
                     <span style={{ ...raceFont, fontSize: 13, color: 'var(--text-primary)' }}>{row.age}</span>
                     <span style={{ fontSize: 10.5, color: 'var(--text-muted)', letterSpacing: '.02em' }}>{row.tyreLife}</span>
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      {row.stintDots.map((dot, i) => (
+                        <span
+                          key={i}
+                          title={`Stint ${i + 1}: ${dot.name}`}
+                          aria-label={`Stint ${i + 1}: ${dot.name}`}
+                          style={{ width: 7, height: 7, borderRadius: '50%', background: dot.color }}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
                 {cols.pit && (
@@ -204,11 +242,77 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
                     <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.dmgOTHc }}>OT {row.dmgOTH}</span>
                   </div>
                 )}
+                <span role="presentation" aria-hidden="true" />
               </div>
             ))}
           </div>
         </div>
       </div>
+      {penaltyPopover && (
+        <div
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            left: penaltyPopover.x,
+            top: penaltyPopover.y,
+            transform: `translate(-50%, ${penaltyPopover.above ? 'calc(-100% - 8px)' : '8px'})`,
+            zIndex: 50,
+            maxWidth: 320,
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--bg-panel-border)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-panel)',
+            padding: '9px 11px',
+            pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          <div style={{ ...headLabel, marginBottom: 2 }}>Penalties</div>
+          {penaltyPopover.entries.map((entry, i) => (
+            <div key={i} style={{ fontSize: 11.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+              {formatPenaltyEntry(entry)}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+interface ResizeHandleProps {
+  label: string;
+  width: number;
+  onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onNudge: (delta: number) => void;
+}
+
+/** Vertical column-resize grip (pointer drag + ←/→ keyboard nudge). */
+function ResizeHandle({ label, width, onResizeStart, onNudge }: ResizeHandleProps) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${label} column`}
+      aria-valuenow={width}
+      aria-valuemin={MIN_COL_WIDTH}
+      aria-valuemax={MAX_COL_WIDTH}
+      tabIndex={0}
+      onPointerDown={onResizeStart}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          onNudge(-RESIZE_STEP_PX);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          onNudge(RESIZE_STEP_PX);
+        }
+      }}
+      title="Drag to resize column"
+      style={{ position: 'absolute', right: -6, top: -4, bottom: -4, width: 11, cursor: 'col-resize', zIndex: 5, display: 'flex', justifyContent: 'center' }}
+    >
+      <span style={{ width: 2, background: 'rgba(132,147,150,.35)', borderRadius: 1 }} />
+    </div>
   );
 }
