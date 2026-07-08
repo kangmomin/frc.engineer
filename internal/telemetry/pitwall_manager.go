@@ -46,9 +46,22 @@ type PitwallManager struct {
 	ersActualEnabled  bool
 	ersCompareEnabled bool
 	senderState       *dto.SenderState
-	trackMapSendCount int  // remaining broadcasts to include trackMap
-	lastTrackID       int8 // last track ID for change detection
-	peakActiveCars    int  // high-water mark for NumActiveCars
+	trackMapSendCount int    // remaining broadcasts to include trackMap
+	lastTrackID       int8   // last track ID for change detection
+	peakActiveCars    int    // high-water mark for NumActiveCars
+	lastSessionUID    uint64 // last session UID for per-session cache reset
+}
+
+// maxTrackMapPoints bounds the trackMap point count so a long recorded lap can
+// never push the WebRTC DataChannel payload past Chrome's 256KB SCTP receive buffer.
+const maxTrackMapPoints = 2000
+
+// downsampleStride returns the sampling stride needed to keep n points at or under max.
+func downsampleStride(n, max int) int {
+	if max <= 0 || n <= max {
+		return 1
+	}
+	return (n + max - 1) / max
 }
 
 // NewPitwallManager creates a new PitwallManager
@@ -59,6 +72,7 @@ func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackSto
 		recorder:         recorder,
 		dynamicsAnalyzer: NewDynamicsAnalyzer(),
 		ersEstimator:     NewERSEstimator(trackStore),
+		lastTrackID:      -1, // Melbourne(TrackID 0)과의 제로값 충돌 방지
 	}
 }
 
@@ -106,6 +120,7 @@ func (pm *PitwallManager) UpdateSession(s *packets.PacketSessionData) {
 		fmt.Printf("[DEBUG] Session: type=%d timeLeft=%d duration=%d\n",
 			s.SessionType, s.SessionTimeLeft, s.SessionDuration)
 	}
+	pm.noteSessionLocked(&s.Header)
 	pm.session = s
 	pm.noteFormatLocked(s.Header.PacketFormat)
 	pm.mu.Unlock()
@@ -122,9 +137,30 @@ func (pm *PitwallManager) noteFormatLocked(format uint16) {
 	pm.gameFormat = format
 }
 
+// noteSessionLocked tracks the active session UID and clears per-session caches
+// when a new session begins — 이전 세션의 tyre set/히스토리/고수위가 새 세션을
+// 오염시키지 않게 한다 (ERSEstimator.resetSession의 매니저 측 미러).
+// pm.mu 보유 상태에서 호출할 것.
+func (pm *PitwallManager) noteSessionLocked(header *packets.PacketHeader) {
+	if header == nil || header.SessionUID == 0 {
+		return
+	}
+	if pm.lastSessionUID != 0 && pm.lastSessionUID != header.SessionUID {
+		pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
+		pm.sessionHistory = [packets.MaxCars]*packets.PacketSessionHistoryData{}
+		pm.peakActiveCars = 0
+		pm.lastTrackID = -1 // 다음 BuildState에서 트랙맵 재전송 트리거
+		pm.dynamicsAnalyzer.Reset()
+	}
+	pm.lastSessionUID = header.SessionUID
+}
+
+// ResetDynamics clears per-session dynamics accumulation.
+// 세션 UID 변경 시 processor의 raceSummary 리셋과 함께 호출된다.
 // UpdateParticipants stores the latest participants packet
 func (pm *PitwallManager) UpdateParticipants(p *packets.PacketParticipantsData) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&p.Header)
 	pm.participants = p
 	pm.mu.Unlock()
 }
@@ -132,6 +168,7 @@ func (pm *PitwallManager) UpdateParticipants(p *packets.PacketParticipantsData) 
 // UpdateMotion stores the latest motion packet and feeds track recorder
 func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex uint8) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&m.Header)
 	pm.motion = m
 	pm.playerIndex = playerIndex
 
@@ -193,6 +230,7 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 // UpdateMotionEx stores the latest motion ex packet
 func (pm *PitwallManager) UpdateMotionEx(m *packets.PacketMotionExData) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&m.Header)
 	pm.motionEx = m
 	pm.mu.Unlock()
 }
@@ -200,6 +238,7 @@ func (pm *PitwallManager) UpdateMotionEx(m *packets.PacketMotionExData) {
 // UpdateCarStatus stores the latest car status packet and updates strategy tracking
 func (pm *PitwallManager) UpdateCarStatus(cs *packets.PacketCarStatusData) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&cs.Header)
 	pm.carStatus = cs
 	lapData := pm.lapData
 	pm.mu.Unlock()
@@ -209,6 +248,7 @@ func (pm *PitwallManager) UpdateCarStatus(cs *packets.PacketCarStatusData) {
 // UpdateLapData stores the latest lap data (all 22 cars) for position/timing
 func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&ld.Header)
 	pm.lapData = ld
 	carStatus := pm.carStatus
 	pm.mu.Unlock()
@@ -218,6 +258,7 @@ func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
 // UpdateTelemetry stores the latest telemetry packet (for tire temps)
 func (pm *PitwallManager) UpdateTelemetry(t *packets.PacketCarTelemetryData) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&t.Header)
 	pm.telemetry = t
 	pm.noteFormatLocked(t.Header.PacketFormat)
 	pm.mu.Unlock()
@@ -227,6 +268,7 @@ func (pm *PitwallManager) UpdateTelemetry(t *packets.PacketCarTelemetryData) {
 // (2026 Season Pack: Active Aero / Overtake state).
 func (pm *PitwallManager) UpdateCarTelemetry2(t *packets.PacketCarTelemetry2Data) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&t.Header)
 	pm.noteFormatLocked(t.Header.PacketFormat)
 	pm.carTelemetry2 = t
 	pm.mu.Unlock()
@@ -235,6 +277,7 @@ func (pm *PitwallManager) UpdateCarTelemetry2(t *packets.PacketCarTelemetry2Data
 // UpdateCarSetups stores the latest car setups packet
 func (pm *PitwallManager) UpdateCarSetups(cs *packets.PacketCarSetupData) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&cs.Header)
 	pm.carSetups = cs
 	pm.mu.Unlock()
 }
@@ -243,6 +286,7 @@ func (pm *PitwallManager) UpdateCarSetups(cs *packets.PacketCarSetupData) {
 // into the strategy manager's stint tracking (peak wear per stint).
 func (pm *PitwallManager) UpdateCarDamage(cd *packets.PacketCarDamageData) {
 	pm.mu.Lock()
+	pm.noteSessionLocked(&cd.Header)
 	pm.carDamage = cd
 	pm.mu.Unlock()
 	pm.strategyMgr.UpdateTyreWear(cd)
@@ -254,6 +298,7 @@ func (pm *PitwallManager) UpdateTyreSets(ts *packets.PacketTyreSetsData) {
 		return
 	}
 	pm.mu.Lock()
+	pm.noteSessionLocked(&ts.Header)
 	pm.tyreSets[ts.CarIdx] = ts
 	pm.mu.Unlock()
 }
@@ -264,27 +309,41 @@ func (pm *PitwallManager) UpdateSessionHistory(sh *packets.PacketSessionHistoryD
 		return
 	}
 	pm.mu.Lock()
+	pm.noteSessionLocked(&sh.Header)
 	pm.sessionHistory[sh.CarIdx] = sh
 	pm.mu.Unlock()
 }
 
-// BuildState constructs the PitwallState DTO from all cached packet data
+// BuildState constructs the PitwallState DTO from all cached packet data.
+// buildStateLocked이 trackMapSendCount/peakActiveCars 등을 변이하므로 배타 락이 필요하다.
 func (pm *PitwallManager) BuildState() *dto.PitwallState {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	return pm.buildStateLocked(pm.sourceVisibilityMode(), true, true)
+}
+
+// BuildStateReadOnly constructs the PitwallState DTO without mutating any manager
+// state (trackMapSendCount/lastTrackID/peakActiveCars/ersEstimator). HTTP/debug
+// 조회 경로용 — 브로드캐스트 상태 머신을 건드리지 않는다.
+func (pm *PitwallManager) BuildStateReadOnly() *dto.PitwallState {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	return pm.buildStateLocked(pm.sourceVisibilityMode(), true)
+	return pm.buildStateLocked(pm.sourceVisibilityMode(), true, false)
 }
 
 // BuildReplayState constructs a replay-friendly PitwallState with public visibility.
 func (pm *PitwallManager) BuildReplayState() *dto.PitwallState {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
-	return pm.buildStateLocked(telemetryvisibility.ModePublic, false)
+	return pm.buildStateLocked(telemetryvisibility.ModePublic, false, true)
 }
 
-func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mode, includeTrackMap bool) *dto.PitwallState {
+// buildStateLocked assembles the snapshot. mutate=false는 읽기 전용 경로로,
+// 상태 변이(트랙맵 카운터/고수위/ERS 추정 진행) 없이 현재 값만 읽는다.
+func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mode, includeTrackMap bool, mutate bool) *dto.PitwallState {
 	state := &dto.PitwallState{
 		PlayerIndex:          int(pm.playerIndex),
 		GameFormat:           int(pm.gameFormat),
@@ -378,7 +437,7 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 	// Track map from pre-loaded CSV data (included for first 8 broadcasts per track change)
 	if includeTrackMap && pm.session != nil && pm.trackStore != nil {
 		currentTrackID := pm.session.TrackID
-		if int8(currentTrackID) != pm.lastTrackID {
+		if mutate && int8(currentTrackID) != pm.lastTrackID {
 			pm.lastTrackID = int8(currentTrackID)
 			pm.trackMapSendCount = 8 // ~2 seconds at 4Hz
 			// Clear per-car caches on session change
@@ -388,23 +447,28 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 		}
 		if pm.trackMapSendCount > 0 {
 			if td := pm.trackStore.Get(currentTrackID); td != nil {
+				// 긴 랩 녹화 파일도 페이로드가 256KB를 넘지 않게 stride 서브샘플
+				stride := downsampleStride(len(td.Points), maxTrackMapPoints)
 				state.TrackMap = &dto.TrackMapDTO{
-					Points: make([]dto.TrackPointDTO, len(td.Points)),
+					Points: make([]dto.TrackPointDTO, 0, (len(td.Points)+stride-1)/stride),
 					MinX:   td.MinX,
 					MaxX:   td.MaxX,
 					MinZ:   td.MinZ,
 					MaxZ:   td.MaxZ,
 				}
-				for i, p := range td.Points {
-					state.TrackMap.Points[i] = dto.TrackPointDTO{
+				for i := 0; i < len(td.Points); i += stride {
+					p := td.Points[i]
+					state.TrackMap.Points = append(state.TrackMap.Points, dto.TrackPointDTO{
 						X:      p.X,
 						Z:      p.Z,
 						Sector: p.Sector,
 						DRS:    p.DRS,
-					}
+					})
 				}
 			}
-			pm.trackMapSendCount--
+			if mutate {
+				pm.trackMapSendCount--
+			}
 		}
 	}
 
@@ -428,11 +492,15 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 	numCars := packets.MaxCars
 	if pm.participants != nil {
 		active := int(pm.participants.NumActiveCars)
-		if active > pm.peakActiveCars {
-			pm.peakActiveCars = active
+		peak := pm.peakActiveCars
+		if active > peak {
+			peak = active
+			if mutate {
+				pm.peakActiveCars = active
+			}
 		}
-		if pm.peakActiveCars > 0 && pm.peakActiveCars < numCars {
-			numCars = pm.peakActiveCars
+		if peak > 0 && peak < numCars {
+			numCars = peak
 		}
 	}
 	if int(pm.playerIndex) >= numCars {
@@ -443,7 +511,13 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 	}
 
 	if numCars > 0 {
-		ersEstimates := pm.ersEstimator.Update(pm.session, pm.participants, pm.lapData, pm.telemetry, pm.carStatus, pm.carTelemetry2, pm.playerIndex)
+		var ersEstimates [packets.MaxCars]ERSEstimate
+		if mutate {
+			ersEstimates = pm.ersEstimator.Update(pm.session, pm.participants, pm.lapData, pm.telemetry, pm.carStatus, pm.carTelemetry2, pm.playerIndex)
+		} else {
+			// 읽기 전용 경로: 추정기 상태를 진행시키지 않고 현재 값만 스냅샷
+			ersEstimates = pm.ersEstimator.Snapshot()
+		}
 		state.Drivers = make([]dto.DriverInfo, numCars)
 		for i := range numCars {
 			d := &state.Drivers[i]

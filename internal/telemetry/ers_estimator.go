@@ -280,6 +280,18 @@ func (e *ERSEstimator) snapshotCar(car *ersCarState) ERSEstimate {
 	}
 }
 
+// Snapshot returns current per-car ERS estimates without advancing the estimator.
+// 읽기 전용 경로(BuildStateReadOnly)용 — Update와 달리 추정 상태를 진행시키지 않는다.
+func (e *ERSEstimator) Snapshot() [packets.MaxCars]ERSEstimate {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var out [packets.MaxCars]ERSEstimate
+	for i := range e.cars {
+		out[i] = e.snapshotCar(&e.cars[i])
+	}
+	return out
+}
+
 func (e *ERSEstimator) resetSession(sessionUID uint64, session *packets.PacketSessionData) {
 	e.sessionUID = sessionUID
 	e.trackID = 0

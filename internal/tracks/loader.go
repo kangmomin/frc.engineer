@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // TrackPoint represents a single point on the racing line
@@ -32,6 +33,7 @@ type TrackMapData struct {
 
 // TrackStore maps trackID to parsed track data
 type TrackStore struct {
+	mu      sync.RWMutex // 런타임 녹화(LoadSingle)와 브로드캐스트 조회가 동시에 접근한다
 	tracks  map[int8]*TrackMapData
 	dataDir string
 }
@@ -72,8 +74,11 @@ func NewTrackStore(dataDir string) *TrackStore {
 	return ts
 }
 
-// Get returns track data for a given trackID, or nil if not found
+// Get returns track data for a given trackID, or nil if not found.
+// 반환된 *TrackMapData는 로드 후 불변이므로 락 밖에서 읽어도 안전하다.
 func (ts *TrackStore) Get(trackID int8) *TrackMapData {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 	return ts.tracks[trackID]
 }
 
@@ -84,12 +89,16 @@ func (ts *TrackStore) LoadSingle(trackID int8, path string) {
 		slog.Warn("failed to load recorded track", "trackID", trackID, "path", path, "error", err)
 		return
 	}
+	ts.mu.Lock()
 	ts.tracks[trackID] = data
+	ts.mu.Unlock()
 	slog.Info("loaded recorded track", "trackID", trackID, "points", len(data.Points))
 }
 
 // ListLoaded returns info about all loaded tracks
 func (ts *TrackStore) ListLoaded() []TrackInfo {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 	var result []TrackInfo
 	for _, desc := range trackDescriptors {
 		info := TrackInfo{ID: int(desc.id), Name: desc.displayName, HasData: ts.tracks[desc.id] != nil}

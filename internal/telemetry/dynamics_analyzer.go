@@ -21,6 +21,21 @@ func NewDynamicsAnalyzer() *DynamicsAnalyzer {
 	return &DynamicsAnalyzer{}
 }
 
+// Reset clears all per-session state (completed laps, in-progress lap counters).
+// 세션 UID 변경 시 호출 — ERSEstimator.resetSession의 다이내믹스 측 미러.
+// Must be called under PitwallManager's mu.
+func (da *DynamicsAnalyzer) Reset() {
+	da.currentLap = 0
+	da.cornerFrames = 0
+	da.understeerFrames = 0
+	da.oversteerFrames = 0
+	da.spinActive = false
+	da.lockupActive = false
+	da.spinCount = 0
+	da.lockupCount = 0
+	da.completedLaps = nil
+}
+
 // ProcessFrame analyzes a single motion frame. Must be called under PitwallManager's mu.
 func (da *DynamicsAnalyzer) ProcessFrame(
 	velX, velZ, yaw float32,

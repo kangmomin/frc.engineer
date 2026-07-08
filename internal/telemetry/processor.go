@@ -87,11 +87,11 @@ type Processor struct {
 	latestPlayerCT2 *packets.CarTelemetry2Data // 2026 Season Pack: 플레이어 Overtake/Active Aero 상태
 
 	// Race summary persistence state
-	raceSummaryMu       sync.Mutex
-	raceSummaryEnabled  bool
-	raceSummarySave     RaceSummarySaveCallback
-	raceSummarySession  uint64
-	raceSummarySaved    bool
+	raceSummaryMu           sync.Mutex
+	raceSummaryEnabled      bool
+	raceSummarySave         RaceSummarySaveCallback
+	raceSummarySession      uint64
+	raceSummarySaved        bool
 	raceSummaryCounters     RaceSummaryCounts
 	raceSummaryTimeline     []dto.RaceControlNotification
 	raceSummaryRichTimeline []dto.RaceControlNotification
@@ -474,11 +474,11 @@ func (p *Processor) buildDashboardData() *dto.Dashboard {
 		BestLapTime:       p.deltaCalculator.GetBestLapTime(),
 		Position:          lap.CarPosition,
 		// 2026 모드에서는 DRS가 폐지되어 Overtake(Manual Override)가 부스트 인디케이터다.
-		DRS:               tel.DRS == 1 || (p.latestPlayerCT2 != nil && p.latestPlayerCT2.OvertakeActive == 1),
-		RevLights:         tel.RevLightsPercent,
-		Sector:            lap.Sector,
-		LapInvalid:        lap.CurrentLapInvalid == 1,
-		Timestamp:         time.Now().UnixMilli(),
+		DRS:        tel.DRS == 1 || (p.latestPlayerCT2 != nil && p.latestPlayerCT2.OvertakeActive == 1),
+		RevLights:  tel.RevLightsPercent,
+		Sector:     lap.Sector,
+		LapInvalid: lap.CurrentLapInvalid == 1,
+		Timestamp:  time.Now().UnixMilli(),
 	}
 }
 
@@ -623,19 +623,22 @@ func isRaceEndEvent(eventCode string) bool {
 }
 
 func (p *Processor) observeSessionUID(sessionUID uint64) {
-	p.raceSummaryMu.Lock()
-	defer p.raceSummaryMu.Unlock()
-
 	if sessionUID == 0 {
 		return
 	}
-	if p.raceSummarySession != sessionUID {
+
+	p.raceSummaryMu.Lock()
+	changed := p.raceSummarySession != sessionUID
+	if changed {
 		p.raceSummarySession = sessionUID
 		p.raceSummarySaved = false
 		p.raceSummaryCounters = RaceSummaryCounts{}
 		p.raceSummaryTimeline = nil
 		p.raceSummaryRichTimeline = nil
 	}
+	p.raceSummaryMu.Unlock()
+	// 랩 다이내믹스 누적치의 세션 전환 리셋은 pitwallManager.noteSessionLocked이
+	// 매 Update 경로에서 SessionUID 변경 시 수행하므로 여기서 별도 호출하지 않는다.
 }
 
 func (p *Processor) observeReplaySession(sessionUID uint64) {
@@ -794,7 +797,9 @@ func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {
 
 	out := &dto.PitwallState{
 		PlayerIndex:          src.PlayerIndex,
+		GameFormat:           src.GameFormat,
 		TrackMap:             nil,
+		ERSEstimateEnabled:   src.ERSEstimateEnabled,
 		ERSComparisonEnabled: src.ERSComparisonEnabled,
 	}
 
