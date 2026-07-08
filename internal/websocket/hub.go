@@ -40,7 +40,7 @@ func (h *Hub) Run(ctx context.Context) {
 			close(h.done) // Signal shutdown to clients
 			h.mu.Lock()
 			for client := range h.clients {
-				close(client.send)
+				client.closeSend()
 				delete(h.clients, client)
 			}
 			h.mu.Unlock()
@@ -56,7 +56,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
+				client.closeSend()
 			}
 			h.mu.Unlock()
 			h.logger.Info("client disconnected", "total", len(h.clients))
@@ -70,7 +70,7 @@ func (h *Hub) Run(ctx context.Context) {
 					// Client's send buffer is full, close connection
 					h.mu.RUnlock()
 					h.mu.Lock()
-					close(client.send)
+					client.closeSend()
 					delete(h.clients, client)
 					h.mu.Unlock()
 					h.mu.RLock()
@@ -101,7 +101,7 @@ func (h *Hub) Register(client *Client) {
 	case h.register <- client:
 	case <-h.done:
 		// Hub is shutting down, close the client immediately
-		close(client.send)
+		client.closeSend()
 	}
 }
 

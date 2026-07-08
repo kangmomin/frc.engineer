@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -34,6 +35,10 @@ type Client struct {
 	send           chan []byte
 	logger         *slog.Logger
 	messageHandler MessageHandler
+
+	// send 채널 닫힘은 Client가 소유한다 — 닫힌 채널 전송 패닉 방지
+	mu     sync.Mutex
+	closed bool
 }
 
 // NewClient creates a new Client instance
@@ -49,10 +54,25 @@ func NewClient(hub *Hub, conn *websocket.Conn, logger *slog.Logger, messageHandl
 
 // Send queues a message to be sent to this client
 func (c *Client) Send(message []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
 	select {
 	case c.send <- message:
 	default:
 		c.logger.Warn("client send buffer full, dropping message")
+	}
+}
+
+// closeSend closes the send channel exactly once (idempotent)
+func (c *Client) closeSend() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.closed {
+		c.closed = true
+		close(c.send)
 	}
 }
 

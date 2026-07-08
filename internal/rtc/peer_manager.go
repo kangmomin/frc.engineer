@@ -84,8 +84,8 @@ type PeerManager struct {
 	done          chan struct{}
 	closed        bool // guarded by sigMu; Connect() after Close() re-arms done
 	reconnecting  bool
-	writeDone     chan struct{}
 	playerName    string // current in-game player nickname (guarded by sigMu)
+	ownerToken    string // H6: room ownership proof from room_created (guarded by sigMu)
 }
 
 // NewPeerManager creates a PeerManager. Call Connect() to start.
@@ -147,6 +147,20 @@ func (pm *PeerManager) getPlayerName() string {
 	return pm.playerName
 }
 
+// getOwnerToken returns the room ownership token last issued by the server.
+func (pm *PeerManager) getOwnerToken() string {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	return pm.ownerToken
+}
+
+// setOwnerToken stores a room ownership token issued in a room_created response.
+func (pm *PeerManager) setOwnerToken(token string) {
+	pm.sigMu.Lock()
+	pm.ownerToken = token
+	pm.sigMu.Unlock()
+}
+
 // SetICEServers overrides the default STUN-only ICE server list.
 func (pm *PeerManager) SetICEServers(servers []webrtc.ICEServer) {
 	pm.mu.Lock()
@@ -206,6 +220,7 @@ func (pm *PeerManager) Connect() error {
 		RoomName:   pm.roomName,
 		Password:   pm.roomPassword,
 		PlayerName: pm.getPlayerName(),
+		OwnerToken: pm.getOwnerToken(),
 	}
 	if err := pm.sigConn.WriteJSON(create); err != nil {
 		pm.sigConn.Close()
@@ -229,6 +244,9 @@ func (pm *PeerManager) Connect() error {
 
 	pm.roomID = resp.RoomID
 	pm.roomCode = resp.RoomCode
+	if resp.OwnerToken != "" {
+		pm.setOwnerToken(resp.OwnerToken)
+	}
 	pm.logger.Info("room created on signaling server", "roomId", pm.roomID, "roomCode", pm.roomCode)
 
 	pm.startLoops()
@@ -257,10 +275,12 @@ func (pm *PeerManager) dial() error {
 }
 
 // startLoops launches the read and write (ping) goroutines.
+// writeDone은 세대-로컬 채널 — 재연결로 루프가 다시 뜰 때 이전 세대의
+// close가 새 write 루프를 종료시키는 레이스를 막는다.
 func (pm *PeerManager) startLoops() {
-	pm.writeDone = make(chan struct{})
-	go pm.readSignalingLoop()
-	go pm.writeSignalingLoop()
+	wd := make(chan struct{})
+	go pm.readSignalingLoop(wd)
+	go pm.writeSignalingLoop(wd)
 }
 
 // BroadcastAll sends a binary message to all connected DataChannels.
@@ -503,7 +523,7 @@ func (pm *PeerManager) doneChan() chan struct{} {
 }
 
 // writeSignalingLoop sends periodic pings and heartbeat messages to keep the signaling connection alive.
-func (pm *PeerManager) writeSignalingLoop() {
+func (pm *PeerManager) writeSignalingLoop(writeDone chan struct{}) {
 	done := pm.doneChan()
 	pingTicker := time.NewTicker(sigPingPeriod)
 	heartbeatTicker := time.NewTicker(sigHeartbeatPeriod)
@@ -514,7 +534,7 @@ func (pm *PeerManager) writeSignalingLoop() {
 		select {
 		case <-done:
 			return
-		case <-pm.writeDone:
+		case <-writeDone:
 			return
 		case <-pingTicker.C:
 			pm.sigMu.Lock()
@@ -534,14 +554,14 @@ func (pm *PeerManager) writeSignalingLoop() {
 	}
 }
 
-func (pm *PeerManager) readSignalingLoop() {
+func (pm *PeerManager) readSignalingLoop(writeDone chan struct{}) {
 	done := pm.doneChan()
 	roomClosed := false
 	pm.sigMu.Lock()
 	conn := pm.sigConn
 	pm.sigMu.Unlock()
 	defer func() {
-		close(pm.writeDone)
+		close(writeDone)
 		pm.sigMu.Lock()
 		if pm.sigConn == conn {
 			pm.sigConn = nil
@@ -659,6 +679,7 @@ func (pm *PeerManager) reconnectLoop() {
 			RoomName:   pm.roomName,
 			Password:   pm.roomPassword,
 			PlayerName: pm.getPlayerName(),
+			OwnerToken: pm.getOwnerToken(),
 		}
 		pm.sigMu.Lock()
 		err := pm.sigConn.WriteJSON(rejoin)
@@ -696,6 +717,7 @@ func (pm *PeerManager) reconnectLoop() {
 				RoomName:   pm.roomName,
 				Password:   pm.roomPassword,
 				PlayerName: pm.getPlayerName(),
+				OwnerToken: pm.getOwnerToken(),
 			}
 			pm.sigMu.Lock()
 			err = pm.sigConn.WriteJSON(create)
@@ -724,6 +746,11 @@ func (pm *PeerManager) reconnectLoop() {
 				pm.roomID = resp.RoomID
 			}
 			pm.roomCode = resp.RoomCode
+			// rejoin 성공 응답은 토큰을 싣지 않아 기존 토큰을 유지하고, 폴백 create가
+			// 새 방을 만든 경우에만 새 토큰으로 갱신한다(H6).
+			if resp.OwnerToken != "" {
+				pm.setOwnerToken(resp.OwnerToken)
+			}
 			pm.logger.Info("signaling reconnected", "roomId", pm.roomID, "roomCode", pm.roomCode)
 			pm.notifyStatus("Running")
 			pm.startLoops()
@@ -890,10 +917,16 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 		case webrtc.PeerConnectionStateConnected:
 			pm.noteConnected(peerID)
 		case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed:
-			// 끊김 감지 즉시 ICE restart 시도 (캡 초과/실패 시 removePeer로 수렴)
-			go pm.restartICE(peerID)
+			// 끊김 감지 즉시 ICE restart 시도 (캡 초과/실패 시 removePeer로 수렴).
+			// 재접속 교체 후 도착한 stale 콜백이면 무시 (M12).
+			pm.mu.RLock()
+			current := pm.peers[peerID]
+			pm.mu.RUnlock()
+			if current == pc {
+				go pm.restartICE(peerID)
+			}
 		case webrtc.PeerConnectionStateClosed:
-			pm.removePeer(peerID)
+			pm.removePeerIf(peerID, pc)
 		}
 	})
 
@@ -968,22 +1001,36 @@ func (pm *PeerManager) handleICECandidate(peerID string, payload json.RawMessage
 }
 
 func (pm *PeerManager) removePeer(peerID string) {
+	pm.removePeerIf(peerID, nil)
+}
+
+// removePeerIf removes the peer only when the tracked PeerConnection still
+// matches expected (nil = 무조건 제거). 재접속 교체 직후 옛 연결의 비동기
+// Closed 콜백이 새 PeerConnection을 파괴하는 것을 막는다 (M12).
+func (pm *PeerManager) removePeerIf(peerID string, expected *webrtc.PeerConnection) {
 	pm.mu.Lock()
 	pc, ok := pm.peers[peerID]
-	if ok {
-		pc.Close()
-		delete(pm.peers, peerID)
-		delete(pm.channels, peerID)
-		delete(pm.fastChannels, peerID)
-		delete(pm.peerViews, peerID)
-		if meta := pm.peerMeta[peerID]; meta != nil && meta.restartTimer != nil {
-			meta.restartTimer.Stop()
-		}
-		delete(pm.peerMeta, peerID)
+	if !ok || (expected != nil && pc != expected) {
+		pm.mu.Unlock()
+		return
 	}
+	delete(pm.peers, peerID)
+	delete(pm.channels, peerID)
+	delete(pm.fastChannels, peerID)
+	delete(pm.peerViews, peerID)
+	if meta := pm.peerMeta[peerID]; meta != nil && meta.restartTimer != nil {
+		meta.restartTimer.Stop()
+	}
+	delete(pm.peerMeta, peerID)
 	pm.mu.Unlock()
 
-	if ok && pm.onCountChange != nil {
+	// pc.Close()는 락 밖에서 — SCTP teardown이 느려도 60Hz 브로드캐스트를
+	// 정지시키지 않는다 (L5).
+	if err := pc.Close(); err != nil {
+		pm.logger.Error("failed to close peer connection", "peerId", peerID, "error", err)
+	}
+
+	if pm.onCountChange != nil {
 		pm.onCountChange(pm.ConnectedCount())
 	}
 }

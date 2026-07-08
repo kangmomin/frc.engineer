@@ -2,21 +2,54 @@ package websocket
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/gorilla/websocket"
 )
 
-var allowedOrigins = []string{"*"}
+// allowedOrigins는 same-host/localhost 외에 텔레메트리 WS 핸드셰이크에서 추가로
+// 허용할 브라우저 Origin 목록이다. 시작 시 ALLOWED_ORIGINS(콤마 구분) env로
+// 채워지며(배포 pitwall 도메인 등), 비어 있으면 same-host + localhost 변형만 허용한다.
+var allowedOrigins = loadAllowedOrigins()
+
+func loadAllowedOrigins() []string {
+	var out []string
+	for _, part := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		if o := strings.TrimSpace(part); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
+}
 
 // upgrader is configured to upgrade HTTP connections to WebSocket
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	// 브라우저에서 직접 여는 텔레메트리 WS라 Origin을 검사한다. Origin이 없으면
+	// (Go sender 등 비브라우저 클라이언트) 허용하고, 요청 Host와 동일 host이거나
+	// localhost 변형이면 same-origin/개발로 허용하며, 그 외에는 ALLOWED_ORIGINS
+	// 허용목록에 있을 때만 허용한다.
 	CheckOrigin: func(r *http.Request) bool {
-		return isOriginAllowed(r.Header.Get("Origin"), allowedOrigins)
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		spec, ok := parseOriginSpec(origin)
+		if !ok {
+			return false
+		}
+		if isLoopbackHost(spec.host) {
+			return true
+		}
+		if strings.EqualFold(spec.host, hostOnly(r.Host)) {
+			return true
+		}
+		return isOriginAllowed(origin, allowedOrigins)
 	},
 }
 
@@ -150,4 +183,23 @@ func normalizePort(scheme, port string) string {
 	default:
 		return ""
 	}
+}
+
+// hostOnly는 "host:port" 또는 "host"에서 host만 추출한다(IPv6 대괄호/포트 처리).
+func hostOnly(hostport string) string {
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		return h
+	}
+	return hostport
+}
+
+// isLoopbackHost는 host가 localhost 또는 loopback IP인지 판별한다(로컬 개발 허용).
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
