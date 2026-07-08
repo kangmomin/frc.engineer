@@ -521,6 +521,7 @@ export interface DriverInfo {
   cornerCuttingWarnings: number;
   numUnservedDriveThroughs: number;
   numUnservedStopGoPenalties: number;
+  penaltyLog?: PenaltyLogEntry[];
 
   // Lap validity
   lapInvalid: boolean;
@@ -539,6 +540,15 @@ export interface DriverInfo {
   deltaToRaceLeader?: number;
   deltaToPlayer?: number;
   pitLaneTime?: number;
+}
+
+/** One penalty/warning entry for the leaderboard hover detail (DTO PenaltyLogEntry).
+ * Codes map via web/src/constants/penalties.ts. */
+export interface PenaltyLogEntry {
+  lap: number;
+  pen: number;
+  inf: number;
+  sec?: number;
 }
 
 export interface StintInfo {

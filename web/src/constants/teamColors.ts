@@ -39,6 +39,42 @@ export function getTeamColor(teamId: number): string {
 }
 
 /**
+ * Short team badges for the leaderboard driver cell. Same ID set as TEAM_NAMES
+ * (0-10 / 255 / 476-486). Unknown falls back to an em dash.
+ */
+export const TEAM_SHORT: Record<number, string> = {
+  0: 'MER',
+  1: 'FER',
+  2: 'RBR',
+  3: 'WIL',
+  4: 'AST',
+  5: 'ALP',
+  6: 'RB',
+  7: 'HAA',
+  8: 'MCL',
+  9: 'SAU',
+  10: 'AUD',
+  255: '—',
+  // 2026 Season Pack team IDs
+  476: 'MER',
+  477: 'FER',
+  478: 'RBR',
+  479: 'WIL',
+  480: 'AST',
+  481: 'ALP',
+  482: 'RB',
+  483: 'HAA',
+  484: 'MCL',
+  485: 'AUD',
+  486: 'CAD',
+};
+
+/** Get short team badge by team ID; em dash for unknown IDs. */
+export function getTeamShort(teamId: number): string {
+  return TEAM_SHORT[teamId] ?? '—';
+}
+
+/**
  * Team names for display
  */
 export const TEAM_NAMES: Record<number, string> = {
