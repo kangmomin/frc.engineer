@@ -666,16 +666,24 @@ function useSenderConnection(senderUrl: string) {
   useEffect(() => {
     const normalized = normalizeSenderUrl(senderUrl);
     let active = true;
+    let timer: number | null = null;
+    // 세대 토큰: 가장 최근 poll의 응답만 상태에 반영
+    let pollSeq = 0;
 
     const poll = async () => {
+      const seq = ++pollSeq;
+      const isCurrent = () => active && seq === pollSeq;
+
       try {
-        const { data } = await fetchJsonWithSenderDebug<SenderStatus>(normalized, "/api/status", "sender-status");
+        const { data } = await fetchJsonWithSenderDebug<SenderStatus>(normalized, "/api/status", "sender-status", {
+          init: { signal: AbortSignal.timeout(5000) },
+        });
         const nextStatus = data as SenderStatus;
-        if (!active) return;
+        if (!isCurrent()) return;
         setStatus(nextStatus);
         setConnected(true);
       } catch {
-        if (!active) return;
+        if (!isCurrent()) return;
         setConnected(false);
         setStatus(null);
       }
@@ -683,17 +691,17 @@ function useSenderConnection(senderUrl: string) {
       try {
         const { data } = await fetchJsonWithSenderDebug<{
           pitwallState?: { session?: SenderSession; drivers?: SenderPlayer[]; playerIndex?: number };
-        }>(normalized, "/api/debug", "sender-debug");
+        }>(normalized, "/api/debug", "sender-debug", { init: { signal: AbortSignal.timeout(5000) } });
         const debugData = data as {
           pitwallState?: { session?: SenderSession; drivers?: SenderPlayer[]; playerIndex?: number };
         };
-        if (!active) return;
+        if (!isCurrent()) return;
         const drivers = debugData.pitwallState?.drivers ?? [];
         const playerIndex = debugData.pitwallState?.playerIndex ?? -1;
         setSession(debugData.pitwallState?.session ?? null);
         setPlayer(playerIndex >= 0 && playerIndex < drivers.length ? drivers[playerIndex] ?? null : null);
       } catch {
-        if (!active) return;
+        if (!isCurrent()) return;
         setSession(null);
         setPlayer(null);
       }
@@ -703,27 +711,34 @@ function useSenderConnection(senderUrl: string) {
           normalized,
           "/api/races/latest",
           "latest-race-result",
-          { allowStatuses: [404] },
+          { allowStatuses: [404], init: { signal: AbortSignal.timeout(5000) } },
         );
         if (status === 404) {
-          if (!active) return;
+          if (!isCurrent()) return;
           setLatestRaceResult(null);
           return;
         }
         const nextResult = data as SenderRaceResult;
-        if (!active) return;
+        if (!isCurrent()) return;
         setLatestRaceResult(nextResult);
       } catch {
-        if (!active) return;
+        if (!isCurrent()) return;
         setLatestRaceResult(null);
       }
     };
 
-    void poll();
-    const interval = window.setInterval(() => void poll(), 3000);
+    // setTimeout 체이닝으로 이전 poll이 끝난 뒤에만 다음 poll 예약 (in-flight 중복 방지)
+    const schedule = () => {
+      if (!active) return;
+      timer = window.setTimeout(() => {
+        void poll().finally(schedule);
+      }, 3000);
+    };
+
+    void poll().finally(schedule);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      if (timer !== null) window.clearTimeout(timer);
     };
   }, [senderUrl]);
 
@@ -895,22 +910,34 @@ export function F1SetupManager() {
   const [recordedSnaps, setRecordedSnaps] = useState<TelemetrySnapshot[]>([]);
   const [savedRecommendations, setSavedRecommendations] = useState<SavedRecommendation[]>([]);
   const [lapComparison, setLapComparison] = useState<LapComparisonState>({ before: null, after: null });
+  const [persistError, setPersistError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
     const loadPersistedState = async () => {
-      const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
-      const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
-      const nextStorageInfo = window.electronAPI?.getSenderStorageInfo
-        ? normalizeSenderStorageInfo(await window.electronAPI.getSenderStorageInfo())
-        : EMPTY_SENDER_STORAGE_INFO;
-      await writeStoredValue(SENDER_URL_KEY, DEFAULT_SENDER_URL);
+      try {
+        const storedRecommendations = await readStoredValue<unknown>(SAVED_RECOMMENDATIONS_KEY, []);
+        const storedComparison = await readStoredValue<unknown>(LAP_COMPARISON_KEY, null);
+        const nextStorageInfo = window.electronAPI?.getSenderStorageInfo
+          ? normalizeSenderStorageInfo(await window.electronAPI.getSenderStorageInfo())
+          : EMPTY_SENDER_STORAGE_INFO;
 
-      if (!active) return;
-      setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
-      setLapComparison(normalizeLapComparisonState(storedComparison));
-      setSenderStorageInfo(nextStorageInfo);
+        if (!active) return;
+        setSavedRecommendations(normalizeSavedRecommendations(storedRecommendations));
+        setLapComparison(normalizeLapComparisonState(storedComparison));
+        setSenderStorageInfo(nextStorageInfo);
+      } catch (error) {
+        if (!active) return;
+        setPersistError(error instanceof Error ? error.message : "Failed to load persisted state.");
+      }
+
+      // sender URL 기본값 기록은 상태 적용 이후에 수행 — 실패해도 초기 로드에 영향 없음
+      try {
+        await writeStoredValue(SENDER_URL_KEY, DEFAULT_SENDER_URL);
+      } catch {
+        // 기본 URL 기록 실패는 치명적이지 않으므로 무시
+      }
     };
 
     void loadPersistedState();
@@ -1190,13 +1217,28 @@ export function F1SetupManager() {
   };
 
   const persistRecommendations = async (next: SavedRecommendation[]) => {
+    const previous = savedRecommendations;
     setSavedRecommendations(next);
-    await writeStoredValue(SAVED_RECOMMENDATIONS_KEY, next);
+    setPersistError(null);
+    try {
+      await writeStoredValue(SAVED_RECOMMENDATIONS_KEY, next);
+    } catch (error) {
+      // 저장 실패 시 화면 상태와 스토리지가 어긋나지 않도록 롤백
+      setSavedRecommendations(previous);
+      setPersistError(error instanceof Error ? error.message : "Failed to save recommendations.");
+    }
   };
 
   const persistComparison = async (next: LapComparisonState) => {
+    const previous = lapComparison;
     setLapComparison(next);
-    await writeStoredValue(LAP_COMPARISON_KEY, next);
+    setPersistError(null);
+    try {
+      await writeStoredValue(LAP_COMPARISON_KEY, next);
+    } catch (error) {
+      setLapComparison(previous);
+      setPersistError(error instanceof Error ? error.message : "Failed to save lap comparison.");
+    }
   };
 
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack, latestRaceResult } = useSenderConnection(senderUrl);
@@ -1522,8 +1564,11 @@ export function F1SetupManager() {
     }
 
     const existingIndex = overlayPresets.findIndex((preset) => preset.name.toLowerCase() === name.toLowerCase());
+    // slug가 다른 프리셋 id와 충돌하면 랜덤 id로 대체 (다른 이름이 같은 slug를 만들 수 있음)
+    const slug = slugifyPresetName(name);
+    const slugAvailable = Boolean(slug) && !overlayPresets.some((preset) => preset.id === slug);
     const nextPreset: OverlayPreset = {
-      id: existingIndex >= 0 ? overlayPresets[existingIndex].id : slugifyPresetName(name) || `preset-${Date.now()}`,
+      id: existingIndex >= 0 ? overlayPresets[existingIndex].id : slugAvailable ? slug : crypto.randomUUID(),
       name,
       savedAtLocal: formatSavedAtLocal(),
       radar: overlayState.radar,
@@ -1686,6 +1731,12 @@ export function F1SetupManager() {
               </div>
             ) : null}
           </Panel>
+
+          {persistError ? (
+            <div style={{ padding: 10, borderRadius: 4, background: "rgba(255,82,92,0.08)", color: P.danger, fontSize: 11 }}>
+              {persistError}
+            </div>
+          ) : null}
 
           {section === "setup-manager" && setupWorkspace === "builder" ? (
           <>

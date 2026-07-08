@@ -119,11 +119,11 @@ export function SessionAnalysisSection({
 
   useEffect(() => {
     void loadAnalysis(baselineDir);
-  }, [baselineDir, analysisUrl]);
+  }, [baselineDir, analysisUrl, reloadNonce]);
 
   useEffect(() => {
     void loadAnalysis(comparisonDir);
-  }, [comparisonDir, analysisUrl]);
+  }, [comparisonDir, analysisUrl, reloadNonce]);
 
   const baselineResult = baselineDir ? analysisCache[baselineDir] ?? null : null;
   const comparisonResult = comparisonDir ? analysisCache[comparisonDir] ?? null : null;
@@ -194,6 +194,7 @@ export function SessionAnalysisSection({
             <button
               onClick={() => {
                 setAnalysisCache({});
+                setAnalysisLoading({});
                 setAnalysisErrors({});
                 setReloadNonce((current) => current + 1);
               }}

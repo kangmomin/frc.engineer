@@ -86,7 +86,9 @@ const TEAM_ID_TO_NAME: Record<number, string> = {
 };
 
 export function formatSavedAtLocal(date = new Date()): string {
-  return date.toISOString().slice(0, 19).replace("T", " ");
+  // toISOString은 UTC 기준이라 로컬 시각 표기가 어긋남 — 로컬 구성요소로 직접 포맷
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 export function resolveTrackName(
