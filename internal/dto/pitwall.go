@@ -158,11 +158,12 @@ type DriverInfo struct {
 	Dynamics []DynamicsLapDTO `json:"dynamics,omitempty"`
 
 	// Penalties
-	Penalties                  int `json:"penalties,omitempty"`
-	TotalWarnings              int `json:"totalWarnings,omitempty"`
-	CornerCuttingWarnings      int `json:"cornerCuttingWarnings,omitempty"`
-	NumUnservedDriveThroughs   int `json:"numUnservedDriveThroughs,omitempty"`
-	NumUnservedStopGoPenalties int `json:"numUnservedStopGoPenalties,omitempty"`
+	Penalties                  int               `json:"penalties,omitempty"`
+	TotalWarnings              int               `json:"totalWarnings,omitempty"`
+	CornerCuttingWarnings      int               `json:"cornerCuttingWarnings,omitempty"`
+	NumUnservedDriveThroughs   int               `json:"numUnservedDriveThroughs,omitempty"`
+	NumUnservedStopGoPenalties int               `json:"numUnservedStopGoPenalties,omitempty"`
+	PenaltyLog                 []PenaltyLogEntry `json:"penaltyLog,omitempty"`
 
 	// Lap validity
 	LapInvalid bool `json:"lapInvalid"`
@@ -184,6 +185,19 @@ type DriverInfo struct {
 	DeltaToRaceLeader int     `json:"deltaToRaceLeader,omitempty"`
 	DeltaToPlayer     int     `json:"deltaToPlayer,omitempty"`
 	PitLaneTime       int     `json:"pitLaneTime,omitempty"`
+}
+
+// PenaltyLogEntry is one penalty/warning a driver received, for the leaderboard's
+// per-driver penalty hover detail. Codes (Pen/Inf) map to the same tables as
+// packets.PenaltyTypeString / packets.InfringementTypeString (mirrored on the
+// frontend in web/src/constants/penalties.ts). OtherVehicleIdx is intentionally
+// omitted — it is not needed for "which penalty, which lap" and its uint8 sentinel
+// (255 = none) collides with a valid index 0.
+type PenaltyLogEntry struct {
+	Lap     int `json:"lap"`
+	Pen     int `json:"pen"`
+	Inf     int `json:"inf"`
+	TimeSec int `json:"sec,omitempty"`
 }
 
 // StintInfoDTO represents a completed tire stint. StartLap/EndLap/TireWearPct are

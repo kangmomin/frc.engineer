@@ -50,6 +50,10 @@ type PitwallManager struct {
 	lastTrackID       int8   // last track ID for change detection
 	peakActiveCars    int    // high-water mark for NumActiveCars
 	lastSessionUID    uint64 // last session UID for per-session cache reset
+
+	// Per-car penalty/warning log for the leaderboard hover detail. Reset on
+	// SessionUID change alongside the other per-session caches (noteSessionLocked).
+	penaltyLog [packets.MaxCars][]dto.PenaltyLogEntry
 }
 
 // maxTrackMapPoints bounds the trackMap point count so a long recorded lap can
@@ -63,6 +67,10 @@ func downsampleStride(n, max int) int {
 	}
 	return (n + max - 1) / max
 }
+
+// maxPenaltyLogPerCar caps the per-car penalty log; on overflow the oldest entry
+// is dropped. 16 comfortably covers a messy race while bounding the payload.
+const maxPenaltyLogPerCar = 16
 
 // NewPitwallManager creates a new PitwallManager
 func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackStore, recorder *TrackRecorder) *PitwallManager {
@@ -126,6 +134,38 @@ func (pm *PitwallManager) UpdateSession(s *packets.PacketSessionData) {
 	pm.mu.Unlock()
 }
 
+// RecordPenalty appends a penalty/warning event to the offending car's log for the
+// leaderboard hover detail. Called from the event processor with the event packet's
+// own SessionUID, so a PENA belonging to a new session that arrives before that
+// session's first Session packet resets the stale log itself (see
+// noteSessionUIDLocked). Consecutive exact duplicates (UDP re-broadcasts) are
+// skipped; the log is capped per car.
+func (pm *PitwallManager) RecordPenalty(e *packets.PenaltyEvent, sessionUID uint64) {
+	if e == nil || int(e.VehicleIdx) >= packets.MaxCars {
+		return
+	}
+	entry := dto.PenaltyLogEntry{
+		Lap:     int(e.LapNum),
+		Pen:     int(e.PenaltyType),
+		Inf:     int(e.InfringementType),
+		TimeSec: int(e.Time),
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	// Observe the session boundary before reading the slice — a genuine UID change
+	// clears penaltyLog, so `log` must be read after the potential reset.
+	pm.noteSessionUIDLocked(sessionUID)
+	log := pm.penaltyLog[e.VehicleIdx]
+	if n := len(log); n > 0 && log[n-1] == entry {
+		return // duplicate re-broadcast of the same event
+	}
+	log = append(log, entry)
+	if len(log) > maxPenaltyLogPerCar {
+		log = log[len(log)-maxPenaltyLogPerCar:]
+	}
+	pm.penaltyLog[e.VehicleIdx] = log
+}
+
 // noteFormatLocked tracks the active packetFormat and clears format-specific
 // caches when the game switches UDP mode (25↔26) — 이전 포맷의 CT2/고수위가
 // 새 세션을 오염시키지 않게 한다. pm.mu 보유 상태에서 호출할 것.
@@ -142,17 +182,32 @@ func (pm *PitwallManager) noteFormatLocked(format uint16) {
 // 오염시키지 않게 한다 (ERSEstimator.resetSession의 매니저 측 미러).
 // pm.mu 보유 상태에서 호출할 것.
 func (pm *PitwallManager) noteSessionLocked(header *packets.PacketHeader) {
-	if header == nil || header.SessionUID == 0 {
+	if header == nil {
 		return
 	}
-	if pm.lastSessionUID != 0 && pm.lastSessionUID != header.SessionUID {
+	pm.noteSessionUIDLocked(header.SessionUID)
+}
+
+// noteSessionUIDLocked is the SessionUID-keyed core of noteSessionLocked. Both the
+// packet paths (via noteSessionLocked) and the event path (RecordPenalty) funnel
+// through it, so a session change detected from ANY source clears the per-session
+// caches — including the penalty log. The first observation (lastSessionUID==0)
+// only seeds the baseline WITHOUT clearing, so a PENA that arrived before its
+// session's first packet is preserved. uid==0 (unset/replay artifact) is ignored
+// so it can't wipe state. Caller must hold pm.mu.
+func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
+	if uid == 0 {
+		return
+	}
+	if pm.lastSessionUID != 0 && pm.lastSessionUID != uid {
 		pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
 		pm.sessionHistory = [packets.MaxCars]*packets.PacketSessionHistoryData{}
 		pm.peakActiveCars = 0
 		pm.lastTrackID = -1 // 다음 BuildState에서 트랙맵 재전송 트리거
 		pm.dynamicsAnalyzer.Reset()
+		pm.penaltyLog = [packets.MaxCars][]dto.PenaltyLogEntry{}
 	}
-	pm.lastSessionUID = header.SessionUID
+	pm.lastSessionUID = uid
 }
 
 // ResetDynamics clears per-session dynamics accumulation.
@@ -554,6 +609,12 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 				d.NumUnservedDriveThroughs = int(ld.NumUnservedDriveThroughs)
 				d.NumUnservedStopGoPenalties = int(ld.NumUnservedStopGoPenalties)
 				d.LapInvalid = ld.CurrentLapInvalid == 1
+			}
+
+			// Penalty log (event-sourced) for the leaderboard hover detail — copy so
+			// downstream mutation/visibility filtering can't alias the manager's slice.
+			if log := pm.penaltyLog[i]; len(log) > 0 {
+				d.PenaltyLog = append([]dto.PenaltyLogEntry(nil), log...)
 			}
 
 			if pm.carStatus != nil {

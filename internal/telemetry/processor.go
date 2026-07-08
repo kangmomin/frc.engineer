@@ -495,6 +495,11 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 		if !ok {
 			return
 		}
+		// Log for the leaderboard per-driver penalty hover detail (independent of the
+		// transient race-control notification below). Pass the event's own SessionUID
+		// so a PENA for a new session that lands before that session's first Session
+		// packet resets the stale log itself.
+		p.pitwallManager.RecordPenalty(penalty, event.Header.SessionUID)
 		driverName := p.pitwallManager.GetDriverName(penalty.VehicleIdx)
 		penaltyStr := packets.PenaltyTypeString(penalty.PenaltyType)
 		infringementStr := packets.InfringementTypeString(penalty.InfringementType)

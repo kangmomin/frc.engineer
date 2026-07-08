@@ -38,12 +38,112 @@ func TestPitwallManagerBuildStateIncludesSenderState(t *testing.T) {
 	}
 }
 
+// TestRecordPenaltyLogCapDedupAndReset verifies the per-car penalty log's
+// out-of-range guard, consecutive-duplicate dedup, per-car cap, and SessionUID reset.
+func TestRecordPenaltyLogCapDedupAndReset(t *testing.T) {
+	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, SessionUID: 111}
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	pm.UpdateSession(&packets.PacketSessionData{Header: header, SessionType: 15})
+
+	// Out-of-range vehicle index is ignored (no panic).
+	pm.RecordPenalty(&packets.PenaltyEvent{VehicleIdx: 250, PenaltyType: 4}, 111)
+
+	// Consecutive exact duplicate (UDP re-broadcast) is skipped.
+	dup := &packets.PenaltyEvent{VehicleIdx: 3, PenaltyType: 4, InfringementType: 2, Time: 5, LapNum: 7}
+	pm.RecordPenalty(dup, 111)
+	pm.RecordPenalty(dup, 111)
+	if got := len(pm.penaltyLog[3]); got != 1 {
+		t.Fatalf("car 3 log len = %d, want 1 (duplicate skipped)", got)
+	}
+
+	// Cap: append well past the cap; oldest are dropped, newest kept.
+	for j := 0; j < maxPenaltyLogPerCar+5; j++ {
+		pm.RecordPenalty(&packets.PenaltyEvent{VehicleIdx: 5, PenaltyType: 4, InfringementType: uint8(j), LapNum: uint8(j)}, 111)
+	}
+	log := pm.penaltyLog[5]
+	if len(log) != maxPenaltyLogPerCar {
+		t.Fatalf("car 5 log len = %d, want cap %d", len(log), maxPenaltyLogPerCar)
+	}
+	if log[len(log)-1].Inf != maxPenaltyLogPerCar+4 {
+		t.Fatalf("car 5 newest inf = %d, want %d (kept newest)", log[len(log)-1].Inf, maxPenaltyLogPerCar+4)
+	}
+
+	// Same-track session change (new SessionUID, trackID unchanged) clears the log.
+	pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 222}, SessionType: 10})
+	if len(pm.penaltyLog[3]) != 0 || len(pm.penaltyLog[5]) != 0 {
+		t.Fatal("penalty log must reset on SessionUID change")
+	}
+}
+
+// TestRecordPenaltyBeforeFirstSessionPreserved covers the ordering where a PENA
+// event is processed before the first Session packet: the log must survive the
+// first (baseline) Session observation and only reset on a genuine UID change.
+// A uid==0 Session packet must be ignored so it can't wipe the log.
+func TestRecordPenaltyBeforeFirstSessionPreserved(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+
+	// PENA arrives before any Session packet (lastSessionUID still 0). The event
+	// carries its own session's UID (777), which seeds the baseline WITHOUT clearing.
+	pm.RecordPenalty(&packets.PenaltyEvent{VehicleIdx: 4, PenaltyType: 4, InfringementType: 2, Time: 5, LapNum: 3}, 777)
+	if got := len(pm.penaltyLog[4]); got != 1 {
+		t.Fatalf("pre-session penalty len = %d, want 1", got)
+	}
+
+	// First Session packet (nonzero UID) sets the baseline WITHOUT clearing.
+	pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 777}, SessionType: 10})
+	if got := len(pm.penaltyLog[4]); got != 1 {
+		t.Fatalf("first Session packet must not clear same-session penalty: got %d, want 1", got)
+	}
+
+	// A spurious uid==0 Session packet is ignored — it must not wipe the log.
+	pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 0}, SessionType: 10})
+	if got := len(pm.penaltyLog[4]); got != 1 {
+		t.Fatalf("uid==0 Session packet must be ignored: got %d, want 1", got)
+	}
+
+	// A genuine session change (nonzero → different nonzero) clears.
+	pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 888}, SessionType: 15})
+	if got := len(pm.penaltyLog[4]); got != 0 {
+		t.Fatalf("genuine SessionUID change must clear the log: got %d, want 0", got)
+	}
+}
+
+// TestRecordPenaltyNewSessionEventBeforeSessionPacket covers the residual window:
+// session A's log is resident when a session B PENA lands BEFORE B's first Session
+// packet. Because RecordPenalty observes the event's own SessionUID, it must clear
+// A's stale log and keep B's penalty; B's later Session packet must then be a no-op.
+func TestRecordPenaltyNewSessionEventBeforeSessionPacket(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+
+	// Session A: establish a resident penalty log.
+	pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 100}, SessionType: 15})
+	pm.RecordPenalty(&packets.PenaltyEvent{VehicleIdx: 2, PenaltyType: 4, InfringementType: 1, LapNum: 5}, 100)
+	if got := len(pm.penaltyLog[2]); got != 1 {
+		t.Fatalf("session A penalty len = %d, want 1", got)
+	}
+
+	// Session B's PENA arrives BEFORE B's first Session packet (out-of-order/reconnect).
+	pm.RecordPenalty(&packets.PenaltyEvent{VehicleIdx: 6, PenaltyType: 4, InfringementType: 2, LapNum: 1}, 200)
+	if got := len(pm.penaltyLog[2]); got != 0 {
+		t.Fatalf("stale session A log must be cleared by the session B event: got %d, want 0", got)
+	}
+	if got := len(pm.penaltyLog[6]); got != 1 {
+		t.Fatalf("session B penalty must be recorded: got %d, want 1", got)
+	}
+
+	// B's first Session packet (same UID) is now a no-op — it must not wipe B's penalty.
+	pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 200}, SessionType: 10})
+	if got := len(pm.penaltyLog[6]); got != 1 {
+		t.Fatalf("B's Session packet must not clear B's own penalty: got %d, want 1", got)
+	}
+}
+
 // TestBuildState24CarPayloadSize: 2026 모드(24대) 풀 데이터 PitwallState의 페이로드 크기 회귀 검증.
 // (1) 트랙맵(다운샘플 2000pt)이 포함된 worst-case 메시지가 Chrome SCTP 수신 버퍼 하드 상한(256KB)을
 // 넘지 않고, (2) 트랙맵 전송분 소진 후 정상 상태가 백프레셔 임계(maxBufferedAmount 128KB)를 넘지 않는지 확인.
 // (CLAUDE.md: SCTP 256KB / maxBufferedAmount 128KB 제약)
 func TestBuildState24CarPayloadSize(t *testing.T) {
-	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, GameYear: 26}
+	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, GameYear: 26, SessionUID: 1}
 
 	session := &packets.PacketSessionData{
 		Header:          header,
@@ -107,6 +207,16 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 	pm.UpdateMotion(motion, 0)
 	pm.UpdateCarDamage(carDamage)
 
+	// Worst-case penalty log: every car at the per-car cap, so the 128KB guard
+	// covers the added field (msgpack, numeric codes — see PenaltyLogEntry).
+	for i := 0; i < packets.MaxCars; i++ {
+		for j := 0; j < maxPenaltyLogPerCar; j++ {
+			pm.RecordPenalty(&packets.PenaltyEvent{
+				VehicleIdx: uint8(i), PenaltyType: uint8(4), InfringementType: uint8(j), Time: 5, LapNum: uint8(j + 1),
+			}, header.SessionUID)
+		}
+	}
+
 	// 첫 BuildState는 트랙맵을 포함한다(트랙 변경 감지로 trackMapSendCount=8).
 	state := pm.BuildState()
 	if state == nil {
@@ -126,6 +236,11 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 	}
 	if n := len(state.TrackMap.Points); n == 0 || n > maxTrackMapPoints {
 		t.Fatalf("trackmap points = %d, want 1..%d (downsample cap)", n, maxTrackMapPoints)
+	}
+	// PenaltyLog must survive the full BuildState path, including applySourceVisibility
+	// (which mutates a field whitelist in place and must not drop the penalty log).
+	if got := len(state.Drivers[23].PenaltyLog); got != maxPenaltyLogPerCar {
+		t.Fatalf("driver 23 penaltyLog dropped by BuildState/applySourceVisibility: got %d, want %d", got, maxPenaltyLogPerCar)
 	}
 
 	// (1) 트랙맵 포함 메시지가 SCTP 수신 버퍼 하드 상한(256KB)을 넘지 않아야 한다.
