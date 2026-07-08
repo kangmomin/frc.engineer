@@ -38,4 +38,9 @@ type Message struct {
 	// Restart marks an offer as an ICE restart for an existing peer session.
 	// 서버 Relay는 구조체 전체를 그대로 전달하므로 서버 변경 없이 통과한다.
 	Restart bool `json:"restart,omitempty"`
+	// OwnerToken proves room ownership for room_rejoin and room reuse (room_create
+	// with an existing roomId). The server issues it in room_created; the sender
+	// stores it in memory and echoes it so a party that only knows the roomId
+	// cannot hijack the room (H6).
+	OwnerToken string `json:"ownerToken,omitempty"`
 }

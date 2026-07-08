@@ -22,6 +22,9 @@ const (
 	maxEngineersPerRoom = 8
 	cleanupInterval     = 60 * time.Second
 	driverGracePeriod   = 2 * time.Minute
+	// maxRooms: 전역 동시 room 상한. 코드 공간(4자리=1만)보다 훨씬 낮게 잡아
+	// 좀비/누수 방(H7)이 코드 고갈·메모리 폭주로 번지지 않게 방어한다.
+	maxRooms = 2000
 )
 
 // peerRole distinguishes the sender (driver) from receivers (engineers).
@@ -57,6 +60,7 @@ type Room struct {
 	Code         string
 	Name         string
 	Password     string
+	OwnerToken   string // H6: 소유권 증명 토큰 (room_created로 발급, rejoin/재사용 시 검증)
 	Driver       *peer
 	Engineers    map[string]*peer // peerId ??peer
 	DriverLostAt *time.Time       // set when driver disconnects; nil when connected
@@ -65,6 +69,9 @@ type Room struct {
 }
 
 // RoomSummary is the public room-list payload for engineer clients.
+// NOTE(H6): RoomID here is only a join/selection handle for engineers — it is NOT
+// an authorization basis. Driver ownership is proven solely by the OwnerToken
+// (see CreateRoom/RejoinRoom), so exposing RoomID cannot enable room takeover.
 type RoomSummary struct {
 	RoomID           string `json:"roomId"`
 	RoomCode         string `json:"roomCode"`
@@ -75,34 +82,44 @@ type RoomSummary struct {
 
 // RoomManager manages all active rooms.
 type RoomManager struct {
-	roomsByCode map[string]*Room // roomCode ??Room
-	roomsByID   map[string]*Room // roomId ??Room
-	banCache    *bandb.Cache     // nil이면 IP/닉 ban 비활성 (DATABASE_URL 미설정)
-	banStore    bandb.Store      // nil이면 영구 등록 skip (캐시만)
-	mu          sync.RWMutex
-	logger      *slog.Logger
-	done        chan struct{}
+	roomsByCode    map[string]*Room // roomCode ??Room
+	roomsByID      map[string]*Room // roomId ??Room
+	banCache       *bandb.Cache     // nil이면 IP/닉 ban 비활성 (DATABASE_URL 미설정)
+	banStore       bandb.Store      // nil이면 영구 등록 skip (캐시만)
+	ipAttributable bool             // true(신뢰 프록시 설정)일 때만 IP 자동밴을 기록/캐시한다
+	mu             sync.RWMutex
+	logger         *slog.Logger
+	done           chan struct{}
+	ipBanWarnOnce  sync.Once // 귀속 불가로 IP밴을 건너뛸 때 경고를 1회만 로깅
 }
 
 // NewRoomManager creates a new RoomManager and starts a background cleanup goroutine.
 // banCache/banStore may be nil to disable ban features (graceful degrade).
-func NewRoomManager(logger *slog.Logger, banCache *bandb.Cache, banStore bandb.Store) *RoomManager {
+// ipAttributable gates IP auto-ban: only when the real client IP can be trusted
+// (trusted proxies configured) does a banned nickname get its IP recorded. Without
+// it the "client IP" is a shared edge-proxy address and recording it would 403 every
+// user at the /ws gate, so IP auto-ban is skipped while the nickname ban still runs.
+func NewRoomManager(logger *slog.Logger, banCache *bandb.Cache, banStore bandb.Store, ipAttributable bool) *RoomManager {
 	rm := &RoomManager{
-		roomsByCode: make(map[string]*Room),
-		roomsByID:   make(map[string]*Room),
-		banCache:    banCache,
-		banStore:    banStore,
-		logger:      logger,
-		done:        make(chan struct{}),
+		roomsByCode:    make(map[string]*Room),
+		roomsByID:      make(map[string]*Room),
+		banCache:       banCache,
+		banStore:       banStore,
+		ipAttributable: ipAttributable,
+		logger:         logger,
+		done:           make(chan struct{}),
 	}
 	go rm.cleanupLoop()
 	return rm
 }
 
-// checkAndBanNickname reports whether playerName is on the banned-nickname list;
-// if so it records clientIP as banned (cache immediately for instant effect, DB
-// asynchronously) so later connections from that IP are blocked even after a
-// nickname change. No-op when ban features are disabled or the IP is unknown.
+// checkAndBanNickname reports whether playerName is on the banned-nickname list.
+// When it matches, the connection is always dropped (nickname ban). The client IP is
+// additionally recorded as banned (cache immediately for instant effect, DB async) so
+// later connections from that IP are blocked even after a nickname change — but ONLY
+// when ipAttributable is true. Without trusted proxies the "client IP" is a shared
+// edge-proxy address; recording it would 403 every user at the /ws gate, so IP
+// auto-ban is skipped (warned once). No-op when ban features are disabled or IP unknown.
 func (rm *RoomManager) checkAndBanNickname(clientIP, playerName string) bool {
 	if rm.banCache == nil || clientIP == "" {
 		return false
@@ -115,6 +132,15 @@ func (rm *RoomManager) checkAndBanNickname(clientIP, playerName string) bool {
 	norm := banlist.Normalize(playerName)
 	if norm == "" || !rm.banCache.HasNick(norm) {
 		return false
+	}
+	// 밴된 닉 확인 → 연결 차단(닉네임 밴)은 항상 수행한다. 다만 IP 자동 밴(기록/캐시)은
+	// 실제 클라 IP를 신뢰 가능하게 귀속할 수 있을 때만 한다. 신뢰 프록시 미설정 시 clientIP는
+	// 공유 엣지 프록시 IP라, 이를 기록하면 이후 전원이 /ws HasIP 게이트에서 차단된다.
+	if !rm.ipAttributable {
+		rm.ipBanWarnOnce.Do(func() {
+			rm.logger.Warn("IP auto-ban skipped: client IP not attributable (set TRUSTED_PROXY_CIDRS to enable); nickname ban still enforced")
+		})
+		return true
 	}
 	rm.banCache.AddIP(clientIP) // immediate: next connection from this IP is blocked
 	if rm.banStore != nil {
@@ -136,8 +162,10 @@ func (rm *RoomManager) Stop() {
 }
 
 // CreateRoom allocates a new room for the given driver connection.
-// If requestedRoomID is set, it will be reused for room recreation.
-func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mutex, requestedRoomID, roomName, password string) (string, string, error) {
+// If requestedRoomID is set, it will be reused for room recreation — but reuse
+// requires a matching OwnerToken (H6), otherwise a fresh room is allocated.
+// Returns (roomID, roomCode, ownerToken, error).
+func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mutex, requestedRoomID, roomName, password, ownerToken string) (string, string, string, error) {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 
@@ -145,9 +173,26 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 	if roomID == "" {
 		roomID = generateRoomID()
 	}
+
+	room, exists := rm.roomsByID[roomID]
+	if exists {
+		// H6: 기존 room 재사용은 소유권 증명(OwnerToken)이 필수. 없거나 불일치면
+		// 탈취 시도로 간주하고 새 random ID로 신규 room을 배정한다(재사용 거부).
+		if ownerToken == "" || subtle.ConstantTimeCompare([]byte(room.OwnerToken), []byte(ownerToken)) != 1 {
+			rm.logger.Warn("room reuse denied: owner token mismatch, allocating new room", "roomId", roomID)
+			roomID = generateRoomID()
+			room, exists = rm.roomsByID[roomID]
+		}
+	}
+
+	// H7: 신규 room 생성 시에만 전역 상한을 검사(재사용/재접속은 통과).
+	if !exists && len(rm.roomsByID) >= maxRooms {
+		return "", "", "", fmt.Errorf("server room capacity reached")
+	}
+
 	code, err := rm.generateUniqueCodeLocked()
 	if err != nil {
-		return "", "", fmt.Errorf("generate room code: %w", err)
+		return "", "", "", fmt.Errorf("generate room code: %w", err)
 	}
 
 	driverPeer := &peer{
@@ -158,30 +203,43 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 		writeMu:  writeMu,
 	}
 
-	room, exists := rm.roomsByID[roomID]
 	if !exists {
 		room = &Room{
-			ID:        roomID,
-			Engineers: make(map[string]*peer),
+			ID:         roomID,
+			Engineers:  make(map[string]*peer),
+			OwnerToken: generateOwnerToken(),
 		}
 		rm.roomsByID[roomID] = room
-	} else {
-		delete(rm.roomsByCode, room.Code)
-		if room.Driver != nil && room.Driver.conn != nil {
-			room.Driver.conn.Close()
-		}
 	}
 
+	// L9: room 필드 변경은 room.mu 하에서 수행한다 — 다른 goroutine이 선행 lookup
+	// 후 room.mu를 잡고 Driver 등을 읽을 수 있어서다. 구 conn 종료는 언락 후.
+	var oldConn *websocket.Conn
+	room.mu.Lock()
+	if exists {
+		delete(rm.roomsByCode, room.Code)
+		if room.Driver != nil && room.Driver.conn != nil {
+			oldConn = room.Driver.conn
+		}
+	}
 	room.Code = code
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
 	room.Driver = driverPeer
 	room.DriverLostAt = nil
 	room.UpdatedAt = time.Now()
+	resolvedToken := room.OwnerToken
+	loggedName := room.Name
+	room.mu.Unlock()
 
 	rm.roomsByCode[code] = room
-	rm.logger.Info("room created", "roomId", roomID, "code", code, "name", room.Name)
-	return roomID, code, nil
+
+	if oldConn != nil {
+		_ = oldConn.Close()
+	}
+
+	rm.logger.Info("room created", "roomId", roomID, "code", code, "name", loggedName)
+	return roomID, code, resolvedToken, nil
 }
 
 // JoinRoom adds an engineer to an existing room.
@@ -307,7 +365,10 @@ func (rm *RoomManager) RebindEngineer(roomID, code, peerID, password string, con
 }
 
 // RejoinRoom reconnects a driver to an existing room after a transient disconnect.
-func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *sync.Mutex, roomName, password string) (string, error) {
+// Reuse requires a matching OwnerToken (H6) so a party that merely knows the
+// roomId cannot seize the room; a normal driver echoes the token it received in
+// room_created and keeps working across network blips.
+func (rm *RoomManager) RejoinRoom(roomID, ownerToken string, conn *websocket.Conn, writeMu *sync.Mutex, roomName, password string) (string, error) {
 	rm.mu.RLock()
 	room, ok := rm.roomsByID[roomID]
 	rm.mu.RUnlock()
@@ -319,17 +380,25 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 	existingEngineers := make([]*peer, 0)
 
 	room.mu.Lock()
+	// H6: 소유권 증명 없이/불일치 시 재접속(탈취) 거부.
+	if ownerToken == "" || subtle.ConstantTimeCompare([]byte(room.OwnerToken), []byte(ownerToken)) != 1 {
+		room.mu.Unlock()
+		return "", fmt.Errorf("room %s ownership verification failed", roomID)
+	}
 	if room.Driver != nil && room.Driver.conn != nil {
 		oldConn = room.Driver.conn
 	}
 
-	room.Driver = &peer{
+	// L9: 재생 루프에서 room.Driver를 언락 후 직접 읽으면 CreateRoom/RejoinRoom과
+	// 레이스가 난다. 락 보유 중 로컬(newDriver)로 캡처해 언락 후 사용한다.
+	newDriver := &peer{
 		conn:     conn,
 		role:     roleDriver,
 		roomID:   room.ID,
 		roomCode: room.Code,
 		writeMu:  writeMu,
 	}
+	room.Driver = newDriver
 	room.DriverLostAt = nil
 	room.Name = normalizeRoomName(roomName)
 	room.Password = password
@@ -348,7 +417,7 @@ func (rm *RoomManager) RejoinRoom(roomID string, conn *websocket.Conn, writeMu *
 		if eng == nil {
 			continue
 		}
-		if err := room.Driver.sendJSON(Message{
+		if err := newDriver.sendJSON(Message{
 			Type:   TypePeerJoined,
 			PeerID: eng.id,
 		}); err != nil {
@@ -496,12 +565,15 @@ func (rm *RoomManager) RemovePeer(p *peer) {
 	delete(room.Engineers, p.id)
 	engineerCount := len(room.Engineers)
 	driverLost := room.DriverLostAt != nil
+	// L9: 언락 후 room.Driver를 직접 읽으면 CreateRoom/RejoinRoom과 레이스 —
+	// 락 보유 중 로컬로 캡처해 사용한다(JoinRoom의 driverToNotify 패턴).
+	driver := room.Driver
 	room.UpdatedAt = time.Now()
 	room.mu.Unlock()
 
 	// Notify driver only if connected.
-	if !driverLost {
-		_ = room.Driver.sendJSON(Message{
+	if !driverLost && driver != nil {
+		_ = driver.sendJSON(Message{
 			Type:   TypePeerLeft,
 			PeerID: p.id,
 		})
@@ -623,16 +695,26 @@ func generate4DigitCode() string {
 	return fmt.Sprintf("%04d", n.Int64())
 }
 
-func generateRoomID() string {
-	b := make([]byte, 8)
+// randomHexToken returns nBytes of crypto/rand encoded as a lowercase hex string.
+// A rand.Read error is intentionally ignored (preserving prior call-site behavior):
+// the buffer stays zero-valued rather than failing token generation.
+func randomHexToken(nBytes int) string {
+	b := make([]byte, nBytes)
 	_, _ = rand.Read(b)
 	return fmt.Sprintf("%x", b)
 }
 
+func generateRoomID() string {
+	return randomHexToken(8)
+}
+
+// generateOwnerToken returns a 32-hex (16-byte) room ownership token from crypto/rand.
+func generateOwnerToken() string {
+	return randomHexToken(16)
+}
+
 func generatePeerID() string {
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
-	return fmt.Sprintf("%x", b)
+	return randomHexToken(4)
 }
 
 func normalizeRoomName(name string) string {
@@ -689,7 +771,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 
 	switch msg.Type {
 	case TypeRoomCreate:
-		roomID, code, err := rm.CreateRoom(conn, writeMu, msg.RoomID, msg.RoomName, msg.Password)
+		roomID, code, ownerToken, err := rm.CreateRoom(conn, writeMu, msg.RoomID, msg.RoomName, msg.Password, msg.OwnerToken)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -699,7 +781,12 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			sendErrorRaw(conn, "internal error: peer not found after room creation", writeMu)
 			return currentPeer
 		}
-		_ = p.sendJSON(Message{Type: TypeRoomCreated, RoomID: roomID, RoomCode: code, RoomName: normalizeRoomName(msg.RoomName)})
+		// H7: 새 room 확정 후 이전 peer를 정리해 고아 room 누수를 막는다
+		// (같은 room 재사용이면 포인터 정체성 가드로 무해한 no-op).
+		if currentPeer != nil && currentPeer != p {
+			rm.RemovePeer(currentPeer)
+		}
+		_ = p.sendJSON(Message{Type: TypeRoomCreated, RoomID: roomID, RoomCode: code, RoomName: normalizeRoomName(msg.RoomName), OwnerToken: ownerToken})
 		return p
 
 	case TypeRoomRejoin:
@@ -707,7 +794,7 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 			sendErrorRaw(conn, "roomId required", writeMu)
 			return currentPeer
 		}
-		code, err := rm.RejoinRoom(msg.RoomID, conn, writeMu, msg.RoomName, msg.Password)
+		code, err := rm.RejoinRoom(msg.RoomID, msg.OwnerToken, conn, writeMu, msg.RoomName, msg.Password)
 		if err != nil {
 			sendErrorRaw(conn, err.Error(), writeMu)
 			return currentPeer
@@ -716,6 +803,10 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 		if p == nil {
 			sendErrorRaw(conn, "internal error: peer not found after rejoin", writeMu)
 			return currentPeer
+		}
+		// H7: 새 세션 확정 후 이전 peer 정리 (같은 room 재접속이면 정체성 가드로 무해).
+		if currentPeer != nil && currentPeer != p {
+			rm.RemovePeer(currentPeer)
 		}
 		_ = p.sendJSON(Message{Type: TypeRoomCreated, RoomID: msg.RoomID, RoomCode: code, RoomName: normalizeRoomName(msg.RoomName)})
 		return p
@@ -754,6 +845,10 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 					sendErrorRaw(conn, "internal error: peer not found after rebind", writeMu)
 					return currentPeer
 				}
+				// H7: 새 세션 확정 후 이전 peer 정리 (고아 room 방지).
+				if currentPeer != nil && currentPeer != p {
+					rm.RemovePeer(currentPeer)
+				}
 				_ = p.sendJSON(Message{
 					Type:     TypeRoomJoined,
 					PeerID:   msg.PeerID,
@@ -782,6 +877,10 @@ func (rm *RoomManager) HandleMessage(conn *websocket.Conn, raw []byte, currentPe
 		if p == nil {
 			sendErrorRaw(conn, "internal error: peer not found after join", writeMu)
 			return currentPeer
+		}
+		// H7: 새 세션 확정 후 이전 peer 정리 (고아 room 방지).
+		if currentPeer != nil && currentPeer != p {
+			rm.RemovePeer(currentPeer)
 		}
 		_ = p.sendJSON(Message{
 			Type:     TypeRoomJoined,

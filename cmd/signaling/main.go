@@ -70,7 +70,14 @@ func main() {
 		logger.Warn("DATABASE_URL not set; ban features disabled")
 	}
 
-	roomManager := signaling.NewRoomManager(logger, banCache, banStore)
+	// TRUSTED_PROXY_CIDRS: X-Forwarded-For/X-Real-IP를 신뢰할 프록시 CIDR 집합.
+	// 미설정(기본)이면 forwarded 헤더를 신뢰하지 않고 RemoteAddr만 사용한다(H8).
+	// 이때 clientIP는 실제 클라가 아니라 공유 엣지 프록시 IP이므로 IP 자동 밴도
+	// 비활성화한다(len==0). 그렇지 않으면 밴된 닉 접속 시 공유 프록시 IP가 밴 목록에
+	// 올라가 /ws 게이트에서 전원이 차단된다. 신뢰 프록시가 설정된 경우에만 활성화.
+	trustedProxies := bandb.ParseTrustedProxies(os.Getenv("TRUSTED_PROXY_CIDRS"))
+
+	roomManager := signaling.NewRoomManager(logger, banCache, banStore, len(trustedProxies) > 0)
 	defer roomManager.Stop()
 
 	// Periodically refresh the ban cache from the DB (also reflects manual edits
@@ -148,7 +155,7 @@ func main() {
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		// IP ban gate: reject banned IPs before the WebSocket handshake (applies
 		// to both drivers and engineers — /ws is the shared entry point).
-		clientIP := bandb.ClientIP(r)
+		clientIP := bandb.ClientIP(r, trustedProxies)
 		if banCache != nil && banCache.HasIP(clientIP) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
