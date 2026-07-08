@@ -259,6 +259,10 @@ type StrategyOverlayData struct {
 	TotalLaps         int    `json:"totalLaps"`
 	TrackID           int8   `json:"trackId"`
 	PitRejoinPosition int    `json:"pitRejoinPosition"`
+	// AroundMode distinguishes what CarAhead/CarBehind hold in qualifying:
+	// "" = track neighbours (legacy), "threat" = ranked threat cars while the
+	// player is off-track (garage/pit). See buildQualifyingOverlayDataLocked.
+	AroundMode string `json:"aroundMode,omitempty"`
 
 	CarAhead  *StrategyCar `json:"carAhead,omitempty"`
 	CarBehind *StrategyCar `json:"carBehind,omitempty"`

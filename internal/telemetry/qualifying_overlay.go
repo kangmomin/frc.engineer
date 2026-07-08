@@ -414,10 +414,6 @@ func (pm *PitwallManager) buildQualifyingOverlayDataLocked() *dto.StrategyOverla
 		cars = append(cars, car)
 	}
 
-	if len(cars) < 2 {
-		return data
-	}
-
 	sort.Slice(cars, func(i, j int) bool { return cars[i].lapDistance < cars[j].lapDistance })
 
 	playerPos := -1
@@ -427,7 +423,10 @@ func (pm *PitwallManager) buildQualifyingOverlayDataLocked() *dto.StrategyOverla
 			break
 		}
 	}
-	if playerPos == -1 {
+	// 플레이어가 트랙 밖(개러지/핏)이거나 주변에 차가 없으면 앞뒤차 대신
+	// threat watch로 폴백한다 — 퀄리 막판 개러지 대기 중이 정확히 이 상태다.
+	if playerPos == -1 || len(cars) < 2 {
+		pm.fillQualifyingThreatsLocked(data, cars, playerIdx, playerPosition)
 		return data
 	}
 
@@ -448,11 +447,15 @@ func (pm *PitwallManager) buildQualifyingOverlayDataLocked() *dto.StrategyOverla
 }
 
 func buildQualifyingOverlayStrategyCar(car qualifyingOverlayCar, gapMeters int) *dto.StrategyCar {
-	tryState := evaluateQualifyingTryState(car)
+	sc := newQualifyingStrategyCar(car, evaluateQualifyingTryState(car))
+	sc.GapMeters = gapMeters
+	return sc
+}
+
+func newQualifyingStrategyCar(car qualifyingOverlayCar, tryState qualifyingTryState) *dto.StrategyCar {
 	return &dto.StrategyCar{
 		Name:         car.name,
 		Position:     car.position,
-		GapMeters:    gapMeters,
 		TireCompound: car.tireCompound,
 		TireAge:      car.tireAge,
 		LastLapMs:    car.lastLapMs,
@@ -463,5 +466,77 @@ func buildQualifyingOverlayStrategyCar(car qualifyingOverlayCar, gapMeters int) 
 		TryScore:     tryState.Score,
 		SectorDelta1: tryState.SectorDelta1Ms,
 		SectorDelta2: tryState.SectorDelta2Ms,
+	}
+}
+
+func qualifyingToneRank(tone string) int {
+	switch tone {
+	case "attack":
+		return 0
+	case "watch":
+		return 1
+	default:
+		return 2
+	}
+}
+
+// fillQualifyingThreatsLocked은 플레이어가 트랙 밖(개러지/핏)일 때 CarAhead/CarBehind
+// 슬롯을 threat watch로 채운다(AroundMode="threat"). 랭킹: 포지션 위협(내 뒤 순위) 우선 →
+// try tone(attack > watch > standby) → raw position 오름차순 → car index(결정적 tiebreak).
+// 내 뒤 순위만 내 순위를 끌어내릴 수 있으므로 tone보다 포지션 위협이 먼저다. 뒤 차량이
+// 전부 COOL이어도 표시한다 — "가장 가까운 라이벌이 안 밀고 있다"도 유효한 신호다.
+// 웹 web/src/views/qualifying/derive/threatWatch.ts와 동일 의미(데이터 소스가 달라 동일
+// 결과는 보장하지 않음).
+func (pm *PitwallManager) fillQualifyingThreatsLocked(data *dto.StrategyOverlayData, cars []qualifyingOverlayCar, playerIdx, playerPosition int) {
+	// playerIdx는 uint8 원본이라 255(관전 등)일 수 있다 — sessionHistory 고정 배열
+	// 접근 전 반드시 범위 가드. 플레이어 순위를 모르면 위협 판정이 불가능하므로 빈 표시 유지.
+	if playerIdx < 0 || playerIdx >= packets.MaxCars || playerPosition <= 0 {
+		return
+	}
+
+	type rankedThreat struct {
+		car qualifyingOverlayCar
+		try qualifyingTryState
+	}
+	candidates := make([]rankedThreat, 0, len(cars))
+	for _, car := range cars {
+		if car.idx == playerIdx || car.position <= 0 {
+			continue
+		}
+		candidates = append(candidates, rankedThreat{car: car, try: evaluateQualifyingTryState(car)})
+	}
+	if len(candidates) == 0 {
+		return
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		aThreat := a.car.position > playerPosition
+		bThreat := b.car.position > playerPosition
+		if aThreat != bThreat {
+			return aThreat
+		}
+		if ar, br := qualifyingToneRank(a.try.Tone), qualifyingToneRank(b.try.Tone); ar != br {
+			return ar < br
+		}
+		if a.car.position != b.car.position {
+			return a.car.position < b.car.position
+		}
+		return a.car.idx < b.car.idx
+	})
+
+	playerBestMs := sessionHistoryBestLapMs(pm.sessionHistory[playerIdx])
+	threatCar := func(t rankedThreat) *dto.StrategyCar {
+		sc := newQualifyingStrategyCar(t.car, t.try)
+		if t.car.bestLapMs > 0 && playerBestMs > 0 {
+			sc.PaceDeltaMs = t.car.bestLapMs - playerBestMs
+		}
+		return sc
+	}
+
+	data.AroundMode = "threat"
+	data.CarAhead = threatCar(candidates[0])
+	if len(candidates) > 1 {
+		data.CarBehind = threatCar(candidates[1])
 	}
 }
