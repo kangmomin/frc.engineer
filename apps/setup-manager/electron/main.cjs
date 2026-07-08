@@ -23,13 +23,33 @@ const settingsPath = path.join(app.getPath('userData'), 'user-settings.json');
 function readSettings() {
   try {
     return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-  } catch {
-    return {};
+  } catch (error) {
+    // 파일 없음(첫 실행)은 정상 — 빈 설정으로 시작
+    if (error && error.code === 'ENOENT') {
+      return {};
+    }
+    // 파싱 실패 등은 손상 가능성 — 백업으로 복구 시도
+    console.warn('[settings] Failed to read settings, trying backup:', error.message);
+    try {
+      return JSON.parse(fs.readFileSync(settingsPath + '.bak', 'utf-8'));
+    } catch {
+      return {};
+    }
   }
 }
 
 function writeSettings(data) {
-  fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf-8');
+  // tmp 에 쓰고 rename 으로 원자적 교체 — 쓰기 도중 크래시로 설정이 깨지는 것을 방지
+  const tmpPath = settingsPath + '.tmp';
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  try {
+    if (fs.existsSync(settingsPath)) {
+      fs.copyFileSync(settingsPath, settingsPath + '.bak');
+    }
+  } catch {
+    // 백업 실패는 치명적이지 않음
+  }
+  fs.renameSync(tmpPath, settingsPath);
 }
 
 ipcMain.handle('get-setting', (_event, key) => {
@@ -133,6 +153,7 @@ function normalizeStoredPath(value) {
 
 // ─── Sender process management ───
 let senderProcess = null;
+let isQuitting = false;
 let registeredOverlayHotkeys = {};
 
 async function postSenderToggle(kind) {
@@ -255,6 +276,27 @@ function getLegacyPackagedSenderStorageRoot() {
   return root === getDefaultSenderStorageRoot() ? null : root;
 }
 
+// data/strategy 는 extraResources 로 배포되는 정적 자산이라 마이그레이션 대상이 아님
+// (userData 로 복사되면 업데이트로 갱신된 strategy 데이터를 영구히 가린다)
+const DEPLOYED_STRATEGY_SUBDIR = path.join('data', 'strategy');
+
+function isDeployedStrategyAsset(legacyRoot, absPath) {
+  const rel = path.relative(legacyRoot, absPath);
+  return rel === DEPLOYED_STRATEGY_SUBDIR || rel.startsWith(DEPLOYED_STRATEGY_SUBDIR + path.sep);
+}
+
+// 진짜 사용자 산출물(sender-config.json, 녹화 등)이 있는지 — 배포 자산(strategy)만 있으면 false
+function hasUserArtifacts(legacyRoot, name) {
+  const dir = path.join(legacyRoot, name);
+  if (!fs.existsSync(dir)) {
+    return false;
+  }
+  if (name !== 'data') {
+    return true;
+  }
+  return fs.readdirSync(dir).some((entry) => entry !== 'strategy');
+}
+
 function migrateSenderStorageIfNeeded(targetRoot) {
   const selected = getSelectedSenderStorageRoot();
   if (selected || !targetRoot) {
@@ -267,7 +309,7 @@ function migrateSenderStorageIfNeeded(targetRoot) {
   }
 
   const names = ['data', 'logs'];
-  const hasLegacyData = names.some((name) => fs.existsSync(path.join(legacyRoot, name)));
+  const hasLegacyData = names.some((name) => hasUserArtifacts(legacyRoot, name));
   if (!hasLegacyData) {
     return;
   }
@@ -276,12 +318,25 @@ function migrateSenderStorageIfNeeded(targetRoot) {
   for (const name of names) {
     const source = path.join(legacyRoot, name);
     const destination = path.join(targetRoot, name);
-    if (!fs.existsSync(source) || fs.existsSync(destination)) {
+    if (!hasUserArtifacts(legacyRoot, name) || fs.existsSync(destination)) {
       continue;
     }
-    fs.cpSync(source, destination, { recursive: true });
+    fs.cpSync(source, destination, {
+      recursive: true,
+      filter: (src) => !isDeployedStrategyAsset(legacyRoot, src),
+    });
     console.log(`[sender] Migrated ${name} from legacy storage:`, source, '->', destination);
   }
+}
+
+// 과거 마이그레이션이 복사해 둔 배포 자산 사본을 정리 — sender 는 실행 파일 옆 자산으로 폴백한다
+function cleanupCopiedStrategyAssets() {
+  const strategyDir = path.join(getDefaultSenderStorageRoot(), DEPLOYED_STRATEGY_SUBDIR);
+  if (!fs.existsSync(strategyDir)) {
+    return;
+  }
+  fs.rmSync(strategyDir, { recursive: true, force: true });
+  console.log('[sender] Removed stale copied strategy assets:', strategyDir);
 }
 
 function getSenderStorageInfo() {
@@ -310,7 +365,7 @@ ipcMain.handle('select-directory', async (_event, defaultPath) => {
 });
 
 function startSender() {
-  if (senderProcess) {
+  if (senderProcess || isQuitting) {
     return;
   }
 
@@ -323,7 +378,13 @@ function startSender() {
   console.log('[sender] Starting:', bin);
   const cwd = path.dirname(bin);
   const senderStorageRoot = getSenderStorageInfo().effective;
-  migrateSenderStorageIfNeeded(senderStorageRoot);
+  // 마이그레이션/정리 실패가 앱 시작을 막지 않도록 방어
+  try {
+    cleanupCopiedStrategyAssets();
+    migrateSenderStorageIfNeeded(senderStorageRoot);
+  } catch (error) {
+    console.error('[sender] Storage migration failed:', error instanceof Error ? error.message : String(error));
+  }
   const env = {
     ...process.env,
     SETTINGS_PORT: '8099',
@@ -399,15 +460,26 @@ async function stopSender() {
 
 ipcMain.handle('restart-sender', async () => {
   await stopSender();
+  // stopSender 대기 중 앱 종료가 시작됐으면 재기동하지 않음
+  if (isQuitting) {
+    return;
+  }
   startSender();
 });
 
 // ─── Auto-updater ───
 function setupAutoUpdater(win) {
+  // 창이 이미 파괴된 뒤 도착하는 updater 이벤트가 예외를 던지지 않도록 가드
+  const sendStatus = (payload) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('update-status', payload);
+    }
+  };
+
   if (!autoUpdater) {
     console.warn('[updater] Auto updates disabled because electron-updater is unavailable.');
     win.webContents.once('did-finish-load', () => {
-      win.webContents.send('update-status', { status: 'unavailable' });
+      sendStatus({ status: 'unavailable' });
     });
     ipcMain.removeAllListeners('install-update');
     ipcMain.on('install-update', () => {
@@ -421,11 +493,11 @@ function setupAutoUpdater(win) {
 
   autoUpdater.on('update-available', (info) => {
     console.log('[updater] Update available:', info.version);
-    win.webContents.send('update-status', { status: 'available', version: info.version });
+    sendStatus({ status: 'available', version: info.version });
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    win.webContents.send('update-status', {
+    sendStatus({
       status: 'downloading',
       percent: Math.round(progress.percent),
     });
@@ -433,7 +505,7 @@ function setupAutoUpdater(win) {
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[updater] Update downloaded:', info.version);
-    win.webContents.send('update-status', { status: 'ready', version: info.version });
+    sendStatus({ status: 'ready', version: info.version });
   });
 
   autoUpdater.on('error', (err) => {
@@ -487,33 +559,73 @@ function createWindow() {
     win.loadFile(distIndex);
   }
 
-  setTimeout(() => { if (!win.isVisible()) win.show(); }, 3000);
+  const fallbackShowTimer = setTimeout(() => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
+  }, 3000);
+  win.once('closed', () => clearTimeout(fallbackShowTimer));
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    require('electron').shell.openExternal(url);
+    // 외부 링크는 기본 브라우저로 — http/https 스킴만 허용해 임의 스킴 실행을 차단
+    try {
+      const { protocol } = new URL(url);
+      if (protocol === 'http:' || protocol === 'https:') {
+        require('electron').shell.openExternal(url);
+      }
+    } catch {
+      // 잘못된 URL 은 무시
+    }
     return { action: 'deny' };
+  });
+
+  // 렌더러가 로컬 origin 밖으로 이동하면 원격 페이지가 preload 의 electronAPI 를 획득할 수 있어 차단
+  win.webContents.on('will-navigate', (event, targetUrl) => {
+    let allowed = false;
+    try {
+      const target = new URL(targetUrl);
+      // dev 는 Vite 서버 origin, prod 는 file:// 로컬 리소스만 허용
+      allowed = isDev ? target.origin === 'http://localhost:5173' : target.protocol === 'file:';
+    } catch {
+      allowed = false;
+    }
+    if (!allowed) event.preventDefault();
   });
 
   return win;
 }
 
 // ─── Lifecycle ───
-app.whenReady().then(() => {
-  registerOverlayHotkeys(readSettings()[OVERLAY_HOTKEYS_KEY] || {});
-  startSender();
-  const win = createWindow();
-  if (app.isPackaged) {
-    setupAutoUpdater(win);
-  }
-});
+// 중복 실행 시 sender 포트(8099)/스토리지가 충돌하므로 단일 인스턴스만 허용
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    registerOverlayHotkeys(readSettings()[OVERLAY_HOTKEYS_KEY] || {});
+    startSender();
+    const win = createWindow();
+    if (app.isPackaged) {
+      setupAutoUpdater(win);
+    }
+  });
+}
 
 app.on('window-all-closed', () => {
+  isQuitting = true;
   void stopSender().finally(() => {
     app.quit();
   });
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   void stopSender();
 });
 
