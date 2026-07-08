@@ -11,6 +11,7 @@ const PANEL_CHIPS: Array<{ key: PanelKey; label: string }> = [
   { key: 'predictor', label: 'Predictor' },
   { key: 'strategy', label: 'Strategy' },
   { key: 'weather', label: 'Weather' },
+  { key: 'tyres', label: 'Tyre Strip' },
 ];
 
 function chipStyle(active: boolean): React.CSSProperties {

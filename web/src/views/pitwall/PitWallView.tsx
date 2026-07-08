@@ -8,12 +8,14 @@ import { deriveLapCounter } from '../broadcast/derive/fieldDerivations';
 import { COL_ORDER } from './columns';
 import { deriveLeaderboardRows } from './derive/leaderboardRows';
 import { deriveMyCar } from './derive/myCar';
+import { deriveTyreDetail } from './derive/tyreDetail';
 import { deriveWeather } from './derive/weather';
 import { DisplaySettings } from './DisplaySettings';
 import { LeaderboardPanel } from './LeaderboardPanel';
 import { MyCarPanel } from './MyCarPanel';
 import { PitWallHeader } from './PitWallHeader';
 import { StrategyGuidePanel } from './StrategyGuidePanel';
+import { TyreDetailStrip } from './TyreDetailStrip';
 import { TyrePredictorPanel } from './TyrePredictorPanel';
 import { useDisplayPrefs } from './useDisplayPrefs';
 import { type RequestFn, useStrategyGuide } from './useStrategyGuide';
@@ -59,6 +61,7 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   // 각 derive 함수는 session=null/drivers=[]에 안전하므로 게이트 이전에 호출해도 무방하다.
   const rows = useMemo(() => deriveLeaderboardRows(drivers, player, is2026, session), [drivers, player, is2026, session]);
   const myCar = useMemo(() => deriveMyCar(player, drivers, session), [player, drivers, session]);
+  const tyreDetail = useMemo(() => deriveTyreDetail(player), [player]);
   const lapCounter = useMemo(() => deriveLapCounter(drivers, session), [drivers, session]);
   // WeatherPanel은 VM만 받는 순수 컴포넌트다(Spec §2 VM-only, FIX-4) — 컨테이너가 조립한다.
   const weather = useMemo(() => deriveWeather(session, prefs.weatherStep), [session, prefs.weatherStep]);
@@ -106,15 +109,20 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
         />
       )}
       <main style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 306px', gap: 11 }}>
-        <LeaderboardPanel
-          rows={rows}
-          cols={prefs.cols}
-          colW={prefs.colW}
-          is2026={is2026}
-          detail={`${drivers.length} Cars · ${activeColCount} fields · ${is2026 ? 'F1 26' : 'F1 25'}`}
-          onResizeStart={prefs.startResize}
-          onNudgeWidth={prefs.nudgeWidth}
-        />
+        <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 11 }}>
+          <LeaderboardPanel
+            rows={rows}
+            cols={prefs.cols}
+            colW={prefs.colW}
+            is2026={is2026}
+            detail={`${drivers.length} Cars · ${activeColCount} fields · ${is2026 ? 'F1 26' : 'F1 25'}`}
+            onResizeStart={prefs.startResize}
+            onNudgeWidth={prefs.nudgeWidth}
+          />
+          {prefs.panels.tyres && tyreDetail && (
+            <TyreDetailStrip detail={tyreDetail} driverName={player ? player.name : '—'} />
+          )}
+        </div>
         <aside style={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 9, overflowY: 'auto' }}>
           {prefs.panels.myCar && <MyCarPanel car={myCar} detail={player ? player.name : '—'} />}
           {prefs.panels.predictor && <TyrePredictorPanel player={player} />}
