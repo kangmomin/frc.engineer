@@ -8,7 +8,7 @@ import { moveVsStart, useRaceMetaStore } from '../../store/raceMetaStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { codeFromDriverName, deriveDriverCodes } from '../../utils/driverCodes';
 import { formatLapTime } from '../../utils/formatters';
-import { formatGapToLeader, formatInterval, getRaceStatus, getTrackCondition } from '../../utils/raceDisplay';
+import { formatFuelMargin, formatGapToLeader, formatInterval, getRaceStatus, getTrackCondition } from '../../utils/raceDisplay';
 import { BroadcastHeader } from './BroadcastHeader';
 import { FieldStatusPanel } from './FieldStatusPanel';
 import { IssueFeedPanel, type IssueItem } from './IssueFeedPanel';
@@ -96,6 +96,8 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
 
   const orderRows: OrderRow[] = drivers.map((d, i) => {
     const isLeader = d.position === 1;
+    // World feed 는 전 차량 연료를 노출한다(피트월과 달리 팀 게이팅 없음).
+    const fuel = formatFuelMargin(d.fuelRemainingLaps);
     return {
       index: d.index,
       pos: String(d.position).padStart(2, '0'),
@@ -109,6 +111,8 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
       tyre: getTyreShortLabel(d.tireCompound),
       tyreColor: getTyreColor(d.tireCompound),
       age: d.tireAge,
+      fuel: fuel.text,
+      fuelColor: fuel.color,
       issue: deriveDriverIssue(d),
       rowBg: i % 2 ? 'rgba(255,255,255,.015)' : 'transparent',
     };
@@ -184,7 +188,7 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
         activeVersion={is2026 ? 26 : 25}
         status={raceStatus}
       />
-      <main style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '376px minmax(0,1fr) 366px', gap: 11 }}>
+      <main style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '430px minmax(0,1fr) 366px', gap: 11 }}>
         <RunningOrderPanel rows={orderRows} detail={runningOrderDetail} />
         <section style={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 11 }}>
           <LiveBattlesPanel cards={battleCards} detail={`${battleCards.length} on track`} />

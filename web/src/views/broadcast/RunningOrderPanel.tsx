@@ -1,7 +1,7 @@
 import { PanelTitle } from '../../ui';
 import type { DriverIssue } from './derive/fieldDerivations';
 
-const GRID = '26px 40px minmax(0,1fr) 62px 52px 50px';
+const GRID = '26px 40px minmax(0,1fr) 62px 52px 50px 46px';
 
 const ISSUE_COLOR: Record<Exclude<DriverIssue, null>, string> = {
   pit: 'var(--accent-cyan)',
@@ -29,6 +29,8 @@ export interface OrderRow {
   tyre: string;
   tyreColor: string;
   age: number;
+  fuel: string;
+  fuelColor: string;
   issue: DriverIssue;
   rowBg: string;
 }
@@ -46,6 +48,7 @@ const HEAD: Array<{ label: string; align?: 'right' | 'center' }> = [
   { label: 'Leader', align: 'right' },
   { label: 'Int', align: 'right' },
   { label: 'Tyre', align: 'center' },
+  { label: 'Fuel', align: 'right' },
 ];
 
 export function RunningOrderPanel({ rows, detail }: { rows: OrderRow[]; detail: string }) {
@@ -77,6 +80,7 @@ export function RunningOrderPanel({ rows, detail }: { rows: OrderRow[]; detail: 
                 {d.tyre}
                 <span style={{ fontSize: 9.5, color: 'var(--text-muted)', fontWeight: 600 }}> {d.age}</span>
               </span>
+              <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 11.5, color: d.fuelColor, textAlign: 'right' }}>{d.fuel}</span>
             </div>
           );
         })}
