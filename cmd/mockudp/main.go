@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"frc.engineer/internal/packets"
+	"frc.engineer/internal/tracks"
 )
 
 //go:embed all:recordings
@@ -133,19 +134,21 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 		fmt.Println("╔══════════════════════════════════════════╗")
 		fmt.Printf("║    FRC Mock UDP Sender %-18s║\n", mockudpVersion)
 		fmt.Printf("║       Target: %-26s ║\n", addr)
-		fmt.Println("╠══════════════════════════════════════════╣")
-		fmt.Println("║  1. Simulate (synthetic data)            ║")
-
-		for i, rec := range pageItems {
-			st := rec.sessionType
-			size := fmt.Sprintf("%.1fMB", float64(rec.size)/(1024*1024))
-			fmt.Printf("║  %d. %-30s %5s ║\n", i+2, st, size)
+		fmt.Println("╚══════════════════════════════════════════╝")
+		fmt.Println("  1. Simulate (synthetic data)")
+		if len(pageItems) > 0 {
+			fmt.Println("     ── name | session | track | length | size ──")
 		}
 
-		fmt.Printf("║  S. Speed (current: %.1fx)               ║\n", speed)
-		fmt.Printf("║  L. Loop  (current: %-5v)               ║\n", loop)
-		fmt.Println("║  0. Exit                                ║")
-		fmt.Println("╚══════════════════════════════════════════╝")
+		// 보이는 페이지 항목만 meta()로 스캔(캐시됨) — race/track/length/size 표시.
+		for i, rec := range pageItems {
+			size := fmt.Sprintf("%.1fMB", float64(rec.size)/(1024*1024))
+			fmt.Printf("  %d. %s\n", i+2, formatRecordingRow(rec.name, rec.meta(), size))
+		}
+
+		fmt.Printf("  S. Speed (current: %.1fx)\n", speed)
+		fmt.Printf("  L. Loop  (current: %v)\n", loop)
+		fmt.Println("  0. Exit")
 
 		if cleanup.deletedCount > 0 {
 			fmt.Printf("Cleaned %d recordings under 30MB (%.1f MB freed)\n", cleanup.deletedCount, float64(cleanup.deletedBytes)/(1024*1024))
@@ -240,7 +243,6 @@ func runInteractiveMenu(conn net.Conn, addr string, hz, laps int, speed float64,
 type recordingEntry struct {
 	name         string
 	size         int64
-	sessionType  string
 	path         string
 	embeddedPath string
 	paths        []string // 여러 raw.bin을 순서대로 이어붙여 재생 (test-sets 시나리오 병합용)
@@ -305,7 +307,6 @@ func listRecordings() ([]recordingEntry, cleanupSummary) {
 		entries = append(entries, recordingEntry{
 			name:         name,
 			size:         info.Size(),
-			sessionType:  extractSessionTypeFromFS(embeddedRecordings, path),
 			embeddedPath: path,
 		})
 		return nil
@@ -331,10 +332,9 @@ func listRecordings() ([]recordingEntry, cleanupSummary) {
 			}
 			seen[name] = struct{}{}
 			entries = append(entries, recordingEntry{
-				name:        name,
-				size:        info.Size(),
-				path:        rawPath,
-				sessionType: extractSessionTypeFromFile(rawPath),
+				name: name,
+				size: info.Size(),
+				path: rawPath,
 			})
 		}
 	}
@@ -400,10 +400,9 @@ func collectTestSetScenarios(roots []string, seen map[string]struct{}) []recordi
 			}
 			seen[key] = struct{}{}
 			entries = append(entries, recordingEntry{
-				name:        s.Name(),
-				size:        total,
-				sessionType: s.Name(), // 표시 라벨 = 시나리오명 (Race 2종 구분)
-				paths:       paths,
+				name:  s.Name(), // 시나리오명 (메뉴 표시 라벨 + meta 앞에 노출)
+				size:  total,
+				paths: paths,
 			})
 		}
 	}
@@ -430,10 +429,9 @@ func collectDiskRecordings(root string, seen map[string]struct{}) []recordingEnt
 		}
 		seen[name] = struct{}{}
 		entries = append(entries, recordingEntry{
-			name:        name,
-			size:        info.Size(),
-			path:        path,
-			sessionType: extractSessionTypeFromFile(path),
+			name: name,
+			size: info.Size(),
+			path: path,
 		})
 		return nil
 	})
@@ -519,10 +517,41 @@ func paginateRecordings(entries []recordingEntry, page, pageSize int) ([]recordi
 	return entries[start:end], page, totalPages
 }
 
-// extractSessionType scans length-prefixed packets to find the first Session packet
-// and returns a human-readable session type label.
-func extractSessionTypeFromReader(r io.Reader) string {
-	var lenBuf [4]byte
+// recordingMeta는 메뉴에서 레코딩을 미리 식별하기 위한 스캔 결과다.
+type recordingMeta struct {
+	sessionType string  // "Race"/"Q3"/… (미상 "?")
+	trackName   string  // 트랙 표시명 (미상 "")
+	durSec      float32 // 캡처된 sessionTime span(초)
+	hasDur      bool
+}
+
+// recordingMetaCache는 fingerprint(경로|크기|수정시각)별 메타를 프로세스 수명 동안 캐시한다.
+// listRecordings가 메뉴 redraw마다 호출되므로, 캐시가 없으면 매 redraw 전량 재스캔이 된다.
+// 메뉴는 단일 goroutine이라 별도 동기화는 불필요.
+var recordingMetaCache = map[string]recordingMeta{}
+
+// metaAccum은 여러 파일(test-sets 병합)에 걸쳐 세션 타입/트랙/sessionTime span을 누적한다.
+type metaAccum struct {
+	sessionType string
+	trackName   string
+	haveType    bool
+	minT, maxT  float32
+	haveSpan    bool
+}
+
+func isPlausibleSessionTime(t float32) bool {
+	f := float64(t)
+	return !math.IsNaN(f) && !math.IsInf(f, 0) && f >= 0 && f < 100000
+}
+
+// scan은 길이 프리픽스 스트림을 1회 통과하며 sessionTime span과 (첫 Session 패킷의)
+// 세션 타입/트랙을 누적한다. payload는 io.Seeker면 Seek로, 아니면 discard-copy로 건너뛴다.
+func (a *metaAccum) scan(r io.Reader) {
+	seeker, canSeek := r.(io.Seeker)
+	var (
+		lenBuf [4]byte
+		head   [42]byte // sessionTime@15:19, Session 필드@32..41 커버
+	)
 	for {
 		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
 			break
@@ -531,38 +560,166 @@ func extractSessionTypeFromReader(r io.Reader) string {
 		if pktLen == 0 || pktLen > 65535 {
 			break
 		}
-		pkt := make([]byte, pktLen)
-		if _, err := io.ReadFull(r, pkt); err != nil {
+		n := int(pktLen)
+		if n > len(head) {
+			n = len(head)
+		}
+		if _, err := io.ReadFull(r, head[:n]); err != nil {
 			break
 		}
-		// PacketID at offset 6, Session = 1
-		if len(pkt) > 35 && pkt[6] == PacketIDSession {
-			return sessionTypeLabel(pkt[35]) // sessionTypeOffset = PacketHeaderSize + 6 = 35
+		// sessionTime(float32 LE @15) — 모든 패킷 헤더에 존재.
+		if n >= 19 {
+			t := math.Float32frombits(binary.LittleEndian.Uint32(head[15:19]))
+			if isPlausibleSessionTime(t) {
+				if !a.haveSpan || t < a.minT {
+					a.minT = t
+				}
+				if !a.haveSpan || t > a.maxT {
+					a.maxT = t
+				}
+				a.haveSpan = true
+			}
+		}
+		// 첫 Session 패킷(PacketID@6 == 1) → 세션 타입 + 트랙.
+		if !a.haveType && n > 36 && head[6] == PacketIDSession {
+			a.sessionType = sessionTypeLabel(head[35]) // sessionTypeOffset = 29+6
+			format := binary.LittleEndian.Uint16(head[0:2])
+			// 미상 트랙("Unknown")은 빈 값으로 두어 표시에서 생략한다.
+			if name := tracks.TrackName(packets.CanonicalTrackID(format, int8(head[36]))); name != "Unknown" {
+				a.trackName = name
+			}
+			a.haveType = true
+		}
+		if rest := int64(pktLen) - int64(n); rest > 0 {
+			if canSeek {
+				if _, err := seeker.Seek(rest, io.SeekCurrent); err != nil {
+					break
+				}
+			} else if _, err := io.CopyN(io.Discard, r, rest); err != nil {
+				break
+			}
 		}
 	}
-	return "?"
 }
 
-func extractSessionType(data []byte) string {
-	return extractSessionTypeFromReader(bytes.NewReader(data))
-}
-
-func extractSessionTypeFromFile(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return "?"
+func (a *metaAccum) result() recordingMeta {
+	m := recordingMeta{sessionType: a.sessionType, trackName: a.trackName}
+	// 실제 span(maxT > minT)일 때만 길이 확정. 전 패킷 sessionTime이 동일(예: 전부 0,
+	// 세션 클럭 미시작)이면 길이 미상("--:--")으로 둔다.
+	if a.haveSpan && a.maxT > a.minT {
+		m.durSec = a.maxT - a.minT
+		m.hasDur = true
 	}
-	defer f.Close()
-	return extractSessionTypeFromReader(f)
+	return m
 }
 
-func extractSessionTypeFromFS(fsys fs.FS, path string) string {
-	f, err := fsys.Open(path)
-	if err != nil {
-		return "?"
+// scanRecordingMeta는 단일 리더를 스캔한다(유닛 테스트/단일 소스용).
+func scanRecordingMeta(r io.Reader) recordingMeta {
+	var a metaAccum
+	a.scan(r)
+	return a.result()
+}
+
+// meta는 fingerprint 캐시를 거쳐 레코딩 메타를 반환한다(보이는 페이지 항목만 lazy 계산).
+func (r recordingEntry) meta() recordingMeta {
+	key := r.metaKey()
+	if m, ok := recordingMetaCache[key]; ok {
+		return m
 	}
-	defer f.Close()
-	return extractSessionTypeFromReader(f)
+	m := r.computeMeta()
+	recordingMetaCache[key] = m
+	return m
+}
+
+func fingerprint(path string) string {
+	if info, err := os.Stat(path); err == nil {
+		return fmt.Sprintf("%s|%d:%d", path, info.Size(), info.ModTime().UnixNano())
+	}
+	return path + "|?"
+}
+
+func (r recordingEntry) metaKey() string {
+	switch {
+	case len(r.paths) > 0:
+		parts := make([]string, len(r.paths))
+		for i, p := range r.paths {
+			parts[i] = fingerprint(p)
+		}
+		return "paths:" + strings.Join(parts, ";")
+	case r.path != "":
+		return "path:" + fingerprint(r.path)
+	case r.embeddedPath != "":
+		return fmt.Sprintf("embed:%s|%d", r.embeddedPath, r.size)
+	default:
+		return fmt.Sprintf("size:%d", r.size)
+	}
+}
+
+func (r recordingEntry) computeMeta() recordingMeta {
+	var a metaAccum
+	switch {
+	case len(r.paths) > 0:
+		for _, p := range r.paths {
+			f, err := os.Open(p)
+			if err != nil {
+				continue
+			}
+			a.scan(f)
+			f.Close()
+		}
+	case r.path != "":
+		f, err := os.Open(r.path)
+		if err != nil {
+			return recordingMeta{}
+		}
+		defer f.Close()
+		a.scan(f)
+	case r.embeddedPath != "":
+		f, err := embeddedRecordings.Open(r.embeddedPath)
+		if err != nil {
+			return recordingMeta{}
+		}
+		defer f.Close()
+		a.scan(f)
+	}
+	return a.result()
+}
+
+// formatDuration은 캡처 길이를 mm:ss(1시간 이상은 h:mm:ss), 미상은 "--:--"로 표기한다.
+func formatDuration(m recordingMeta) string {
+	if !m.hasDur {
+		return "--:--"
+	}
+	total := int(m.durSec + 0.5)
+	if h := total / 3600; h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, (total%3600)/60, total%60)
+	}
+	return fmt.Sprintf("%d:%02d", total/60, total%60)
+}
+
+func truncateLabel(s string, n int) string {
+	rs := []rune(s)
+	if len(rs) <= n {
+		return s
+	}
+	if n <= 1 {
+		return string(rs[:n])
+	}
+	return string(rs[:n-1]) + "…"
+}
+
+// formatRecordingRow는 메뉴 한 줄을 "name | type | track | mm:ss | size"로 조립한다.
+// 미상(빈/"?") 필드는 생략해 잡음을 줄인다.
+func formatRecordingRow(name string, m recordingMeta, size string) string {
+	parts := []string{truncateLabel(name, 24)}
+	if m.sessionType != "" && m.sessionType != "?" {
+		parts = append(parts, m.sessionType)
+	}
+	if m.trackName != "" {
+		parts = append(parts, truncateLabel(m.trackName, 18))
+	}
+	parts = append(parts, formatDuration(m), size)
+	return strings.Join(parts, " | ")
 }
 
 func sessionTypeLabel(v byte) string {
