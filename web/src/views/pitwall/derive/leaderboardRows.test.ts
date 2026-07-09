@@ -314,21 +314,42 @@ describe('deriveLeaderboardRows', () => {
     expect(rows[0].stintDots.map((s) => s.name)).toEqual(['Soft', 'Medium']);
   });
 
-  it('fuel: signed laps margin; negative is red; near-zero is unsigned "0.0" (no "-0.0")', () => {
-    const spare = makeDriver({ index: 0, position: 1, fuelRemainingLaps: 1.24 });
-    const short = makeDriver({ index: 1, position: 2, fuelRemainingLaps: -0.3 });
-    const nearZero = makeDriver({ index: 2, position: 3, fuelRemainingLaps: -0.02 });
-    const exactZero = makeDriver({ index: 3, position: 4, fuelRemainingLaps: 0 });
-    const rows = deriveLeaderboardRows([spare, short, nearZero, exactZero], null, false, null);
+  // Fuel 포맷 매트릭스(부호/red/near-zero/0)는 raceDisplay.test.ts(formatFuelMargin)에서 검증한다.
+  // 여기서는 행 파이프라인 배선 + 팀 게이팅(타팀 연료는 World feed에서만)을 검증한다.
+  it('fuel: shown (formatted) for the player team; hidden "—" for other teams', () => {
+    const player = makeDriver({ index: 0, position: 1, teamId: 5, fuelRemainingLaps: 1.24 });
+    const mate = makeDriver({ index: 1, position: 2, teamId: 5, fuelRemainingLaps: -0.3 });
+    const rival = makeDriver({ index: 2, position: 3, teamId: 9, fuelRemainingLaps: 2.0 });
+    const rows = deriveLeaderboardRows([player, mate, rival], player, false, null);
+    // 내 차 + 팀메이트: 포맷된 마진 (음수는 red)
     expect(rows.find((r) => r.index === 0)!.fuel).toBe('+1.2');
-    const s = rows.find((r) => r.index === 1)!;
-    expect(s.fuel).toBe('-0.3');
-    expect(s.fuelColor).toBe('var(--accent-red)');
-    expect(rows.find((r) => r.index === 2)!.fuel).toBe('0.0');
-    // Exactly 0 is unsigned "0.0" (never "-0.0"/"+0.0") and not flagged red.
-    const z = rows.find((r) => r.index === 3)!;
-    expect(z.fuel).toBe('0.0');
-    expect(z.fuelColor).not.toBe('var(--accent-red)');
+    const m = rows.find((r) => r.index === 1)!;
+    expect(m.fuel).toBe('-0.3');
+    expect(m.fuelColor).toBe('var(--accent-red)');
+    // 타팀: 가려짐
+    const rv = rows.find((r) => r.index === 2)!;
+    expect(rv.fuel).toBe('—');
+    expect(rv.fuelColor).toBe('var(--text-muted)');
+  });
+
+  it('fuel: no player → all hidden; sentinel team fan-out (>2 same teamId) exposes only own car', () => {
+    // player 없음: 전 차량 가려짐
+    const none = deriveLeaderboardRows(
+      [makeDriver({ index: 0, position: 1, fuelRemainingLaps: 1.2 })],
+      null,
+      false,
+      null,
+    );
+    expect(none[0].fuel).toBe('—');
+
+    // 같은 teamId(255) 3대 이상 = 미해결 fan-out → 내 차만 노출, 나머지는 '—'
+    const player = makeDriver({ index: 0, position: 1, teamId: 255, fuelRemainingLaps: 1.2 });
+    const a = makeDriver({ index: 1, position: 2, teamId: 255, fuelRemainingLaps: 2.0 });
+    const b = makeDriver({ index: 2, position: 3, teamId: 255, fuelRemainingLaps: 3.0 });
+    const rows = deriveLeaderboardRows([player, a, b], player, false, null);
+    expect(rows.find((r) => r.index === 0)!.fuel).toBe('+1.2');
+    expect(rows.find((r) => r.index === 1)!.fuel).toBe('—');
+    expect(rows.find((r) => r.index === 2)!.fuel).toBe('—');
   });
 
   it('bestLap: session-best (positive) is purple; all-zero early frames are not', () => {

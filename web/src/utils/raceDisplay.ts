@@ -76,6 +76,20 @@ export function formatInterval(driver: DriverInfo, isLeader: boolean): string {
   return `+${(driver.deltaToCarInFront / 1000).toFixed(1)}`;
 }
 
+/** Fuel margin in laps. +N = spare, −N = short. Exact/near-zero renders unsigned
+ * "0.0" (never "-0.0") as a valid on-target reading; negative is red. Pit Wall(내 팀
+ * 한정 노출)과 World feed가 동일 포맷을 공유해 두 뷰의 연료 표기가 어긋나지 않게 한다. */
+export function formatFuelMargin(laps: number): { text: string; color: string } {
+  if (!Number.isFinite(laps) || Math.abs(laps) < 0.05) {
+    return { text: '0.0', color: 'var(--text-secondary)' };
+  }
+  const sign = laps > 0 ? '+' : '-';
+  return {
+    text: `${sign}${Math.abs(laps).toFixed(1)}`,
+    color: laps < 0 ? 'var(--accent-red)' : 'var(--text-secondary)',
+  };
+}
+
 export interface WeatherCondition {
   label: string;
   tone: 'dry' | 'mixed' | 'wet';

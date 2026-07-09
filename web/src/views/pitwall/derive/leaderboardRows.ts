@@ -3,7 +3,7 @@ import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompound
 import type { DriverInfo, PenaltyLogEntry, SessionInfo } from '../../../types/telemetry';
 import { deriveDriverCodes } from '../../../utils/driverCodes';
 import { formatLapTime } from '../../../utils/formatters';
-import { driverCanArmDrs, formatInterval, getSectorFlag } from '../../../utils/raceDisplay';
+import { driverCanArmDrs, formatFuelMargin, formatInterval, getSectorFlag } from '../../../utils/raceDisplay';
 
 /**
  * Pit Wall 리더보드 행 파생. legacy CockpitDashboard.tsx(byte-frozen)의 순수 헬퍼를
@@ -239,19 +239,15 @@ function ersCell(driver: DriverInfo): { pct: string; width: string; color: strin
   };
 }
 
-/** Fuel margin in laps (+ = spare, − = short). Exact 0.0 is a valid "on-target"
- * reading (non-omitempty), so it is shown, not dashed; near-zero renders unsigned
- * "0.0" to avoid a misleading "-0.0". */
-function fuelCell(driver: DriverInfo): { text: string; color: string } {
-  const v = driver.fuelRemainingLaps;
-  if (!Number.isFinite(v) || Math.abs(v) < 0.05) {
-    return { text: '0.0', color: 'var(--text-secondary)' };
-  }
-  const sign = v > 0 ? '+' : '-';
-  return {
-    text: `${sign}${Math.abs(v).toFixed(1)}`,
-    color: v < 0 ? 'var(--accent-red)' : 'var(--text-secondary)',
-  };
+/**
+ * 연료는 경쟁상 민감 정보라 피트월에서는 내 팀(내 차 + 팀메이트)만 노출하고,
+ * 타팀은 '—'로 가린다(전 차량 연료는 World feed에서만). teamId 255(무팀)·미해결
+ * 0-fill 로 같은 id 가 3대 이상 뭉치면 sentinel fan-out 이므로 내 차만 노출한다.
+ */
+function isFuelVisible(driver: DriverInfo, player: DriverInfo | null, teamResolved: boolean): boolean {
+  if (player == null) return false;
+  if (driver.index === player.index) return true; // 내 차는 항상
+  return teamResolved && driver.teamId === player.teamId; // 팀메이트는 팀이 sane(≤2)일 때만
 }
 
 function gapToYouCell(driver: DriverInfo, isPlayer: boolean): { text: string; color: string } {
@@ -340,6 +336,12 @@ export function deriveLeaderboardRows(
   // and shared with the World feed for consistent codes.
   const codes = deriveDriverCodes(drivers);
 
+  // Fuel 가시성용 팀 사이즈 가드(F1 = 팀당 2대). player 팀 id 를 공유하는 차가 정확히
+  // 1~2대일 때만 "실제 팀"으로 신뢰하고 팀메이트 연료를 노출한다. 255(무팀)·미해결
+  // 0-fill 로 다수가 같은 id 를 공유하면(>2) sentinel fan-out 이라 내 차만 노출한다.
+  const teamCount = player == null ? 0 : drivers.filter((d) => d.teamId === player.teamId).length;
+  const teamResolved = teamCount >= 1 && teamCount <= 2;
+
   return drivers.map((driver, i) => {
     const isPlayer = player != null && driver.index === player.index;
     const isLeader = driver.position === 1;
@@ -352,7 +354,9 @@ export function deriveLeaderboardRows(
     const pit = pitCell(driver);
     const sector = deriveSectorCells(driver, session);
     const dmg = damageCell(driver);
-    const fuel = fuelCell(driver);
+    const fuel = isFuelVisible(driver, player, teamResolved)
+      ? formatFuelMargin(driver.fuelRemainingLaps)
+      : { text: DASH, color: 'var(--text-muted)' };
     const isFastestLap = fastestMs != null && driver.lastLapTime > 0 && driver.lastLapTime === fastestMs;
     const isSessionBest = bestFastestMs != null && driver.bestLapTime > 0 && driver.bestLapTime === bestFastestMs;
     // Full name (uppercased in the panel) with a code/CAR fallback — the backend

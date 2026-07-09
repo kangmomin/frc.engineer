@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DriverInfo, SessionInfo } from '../types/telemetry';
 import {
   driverCanArmDrs,
+  formatFuelMargin,
   formatGapToLeader,
   formatInterval,
   getRaceStatus,
@@ -167,5 +168,31 @@ describe('driverCanArmDrs', () => {
     expect(driverCanArmDrs(makeDriver({ overtakeAvailable: true, deltaToCarInFront: 5000 }), true)).toBe(true);
     expect(driverCanArmDrs(makeDriver({ overtakeAvailable: false, deltaToCarInFront: 10 }), true)).toBe(false);
     expect(driverCanArmDrs(makeDriver({ deltaToCarInFront: 10 }), true)).toBe(false);
+  });
+});
+
+describe('formatFuelMargin', () => {
+  it('positive margin is signed with one decimal and not red', () => {
+    const r = formatFuelMargin(1.24);
+    expect(r.text).toBe('+1.2');
+    expect(r.color).not.toBe('var(--accent-red)');
+  });
+
+  it('negative margin is signed and red', () => {
+    const r = formatFuelMargin(-0.3);
+    expect(r.text).toBe('-0.3');
+    expect(r.color).toBe('var(--accent-red)');
+  });
+
+  it('near-zero and exact zero render unsigned "0.0" (never "-0.0"), not red', () => {
+    expect(formatFuelMargin(-0.02).text).toBe('0.0');
+    const z = formatFuelMargin(0);
+    expect(z.text).toBe('0.0');
+    expect(z.color).not.toBe('var(--accent-red)');
+  });
+
+  it('non-finite input falls back to "0.0"', () => {
+    expect(formatFuelMargin(Number.NaN).text).toBe('0.0');
+    expect(formatFuelMargin(Number.POSITIVE_INFINITY).text).toBe('0.0');
   });
 });
