@@ -1,5 +1,14 @@
 # frc.engineer Project Guide
 
+## Decision History (`history/`)
+
+수정이 아닌 **결정**(리뷰 finding 채택/기각, 설계 트레이드오프, 하위호환 정책, 컨벤션 채택)이
+내려지면 `history/YYYYMMDD-<kebab-case-주제>.md` 로 기록한다. 형식·템플릿은 `history/README.md`를 따른다.
+
+- 기록 대상: 판단이 개입된 결정 + 그 근거 + 결정에 따라 진행한 수정(커밋)
+- 기록 제외: 단순 버그 수정, 오타, 기계적 리팩토링
+- 동일 이슈가 후속 단계에서 재제기되면 해당 로그를 인용하고 즉시 종결한다
+
 ## Release & Deploy
 
 ### 산출물 구분
