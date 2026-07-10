@@ -246,11 +246,14 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
         setFrameIndex(0);
 
         if (mergedFrames[0]) {
+          // playbackActive를 먼저 올려야 liveSnapshot이 (리플레이 프레임이 아닌)
+          // 실제 라이브 상태를 캡처하고, applyReplayFrame의 동기 구독자
+          // (raceMetaTracker)가 리플레이 프레임을 라이브로 오인해 ingest하지 않는다.
+          setPlaybackActive(true);
           applyReplayFrame({
             pitwall: mergedFrames[0].pitwall,
             raceControl: mergedFrames[0].raceControl,
           });
-          setPlaybackActive(true);
         } else {
           setPlaybackActive(false);
         }
@@ -288,11 +291,11 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     }
 
     const frame = replayFrames[safeIndex];
+    setPlaybackActive(true); // applyReplayFrame보다 먼저 — 스냅샷/ingest 오염 방지 (위 주석 참조)
     applyReplayFrame({
       pitwall: frame.pitwall,
       raceControl: frame.raceControl,
     });
-    setPlaybackActive(true);
   }, [activeMode, applyReplayFrame, frameIndex, replayFrames, setPlaybackActive]);
 
   useEffect(() => {
