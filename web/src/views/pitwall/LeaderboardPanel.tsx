@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatPenaltyEntry } from '../../constants/penalties';
+import { formatPenaltyEntry, summarizePenalties } from '../../constants/penalties';
 import { PanelTitle } from '../../ui';
 import { COL_ALIGN, COL_ORDER, MAX_COL_WIDTH, MIN_COL_WIDTH, columnHeadLabel, type ColumnKey, type WidthKey } from './columns';
 import type { LeaderRow } from './derive/leaderboardRows';
@@ -18,6 +18,7 @@ const raceFont: React.CSSProperties = { fontFamily: 'var(--font-racing)', fontWe
 
 interface PenaltyPopover {
   index: number;
+  name: string;
   entries: PenaltyLogEntry[];
   x: number;
   y: number;
@@ -53,6 +54,7 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
     const above = rect.top > window.innerHeight / 2;
     setPenaltyPopover({
       index: row.index,
+      name: row.name,
       entries: row.penaltyLog,
       x: rect.left + rect.width / 2,
       y: above ? rect.top : rect.bottom,
@@ -248,36 +250,59 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, onResizeSta
           </div>
         </div>
       </div>
-      {penaltyPopover && (
-        <div
-          role="tooltip"
-          style={{
-            position: 'fixed',
-            left: penaltyPopover.x,
-            top: penaltyPopover.y,
-            transform: `translate(-50%, ${penaltyPopover.above ? 'calc(-100% - 8px)' : '8px'})`,
-            zIndex: 50,
-            maxWidth: 320,
-            background: 'var(--bg-panel)',
-            border: '1px solid var(--bg-panel-border)',
-            borderRadius: 'var(--radius-lg)',
-            boxShadow: 'var(--shadow-panel)',
-            padding: '9px 11px',
-            pointerEvents: 'none',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-          }}
-        >
-          <div style={{ ...headLabel, marginBottom: 2 }}>Penalties</div>
-          {penaltyPopover.entries.map((entry, i) => (
-            <div key={i} style={{ fontSize: 11.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              {formatPenaltyEntry(entry)}
-            </div>
-          ))}
-        </div>
-      )}
+      {penaltyPopover && <PenaltyDetailCard popover={penaltyPopover} />}
     </section>
+  );
+}
+
+/**
+ * 페널티 셀 호버/포커스 시 뜨는 상세 카드. 상단에 전체 요약(건수·총 타임페널티·받은 랩),
+ * 하단에 랩 오름차순 항목별 상세를 보여준다. 툴팁 성격이라 pointerEvents는 비활성.
+ */
+function PenaltyDetailCard({ popover }: { popover: PenaltyPopover }) {
+  const summary = summarizePenalties(popover.entries);
+  const sorted = [...popover.entries].sort((a, b) => a.lap - b.lap);
+  return (
+    <div
+      role="tooltip"
+      style={{
+        position: 'fixed',
+        left: popover.x,
+        top: popover.y,
+        transform: `translate(-50%, ${popover.above ? 'calc(-100% - 8px)' : '8px'})`,
+        zIndex: 50,
+        minWidth: 240,
+        maxWidth: 360,
+        background: 'var(--bg-panel)',
+        border: '1px solid var(--bg-panel-border)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-panel)',
+        padding: '10px 12px',
+        pointerEvents: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div style={headLabel}>Penalties · {popover.name}</div>
+      {/* 전체 요약: 건수 · 총 타임페널티 · 받은 랩 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ ...raceFont, fontSize: 13, color: 'var(--text-primary)' }}>
+          {summary.count} {summary.count === 1 ? 'penalty' : 'penalties'}
+          {summary.totalSeconds > 0 ? ` · ${summary.totalSeconds}s total` : ''}
+        </div>
+        {summary.laps.length > 0 && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Laps {summary.laps.join(', ')}</div>
+        )}
+      </div>
+      <div style={{ height: 1, background: 'var(--bg-panel-border)' }} />
+      {/* 항목별 상세 (랩 오름차순) */}
+      {sorted.map((entry, i) => (
+        <div key={i} style={{ fontSize: 11.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+          {formatPenaltyEntry(entry)}
+        </div>
+      ))}
+    </div>
   );
 }
 

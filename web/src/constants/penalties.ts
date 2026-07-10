@@ -100,3 +100,19 @@ export function formatPenaltyEntry(entry: PenaltyLogEntry): string {
   const timePart = entry.sec && entry.sec > 0 ? ` (${entry.sec}s)` : '';
   return `L${entry.lap} · ${pen}${timePart} · ${infringementTypeLabel(entry.inf)}`;
 }
+
+export interface PenaltySummary {
+  /** 총 페널티/경고 건수. */
+  count: number;
+  /** 타임 페널티 초의 합(sec가 있는 항목만). */
+  totalSeconds: number;
+  /** 페널티를 받은 랩(중복 제거, 오름차순). */
+  laps: number[];
+}
+
+/** 페널티 로그의 전체 요약: 건수·총 타임페널티·받은 랩(distinct). 호버 상세의 헤더용. */
+export function summarizePenalties(entries: PenaltyLogEntry[]): PenaltySummary {
+  const totalSeconds = entries.reduce((sum, e) => sum + (e.sec && e.sec > 0 ? e.sec : 0), 0);
+  const laps = [...new Set(entries.map((e) => e.lap))].sort((a, b) => a - b);
+  return { count: entries.length, totalSeconds, laps };
+}
