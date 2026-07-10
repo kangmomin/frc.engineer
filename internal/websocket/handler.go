@@ -12,13 +12,19 @@ import (
 )
 
 // allowedOrigins는 same-host/localhost 외에 텔레메트리 WS 핸드셰이크에서 추가로
-// 허용할 브라우저 Origin 목록이다. 시작 시 ALLOWED_ORIGINS(콤마 구분) env로
-// 채워지며(배포 pitwall 도메인 등), 비어 있으면 same-host + localhost 변형만 허용한다.
+// 허용할 브라우저 Origin 목록이다. 시작 시 ALLOWED_PITWALL_ORIGINS(콤마 구분,
+// cmd/server의 /api CORS 허용목록과 동일 변수)로 채워져 같은 배포에서 REST와 WS
+// 허용목록이 어긋나지 않게 하고, 비어 있으면 legacy ALLOWED_ORIGINS를 읽는다.
+// 둘 다 비어 있으면 same-host + localhost 변형만 허용한다.
 var allowedOrigins = loadAllowedOrigins()
 
 func loadAllowedOrigins() []string {
+	raw := os.Getenv("ALLOWED_PITWALL_ORIGINS")
+	if strings.TrimSpace(raw) == "" {
+		raw = os.Getenv("ALLOWED_ORIGINS") // legacy alias
+	}
 	var out []string
-	for _, part := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+	for _, part := range strings.Split(raw, ",") {
 		if o := strings.TrimSpace(part); o != "" {
 			out = append(out, o)
 		}

@@ -31,8 +31,12 @@ func TestClientIP(t *testing.T) {
 		{"untrusted remoteaddr ignores xff", "203.0.113.5", "", "8.8.8.8:1234", trusted, "8.8.8.8"},
 		{"untrusted remoteaddr ignores x-real-ip", "", "198.51.100.7", "8.8.8.8:1234", trusted, "8.8.8.8"},
 
-		// 신뢰 프록시 미설정(기본) → 항상 RemoteAddr.
-		{"no trusted config ignores xff", "203.0.113.5", "", "10.0.0.1:1234", "", "10.0.0.1"},
+		// 신뢰 프록시 미설정이어도 사설/루프백 직접 피어는 암묵 신뢰(PaaS 엣지 프록시) —
+		// 공인 직접 피어의 forwarded 헤더는 여전히 무시(H8).
+		{"no trusted config, private peer honors xff", "203.0.113.5", "", "10.0.0.1:1234", "", "203.0.113.5"},
+		{"no trusted config, loopback peer honors xff", "203.0.113.5", "", "127.0.0.1:1234", "", "203.0.113.5"},
+		{"no trusted config, public peer ignores xff", "203.0.113.5", "", "8.8.8.8:1234", "", "8.8.8.8"},
+		{"xff skips private hop without explicit cidrs", "203.0.113.5, 192.168.1.9", "", "10.0.0.1:1234", "", "203.0.113.5"},
 
 		// 폴백/엣지 케이스.
 		{"remoteaddr fallback", "", "", "192.0.2.9:5555", trusted, "192.0.2.9"},

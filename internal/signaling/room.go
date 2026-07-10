@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -91,6 +92,11 @@ type RoomManager struct {
 	logger         *slog.Logger
 	done           chan struct{}
 	ipBanWarnOnce  sync.Once // 귀속 불가로 IP밴을 건너뛸 때 경고를 1회만 로깅
+	// legacyRejoinGrace: OwnerToken 필드 자체가 없던 v4.40 미만 sender의 하위호환.
+	// 켜져 있으면 "빈 토큰 + 드라이버가 이미 끊긴 방"에 한해 rejoin/재사용을 허용한다
+	// (활성 드라이버가 있는 방은 여전히 탈취 불가). LEGACY_REJOIN_GRACE=0 으로 비활성.
+	// 구버전 fleet 이 모두 업데이트되면 꺼서 H6 를 온전히 강제하는 것을 권장.
+	legacyRejoinGrace bool
 }
 
 // NewRoomManager creates a new RoomManager and starts a background cleanup goroutine.
@@ -101,13 +107,14 @@ type RoomManager struct {
 // user at the /ws gate, so IP auto-ban is skipped while the nickname ban still runs.
 func NewRoomManager(logger *slog.Logger, banCache *bandb.Cache, banStore bandb.Store, ipAttributable bool) *RoomManager {
 	rm := &RoomManager{
-		roomsByCode:    make(map[string]*Room),
-		roomsByID:      make(map[string]*Room),
-		banCache:       banCache,
-		banStore:       banStore,
-		ipAttributable: ipAttributable,
-		logger:         logger,
-		done:           make(chan struct{}),
+		roomsByCode:       make(map[string]*Room),
+		roomsByID:         make(map[string]*Room),
+		banCache:          banCache,
+		banStore:          banStore,
+		ipAttributable:    ipAttributable,
+		logger:            logger,
+		done:              make(chan struct{}),
+		legacyRejoinGrace: os.Getenv("LEGACY_REJOIN_GRACE") != "0", // 기본 켜짐
 	}
 	go rm.cleanupLoop()
 	return rm
@@ -178,7 +185,21 @@ func (rm *RoomManager) CreateRoom(driverConn *websocket.Conn, writeMu *sync.Mute
 	if exists {
 		// H6: 기존 room 재사용은 소유권 증명(OwnerToken)이 필수. 없거나 불일치면
 		// 탈취 시도로 간주하고 새 random ID로 신규 room을 배정한다(재사용 거부).
-		if ownerToken == "" || subtle.ConstantTimeCompare([]byte(room.OwnerToken), []byte(ownerToken)) != 1 {
+		reuseOK := ownerToken != "" && subtle.ConstantTimeCompare([]byte(room.OwnerToken), []byte(ownerToken)) == 1
+		if !reuseOK && rm.legacyRejoinGrace && ownerToken == "" {
+			// v4.40 미만 sender 의 rejoin 실패 후 create-fallback 경로: 드라이버가
+			// 이미 끊긴 방에 한해 재사용을 허용해 접속 중인 엔지니어 세션을 보존한다
+			// (RejoinRoom 의 legacy grace 와 동일 조건). 잘못된(비어 있지 않은)
+			// 토큰은 grace 대상이 아니다.
+			room.mu.Lock()
+			driverLost := room.Driver == nil || room.DriverLostAt != nil
+			room.mu.Unlock()
+			if driverLost {
+				reuseOK = true
+				rm.logger.Warn("legacy token-less room reuse honored (grace)", "roomId", roomID)
+			}
+		}
+		if !reuseOK {
 			rm.logger.Warn("room reuse denied: owner token mismatch, allocating new room", "roomId", roomID)
 			roomID = generateRoomID()
 			room, exists = rm.roomsByID[roomID]
@@ -380,10 +401,19 @@ func (rm *RoomManager) RejoinRoom(roomID, ownerToken string, conn *websocket.Con
 	existingEngineers := make([]*peer, 0)
 
 	room.mu.Lock()
-	// H6: 소유권 증명 없이/불일치 시 재접속(탈취) 거부.
-	if ownerToken == "" || subtle.ConstantTimeCompare([]byte(room.OwnerToken), []byte(ownerToken)) != 1 {
-		room.mu.Unlock()
-		return "", fmt.Errorf("room %s ownership verification failed", roomID)
+	// H6: 소유권 증명 없이/불일치 시 재접속(탈취) 거부. 예외(legacyRejoinGrace):
+	// OwnerToken 필드가 없던 v4.40 미만 sender 는 "빈 토큰 + 드라이버가 이미 끊긴
+	// 방"에 한해 재접속을 허용한다 — 활성 드라이버가 있는 방은 여전히 탈취 불가,
+	// 잘못된(비어 있지 않은) 토큰은 항상 거부.
+	tokenOK := ownerToken != "" && subtle.ConstantTimeCompare([]byte(room.OwnerToken), []byte(ownerToken)) == 1
+	if !tokenOK {
+		legacyOK := rm.legacyRejoinGrace && ownerToken == "" &&
+			(room.Driver == nil || room.DriverLostAt != nil)
+		if !legacyOK {
+			room.mu.Unlock()
+			return "", fmt.Errorf("room %s ownership verification failed", roomID)
+		}
+		rm.logger.Warn("legacy token-less driver rejoin honored (grace)", "roomId", roomID)
 	}
 	if room.Driver != nil && room.Driver.conn != nil {
 		oldConn = room.Driver.conn
