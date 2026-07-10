@@ -923,7 +923,9 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 			current := pm.peers[peerID]
 			pm.mu.RUnlock()
 			if current == pc {
-				go pm.restartICE(peerID)
+				// pc를 넘겨 goroutine 실행 시점에 재검증 — 이 가드와 실행 사이에
+				// rejoin으로 피어가 교체되면 새 연결에 stale restart가 가지 않는다.
+				go pm.restartICE(peerID, pc)
 			}
 		case webrtc.PeerConnectionStateClosed:
 			pm.removePeerIf(peerID, pc)
@@ -1063,11 +1065,14 @@ func (pm *PeerManager) noteConnected(peerID string) {
 // restartICE renegotiates the connection for an existing peer using an ICE
 // restart offer. The offer travels over the regular signaling relay with the
 // Restart flag so the viewer reuses its live PeerConnection (no DC teardown).
-func (pm *PeerManager) restartICE(peerID string) {
+// expected가 non-nil이면 실행 시점에 등록된 PeerConnection과 일치할 때만 진행한다
+// — 호출측 가드와 goroutine 실행 사이에 rejoin으로 피어가 교체된 경우 방금 맺어진
+// 새 연결에 stale restart offer를 얹지 않는다 (M12의 지연 창 보완).
+func (pm *PeerManager) restartICE(peerID string, expected *webrtc.PeerConnection) {
 	pm.mu.Lock()
 	pc, ok := pm.peers[peerID]
 	meta := pm.peerMeta[peerID]
-	if !ok || meta == nil {
+	if !ok || meta == nil || (expected != nil && pc != expected) {
 		pm.mu.Unlock()
 		return
 	}
@@ -1083,7 +1088,7 @@ func (pm *PeerManager) restartICE(peerID string) {
 	if meta.restarts >= iceRestartMaxPerWindow {
 		pm.mu.Unlock()
 		pm.logger.Warn("ICE restart cap reached, dropping peer", "peerId", peerID)
-		pm.removePeer(peerID)
+		pm.removePeerIf(peerID, pc)
 		return
 	}
 	if pc.SignalingState() != webrtc.SignalingStateStable {
@@ -1097,21 +1102,22 @@ func (pm *PeerManager) restartICE(peerID string) {
 	meta.restartingAt = now
 	pm.mu.Unlock()
 
+	// 실패 정리는 removePeerIf(pc) — 이 사이 교체된 새 연결을 파괴하지 않는다.
 	offer, err := pc.CreateOffer(&webrtc.OfferOptions{ICERestart: true})
 	if err != nil {
 		pm.logger.Error("failed to create ICE restart offer", "peerId", peerID, "error", err)
-		pm.removePeer(peerID)
+		pm.removePeerIf(peerID, pc)
 		return
 	}
 	if err := pc.SetLocalDescription(offer); err != nil {
 		pm.logger.Error("failed to set ICE restart local description", "peerId", peerID, "error", err)
-		pm.removePeer(peerID)
+		pm.removePeerIf(peerID, pc)
 		return
 	}
 	offerJSON, err := json.Marshal(offer)
 	if err != nil {
 		pm.logger.Error("failed to marshal ICE restart offer", "peerId", peerID, "error", err)
-		pm.removePeer(peerID)
+		pm.removePeerIf(peerID, pc)
 		return
 	}
 
@@ -1208,7 +1214,7 @@ func (pm *PeerManager) pingPeers() {
 			pm.removePeer(t.peerID)
 		case silent > dcPongRestartAfter && !t.restarting:
 			pm.logger.Warn("peer keepalive stalled, attempting ICE restart", "peerId", t.peerID, "silentFor", silent)
-			go pm.restartICE(t.peerID)
+			go pm.restartICE(t.peerID, nil)
 		}
 	}
 }
@@ -1217,18 +1223,22 @@ func (pm *PeerManager) pingPeers() {
 // 시그널링 단절 중 유실된 offer/answer/candidate는 큐잉하지 않는다 — 복구 후
 // 재협상 한 번이 전부 무효화·재생성하기 때문.
 func (pm *PeerManager) recoverStalePeers() {
+	type stalePeer struct {
+		id string
+		pc *webrtc.PeerConnection
+	}
 	pm.mu.RLock()
-	stale := make([]string, 0, len(pm.peers))
+	stale := make([]stalePeer, 0, len(pm.peers))
 	for peerID, pc := range pm.peers {
 		if pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
-			stale = append(stale, peerID)
+			stale = append(stale, stalePeer{id: peerID, pc: pc})
 		}
 	}
 	pm.mu.RUnlock()
 
-	for _, peerID := range stale {
-		pm.logger.Info("recovering stale peer after signaling reconnect", "peerId", peerID)
-		go pm.restartICE(peerID)
+	for _, s := range stale {
+		pm.logger.Info("recovering stale peer after signaling reconnect", "peerId", s.id)
+		go pm.restartICE(s.id, s.pc)
 	}
 }
 
