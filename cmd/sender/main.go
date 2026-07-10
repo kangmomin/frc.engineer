@@ -466,7 +466,9 @@ func main() {
 	var latestRaceSummary *races.RaceSummary
 	var sessionAnalysisCacheMu sync.RWMutex
 	sessionAnalysisCache := make(map[string]sessionAnalysisCacheEntry)
-	processor.SetRaceSummaryRecording(saveFiles)
+	// 요약 파이프라인은 디브리프 브로드캐스트·플랫폼 업로드의 원천이라 항상 활성 —
+	// saveFiles는 로컬 파일(요약/리플레이/패킷) 저장 여부만 정한다(콜백에서 분기).
+	processor.SetRaceSummaryRecording(true)
 	processor.SetReplayRecording(saveFiles && (dataStorageMode == rtconfig.DataStorageModeSummary || dataStorageMode == rtconfig.DataStorageModeAdvanced))
 	const maxRaceArchiveListChunkBytes = 48 * 1024
 	const maxRaceReplayChunkBytes = 48 * 1024
@@ -964,18 +966,22 @@ func main() {
 		rs := raceStorage
 		saveEnabled := cfgSaveFiles
 		storageMode := cfgDataStorageMode
+		autoUpload := cfgAutoUpload
+		token := cfgUploadToken
+		base := cfgPlatformBaseURL
 		cfgMu.Unlock()
-		if !saveEnabled || rs == nil {
-			return nil
-		}
 
+		// saveFiles는 로컬 파일(요약/리플레이/패킷) 저장 여부만 정한다 — 요약 생성,
+		// 디브리프 브로드캐스트, 플랫폼 업로드는 저장 설정과 무관하게 항상 수행한다.
 		summary := races.BuildSummary(sessionUID, state, races.NotificationCounts{
 			Penalty: counts.Penalty,
 			Warning: counts.Warning,
 			Info:    counts.Info,
 		}, timeline, detail, time.Now())
 		summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(storageMode)
-		if summary.DataStorageMode == rtconfig.DataStorageModeSummary || summary.DataStorageMode == rtconfig.DataStorageModeAdvanced {
+		// 리플레이 타임라인은 로컬 저장 전용 대용량 부속 — 저장이 켜져 있을 때만 부착
+		// (꺼져 있으면 SetReplayRecording도 꺼져 있어 어차피 프레임이 없다).
+		if saveEnabled && (summary.DataStorageMode == rtconfig.DataStorageModeSummary || summary.DataStorageMode == rtconfig.DataStorageModeAdvanced) {
 			if replay := processor.GetReplayTimeline(sessionUID); replay != nil {
 				frames := make([]races.ReplayFrame, len(replay.Frames))
 				for i := range replay.Frames {
@@ -998,8 +1004,10 @@ func main() {
 		latestRaceSummary = summary
 		raceSummaryMu.Unlock()
 
-		if _, err := rs.Save(summary); err != nil {
-			logger.Error("failed to save race summary", "error", err)
+		if saveEnabled && rs != nil {
+			if _, err := rs.Save(summary); err != nil {
+				logger.Error("failed to save race summary", "error", err)
+			}
 		}
 
 		// Strip the (potentially large) replay frames before the DataChannel push —
@@ -1011,11 +1019,6 @@ func main() {
 
 		// Optional auto-upload: fire-and-forget so a slow/failed network never
 		// blocks the save path. Only when paired and the race carries rich detail.
-		cfgMu.Lock()
-		autoUpload := cfgAutoUpload
-		token := cfgUploadToken
-		base := cfgPlatformBaseURL
-		cfgMu.Unlock()
 		if autoUpload && token != "" {
 			if req, ok := buildUploadRequest(summary); ok {
 				go func() {
@@ -1825,7 +1828,8 @@ func main() {
 				sessionAnalysisCacheMu.Unlock()
 			}
 
-			processor.SetRaceSummaryRecording(cfgSaveFiles)
+			// 요약 파이프라인은 항상 활성(위 SetRaceSummaryRecording(true) 참조) —
+			// 저장 설정 변경은 리플레이 녹화/패킷 로깅만 토글한다.
 			processor.SetReplayRecording(cfgSaveFiles && (cfgDataStorageMode == rtconfig.DataStorageModeSummary || cfgDataStorageMode == rtconfig.DataStorageModeAdvanced))
 			logger.Info("save storage changed", "saveFiles", cfgSaveFiles, "dataStorageMode", cfgDataStorageMode, "packetLogging", wantPacketLogging)
 		}
