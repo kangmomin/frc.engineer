@@ -59,6 +59,11 @@ type senderConfig struct {
 	PlatformBaseURL      string                   `json:"platformBaseUrl,omitempty"`
 	UploadToken          string                   `json:"uploadToken,omitempty"`
 	AutoUpload           bool                     `json:"autoUpload,omitempty"`
+	// OverlayLanBind opt-in: 설정/오버레이 HTTP 서버를 전 인터페이스에 바인드해
+	// 듀얼PC/OBS 등 LAN 기기에서 /radar·/weather·/strategy 접근을 복원한다.
+	// 기본 false(루프백 전용) — 켜면 설정 API도 LAN에 노출되므로 명시적 선택일 때만.
+	// 변경은 재시작 후 적용.
+	OverlayLanBind bool `json:"overlayLanBind,omitempty"`
 }
 
 const senderLogTailMaxBytes int64 = 64 * 1024
@@ -429,6 +434,7 @@ func main() {
 	} else {
 		cfgForwardTargets = []rtconfig.ForwardTarget{}
 	}
+	cfgOverlayLanBind := false
 	if saved := savedConfig; saved != nil {
 		cfgOverlayPresets = normalizeOverlayPresets(saved.OverlayPresets)
 		cfgOverlayHotkeys = defaultedOverlayHotkeys(saved.OverlayHotkeys)
@@ -436,6 +442,7 @@ func main() {
 		cfgPlatformBaseURL = normalizePlatformBaseURL(saved.PlatformBaseURL)
 		cfgUploadToken = saved.UploadToken
 		cfgAutoUpload = saved.AutoUpload
+		cfgOverlayLanBind = saved.OverlayLanBind
 	}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
 	getStrategyConfig := func(trackID int8) trackStrategyConfig {
@@ -1092,6 +1099,7 @@ func main() {
 			PlatformBaseURL:      cfgPlatformBaseURL,
 			UploadToken:          cfgUploadToken,
 			AutoUpload:           cfgAutoUpload,
+			OverlayLanBind:       cfgOverlayLanBind,
 		}
 	}
 
@@ -1937,14 +1945,21 @@ func main() {
 		if embeddedDriverPack {
 			maxAttempts = 1
 		}
+		// 루프백 전용 바인드(기본): LAN 공격자가 설정/디버그 API(PUT /api/config 등)로
+		// 접근해 forwardTargets를 바꿔 텔레메트리를 탈취하는 것을 차단한다.
+		// 로컬 UI는 http://localhost, 오버레이는 same-origin 상대 EventSource라 영향 없음.
+		// 듀얼PC/OBS 등 LAN 기기에서 오버레이 페이지가 필요하면 sender-config.json에
+		// "overlayLanBind": true 를 설정(opt-in, 재시작 필요) — 설정 API도 함께 노출됨.
+		bindHost := "127.0.0.1:"
+		if cfgOverlayLanBind {
+			bindHost = ":"
+			logger.Warn("settings/overlay server binding on ALL interfaces (overlayLanBind=true) — settings API is reachable from the LAN")
+		}
 		for attempt := range maxAttempts {
 			port := basePort + attempt
 			actualSettingsPort = fmt.Sprintf("%d", port)
-			// 루프백 전용 바인드: LAN 공격자가 설정/디버그 API(PUT /api/config 등)로
-			// 접근해 forwardTargets를 바꿔 텔레메트리를 탈취하는 것을 차단한다.
-			// 로컬 UI는 http://localhost, 오버레이는 same-origin 상대 EventSource라 영향 없음.
-			settingsSrv.Addr = "127.0.0.1:" + actualSettingsPort
-			logger.Info("settings server starting", "port", actualSettingsPort)
+			settingsSrv.Addr = bindHost + actualSettingsPort
+			logger.Info("settings server starting", "port", actualSettingsPort, "lanBind", cfgOverlayLanBind)
 			err := settingsSrv.ListenAndServe()
 			if err != nil && err != http.ErrServerClosed {
 				if embeddedDriverPack {
@@ -1995,7 +2010,9 @@ func main() {
 
 // isForwardHostAllowed는 UDP 텔레메트리 포워딩 대상이 로컬/사설 범위인지 검사한다.
 // 공인 IP나 임의 외부 호스트로의 포워딩을 막아 LAN 텔레메트리 유출 반경을 줄인다.
-// 허용: localhost, *.local(mDNS), 루프백/사설/링크로컬 IP. (preferHTTPDashboardURL과 동일 정책)
+// 허용: localhost, *.local(mDNS), 루프백/사설/링크로컬 IP, 그리고 사설 범위로만
+// resolve되는 LAN 호스트네임(예: Windows 컴퓨터명 "GAMINGPC", "nas.lan" — 기존 유효
+// 설정이 IP 리터럴 강제화로 깨지지 않도록). (preferHTTPDashboardURL과 동일 정책)
 func isForwardHostAllowed(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	if host == "" {
@@ -2004,10 +2021,26 @@ func isForwardHostAllowed(host string) bool {
 	if host == "localhost" || strings.HasSuffix(host, ".local") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	if ip == nil {
+	if ip := net.ParseIP(host); ip != nil {
+		return isPrivateForwardIP(ip)
+	}
+	// 호스트네임: 짧은 타임아웃으로 resolve해(설정 저장 경로에서만 호출됨) 모든 결과가
+	// 로컬/사설 범위일 때만 허용 — 하나라도 공인 IP면 유출 가능성이 있으므로 거부.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil || len(addrs) == 0 {
 		return false
 	}
+	for _, ip := range addrs {
+		if !isPrivateForwardIP(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+func isPrivateForwardIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 

@@ -156,19 +156,27 @@
   }
 
   // strategy_overlay_windows.go paintQualifyingCar 미러
-  function qualiCarBlock(car, label, arrowClass) {
+  function qualiCarBlock(car, label, arrowClass, isThreat) {
     if (!car) return '<div class="car-block"><div class="car-header"><span class="car-arrow ' + arrowClass + '">' + label + '</span><span class="car-name" style="color:#444">---</span></div></div>';
     var tc = TIRE_CLASS[car.tireCompound] || '';
     var tl = TIRE_LABEL[car.tireCompound] || '---';
     var nameShort = car.name && car.name.length > 3 ? car.name.slice(-3) : (car.name || '---');
     var tryHtml = car.tryLabel ? '<span class="car-gap" style="color:' + tryToneColor(car.tryTone, car.tryLabel) + '">' + car.tryLabel + '</span>' : '';
     var summary = car.trySummary || 'No live push signal';
+    // threat 모드(플레이어 개러지/핏)엔 트랙 거리 갭이 없다 — 베스트랩 델타(0=미상 '--')를
+    // 표시한다(paintQualifyingCar의 threat gapText 미러). GapMeters는 threat에서 미설정.
+    var gapText;
+    if (isThreat) {
+      gapText = car.paceDeltaMs ? (car.paceDeltaMs > 0 ? '+' : '-') + Math.abs(car.paceDeltaMs / 1000).toFixed(3) + 's' : '--';
+    } else {
+      gapText = '+' + (car.gapMeters || 0) + 'm';
+    }
 
     return '<div class="car-block">' +
       '<div class="car-header">' +
         '<span class="car-arrow ' + arrowClass + '">' + label + '</span>' +
         '<span class="car-name">' + nameShort + '</span>' +
-        '<span class="car-gap">+' + (car.gapMeters || 0) + 'm</span>' +
+        '<span class="car-gap">' + gapText + '</span>' +
         tryHtml +
       '</div>' +
       '<div class="car-details">' +
@@ -182,11 +190,18 @@
   }
 
   function render(d) {
-    // 퀄리 모드: pit rejoin/undercut/train 대신 근접 차량의 push try 신호를 표시
+    // 퀄리 모드: pit rejoin/undercut/train 대신 근접 차량의 push try 신호를 표시.
+    // aroundMode==='threat'(플레이어 개러지/핏)면 슬롯은 물리적 앞뒤차가 아니라 위협
+    // 랭킹 상위 2대 — qualiSlotLabel(strategy_overlay_windows.go) 미러로 '⚠ P{n}' 표기해
+    // '▲ AHEAD/▼ BEHIND' 오표기를 막는다. AroundMode는 이 qualifying 모드로만 실린다.
     if (d.mode === 'qualifying') {
       posInfo.textContent = 'QUALI TRY  ' + (d.sessionType || '') + '  P' + d.playerPosition;
-      content.innerHTML = qualiCarBlock(d.carAhead, '▲ AHEAD', 'ahead') +
-        qualiCarBlock(d.carBehind, '▼ BEHIND', 'behind');
+      var qThreat = d.aroundMode === 'threat';
+      var qLabel = function(car, fallback) {
+        return qThreat ? (car ? '⚠ P' + car.position : '⚠') : fallback;
+      };
+      content.innerHTML = qualiCarBlock(d.carAhead, qLabel(d.carAhead, '▲ AHEAD'), 'ahead', qThreat) +
+        qualiCarBlock(d.carBehind, qLabel(d.carBehind, '▼ BEHIND'), 'behind', qThreat);
       return;
     }
 
