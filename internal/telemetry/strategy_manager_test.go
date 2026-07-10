@@ -112,6 +112,48 @@ func TestStrategyManagerSkipsZeroLapUsedSetSwap(t *testing.T) {
 	}
 }
 
+// TestStrategyManagerSameCompoundRefitClosesStint reproduces the stale-ageAtFit bug:
+// a same-compound refit (tyre age drops — fresh/used set of the compound already
+// fitted) must close the running stint. Pre-fix, ageAtFit stayed stale and the NEXT
+// compound change dropped a real multi-lap stint (laps-driven computed <= 0).
+func TestStrategyManagerSameCompoundRefitClosesStint(t *testing.T) {
+	const (
+		visualSoft   = 16
+		visualMedium = 17
+	)
+	sm := NewStrategyManager()
+
+	// Fresh mediums at lap 1, driven to age 8 with a 30% wear peak.
+	sm.Update(carStatusFor(visualMedium, 0), lapDataFor(1, 0))
+	sm.UpdateTyreWear(carDamageFor(30))
+	sm.Update(carStatusFor(visualMedium, 8), lapDataFor(9, 0))
+
+	// Pit onto FRESH mediums (same compound, age 8 → 0): must close the first stint.
+	sm.Update(carStatusFor(visualMedium, 0), lapDataFor(9, 1))
+	hist := sm.drivers[0].StintHistory
+	if len(hist) != 1 {
+		t.Fatalf("stint history len = %d, want 1 (same-compound refit must close the stint)", len(hist))
+	}
+	if hist[0].Compound != "medium" || hist[0].Laps != 8 || hist[0].StartLap != 1 {
+		t.Fatalf("closed stint = %+v, want medium L1 (8 laps)", hist[0])
+	}
+	if hist[0].TireWearPct != 30 {
+		t.Fatalf("closed stint wear = %d, want 30 (peak before refit)", hist[0].TireWearPct)
+	}
+
+	// Drive the second medium set 7 laps, then fit softs — the 7-lap stint must be
+	// recorded (pre-fix it was silently dropped).
+	sm.Update(carStatusFor(visualMedium, 7), lapDataFor(16, 1))
+	sm.Update(carStatusFor(visualSoft, 0), lapDataFor(17, 2))
+	hist = sm.drivers[0].StintHistory
+	if len(hist) != 2 {
+		t.Fatalf("stint history len = %d, want 2 (7-lap medium stint must not be dropped)", len(hist))
+	}
+	if hist[1].Compound != "medium" || hist[1].Laps != 7 || hist[1].StartLap != 10 {
+		t.Fatalf("second stint = %+v, want medium L10 (7 laps)", hist[1])
+	}
+}
+
 func TestStrategyManagerCrossoverPrediction(t *testing.T) {
 	sm := NewStrategyManager()
 	sm.drivers[0].RecentLaps = []completedLap{

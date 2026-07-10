@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/packets"
@@ -54,6 +55,10 @@ type PitwallManager struct {
 	// Per-car penalty/warning log for the leaderboard hover detail. Reset on
 	// SessionUID change alongside the other per-session caches (noteSessionLocked).
 	penaltyLog [packets.MaxCars][]dto.PenaltyLogEntry
+	// Wall-clock of the last append per car — dedup window basis (RecordPenalty).
+	penaltyLogAt [packets.MaxCars]time.Time
+	// Injectable clock for tests; NewPitwallManager sets time.Now.
+	now func() time.Time
 }
 
 // maxTrackMapPoints bounds the trackMap point count so a long recorded lap can
@@ -72,6 +77,12 @@ func downsampleStride(n, max int) int {
 // is dropped. 16 comfortably covers a messy race while bounding the payload.
 const maxPenaltyLogPerCar = 16
 
+// penaltyDedupWindow bounds the consecutive-duplicate skip in RecordPenalty: only
+// an identical entry arriving within this window is treated as a UDP re-broadcast.
+// Outside it, a byte-identical entry is a genuinely repeated penalty (e.g. two
+// corner cuts on the same lap) and must be logged.
+const penaltyDedupWindow = 2 * time.Second
+
 // NewPitwallManager creates a new PitwallManager
 func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackStore, recorder *TrackRecorder) *PitwallManager {
 	return &PitwallManager{
@@ -81,6 +92,7 @@ func NewPitwallManager(strategyMgr *StrategyManager, trackStore *tracks.TrackSto
 		dynamicsAnalyzer: NewDynamicsAnalyzer(),
 		ersEstimator:     NewERSEstimator(trackStore),
 		lastTrackID:      -1, // Melbourne(TrackID 0)과의 제로값 충돌 방지
+		now:              time.Now,
 	}
 }
 
@@ -144,11 +156,17 @@ func (pm *PitwallManager) RecordPenalty(e *packets.PenaltyEvent, sessionUID uint
 	if e == nil || int(e.VehicleIdx) >= packets.MaxCars {
 		return
 	}
+	timeSec := int(e.Time)
+	if timeSec == 255 {
+		// uint8 "N/A" sentinel (OtherVehicleIdx의 255=none과 동일 관례) — 랩 무효화/
+		// 경고류에 실리는 값이라 255초 타임페널티로 오표기하지 않도록 0(없음) 처리.
+		timeSec = 0
+	}
 	entry := dto.PenaltyLogEntry{
 		Lap:     int(e.LapNum),
 		Pen:     int(e.PenaltyType),
 		Inf:     int(e.InfringementType),
-		TimeSec: int(e.Time),
+		TimeSec: timeSec,
 	}
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -156,14 +174,18 @@ func (pm *PitwallManager) RecordPenalty(e *packets.PenaltyEvent, sessionUID uint
 	// clears penaltyLog, so `log` must be read after the potential reset.
 	pm.noteSessionUIDLocked(sessionUID)
 	log := pm.penaltyLog[e.VehicleIdx]
-	if n := len(log); n > 0 && log[n-1] == entry {
-		return // duplicate re-broadcast of the same event
+	// Byte-identical fields alone can't distinguish a UDP re-broadcast from a second
+	// real penalty of the same type on the same lap — only skip when the identical
+	// entry also arrives within the dedup window.
+	if n := len(log); n > 0 && log[n-1] == entry && pm.now().Sub(pm.penaltyLogAt[e.VehicleIdx]) < penaltyDedupWindow {
+		return
 	}
 	log = append(log, entry)
 	if len(log) > maxPenaltyLogPerCar {
 		log = log[len(log)-maxPenaltyLogPerCar:]
 	}
 	pm.penaltyLog[e.VehicleIdx] = log
+	pm.penaltyLogAt[e.VehicleIdx] = pm.now()
 }
 
 // noteFormatLocked tracks the active packetFormat and clears format-specific

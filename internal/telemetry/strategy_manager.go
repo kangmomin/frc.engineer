@@ -143,11 +143,16 @@ func (sm *StrategyManager) Update(carStatus *packets.PacketCarStatusData, lapDat
 			continue
 		}
 
-		// Compound changed: push previous stint to history only if it was actually
-		// driven >= 1 lap on this fitting. laps-driven = CurrentStintLaps - ageAtFit
-		// excludes the carried-over age of a used set (mounting then swapping off a
-		// used set without a lap records nothing; a fresh set has ageAtFit 0).
-		if compound != ds.CurrentCompound {
+		// New fitting detected: compound changed, OR same compound with the tyre age
+		// dropping (age cannot decrease within a stint, so a drop means a fresh/used
+		// set of the SAME compound was mounted — without this leg ageAtFit would stay
+		// stale and the NEXT compound change could silently drop a real multi-lap
+		// stint via a negative laps-driven). Push the previous stint to history only
+		// if it was actually driven >= 1 lap on this fitting. laps-driven =
+		// CurrentStintLaps - ageAtFit excludes the carried-over age of a used set
+		// (mounting then swapping off a used set without a lap records nothing; a
+		// fresh set has ageAtFit 0).
+		if compound != ds.CurrentCompound || tireAge < ds.CurrentStintLaps {
 			lapsThisFitting := ds.CurrentStintLaps - ds.ageAtFit
 			if lapsThisFitting >= 1 {
 				startLap := currentLap - lapsThisFitting

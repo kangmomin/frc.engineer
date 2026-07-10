@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/packets"
@@ -72,6 +73,37 @@ func TestRecordPenaltyLogCapDedupAndReset(t *testing.T) {
 	pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 222}, SessionType: 10})
 	if len(pm.penaltyLog[3]) != 0 || len(pm.penaltyLog[5]) != 0 {
 		t.Fatal("penalty log must reset on SessionUID change")
+	}
+}
+
+// TestRecordPenaltyTimeSentinelAndDedupWindow verifies (1) the uint8 Time "N/A"
+// sentinel (255) is not surfaced as a 255-second penalty, and (2) the duplicate
+// skip is windowed — a byte-identical entry outside penaltyDedupWindow is a second
+// real penalty (e.g. two corner cuts on the same lap), not a UDP re-broadcast.
+func TestRecordPenaltyTimeSentinelAndDedupWindow(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	now := time.Unix(1_000, 0)
+	pm.now = func() time.Time { return now }
+
+	pm.RecordPenalty(&packets.PenaltyEvent{VehicleIdx: 1, PenaltyType: 10, InfringementType: 25, Time: 255, LapNum: 4}, 111)
+	if got := pm.penaltyLog[1][0].TimeSec; got != 0 {
+		t.Fatalf("sentinel Time=255 stored as sec=%d, want 0", got)
+	}
+
+	// Identical entry within the window = UDP re-broadcast → skipped.
+	e := &packets.PenaltyEvent{VehicleIdx: 2, PenaltyType: 5, InfringementType: 7, LapNum: 9}
+	pm.RecordPenalty(e, 111)
+	now = now.Add(50 * time.Millisecond)
+	pm.RecordPenalty(e, 111)
+	if got := len(pm.penaltyLog[2]); got != 1 {
+		t.Fatalf("within-window duplicate logged: len = %d, want 1", got)
+	}
+
+	// Identical entry outside the window = a second real penalty → logged.
+	now = now.Add(penaltyDedupWindow)
+	pm.RecordPenalty(e, 111)
+	if got := len(pm.penaltyLog[2]); got != 2 {
+		t.Fatalf("out-of-window identical penalty dropped: len = %d, want 2", got)
 	}
 }
 
