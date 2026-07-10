@@ -337,10 +337,11 @@ export function deriveLeaderboardRows(
   const codes = deriveDriverCodes(drivers);
 
   // Fuel 가시성용 팀 사이즈 가드(F1 = 팀당 2대). player 팀 id 를 공유하는 차가 정확히
-  // 1~2대일 때만 "실제 팀"으로 신뢰하고 팀메이트 연료를 노출한다. 255(무팀)·미해결
+  // 1~2대일 때만 "실제 팀"으로 신뢰하고 팀메이트 연료를 노출한다. 255(무팀)는 카운트와
+  // 무관하게 팀이 아니므로 제외(1v1 커스텀 로비에서 타인 연료가 새는 것 방지), 미해결
   // 0-fill 로 다수가 같은 id 를 공유하면(>2) sentinel fan-out 이라 내 차만 노출한다.
   const teamCount = player == null ? 0 : drivers.filter((d) => d.teamId === player.teamId).length;
-  const teamResolved = teamCount >= 1 && teamCount <= 2;
+  const teamResolved = player != null && player.teamId !== 255 && teamCount >= 1 && teamCount <= 2;
 
   return drivers.map((driver, i) => {
     const isPlayer = player != null && driver.index === player.index;

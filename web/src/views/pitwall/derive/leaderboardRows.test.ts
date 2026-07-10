@@ -352,6 +352,15 @@ describe('deriveLeaderboardRows', () => {
     expect(rows.find((r) => r.index === 2)!.fuel).toBe('—');
   });
 
+  it('fuel: teamId 255 (no-team sentinel) pair is NOT a real team — only own car exposed', () => {
+    // 1v1 커스텀 로비: 나 + 라이벌이 둘 다 255를 공유해도 라이벌 연료가 새면 안 된다.
+    const player = makeDriver({ index: 0, position: 1, teamId: 255, fuelRemainingLaps: 1.2 });
+    const rival = makeDriver({ index: 1, position: 2, teamId: 255, fuelRemainingLaps: -0.4 });
+    const rows = deriveLeaderboardRows([player, rival], player, false, null);
+    expect(rows.find((r) => r.index === 0)!.fuel).toBe('+1.2');
+    expect(rows.find((r) => r.index === 1)!.fuel).toBe('—');
+  });
+
   it('bestLap: session-best (positive) is purple; all-zero early frames are not', () => {
     const a = makeDriver({ index: 0, position: 1, bestLapTime: 91_200 });
     const b = makeDriver({ index: 1, position: 2, bestLapTime: 90_800 });

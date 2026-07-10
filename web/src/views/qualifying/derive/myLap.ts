@@ -101,15 +101,16 @@ const EMPTY_VM: MyLapVM = {
 };
 
 /** threat 갭(베스트랩 델타 ms) 포맷/색 — 거리 기반 `gapTone`은 의미가 달라 재사용 금지.
- * null → '—'/muted, ≤0 → 이미 나보다 빠름(red), ≤300ms → 임박(accent), 그 외 → secondary. */
+ * null/0 → '—'/muted (0은 동률 — Go 오버레이의 0 델타 처리와 동일하게 중립 표기해
+ * "-0.000" 오표기를 막는다), <0 → 이미 나보다 빠름(red), ≤300ms → 임박(accent). */
 function formatThreatDelta(deltaMs: number | null): string {
-  if (deltaMs == null) return DASH;
-  return `${deltaMs <= 0 ? '-' : '+'}${(Math.abs(deltaMs) / 1000).toFixed(3)}`;
+  if (deltaMs == null || deltaMs === 0) return DASH;
+  return `${deltaMs < 0 ? '-' : '+'}${(Math.abs(deltaMs) / 1000).toFixed(3)}`;
 }
 
 function threatDeltaTone(deltaMs: number | null): string {
-  if (deltaMs == null) return 'var(--text-muted)';
-  if (deltaMs <= 0) return 'var(--accent-red)';
+  if (deltaMs == null || deltaMs === 0) return 'var(--text-muted)';
+  if (deltaMs < 0) return 'var(--accent-red)';
   if (deltaMs <= 300) return 'var(--accent)';
   return 'var(--text-secondary)';
 }

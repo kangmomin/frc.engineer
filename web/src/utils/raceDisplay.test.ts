@@ -184,15 +184,18 @@ describe('formatFuelMargin', () => {
     expect(r.color).toBe('var(--accent-red)');
   });
 
-  it('near-zero and exact zero render unsigned "0.0" (never "-0.0"), not red', () => {
+  it('near-zero (nonzero) renders unsigned "0.0" (never "-0.0"), not red', () => {
     expect(formatFuelMargin(-0.02).text).toBe('0.0');
-    const z = formatFuelMargin(0);
+    const z = formatFuelMargin(0.04);
     expect(z.text).toBe('0.0');
     expect(z.color).not.toBe('var(--accent-red)');
   });
 
-  it('non-finite input falls back to "0.0"', () => {
-    expect(formatFuelMargin(Number.NaN).text).toBe('0.0');
-    expect(formatFuelMargin(Number.POSITIVE_INFINITY).text).toBe('0.0');
+  it('exact zero (backend-masked) and missing/non-finite degrade to "—"', () => {
+    expect(formatFuelMargin(0).text).toBe('—');
+    expect(formatFuelMargin(0).color).toBe('var(--text-muted)');
+    expect(formatFuelMargin(undefined).text).toBe('—');
+    expect(formatFuelMargin(Number.NaN).text).toBe('—');
+    expect(formatFuelMargin(Number.POSITIVE_INFINITY).text).toBe('—');
   });
 });

@@ -123,7 +123,8 @@ export function columnChipLabel(key: ColumnKey, is2026: boolean): string {
   return COL_LABEL[key];
 }
 
-/** 기본 컬럼 가시성(목업 기준: drs/ers/gap/interval/lastLap/tyre=true, 나머지=false). */
+/** 기본 컬럼 가시성. 목업 기준(drs/ers/gap/interval/lastLap/tyre) + 요구사항으로 추가된
+ * bestLap/fuel/penalty도 기본 표시(페널티 호버 상세가 기본 상태에서 보여야 함). 나머지=false. */
 export const DEFAULT_COL_VISIBILITY: Record<ColumnKey, boolean> = {
   drs: true,
   ers: true,
@@ -132,7 +133,7 @@ export const DEFAULT_COL_VISIBILITY: Record<ColumnKey, boolean> = {
   lastLap: true,
   bestLap: true,
   fuel: true,
-  penalty: false,
+  penalty: true,
   tyre: true,
   pit: false,
   vmax: false,
