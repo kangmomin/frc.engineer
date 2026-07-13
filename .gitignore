@@ -1,5 +1,6 @@
 # Dependencies
 web/node_modules/
+/node_modules/
 
 # Build output
 web/dist/
@@ -24,6 +25,9 @@ Thumbs.db
 data/packets/
 data/races/
 data/races.zip
+# F1 텔레메트리 테스트 패킷 세트(GB 단위 대용량) — 문서(README)만 추적
+/test-sets/*
+!/test-sets/README.md
 # 루트에 생성되는 런타임 트랙 녹화(예: monza_recorded.txt). data/tracks/*_recorded.txt 는 의도적으로 추적하므로 루트 앵커 사용
 /data/*_recorded.txt
 
@@ -31,6 +35,11 @@ data/races.zip
 *.exe
 *.exe.old
 nul
+# 루트에 생성되는 리눅스 개발용 Go 빌드 산출물 (cmd/* 소스와 무관하도록 루트 앵커)
+/mockudp
+/sender
+/server
+/signaling
 
 # Runtime logs (sender 등이 루트에 생성)
 /logs/
@@ -43,6 +52,9 @@ nul
 
 # Playwright smoke-test artifacts (dev only)
 .playwright-mcp/
+
+# Claude Code 로컬 worktree 작업 디렉토리
+.claude/worktrees/
 
 # design-sync (claude.ai/design) — staged scripts, build output, machine state.
 # Durable inputs under .design-sync/ (config.json, NOTES.md, conventions.md,
