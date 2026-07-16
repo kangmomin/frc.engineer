@@ -81,6 +81,7 @@ interface SenderStatus {
   raceStorageMode?: SenderStorageMode | "off";
   invite?: SenderInvite;
   peers?: SenderPeer[];
+  paired?: boolean;
 }
 
 interface SenderSession {
@@ -198,6 +199,7 @@ interface SenderStorageInfo {
 
 const DEFAULT_SENDER_URL = "http://localhost:8099";
 const DEFAULT_ENGINEER_DASHBOARD_URL = "https://pitwall.up.railway.app";
+const DEFAULT_PLATFORM_BASE_URL = "https://pithub.up.railway.app";
 const SENDER_URL_KEY = "frc_sender_url";
 const SENDER_STORAGE_ROOT_KEY = "frc_sender_storage_root";
 const SAVED_RECOMMENDATIONS_KEY = "frc_setup_recommendations";
@@ -748,6 +750,253 @@ function useSenderConnection(senderUrl: string) {
   return { connected, status, session, player, detectedTrack, latestRaceResult };
 }
 
+interface SenderUploadStatus {
+  paired?: boolean;
+  platformBaseUrl?: string;
+  autoUpload?: boolean;
+}
+
+type PairingGate = "checking" | "paired" | "unpaired";
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) {
+    return false;
+  }
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// 구버전 sender(/api/status에 paired 필드 없음) 대응 폴백 조회
+async function fetchSenderUploadStatus(senderUrl: string): Promise<SenderUploadStatus | null> {
+  try {
+    const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/upload/status`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = (await response.json().catch(() => null)) as SenderUploadStatus | null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function usePairingGate(senderUrl: string, senderConnected: boolean, senderStatus: SenderStatus | null) {
+  const [fallbackPaired, setFallbackPaired] = useState<boolean | null>(null);
+  const [platformBaseUrl, setPlatformBaseUrl] = useState(DEFAULT_PLATFORM_BASE_URL);
+  const [optimisticPaired, setOptimisticPaired] = useState(false);
+
+  const authoritativePaired = senderStatus?.paired;
+  const needsFallback = senderConnected && senderStatus !== null && authoritativePaired === undefined;
+
+  // 연결이 끊기면 폴백 판정 상태를 초기화 (재연결 시 새로 판정)
+  useEffect(() => {
+    if (!senderConnected) {
+      setFallbackPaired(null);
+      setOptimisticPaired(false);
+    }
+  }, [senderConnected]);
+
+  // 신버전 sender: paired boolean이 새 값으로 도착할 때마다 낙관적 상태를 authoritative 값으로 리셋
+  useEffect(() => {
+    if (senderStatus && senderStatus.paired !== undefined) {
+      setOptimisticPaired(false);
+    }
+  }, [senderStatus]);
+
+  // 구버전 sender 폴백: 연결 시 1회 + unpaired인 동안 3초 간격 재조회
+  useEffect(() => {
+    if (!needsFallback) {
+      return;
+    }
+    let active = true;
+    let timer: number | null = null;
+
+    const poll = async () => {
+      const data = await fetchSenderUploadStatus(senderUrl);
+      if (!active) return;
+      let stillUnpaired = true;
+      if (data) {
+        setFallbackPaired(data.paired === true);
+        setOptimisticPaired(false);
+        if (isHttpUrl(data.platformBaseUrl)) {
+          setPlatformBaseUrl(data.platformBaseUrl);
+        }
+        stillUnpaired = data.paired !== true;
+      }
+      // paired 확정 시 재조회 중단 (조회 실패는 재시도)
+      if (!active || !stillUnpaired) return;
+      timer = window.setTimeout(() => {
+        void poll();
+      }, 3000);
+    };
+
+    void poll();
+    return () => {
+      active = false;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [needsFallback, senderUrl]);
+
+  // 신버전 sender에서 unpaired가 확정된 경우: platformBaseUrl 확보를 위해 1회만 조회
+  useEffect(() => {
+    if (!(senderConnected && authoritativePaired === false)) {
+      return;
+    }
+    let active = true;
+    void (async () => {
+      const data = await fetchSenderUploadStatus(senderUrl);
+      if (!active || !data) return;
+      if (isHttpUrl(data.platformBaseUrl)) {
+        setPlatformBaseUrl(data.platformBaseUrl);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [senderConnected, authoritativePaired, senderUrl]);
+
+  let gate: PairingGate;
+  if (!senderConnected) {
+    gate = "checking";
+  } else if (optimisticPaired) {
+    gate = "paired";
+  } else if (authoritativePaired === true) {
+    gate = "paired";
+  } else if (authoritativePaired === false) {
+    gate = "unpaired";
+  } else if (needsFallback) {
+    gate = fallbackPaired === null ? "checking" : fallbackPaired ? "paired" : "unpaired";
+  } else {
+    gate = "checking";
+  }
+
+  const markJustPaired = () => setOptimisticPaired(true);
+
+  return { gate, platformBaseUrl, markJustPaired };
+}
+
+function PairingGateModal({
+  senderUrl,
+  platformBaseUrl,
+  onPaired,
+}: {
+  senderUrl: string;
+  platformBaseUrl: string;
+  onPaired: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (submitting) return;
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setError("페어링 코드를 입력하세요.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch(`${normalizeSenderUrl(senderUrl)}/api/upload/pair`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: trimmed }),
+      });
+      const data = (await response.json().catch(() => null)) as { paired?: boolean; error?: string } | null;
+      if (!response.ok || data?.paired !== true) {
+        throw new Error(data?.error || "페어링 실패");
+      }
+      onPaired();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "페어링 실패");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 20000,
+        background: "rgba(6, 8, 10, 0.72)",
+        backdropFilter: "blur(6px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 460,
+          background: P.surface,
+          border: `1px solid ${P.border}`,
+          borderRadius: 8,
+          padding: 24,
+          fontFamily: P.sans,
+          color: P.text,
+        }}
+      >
+        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: P.mono, marginBottom: 6 }}>
+          기기 페어링이 필요합니다
+        </div>
+        <div style={{ fontSize: 12, color: P.muted, lineHeight: 1.6, marginBottom: 16 }}>
+          Driver Pack을 사용하려면 웹 허브 계정과 기기 페어링이 필요합니다.
+        </div>
+
+        <ol style={{ margin: "0 0 16px", paddingLeft: 18, fontSize: 12, color: P.text, lineHeight: 1.8 }}>
+          <li>
+            <a href={platformBaseUrl} target="_blank" rel="noopener noreferrer" style={{ color: P.accent }}>
+              {platformBaseUrl}
+            </a>
+            에 접속해 Steam으로 로그인하세요.
+          </li>
+          <li>상단 메뉴 PROFILE → "디바이스 페어링" 카드에서 "페어링 코드 생성"을 클릭하세요.</li>
+          <li>생성된 코드를 아래 입력란에 붙여넣고 "인증"을 누르세요. (코드는 10분간 유효하며 1회만 사용할 수 있습니다)</li>
+        </ol>
+
+        {error ? (
+          <div style={{ marginBottom: 12, padding: 10, borderRadius: 4, background: "rgba(255,82,92,0.08)", color: P.danger, fontSize: 11 }}>
+            {error}
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                void submit();
+              }
+            }}
+            maxLength={64}
+            placeholder="페어링 코드"
+            style={{ flex: 1, padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}
+          />
+          <button
+            onClick={() => void submit()}
+            disabled={submitting}
+            style={{ padding: "10px 16px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, cursor: submitting ? "wait" : "pointer", fontFamily: P.mono, fontSize: 12, fontWeight: 700 }}
+          >
+            {submitting ? "확인 중..." : "인증"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function buildSetupTips(snaps: TelemetrySnapshot[]): SetupTip[] {
   if (snaps.length < 2) return [];
 
@@ -1242,6 +1491,20 @@ export function F1SetupManager() {
   };
 
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack, latestRaceResult } = useSenderConnection(senderUrl);
+  const { gate: pairingGate, platformBaseUrl: pairingPlatformBaseUrl, markJustPaired } = usePairingGate(senderUrl, senderConnected, senderStatus);
+  const pairingGateActive = pairingGate === "unpaired";
+  const rootContentRef = useRef<HTMLDivElement>(null);
+
+  // React 18: inert 프로퍼티가 없어 ref로 DOM 속성을 직접 set/remove
+  useEffect(() => {
+    const node = rootContentRef.current;
+    if (!node) return;
+    if (pairingGateActive) {
+      node.setAttribute("inert", "");
+    } else {
+      node.removeAttribute("inert");
+    }
+  }, [pairingGateActive]);
 
   useEffect(() => {
     setOverlayState({
@@ -1638,7 +1901,9 @@ export function F1SetupManager() {
   const senderPeers = senderStatus?.peers ?? [];
 
   return (
+    <>
     <div
+      ref={rootContentRef}
       style={{
         minHeight: 0,
         height: "100%",
@@ -2559,5 +2824,9 @@ export function F1SetupManager() {
         </main>
       </div>
     </div>
+    {pairingGateActive ? (
+      <PairingGateModal senderUrl={senderUrl} platformBaseUrl={pairingPlatformBaseUrl} onPaired={markJustPaired} />
+    ) : null}
+    </>
   );
 }
