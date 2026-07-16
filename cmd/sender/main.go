@@ -1471,13 +1471,14 @@ func main() {
 	mux.HandleFunc("GET /api/upload/status", func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.Lock()
 		paired := cfgUploadToken != ""
-		base := cfgPlatformBaseURL
 		autoUpload := cfgAutoUpload
 		cfgMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		// platformBaseUrl은 UI(settings.html·Driver Pack)의 웹 허브 안내 링크 전용 —
+		// API 베이스(cfgPlatformBaseURL)와 호스트가 다르다
 		json.NewEncoder(w).Encode(map[string]any{
 			"paired":          paired,
-			"platformBaseUrl": base,
+			"platformBaseUrl": defaultHubBaseURL,
 			"autoUpload":      autoUpload,
 		})
 	})

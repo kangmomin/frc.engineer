@@ -22,9 +22,10 @@ import (
 // not import the platform DB package.
 
 const (
-	defaultPlatformBaseURL = "https://pitwall.up.railway.app"
-	// v4.42.0까지 기본값이 잘못된 호스트였고 config.json에 영속화됨 — 로드 시 신 기본값으로 치환
-	legacyPlatformBaseURL = "https://pithub.up.railway.app"
+	// 페어링 교환·레이스 업로드 API 베이스 (cmd/platform 배포지)
+	defaultPlatformBaseURL = "https://pithub.up.railway.app"
+	// 사용자 안내용 웹 허브 — 페어링 코드 발급 UI가 있는 프론트엔드 (정적 호스팅, API 아님)
+	defaultHubBaseURL = "https://pitwall.up.railway.app"
 	uploadHTTPTimeout      = 15 * time.Second
 )
 
@@ -119,7 +120,8 @@ type uploadResult struct {
 // normalizePlatformBaseURL trims a trailing slash and falls back to the default.
 func normalizePlatformBaseURL(raw string) string {
 	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
-	if trimmed == "" || trimmed == legacyPlatformBaseURL {
+	// v4.43.0이 웹 허브 호스트를 API 베이스로 잘못 저장했음 — 로드 시 원복
+	if trimmed == "" || trimmed == defaultHubBaseURL {
 		return defaultPlatformBaseURL
 	}
 	return trimmed
