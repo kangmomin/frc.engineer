@@ -451,6 +451,57 @@
   .toast.ok { border-color: #00d2ff; color: #00d2ff; }
   .toast.err { border-color: #e74c3c; color: #e74c3c; }
 
+  /* Pairing gate modal (blocking; no close control) */
+  .pair-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1000;
+  }
+  .pair-modal-backdrop.show { display: flex; }
+  .pair-modal {
+    width: 100%;
+    max-width: 480px;
+    background: #141414;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 28px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  }
+  .pair-modal h2 {
+    margin: 0 0 8px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.2rem;
+    color: #fff;
+  }
+  .pair-modal .pair-modal-sub {
+    margin: 0 0 18px;
+    color: #aaa;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .pair-modal ol {
+    margin: 0 0 18px;
+    padding-left: 20px;
+    color: #ccc;
+    font-size: 0.9rem;
+    line-height: 1.8;
+  }
+  .pair-modal ol a { color: #00d2ff; }
+  .pair-modal .muted { color: #777; }
+  .pair-modal-error {
+    min-height: 1em;
+    margin-top: 10px;
+    color: #e74c3c;
+    font-size: 0.85rem;
+  }
+
   .split-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -956,6 +1007,25 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Pairing gate modal (blocking; no close control) -->
+<div class="pair-modal-backdrop" id="pairModalBackdrop">
+  <div class="pair-modal" role="dialog" aria-modal="true" aria-labelledby="pairModalTitle">
+    <h2 id="pairModalTitle">기기 페어링이 필요합니다</h2>
+    <p class="pair-modal-sub">Pitwall Sender를 사용하려면 웹 허브 계정과 기기 페어링이 필요합니다.</p>
+    <ol>
+      <li><a id="pairModalHubLink" href="https://pithub.up.railway.app" target="_blank" rel="noopener noreferrer">웹 허브</a>에 접속해 Steam으로 로그인하세요.</li>
+      <li>상단 메뉴 <b>PROFILE</b> → <b>디바이스 페어링</b> 카드에서 <b>페어링 코드 생성</b>을 클릭하세요.</li>
+      <li>생성된 코드를 아래 입력란에 붙여넣고 <b>인증</b>을 누르세요. <span class="muted">(코드는 10분간 유효하며 1회만 사용할 수 있습니다)</span></li>
+    </ol>
+    <div class="field">
+      <label for="pairModalCode">페어링 코드</label>
+      <input type="text" id="pairModalCode" maxlength="64" placeholder="웹 허브에서 발급한 코드">
+    </div>
+    <button class="secondary-btn" id="pairModalBtn" type="button" style="margin-top:12px">인증</button>
+    <div class="pair-modal-error" id="pairModalError"></div>
+  </div>
+</div>
 
 <script>
   const $room = document.getElementById('roomCode');
@@ -2038,6 +2108,53 @@
   const $pairCode = document.getElementById('pairCode');
   const $pairBtn = document.getElementById('pairBtn');
   const $autoUpload = document.getElementById('autoUpload');
+  const $pairModalBackdrop = document.getElementById('pairModalBackdrop');
+  const $pairModalCode = document.getElementById('pairModalCode');
+  const $pairModalBtn = document.getElementById('pairModalBtn');
+  const $pairModalError = document.getElementById('pairModalError');
+  const $pairModalHubLink = document.getElementById('pairModalHubLink');
+  const $appContainer = document.querySelector('.container');
+  let pairModalPollTimer = null;
+
+  // 페어링 코드 전송 공용 함수 (응답이 JSON이 아닐 수 있어 방어적으로 파싱).
+  async function pairWithCode(code) {
+    const trimmed = (code || '').trim();
+    if (!trimmed) return { ok: false, error: '페어링 코드를 입력하세요' };
+    try {
+      const r = await fetch('/api/upload/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: trimmed }),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && d && d.paired) return { ok: true };
+      return { ok: false, error: (d && d.error) || '페어링 실패' };
+    } catch (e) {
+      return { ok: false, error: '네트워크 오류' };
+    }
+  }
+
+  function showPairModal() {
+    if (!$pairModalBackdrop.classList.contains('show')) {
+      $pairModalBackdrop.classList.add('show');
+      if ($appContainer) $appContainer.setAttribute('inert', '');
+    }
+    // 다른 화면에서 페어링되면 자동으로 닫히도록 주기 재조회.
+    if (!pairModalPollTimer) {
+      pairModalPollTimer = setInterval(loadUploadStatus, 3000);
+    }
+  }
+
+  function hidePairModal() {
+    if ($pairModalBackdrop.classList.contains('show')) {
+      $pairModalBackdrop.classList.remove('show');
+      if ($appContainer) $appContainer.removeAttribute('inert');
+    }
+    if (pairModalPollTimer) {
+      clearInterval(pairModalPollTimer);
+      pairModalPollTimer = null;
+    }
+  }
 
   async function loadUploadStatus() {
     try {
@@ -2045,8 +2162,17 @@
       const d = await r.json();
       $pairStatus.textContent = d.paired ? '페어링됨' : '미페어링';
       $autoUpload.checked = !!d.autoUpload;
+      if (typeof d.platformBaseUrl === 'string' && /^https?:\/\//i.test(d.platformBaseUrl)) {
+        $pairModalHubLink.href = d.platformBaseUrl;
+      }
+      if (d.paired === false) {
+        showPairModal();
+      } else if (d.paired) {
+        hidePairModal();
+      }
     } catch (e) {
       $pairStatus.textContent = '상태 확인 실패';
+      // fetch 실패 시 모달 상태는 바꾸지 않는다 (fail-open; 실 게이트는 Go 쪽).
     }
   }
 
@@ -2055,24 +2181,41 @@
     if (!code) { showToast('페어링 코드를 입력하세요', false); return; }
     $pairBtn.disabled = true;
     try {
-      const r = await fetch('/api/upload/pair', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
-      const d = await r.json();
-      if (r.ok && d.paired) {
+      const res = await pairWithCode(code);
+      if (res.ok) {
         showToast('페어링 완료', true);
         $pairCode.value = '';
         loadUploadStatus();
       } else {
-        showToast(d.error || '페어링 실패', false);
+        showToast(res.error || '페어링 실패', false);
       }
-    } catch (e) {
-      showToast('네트워크 오류', false);
     } finally {
       $pairBtn.disabled = false;
     }
+  });
+
+  async function submitPairModal() {
+    const code = ($pairModalCode.value || '').trim();
+    if (!code) { $pairModalError.textContent = '페어링 코드를 입력하세요'; return; }
+    $pairModalBtn.disabled = true;
+    $pairModalError.textContent = '';
+    try {
+      const res = await pairWithCode(code);
+      if (res.ok) {
+        hidePairModal();
+        loadUploadStatus();
+        showToast('페어링 완료', true);
+      } else {
+        $pairModalError.textContent = res.error || '페어링 실패';
+      }
+    } finally {
+      $pairModalBtn.disabled = false;
+    }
+  }
+
+  $pairModalBtn.addEventListener('click', submitPairModal);
+  $pairModalCode.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitPairModal(); }
   });
 
   $autoUpload.addEventListener('change', async () => {
