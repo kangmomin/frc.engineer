@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/energye/systray"
@@ -901,7 +902,13 @@ func main() {
 	// Connect to signaling server.
 	// 시그널링이 일시적으로 죽어 있어도 sender는 살아서 백오프 재시도해야 한다 —
 	// 이전에는 첫 실패에 os.Exit(1)로 앱 전체가 종료됐다.
+	// single-flight 가드: 페어링 성공 콜백과 밴 해제 콜백이 동시에 호출해도 재시도 루프가 1개만 돌게 한다.
+	var connectLoopActive atomic.Bool
 	connectWithRetry := func() {
+		if !connectLoopActive.CompareAndSwap(false, true) {
+			return
+		}
+		defer connectLoopActive.Store(false)
 		delay := time.Second
 		for {
 			// 닉네임 밴 상태면 중단 (Close 후 Connect가 세션을 되살리는 것 방지)
@@ -934,10 +941,13 @@ func main() {
 			}
 		}
 	}
-	// shouldBeConnected gates (re)connection on the nickname ban — used here,
-	// by the ban-state callback, and the config path.
+	// shouldBeConnected gates (re)connection on the nickname ban + device pairing —
+	// used here, by the ban-state callback, and the config path.
 	shouldBeConnected := func() bool {
-		return !processor.IsBanned()
+		cfgMu.Lock()
+		paired := cfgUploadToken != ""
+		cfgMu.Unlock()
+		return paired && !processor.IsBanned()
 	}
 
 	// When the player's nickname enters/leaves the ban list, hard-stop or resume.
@@ -958,7 +968,15 @@ func main() {
 	if shouldBeConnected() {
 		go connectWithRetry()
 	} else {
-		logger.Warn("pitwall connection skipped (permission denied or nickname banned)")
+		cfgMu.Lock()
+		paired := cfgUploadToken != ""
+		cfgMu.Unlock()
+		if !paired {
+			logger.Warn("pitwall connection skipped (device not paired)")
+			systray.SetTooltip("FRC Pitwall Sender " + appVersion + " — 페어링 필요")
+		} else {
+			logger.Warn("pitwall connection skipped (permission denied or nickname banned)")
+		}
 	}
 
 	processor.SetRaceSummarySaveCallback(func(sessionUID uint64, counts telemetry.RaceSummaryCounts, timeline []dto.RaceControlNotification, state *dto.PitwallState, detail *dto.RaceDetailInput) error {
@@ -1231,6 +1249,7 @@ func main() {
 		rn := cfgRoomName
 		rp := cfgRoomPassword
 		dashboardURL := cfgEngineerDashboardURL
+		paired := cfgUploadToken != ""
 		cfgMu.Unlock()
 		senderState := buildSenderState(sf, tr, mode)
 
@@ -1252,6 +1271,7 @@ func main() {
 			"radarActive":        radarOv.IsRunning(),
 			"weatherActive":      weatherOv.IsRunning(),
 			"banned":             processor.IsBanned(),
+			"paired":             paired,
 			"strategyActive":     strategyOv.IsRunning(),
 			"invite":             invite,
 			"peers":              peers,
@@ -1434,11 +1454,16 @@ func main() {
 			return
 		}
 		cfgMu.Lock()
+		wasPaired := cfgUploadToken != ""
 		cfgUploadToken = token
 		saveErr := saveSenderConfig(buildSenderConfigSnapshot())
 		cfgMu.Unlock()
 		if saveErr != nil {
 			logger.Warn("failed to persist upload token", "error", saveErr)
+		}
+		if !wasPaired && shouldBeConnected() {
+			logger.Info("device paired — starting pitwall connection")
+			go connectWithRetry()
 		}
 		json.NewEncoder(w).Encode(map[string]bool{"paired": true})
 	})
