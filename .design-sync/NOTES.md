@@ -42,6 +42,8 @@ WeatherIcon / TrackStrip)만 synth 번들로 동기화한다.
   export DS_CHROMIUM_PATH="$USERPROFILE/AppData/Local/ms-playwright/chromium-1223/chrome-win64/chrome.exe"
   ```
   다른 머신/시점에선 캐시 빌드 번호가 다를 수 있으니 `ls ~/AppData/Local/ms-playwright`로 재확인.
+- Linux 머신(2026-07-20 재동기화에서 검증): 캐시가 `~/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome`.
+  동일하게 `export DS_CHROMIUM_PATH="$HOME/.cache/ms-playwright/chromium-1223/chrome-linux64/chrome"`로 우회하면 정상 동작.
 
 ## Known render warns (정상 — 재동기화 시 새 경고로 오해 금지)
 
