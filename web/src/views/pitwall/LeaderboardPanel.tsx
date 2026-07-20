@@ -35,7 +35,7 @@ export interface LeaderboardPanelProps {
   is2026: boolean;
   detail: string;
   /** 상단 현 위치 스트립. null이면 미표시(트랙 길이/거리 결측 degrade). */
-  trackPos: { code: string; pct: number; nextCornerText: string | null } | null;
+  trackPos: { code: string; pct: number; sector: number | null; nextCornerText: string | null } | null;
   /** 실측 코너 마커 (trackId/trackLength 기준 메모이즈). null = 데이터 없는 트랙. */
   cornerMarks: CornerMark[] | null;
   /** 상세 모달이 열린 드라이버 index (rowBg 강조용). null=닫힘. */
@@ -89,7 +89,7 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, trackPos, c
     >
       <PanelTitle title="Cockpit Leaderboard" tone="primary" detail={detail} />
       {trackPos && (
-        <TrackPositionStrip code={trackPos.code} pct={trackPos.pct} cornerMarks={cornerMarks} nextCornerText={trackPos.nextCornerText} />
+        <TrackPositionStrip code={trackPos.code} pct={trackPos.pct} sector={trackPos.sector} cornerMarks={cornerMarks} nextCornerText={trackPos.nextCornerText} />
       )}
       {/* ARIA table 구조(FIX-6): 실 <table>이 아닌 CSS grid div이므로 role로 시맨틱을 부여한다.
           outer(role=table) → header row(role=row, table의 직계 자식) / body(role=rowgroup) →

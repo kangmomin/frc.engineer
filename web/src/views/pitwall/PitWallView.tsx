@@ -135,9 +135,12 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
       return null;
     }
     const nextCorner = nextCornerNumber(session?.trackId, player.lapDistance, len);
+    // currentSector는 0-based(0=S1) — 1-based로 노출. 범위 밖(이상치)은 null로 미표시.
+    const sec = player.currentSector;
     return {
       code: deriveDriverCodes(drivers).get(player.index) ?? '—',
       pct: wrapPct(player.lapDistance, len),
+      sector: sec >= 0 && sec <= 2 ? sec + 1 : null,
       nextCornerText: nextCorner != null ? `→ T${nextCorner}` : null,
     };
   }, [player, drivers, session]);

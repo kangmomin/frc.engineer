@@ -5,6 +5,8 @@ export interface TrackPositionStripProps {
   code: string;
   /** 랩 진행률 0..100 (wrapPct 결과). */
   pct: number;
+  /** 현재 섹터(1-based: 1/2/3). null = 미표시. */
+  sector?: number | null;
   /** 실측 코너 마커(buildCornerMarks 결과, trackId/trackLength 기준 메모이즈).
    * null/미지정 = 코너 데이터 없는 트랙 — 기존 렌더와 동일 (fabrication 금지). */
   cornerMarks?: CornerMark[] | null;
@@ -19,14 +21,14 @@ export interface TrackPositionStripProps {
  * 렌더한다 — 데이터 없는 트랙(리버스·Madring)은 bandH=0으로 기존과 동일 렌더.
  * 가드(trackLength/lapDistance 유한성)는 호출부(PitWallView)가 담당 — 불통과 시 미렌더.
  */
-export function TrackPositionStrip({ code, pct, cornerMarks, nextCornerText }: TrackPositionStripProps) {
+export function TrackPositionStrip({ code, pct, sector, cornerMarks, nextCornerText }: TrackPositionStripProps) {
   const rounded = Math.round(pct);
   // 코너 밴드 높이 — 코너 없으면 0으로 강등되어 모든 오프셋이 기존 값과 일치한다.
   const bandH = cornerMarks?.length ? 16 : 0;
   return (
     <div
       role="img"
-      aria-label={`Track position: ${code} at ${rounded}% of lap${nextCornerText ? `, approaching ${nextCornerText.replace(/^→\s*/, '')}` : ''}`}
+      aria-label={`Track position: ${code} at ${rounded}% of lap${sector != null ? `, in sector ${sector}` : ''}${nextCornerText ? `, approaching ${nextCornerText.replace(/^→\s*/, '')}` : ''}`}
       style={{ flex: 'none', position: 'relative', height: 40 + bandH, margin: '0 2px' }}
     >
       {cornerMarks?.map((mark, i) => (
@@ -84,7 +86,7 @@ export function TrackPositionStrip({ code, pct, cornerMarks, nextCornerText }: T
           whiteSpace: 'nowrap',
         }}
       >
-        {code} · {rounded}%{nextCornerText ? ` · ${nextCornerText}` : ''}
+        {code} · {rounded}%{sector != null ? ` · S${sector}` : ''}{nextCornerText ? ` · ${nextCornerText}` : ''}
       </span>
     </div>
   );
