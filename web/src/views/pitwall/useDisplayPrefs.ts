@@ -11,12 +11,13 @@ function defaultWidth(key: WidthKey): number {
   return key === 'driver' ? DRIVER_COL_W : COL_W[key];
 }
 
-export type PanelKey = 'myCar' | 'predictor' | 'strategy' | 'weather' | 'tyres';
+export type PanelKey = 'myCar' | 'predictor' | 'pitExit' | 'strategy' | 'weather' | 'tyres';
 
 /** 기본 패널 가시성. tyres는 좌측 리더보드 하단의 4휠 마모/온도 스트립(기본 표시). */
 export const DEFAULT_PANEL_VISIBILITY: Record<PanelKey, boolean> = {
   myCar: true,
   predictor: true,
+  pitExit: true,
   strategy: true,
   weather: false,
   tyres: true,

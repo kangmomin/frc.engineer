@@ -9,6 +9,7 @@ const COLUMNS_SECTION_LABEL_ID = 'pitwall-settings-columns-label';
 const PANEL_CHIPS: Array<{ key: PanelKey; label: string }> = [
   { key: 'myCar', label: 'My Car' },
   { key: 'predictor', label: 'Predictor' },
+  { key: 'pitExit', label: 'Pit Exit' },
   { key: 'strategy', label: 'Strategy' },
   { key: 'weather', label: 'Weather' },
   { key: 'tyres', label: 'Tyre Strip' },
