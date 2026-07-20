@@ -234,24 +234,26 @@ describe('derivePitExit — scenarios (honest what-ifs)', () => {
   });
 });
 
-describe('derivePitExit — pit-loss source flag', () => {
-  it('defaults pitLossFallback to false (track data source)', () => {
+describe('derivePitExit — pit-loss source', () => {
+  it('defaults pitLossSource to track', () => {
     const vm = derivePitExit(me, standardField(), PIT_LOSS, makeSession())!;
-    expect(vm.pitLossFallback).toBe(false);
+    expect(vm.pitLossSource).toBe('track');
   });
 
-  it('marks pitLossFallback true when caller passes the fallback flag', () => {
-    const vm = derivePitExit(me, standardField(), PIT_LOSS, makeSession(), true)!;
-    expect(vm.pitLossFallback).toBe(true);
-    expect(vm.pitLossText).toBe('20.0s'); // 폴백값도 정상 표시된다
+  it('propagates the caller-provided source (user / measured)', () => {
+    const u = derivePitExit(me, standardField(), PIT_LOSS, makeSession(), 'user')!;
+    expect(u.pitLossSource).toBe('user');
+    expect(u.pitLossText).toBe('20.0s'); // 폴백값도 정상 표시된다
+    const m = derivePitExit(me, standardField(), PIT_LOSS, makeSession(), 'measured')!;
+    expect(m.pitLossSource).toBe('measured');
   });
 
-  it('suppresses the fallback flag while pitting when pit-loss is invalid', () => {
+  it('forces source back to track while pitting when pit-loss is invalid', () => {
     const pittingMe = makeDriver({ index: 0, name: 'Me', position: 5, pitStatus: 1 });
     const f = [pittingMe, ...standardField().slice(1)];
-    const vm = derivePitExit(pittingMe, f, null, makeSession(), true)!;
+    const vm = derivePitExit(pittingMe, f, null, makeSession(), 'user')!;
     expect(vm.pitting).toBe(true);
     expect(vm.pitLossText).toBeNull();
-    expect(vm.pitLossFallback).toBe(false); // pitLossText가 null이면 출처 표기도 억제
+    expect(vm.pitLossSource).toBe('track'); // pitLossText가 null이면 출처 표기도 억제
   });
 });

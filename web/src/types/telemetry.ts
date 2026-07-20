@@ -540,6 +540,9 @@ export interface DriverInfo {
   deltaToRaceLeader?: number;
   deltaToPlayer?: number;
   pitLaneTime?: number;
+  // 마지막 완료 피트스톱의 실측값(Go DTO omitempty — 미피트 시 undefined).
+  measuredPitLaneMs?: number; // 레인 체류(ms) = 이동+정지
+  measuredPitStopMs?: number; // 정지 작업(ms), 유형 분류 입력
 }
 
 /** One penalty/warning entry for the leaderboard hover detail (DTO PenaltyLogEntry).

@@ -14,7 +14,7 @@ import { buildCornerMarks, wrapPct } from '../../ui/TrackStrip.derive';
 import { COL_ORDER } from './columns';
 import { deriveLeaderboardRows } from './derive/leaderboardRows';
 import { deriveMyCar } from './derive/myCar';
-import { derivePitExit } from './derive/pitExit';
+import { derivePitExit, type PitLossSource } from './derive/pitExit';
 import { deriveTyreDetail } from './derive/tyreDetail';
 import { deriveWeather } from './derive/weather';
 import { DisplaySettings } from './DisplaySettings';
@@ -101,15 +101,20 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   // 사용자 폴백값(초→ms)을 쓴다. 로딩 중(idle/loading)엔 null 유지 → 폴백값이 먼저 떴다가
   // 트랙값으로 점프하지 않는다. fallback 플래그로 출처를 pitExit VM에 전달(anti-fabrication 표기).
   const pitLoss = useMemo(() => {
+    // 실측 최우선: 플레이어가 이미 피트했으면 마지막 스톱의 실측 레인 체류를 피트로스로 쓴다.
+    const measured = player?.measuredPitLaneMs;
+    if (measured != null && Number.isFinite(measured) && measured > 0) {
+      return { ms: measured as number | null, source: 'measured' as PitLossSource };
+    }
     const s = strategyGuide.data?.track.race_strategy?.pit_stop_time_lost_s;
     const trackMs = s != null && Number.isFinite(s) && s > 0 ? s * 1000 : null;
-    if (trackMs != null) return { ms: trackMs as number | null, fallback: false };
+    if (trackMs != null) return { ms: trackMs as number | null, source: 'track' as PitLossSource };
     if (strategyGuide.status === 'ready' || strategyGuide.status === 'unavailable') {
-      return { ms: prefs.pitLossSec * 1000, fallback: true };
+      return { ms: prefs.pitLossSec * 1000, source: 'user' as PitLossSource };
     }
-    return { ms: null as number | null, fallback: false };
-  }, [strategyGuide.data, strategyGuide.status, prefs.pitLossSec]);
-  const pitExit = useMemo(() => derivePitExit(player, drivers, pitLoss.ms, session, pitLoss.fallback), [player, drivers, pitLoss, session]);
+    return { ms: null as number | null, source: 'track' as PitLossSource };
+  }, [player, strategyGuide.data, strategyGuide.status, prefs.pitLossSec]);
+  const pitExit = useMemo(() => derivePitExit(player, drivers, pitLoss.ms, session, pitLoss.source), [player, drivers, pitLoss, session]);
   const tyreDetail = useMemo(() => deriveTyreDetail(player), [player]);
   const lapCounter = useMemo(() => deriveLapCounter(drivers, session), [drivers, session]);
   // WeatherPanel은 VM만 받는 순수 컴포넌트다(Spec §2 VM-only, FIX-4) — 컨테이너가 조립한다.

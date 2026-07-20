@@ -185,6 +185,10 @@ type DriverInfo struct {
 	DeltaToRaceLeader int     `json:"deltaToRaceLeader,omitempty"`
 	DeltaToPlayer     int     `json:"deltaToPlayer,omitempty"`
 	PitLaneTime       int     `json:"pitLaneTime,omitempty"`
+	// 마지막으로 완료된 피트스톱의 실측값(스톱 완료 시점에 확정, 다음 스톱까지 유지).
+	// 라이브 PitLaneTime/PitStopTimer가 피트 진출 후 리셋돼도 살아남는다.
+	MeasuredPitLaneMs int `json:"measuredPitLaneMs,omitempty"` // 레인 체류(ms) = 이동+정지
+	MeasuredPitStopMs int `json:"measuredPitStopMs,omitempty"` // 정지 작업(ms), 유형 분류 입력
 }
 
 // PenaltyLogEntry is one penalty/warning a driver received, for the leaderboard's

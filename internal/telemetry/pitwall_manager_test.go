@@ -322,3 +322,88 @@ func writeTrackLineCSV(t *testing.T, n int) string {
 	}
 	return path
 }
+
+// newPitMeasureManager seeds a 2-car session for measured pit-loss capture tests.
+func newPitMeasureManager(t *testing.T, uid uint64) (*PitwallManager, packets.PacketHeader) {
+	t.Helper()
+	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, GameYear: 26, SessionUID: uid}
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	pm.UpdateSession(&packets.PacketSessionData{Header: header, TrackID: 3, TrackLength: 5000})
+	pm.UpdateParticipants(&packets.PacketParticipantsData{Header: header, NumActiveCars: 2})
+	return pm, header
+}
+
+// pushLap stores one car-0 LapData frame (no BuildState — capture runs in BuildState).
+func pushLap(pm *PitwallManager, h packets.PacketHeader, pitStatus uint8, laneMs, stopMs uint16, numStops uint8) {
+	ld := &packets.PacketLapData{Header: h}
+	ld.LapData[0].CarPosition = 1
+	ld.LapData[0].PitStatus = pitStatus
+	ld.LapData[0].PitLaneTimeInLaneInMS = laneMs
+	ld.LapData[0].PitStopTimerInMS = stopMs
+	ld.LapData[0].NumPitStops = numStops
+	pm.UpdateLapData(ld)
+}
+
+// TestPitMeasureCapture exercises the measured pit-loss state machine (Fable C2/M2):
+// exit-edge confirmation, drive-through exclusion, multi-stop cross-contamination
+// guard, and session reset.
+func TestPitMeasureCapture(t *testing.T) {
+	pm, h := newPitMeasureManager(t, 1)
+	frame := func(pitStatus uint8, laneMs, stopMs uint16, numStops uint8) dto.DriverInfo {
+		pushLap(pm, h, pitStatus, laneMs, stopMs, numStops)
+		return pm.BuildState().Drivers[0]
+	}
+
+	// One stop: confirm the observed max at the pit-exit down-edge (NumPitStops++).
+	frame(0, 0, 0, 0)
+	if d := frame(1, 5000, 2500, 0); d.MeasuredPitLaneMs != 0 {
+		t.Fatalf("in-pit must not confirm yet: got %d", d.MeasuredPitLaneMs)
+	}
+	frame(1, 18000, 2500, 0) // accumulate observed lane dwell
+	if d := frame(0, 0, 0, 1); d.MeasuredPitLaneMs != 18000 || d.MeasuredPitStopMs != 2500 {
+		t.Fatalf("one-stop confirm: lane=%d stop=%d (want 18000/2500)", d.MeasuredPitLaneMs, d.MeasuredPitStopMs)
+	}
+
+	// Multi-stop: entry re-arms obs so stop 1's values don't leak into stop 2.
+	frame(1, 4000, 2200, 1)
+	frame(1, 15000, 2200, 1)
+	if d := frame(0, 0, 0, 2); d.MeasuredPitLaneMs != 15000 || d.MeasuredPitStopMs != 2200 {
+		t.Fatalf("multi-stop contamination: lane=%d stop=%d (want 15000/2200)", d.MeasuredPitLaneMs, d.MeasuredPitStopMs)
+	}
+
+	// Drive-through: lane traversed but NumPitStops unchanged → not confirmed.
+	frame(1, 3000, 0, 2)
+	if d := frame(0, 0, 0, 2); d.MeasuredPitLaneMs != 15000 {
+		t.Fatalf("drive-through must not confirm: got %d (want 15000 retained)", d.MeasuredPitLaneMs)
+	}
+
+	// Session reset clears the capture.
+	h2 := h
+	h2.SessionUID = 2
+	pm.UpdateSession(&packets.PacketSessionData{Header: h2, TrackID: 3, TrackLength: 5000})
+	pushLap(pm, h2, 0, 0, 0, 0)
+	if d := pm.BuildState().Drivers[0]; d.MeasuredPitLaneMs != 0 || d.MeasuredPitStopMs != 0 {
+		t.Fatalf("session reset must clear: lane=%d stop=%d (want 0/0)", d.MeasuredPitLaneMs, d.MeasuredPitStopMs)
+	}
+}
+
+// TestPitMeasureReadOnlyDoesNotMutate proves the RLock read path never mutates the
+// capture state (Fable C1): the pit-exit down-edge must confirm only under BuildState.
+func TestPitMeasureReadOnlyDoesNotMutate(t *testing.T) {
+	pm, h := newPitMeasureManager(t, 1)
+
+	pushLap(pm, h, 1, 12000, 3000, 0)
+	pm.BuildState() // mutate: entry edge arms obs
+	pushLap(pm, h, 1, 20000, 3000, 0)
+	pm.BuildState() // mutate: accumulate obs=20000
+	pushLap(pm, h, 0, 0, 0, 1) // exit down-edge frame
+
+	// Read-only build must NOT confirm the stop (no state write under RLock).
+	if d := pm.BuildStateReadOnly().Drivers[0]; d.MeasuredPitLaneMs != 0 {
+		t.Fatalf("BuildStateReadOnly must not confirm (C1): got %d", d.MeasuredPitLaneMs)
+	}
+	// A mutating build then confirms the same frame.
+	if d := pm.BuildState().Drivers[0]; d.MeasuredPitLaneMs != 20000 {
+		t.Fatalf("mutating build confirms: got %d (want 20000)", d.MeasuredPitLaneMs)
+	}
+}

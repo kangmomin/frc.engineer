@@ -57,8 +57,24 @@ type PitwallManager struct {
 	penaltyLog [packets.MaxCars][]dto.PenaltyLogEntry
 	// Wall-clock of the last append per car — dedup window basis (RecordPenalty).
 	penaltyLogAt [packets.MaxCars]time.Time
+	// Per-car measured pit-stop capture. Reset on SessionUID change.
+	pitMeasure [packets.MaxCars]pitMeasureState
 	// Injectable clock for tests; NewPitwallManager sets time.Now.
 	now func() time.Time
+}
+
+// pitMeasureState는 완료된 피트스톱의 실측 레인/정지 시간을 프레임 간 유지한다.
+// 라이브 PitLaneTime/PitStopTimer(둘 다 uint16 소스, ≤65535ms)는 피트 중 실시간 값이라
+// 진출 후 리셋되므로, 피트 중 관찰 최댓값을 모으다 레인 진출(PitStatus>0→0 하강 에지)에서
+// 확정한다. 진입 상승 에지 이후 어느 시점에 NumPitStops가 증가하든(박스 정차/릴리스/진출)
+// 하강 에지가 풀 체류를 관찰한 뒤에 잡는다(Fable C2).
+type pitMeasureState struct {
+	lastLaneMs int  // 마지막 완료 스톱의 레인 체류(ms)
+	lastStopMs int  // 마지막 완료 스톱의 정지 작업(ms)
+	obsLaneMs  int  // 진행 중 스톱의 레인 관찰 최댓값
+	obsStopMs  int  // 진행 중 스톱의 정지 관찰 최댓값
+	inPit      bool // 직전 프레임 피트 여부(진입/진출 에지 감지)
+	entryStops int  // 진입 시점 NumPitStops(진출 시 정비 스톱 여부 판정 — drive-through 배제)
 }
 
 // maxTrackMapPoints bounds the trackMap point count so a long recorded lap can
@@ -228,6 +244,7 @@ func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
 		pm.lastTrackID = -1 // 다음 BuildState에서 트랙맵 재전송 트리거
 		pm.dynamicsAnalyzer.Reset()
 		pm.penaltyLog = [packets.MaxCars][]dto.PenaltyLogEntry{}
+		pm.pitMeasure = [packets.MaxCars]pitMeasureState{}
 	}
 	pm.lastSessionUID = uid
 }
@@ -625,6 +642,32 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 				d.DeltaToRaceLeader = int(ld.DeltaToRaceLeaderMinutesPart)*60000 + int(ld.DeltaToRaceLeaderMSPart)
 				d.TopSpeed = int(math.Round(float64(sanitize(ld.SpeedTrapFastestSpeed))))
 				d.PitLaneTime = int(ld.PitLaneTimeInLaneInMS)
+
+				// 실측 피트 캡처. 상태 변이는 mutate 경로에서만 수행한다(BuildStateReadOnly는
+				// RLock만 잡으므로 여기서 쓰면 데이터 레이스 — Fable C1). 진입 상승 에지에서 obs를
+				// 초기화(직전 스톱 값 크로스 오염 차단)하고, 피트 중 관찰 최댓값을 모으다, 진출 하강
+				// 에지에서 정비 스톱(NumPitStops 증가 동반)일 때만 확정한다.
+				pmv := &pm.pitMeasure[i]
+				if mutate {
+					laneMs, stopMs := int(ld.PitLaneTimeInLaneInMS), int(ld.PitStopTimerInMS)
+					inPit := ld.PitStatus > 0
+					switch {
+					case inPit && !pmv.inPit: // 진입 상승 에지
+						pmv.obsLaneMs, pmv.obsStopMs = laneMs, stopMs
+						pmv.entryStops = int(ld.NumPitStops)
+					case inPit: // 피트 중 — 관찰 최댓값 축적
+						pmv.obsLaneMs = max(pmv.obsLaneMs, laneMs)
+						pmv.obsStopMs = max(pmv.obsStopMs, stopMs)
+					case pmv.inPit: // 진출 하강 에지 — 정비 스톱일 때만 확정(drive-through 배제)
+						if pmv.obsLaneMs > 0 && int(ld.NumPitStops) > pmv.entryStops {
+							pmv.lastLaneMs, pmv.lastStopMs = pmv.obsLaneMs, pmv.obsStopMs
+						}
+						pmv.obsLaneMs, pmv.obsStopMs = 0, 0
+					}
+					pmv.inPit = inPit
+				}
+				d.MeasuredPitLaneMs = pmv.lastLaneMs
+				d.MeasuredPitStopMs = pmv.lastStopMs
 				d.Penalties = int(ld.Penalties)
 				d.TotalWarnings = int(ld.TotalWarnings)
 				d.CornerCuttingWarnings = int(ld.CornerCuttingWarnings)

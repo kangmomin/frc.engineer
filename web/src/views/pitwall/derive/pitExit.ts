@@ -12,6 +12,9 @@ export const DRS_WINDOW_MS = 1000;
 
 export type PitExitSpace = 'clear' | 'traffic' | 'drs';
 
+/** pitLoss 값의 출처(표기 구분용, anti-fabrication). measured=실측, track=트랙 baseline, user=사용자 폴백. */
+export type PitLossSource = 'measured' | 'track' | 'user';
+
 export interface PitExitNeighbor {
   code: string;
   /** 부호 없는 크기(초, 1자리). */
@@ -38,8 +41,8 @@ export interface PitExitVM {
   pitting: boolean;
   /** 표시용 피트로스("22.5s"). 2026 세션에선 F1 25 스크랩 기반 추정치. 결측 시 null. */
   pitLossText: string | null;
-  /** pitLoss가 트랙 실데이터가 아니라 사용자 설정 폴백값임(출처 구분 표기용, anti-fabrication). */
-  pitLossFallback: boolean;
+  /** pitLoss 값의 출처(표기 구분용, anti-fabrication): 실측/트랙 baseline/사용자 폴백. */
+  pitLossSource: PitLossSource;
   /** 게임 자체 재합류 예상 순위(있으면 headline, "game"으로 라벨). */
   gameRejoin: number | null;
   /** 균일 피트로스 추정 순위("est."). coverage 불완전 시 approximate. */
@@ -86,7 +89,7 @@ export function derivePitExit(
   drivers: DriverInfo[],
   pitLossMs: number | null,
   session: SessionInfo | null,
-  pitLossFallback = false,
+  pitLossSource: PitLossSource = 'track',
 ): PitExitVM | null {
   if (!player) return null;
 
@@ -99,7 +102,7 @@ export function derivePitExit(
     return {
       pitting: true,
       pitLossText: pitLossValid ? sec(pitLossMs) : null,
-      pitLossFallback: pitLossValid && pitLossFallback,
+      pitLossSource: pitLossValid ? pitLossSource : 'track',
       gameRejoin,
       estPosition: 0,
       approximate: true,
@@ -188,7 +191,7 @@ export function derivePitExit(
   return {
     pitting: false,
     pitLossText: sec(pitLossMs),
-    pitLossFallback,
+    pitLossSource,
     gameRejoin,
     estPosition: aheadCount + 1,
     approximate: !coverageComplete,

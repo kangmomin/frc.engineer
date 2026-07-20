@@ -94,10 +94,12 @@ export function PitExitPanel({ vm }: { vm: PitExitVM | null }) {
   const posTag = vm.gameRejoin != null ? 'game' : vm.approximate ? 'est · partial grid' : 'est';
   const showEstAside = vm.gameRejoin != null && vm.gameRejoin !== vm.estPosition;
   const sp = vm.space ? SPACE_STYLE[vm.space] : null;
+  // 출처 표기(anti-fabrication): 실측=live, 사용자 폴백=set, 트랙 baseline=무표기.
+  const lossTag = vm.pitLossSource === 'measured' ? ' (live)' : vm.pitLossSource === 'user' ? ' (set)' : '';
 
   return (
     <Shell>
-      <PanelTitle title="Pit Exit" tone="tertiary" detail={`If boxing now · loss ${vm.pitLossText ?? '—'}${vm.pitLossFallback ? ' (set)' : ''}`} />
+      <PanelTitle title="Pit Exit" tone="tertiary" detail={`If boxing now · loss ${vm.pitLossText ?? '—'}${lossTag}`} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-md)' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
