@@ -16,6 +16,10 @@ const DOT = '·';
 
 const WING_DAMAGE_THRESHOLD = 10;
 const BODY_DAMAGE_THRESHOLD = 20;
+/** 타이어 마모 명명 임계(%). tyreDetail.ts의 wearColor 임계(60/35)를 미러링한다 —
+ * 리더보드 파생 파일의 자립(복사) 컨벤션을 따라 로컬 상수로 둔다(damageTone 선례). */
+const TYRE_WEAR_HIGH = 60;
+const TYRE_WEAR_MID = 35;
 /** 개인베스트(bestSectorNMs) 근접 판정 여유(ms). 목업 sTone의 절대오차 0.12s를 이식. */
 const SECTOR_CLOSE_MARGIN_MS = 120;
 const ERS_LOW_PCT = 20;
@@ -49,6 +53,16 @@ export function damageTone(value: number, part: 'FL' | 'FR' | 'RW' | 'OTH'): str
   const threshold = part === 'OTH' ? BODY_DAMAGE_THRESHOLD : WING_DAMAGE_THRESHOLD;
   if (value <= 0) return 'var(--text-muted)';
   return value >= threshold ? 'var(--accent-red)' : 'var(--accent-soft)';
+}
+
+/**
+ * 타이어 마모 톤(고마모=경고). tyreDetail.ts wearColor와 동일 임계: >=60 red, >=35 soft,
+ * 그 미만은 secondary(0%=프레시도 정당한 값이라 표시). damage와 달리 0을 muted로 죽이지 않는다.
+ */
+export function tyreWearTone(pct: number): string {
+  if (pct >= TYRE_WEAR_HIGH) return 'var(--accent-red)';
+  if (pct >= TYRE_WEAR_MID) return 'var(--accent-soft)';
+  return 'var(--text-secondary)';
 }
 
 /** legacy driverHasDrs(2061) 이식. */
@@ -198,6 +212,14 @@ export interface LeaderRow {
   dmgRWc: string;
   dmgOTH: string;
   dmgOTHc: string;
+  wearFL: string;
+  wearFLc: string;
+  wearFR: string;
+  wearFRc: string;
+  wearRL: string;
+  wearRLc: string;
+  wearRR: string;
+  wearRRc: string;
 }
 
 function rowBackground(tone: ReturnType<typeof getDriverRowTone>, index: number): string {
@@ -289,6 +311,44 @@ function pitCell(driver: DriverInfo): { label: string; color: string; bg: string
   };
 }
 
+/**
+ * 타이어 마모 4사분면 셀. tireWear 순서는 [FL, FR, RL, RR](DTO g2d 매핑, tyreDetail.ts 선례) —
+ * 물리적 2×2 배치(앞=위, 뒤=아래)와 그대로 대응한다. 결측(길이<4)은 '—'로 degrade하고,
+ * [0,0,0,0]은 프레시 타이어의 정당한 값이라 0%로 표시한다(Spec §9: 결측만 가림, 실값은 노출).
+ */
+function tyreWearCell(driver: DriverInfo): {
+  wearFL: string;
+  wearFLc: string;
+  wearFR: string;
+  wearFRc: string;
+  wearRL: string;
+  wearRLc: string;
+  wearRR: string;
+  wearRRc: string;
+} {
+  const w = driver.tireWear;
+  const has = Array.isArray(w) && w.length >= 4;
+  const cell = (i: number): { text: string; color: string } => {
+    if (!has) return { text: DASH, color: 'var(--text-muted)' };
+    const pct = Math.max(0, Math.round(w[i] ?? 0));
+    return { text: `${pct}%`, color: tyreWearTone(pct) };
+  };
+  const fl = cell(0);
+  const fr = cell(1);
+  const rl = cell(2);
+  const rr = cell(3);
+  return {
+    wearFL: fl.text,
+    wearFLc: fl.color,
+    wearFR: fr.text,
+    wearFRc: fr.color,
+    wearRL: rl.text,
+    wearRLc: rl.color,
+    wearRR: rr.text,
+    wearRRc: rr.color,
+  };
+}
+
 function damageCell(driver: DriverInfo): {
   dmgFL: string;
   dmgFLc: string;
@@ -355,6 +415,7 @@ export function deriveLeaderboardRows(
     const pit = pitCell(driver);
     const sector = deriveSectorCells(driver, session);
     const dmg = damageCell(driver);
+    const wear = tyreWearCell(driver);
     const fuel = isFuelVisible(driver, player, teamResolved)
       ? formatFuelMargin(driver.fuelRemainingLaps)
       : { text: DASH, color: 'var(--text-muted)' };
@@ -417,6 +478,14 @@ export function deriveLeaderboardRows(
       dmgRWc: dmg.dmgRWc,
       dmgOTH: dmg.dmgOTH,
       dmgOTHc: dmg.dmgOTHc,
+      wearFL: wear.wearFL,
+      wearFLc: wear.wearFLc,
+      wearFR: wear.wearFR,
+      wearFRc: wear.wearFRc,
+      wearRL: wear.wearRL,
+      wearRLc: wear.wearRLc,
+      wearRR: wear.wearRR,
+      wearRRc: wear.wearRRc,
     };
   });
 }
