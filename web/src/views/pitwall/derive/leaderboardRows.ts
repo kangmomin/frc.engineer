@@ -117,10 +117,11 @@ export function derivePenaltyBadge(driver: DriverInfo): { label: string; color: 
  * Sector 컬럼(Spec §3.3, FIX-1로 정정). currentSector는 와이어 기준 **0-based**다(Go
  * internal/packets/lapdata.go:28 `Sector uint8 //0=s1,1=s2,2=s3`) — S1 완료(S2 진입)는
  * currentSector>=1, S2 완료(S3 진입)는 currentSector>=2.
- *   표시 정책: 현재 랩에서 완주한 S1/S2는 라이브 값, 아직 안 나온 슬롯과 S3는 직전 완료 랩
- *   (lapHistoryStore LapRecord — 원자적 +1 롤오버 커밋의 실측 s1/s2/s3)으로 폴백한다. 이로써
- *   새 랩 시작 시 S1/S2가 즉시 사라지지 않고, S3도 표시된다. S3는 '현재 랩 값 섞기'가 아니라
- *   '같은 완료 랩'의 lastLapTime−s1−s2라 fabrication이 아니다(history 20260720 참조).
+ *   표시 정책: 새 랩 S1이 찍히기 전(currentSector==0)에는 직전 완료 랩 S1/S2/S3를 그대로 유지해
+ *   '다 찬 상태'를 보존한다. 새 랩 S1이 찍히는 순간(currentSector>=1) 직전 랩 폴백을 끊어 S2/S3를
+ *   빈 칸으로 비우고, 이후 라이브 S2가 들어오면 S2를, 랩이 완료되어 lastLap이 갱신되면 S3를 채운다.
+ *   S3는 라이브 필드가 없어 '같은 완료 랩'의 lastLapTime−s1−s2(lapHistoryStore LapRecord의 원자적
+ *   +1 롤오버 커밋 실측)로만 채워지므로 fabrication이 아니다(history 20260720 참조).
  */
 function sectorTone(currentMs: number, bestMs: number | null | undefined, flag: number): string {
   if (flag === 3 || flag === 4) return flag === 3 ? '#eab308' : 'var(--accent-red)';
@@ -144,12 +145,15 @@ export function deriveSectorCells(
   // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화(0=미완주).
   const s1Ms = driver.sector1TimeMs ?? 0;
   const s2Ms = driver.sector2TimeMs ?? 0;
-  // 현재 랩 라이브(완주 시)를 우선, 없으면 직전 완료 랩으로 폴백. S3는 라이브 필드가 없어 항상 직전 랩.
   const liveS1 = driver.currentSector >= 1 && s1Ms > 0 ? s1Ms : 0;
   const liveS2 = driver.currentSector >= 2 && s2Ms > 0 ? s2Ms : 0;
-  const dispS1 = liveS1 > 0 ? liveS1 : lastLap?.s1Ms ?? 0;
-  const dispS2 = liveS2 > 0 ? liveS2 : lastLap?.s2Ms ?? 0;
-  const dispS3 = lastLap?.s3Ms ?? 0;
+  // 새 랩 S1이 찍힌 뒤에는(lapStarted) 직전 완료 랩 폴백을 끊는다 — 아직 안 나온 S2/S3는 빈 칸으로
+  // 두고, 라이브 S2와 (랩 완료 시 lastLap 갱신으로) S3가 들어올 때마다 채운다. S1 완주 전
+  // (currentSector==0)에는 직전 완료 랩 S1/S2/S3를 그대로 유지해 다 찬 상태를 보존한다.
+  const lapStarted = liveS1 > 0;
+  const dispS1 = lapStarted ? liveS1 : lastLap?.s1Ms ?? 0;
+  const dispS2 = lapStarted ? liveS2 : lastLap?.s2Ms ?? 0;
+  const dispS3 = lapStarted ? 0 : lastLap?.s3Ms ?? 0;
   // marshal flag 톤은 라이브 현재 섹터에만 적용(폴백된 직전 랩 값엔 best 비교 톤만).
   return {
     s1: dispS1 > 0
