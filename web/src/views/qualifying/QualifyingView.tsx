@@ -22,6 +22,7 @@ import { deriveQualiSegment } from './derive/qualiSegment';
 import { MyLapPanel } from './MyLapPanel';
 import { QualifyingHeader } from './QualifyingHeader';
 import { buildTryBaseline, computeOverallBestSectors, useSectorAccumulator } from './useSectorAccumulator';
+import { usePlayerSectorDisplay } from './useSectorDisplay';
 
 const QUALI_SESSION_RE = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i;
 const DEFAULT_WEATHER_STEP = 5;
@@ -60,6 +61,7 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
   // 세션 리스타트/리플레이 rewind 시 누적기 리셋 키로 쓰이는 epoch (raceMetaStore).
   const epoch = useRaceMetaStore((s) => s.epoch);
   const accMap = useSectorAccumulator(allDrivers, session, epoch);
+  const sectorDisplay = usePlayerSectorDisplay(player, session, epoch);
   const qualiState = useQualifyingState(player, player?.lapInvalid ?? false, isQualifying);
   const trackGap = useTrackGaps(allDrivers, trackLength, playerIndex);
 
@@ -81,8 +83,8 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
     [sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest, codes],
   );
   const myLap = useMemo(
-    () => deriveMyLap(player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState),
-    [player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState],
+    () => deriveMyLap(player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState, sectorDisplay),
+    [player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState, sectorDisplay],
   );
   const cutoffWatch = useMemo(
     () => deriveCutoffWatch(player, sortedDrivers, segment, session?.sessionTimeLeft, codes),

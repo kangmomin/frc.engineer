@@ -3,7 +3,7 @@ import type { StrategyGuideState } from './useStrategyGuide';
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 11, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ flex: 'none', background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 11, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <PanelTitle title="Strategy Guide" tone="secondary" detail="Live" />
       <div role="status" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>{text}</div>
     </div>
@@ -29,7 +29,7 @@ export function StrategyGuidePanel({ state, is2026 }: { state: StrategyGuideStat
   const c6Downgraded = meta?.adjustments?.includes('c6_downgraded_to_c5');
 
   return (
-    <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 11, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+    <div style={{ flex: 'none', background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: 11, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <PanelTitle title="Strategy Guide" tone="secondary" detail={track.track} />
       <div style={{ padding: '7px 9px', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderRadius: 3 }}>
         <div style={{ fontSize: 9.5, letterSpacing: '.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>50% Baseline</div>

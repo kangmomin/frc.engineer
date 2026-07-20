@@ -84,6 +84,28 @@ function isRacingRival(d: DriverInfo, playerIndex: number): boolean {
   );
 }
 
+/**
+ * derivePitExit가 null(패널 "Pit-loss data unavailable")을 반환하는 정확한 사유를
+ * 진단 문자열로 돌려준다. derivePitExit의 null-return 가드와 동일한 순서·조건을 미러링하며,
+ * 패널이 뜰 수 있는 상태(피트 중 포함)면 null을 반환한다. 콘솔 디버깅 전용 — 렌더에는 영향 없다.
+ */
+export function pitExitUnavailableReason(
+  player: DriverInfo | null,
+  drivers: DriverInfo[],
+  pitLossMs: number | null,
+): string | null {
+  if (!player) return 'player 텔레메트리 없음 (player=null)';
+  if (player.pitStatus > 0) return null; // 피트 중이면 게임 projection 패널이 뜬다(unavailable 아님)
+  const pitLossValid = pitLossMs != null && Number.isFinite(pitLossMs) && pitLossMs > 0;
+  if (!pitLossValid) return `피트로스 값 결측/무효 (pitLossMs=${pitLossMs})`;
+  const racingRivals = drivers.filter((d) => isRacingRival(d, player.index));
+  const withGap = racingRivals.filter((d) => d.deltaToPlayer != null && Number.isFinite(d.deltaToPlayer));
+  if (withGap.length === 0) {
+    return `투영 가능한 온트랙 라이벌 없음 (racingRivals=${racingRivals.length}, withGap=${withGap.length})`;
+  }
+  return null;
+}
+
 export function derivePitExit(
   player: DriverInfo | null,
   drivers: DriverInfo[],

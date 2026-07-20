@@ -133,28 +133,30 @@ describe('deriveMyLap — best + live partial delta (no "Projected" fabrication)
   });
 });
 
-describe('deriveMyLap — live sectors (0-based currentSector gating, no S3 reconstruction)', () => {
-  it('S1 hidden before sector1 completes (currentSector 0)', () => {
-    const player = makeDriver({ currentSector: 0, sector1TimeMs: 15_000 });
-    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+describe('deriveMyLap — sector display (persist trio, S3 from rollover backcalc)', () => {
+  it('renders no sector times when the display trio is empty (0 = 미표시)', () => {
+    const player = makeDriver();
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1: 0, s2: 0, s3: 0 });
     expect(vm.s1Text).toBe('—');
-  });
-
-  it('S1 shown once currentSector >= 1', () => {
-    const player = makeDriver({ currentSector: 1, sector1TimeMs: 30_123, sector2TimeMs: 0 });
-    const acc: SectorAcc = { bestS1: 30_000, bestS2: 0, bestS3: 0 };
-    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
-    expect(vm.s1Text).toBe('30.123');
     expect(vm.s2Text).toBe('—');
+    expect(vm.s3Text).toBe('—');
   });
 
-  it('S2 shown once currentSector >= 2; S3 never shows a reconstructed time — only in-progress dots or dash', () => {
-    const player = makeDriver({ currentSector: 2, sector1TimeMs: 30_000, sector2TimeMs: 31_500 });
-    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+  it('renders the held trio — including a reconstructed S3 numeric (unlike the old ●●●/dash)', () => {
+    const player = makeDriver();
+    const acc: SectorAcc = { bestS1: 30_000, bestS2: 31_000, bestS3: 28_000 };
+    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1: 30_123, s2: 31_500, s3: 28_900 });
+    expect(vm.s1Text).toBe('30.123');
     expect(vm.s2Text).toBe('31.500');
-    expect(vm.s3Text).toBe('•••');
-    // S3 is never a formatted numeric string — the live wire has no such field (Spec §9 anti-fabrication).
-    expect(vm.s3Text).not.toMatch(/\d/);
+    expect(vm.s3Text).toBe('28.900');
+    expect(vm.s3Text).toMatch(/\d/);
+  });
+
+  it('paints S3 purple when it matches/beats the personal best', () => {
+    const player = makeDriver();
+    const acc: SectorAcc = { bestS1: 0, bestS2: 0, bestS3: 28_900 };
+    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1: 0, s2: 0, s3: 28_900 });
+    expect(vm.s3Color).toBe('var(--sector-purple)');
   });
 });
 

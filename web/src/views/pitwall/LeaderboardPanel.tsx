@@ -245,6 +245,15 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, trackPos, c
                     </div>
                   </div>
                 )}
+                {cols.tyreWear && (
+                  // 타이어 마모 4사분면 — 물리적 배치(앞=위 FL/FR, 뒤=아래 RL/RR). tireWear 순서 [FL,FR,RL,RR].
+                  <div role="cell" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.wearFLc }}>FL {row.wearFL}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.wearFRc }}>FR {row.wearFR}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.wearRLc }}>RL {row.wearRL}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 600, textAlign: 'center', padding: '1px 0', borderRadius: 3, background: 'rgba(14,14,15,.5)', color: row.wearRRc }}>RR {row.wearRR}</span>
+                  </div>
+                )}
                 {cols.pit && (
                   <div role="cell" style={{ display: 'flex', justifyContent: 'center' }}>
                     <span style={{ ...raceFont, fontSize: 11, padding: '2px 7px', borderRadius: 4, background: row.pitBg, color: row.pitColor }}>{row.pitLabel}</span>

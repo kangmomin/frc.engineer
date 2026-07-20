@@ -84,7 +84,7 @@ export function MyLapPanel({ lap, detail }: MyLapPanelProps) {
         </div>
         <div style={tile}>
           <div style={tileLabel}>S3</div>
-          <div style={{ ...tileValue, color: 'var(--text-muted)' }}>{lap.s3Text}</div>
+          <div style={{ ...tileValue, color: lap.s3Color }}>{lap.s3Text}</div>
         </div>
       </div>
 

@@ -77,7 +77,7 @@ export function TyrePredictorPanel({ player }: { player: DriverInfo | null }) {
         <div style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>
           <div style={{ fontSize: 9.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>L{aheadLap} · Age {aheadAge}</div>
         </div>
-        <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 19, color: aheadSt.color }}>{aheadProjection.absolute}%</span>
+        <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 16, color: aheadSt.color }}>{aheadProjection.absolute}%</span>
         <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 6px', borderRadius: 4, color: aheadSt.color, border: `1px solid ${aheadSt.color}`, whiteSpace: 'nowrap' }}>{aheadSt.label}</span>
       </div>
 
@@ -98,7 +98,7 @@ export function TyrePredictorPanel({ player }: { player: DriverInfo | null }) {
         <div style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>
           <div style={{ fontSize: 9.5, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Age {targetPast ? '—' : targetAge}</div>
         </div>
-        <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 19, color: targetPast ? 'var(--text-muted)' : targetSt.color }}>{targetPast ? '—' : `${targetProjection.absolute}%`}</span>
+        <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 16, color: targetPast ? 'var(--text-muted)' : targetSt.color }}>{targetPast ? '—' : `${targetProjection.absolute}%`}</span>
         <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em', padding: '2px 6px', borderRadius: 4, color: targetPast ? 'var(--text-muted)' : targetSt.color, border: `1px solid ${targetPast ? 'var(--text-muted)' : targetSt.color}`, whiteSpace: 'nowrap' }}>
           {targetPast ? 'Past' : targetSt.label}
         </span>

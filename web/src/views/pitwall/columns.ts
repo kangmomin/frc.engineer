@@ -13,6 +13,7 @@ export type ColumnKey =
   | 'fuel'
   | 'penalty'
   | 'tyre'
+  | 'tyreWear'
   | 'pit'
   | 'vmax'
   | 'sector'
@@ -31,6 +32,7 @@ export const COL_ORDER: ColumnKey[] = [
   'fuel',
   'penalty',
   'tyre',
+  'tyreWear',
   'pit',
   'vmax',
   'sector',
@@ -53,6 +55,7 @@ export const COL_W: Record<ColumnKey, number> = {
   fuel: 64,
   penalty: 56,
   tyre: 168,
+  tyreWear: 140,
   pit: 56,
   vmax: 64,
   sector: 186,
@@ -70,6 +73,7 @@ export const COL_HEAD: Record<ColumnKey, string> = {
   fuel: 'Fuel',
   penalty: 'Pen',
   tyre: 'Tyre · Life',
+  tyreWear: 'Tyre Wear',
   pit: 'Pit',
   vmax: 'Vmax',
   sector: 'S1 · S2 · S3',
@@ -87,6 +91,7 @@ export const COL_LABEL: Record<ColumnKey, string> = {
   fuel: 'Fuel',
   penalty: 'Pen',
   tyre: 'Tyre',
+  tyreWear: 'Wear',
   pit: 'Pit',
   vmax: 'Vmax',
   sector: 'Sector',
@@ -105,6 +110,7 @@ export const COL_ALIGN: Record<ColumnKey, ColumnAlign> = {
   fuel: 'flex-end',
   penalty: 'center',
   tyre: 'flex-start',
+  tyreWear: 'center',
   pit: 'center',
   vmax: 'flex-end',
   sector: 'center',
@@ -135,6 +141,7 @@ export const DEFAULT_COL_VISIBILITY: Record<ColumnKey, boolean> = {
   fuel: true,
   penalty: true,
   tyre: true,
+  tyreWear: false,
   pit: false,
   vmax: false,
   sector: false,

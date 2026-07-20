@@ -10,6 +10,7 @@ import {
   getDriverRowTone,
   getDrsTone,
   getPitStatusTone,
+  tyreWearTone,
 } from './leaderboardRows';
 
 // ── Helpers ──
@@ -132,6 +133,40 @@ describe('damageTone', () => {
   it('body part(OTH) uses BODY threshold(20)', () => {
     expect(damageTone(15, 'OTH')).toBe('var(--accent-soft)');
     expect(damageTone(20, 'OTH')).toBe('var(--accent-red)');
+  });
+});
+
+describe('tyreWearTone', () => {
+  it('명명 임계(60/35)로 secondary → soft → red 전이 (0%도 표시, muted 아님)', () => {
+    expect(tyreWearTone(0)).toBe('var(--text-secondary)');
+    expect(tyreWearTone(34)).toBe('var(--text-secondary)');
+    expect(tyreWearTone(35)).toBe('var(--accent-soft)');
+    expect(tyreWearTone(59)).toBe('var(--accent-soft)');
+    expect(tyreWearTone(60)).toBe('var(--accent-red)');
+  });
+});
+
+describe('deriveLeaderboardRows — tyre wear 4사분면', () => {
+  it('[FL,FR,RL,RR] 순서로 마모%를 매핑하고 톤을 매긴다', () => {
+    const d = makeDriver({ tireWear: [70, 40, 20, 0] });
+    const [row] = deriveLeaderboardRows([d], d, false, null);
+    expect(row.wearFL).toBe('70%');
+    expect(row.wearFLc).toBe('var(--accent-red)');
+    expect(row.wearFR).toBe('40%');
+    expect(row.wearFRc).toBe('var(--accent-soft)');
+    expect(row.wearRL).toBe('20%');
+    expect(row.wearRLc).toBe('var(--text-secondary)');
+    expect(row.wearRR).toBe('0%'); // 프레시 타이어는 0% 표시(결측 아님)
+    expect(row.wearRRc).toBe('var(--text-secondary)');
+  });
+
+  it('마모 배열 결측(길이<4)이면 네 칸 모두 대시로 degrade', () => {
+    const d = makeDriver({ tireWear: [] });
+    const [row] = deriveLeaderboardRows([d], d, false, null);
+    expect(row.wearFL).toBe('—');
+    expect(row.wearFR).toBe('—');
+    expect(row.wearRL).toBe('—');
+    expect(row.wearRR).toBe('—');
   });
 });
 
