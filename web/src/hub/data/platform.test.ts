@@ -166,3 +166,61 @@ describe('economy (3D1)', () => {
     await expect(mkt.createReview('L-1', { stars: 5, perf, body: 'x' })).resolves.toBeUndefined();
   });
 });
+
+describe('feedback', () => {
+  it('submitFeedback 201 returns feedbackId with the expected request shape', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const fetchMock = vi.fn().mockResolvedValue(res(201, { feedbackId: 'F-1' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const id = await mkt.submitFeedback({ category: 'bug', body: '버그가 있어요' });
+    expect(id).toBe('F-1');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/feedback');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({ category: 'bug', body: '버그가 있어요' });
+  });
+
+  const submitCases: Array<[number, string]> = [
+    [400, 'bad-input'],
+    [401, 'unauthorized'],
+    [403, 'unauthorized'],
+    [429, 'rate-limited'],
+    [500, 'network'],
+  ];
+  for (const [status, reason] of submitCases) {
+    it(`submitFeedback maps ${status} → ${reason}`, async () => {
+      vi.stubGlobal('window', fakeWindow('tok'));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(status)));
+      await expect(
+        mkt.submitFeedback({ category: 'other', body: 'x' }),
+      ).rejects.toMatchObject({ reason });
+    });
+  }
+
+  it('submitFeedback does not fetch and throws unauthorized when no token is stored', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(mkt.submitFeedback({ category: 'bug', body: 'x' })).rejects.toMatchObject({ reason: 'unauthorized' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('listMyFeedback returns the array and hits /me/feedback', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const rows = [{ id: 'F-1', category: 'bug', body: 'x', status: 'open', createdAt: '2026-07-20T00:00:00Z' }];
+    const fetchMock = vi.fn().mockResolvedValue(res(200, rows));
+    vi.stubGlobal('fetch', fetchMock);
+    const out = await mkt.listMyFeedback();
+    expect(out).toEqual(rows);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/me/feedback');
+  });
+
+  it('listMyFeedback 401 → unauthorized', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(401)));
+    await expect(mkt.listMyFeedback()).rejects.toMatchObject({ reason: 'unauthorized' });
+  });
+});

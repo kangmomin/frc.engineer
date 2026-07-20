@@ -2,7 +2,7 @@
 import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
 
-export type HubScreen = 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile';
+export type HubScreen = 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback';
 
 const MONO = "'JetBrains Mono',monospace";
 
@@ -13,6 +13,7 @@ const NAV: { id: HubScreen; label: string; idx: string }[] = [
   { id: 'setups', label: 'MY SETUPS', idx: '04' },
   { id: 'analysis', label: 'ANALYSIS', idx: '05' },
   { id: 'profile', label: 'PROFILE', idx: '06' },
+  { id: 'feedback', label: 'FEEDBACK', idx: '07' },
 ];
 
 interface Props {

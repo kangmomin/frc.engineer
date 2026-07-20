@@ -128,6 +128,22 @@ export interface PlatformPaceRow {
   you: boolean;
 }
 
+export type FeedbackCategory = 'bug' | 'suggestion' | 'other';
+
+// One of the caller's own feedback rows (GET /me/feedback).
+export interface PlatformFeedbackEntry {
+  id: string;
+  category: FeedbackCategory;
+  body: string;
+  status: string; // 'open' | 'in_progress' | 'resolved' | 'dismissed'
+  createdAt: string;
+}
+
+export interface CreateFeedbackInput {
+  category: FeedbackCategory;
+  body: string;
+}
+
 // ListingError carries a coarse, user-facing reason so the sell modal can show a
 // Korean message without re-deriving it from a raw status code.
 export type ListingErrorReason =
@@ -340,6 +356,34 @@ export class PlatformMarket {
       default:
         throw new ListingError('network', `리뷰 실패 (${res.status})`);
     }
+  }
+
+  // --- Feedback ---
+
+  async submitFeedback(input: CreateFeedbackInput): Promise<string> {
+    const res = await pfetch('/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    switch (res.status) {
+      case 201:
+        return ((await res.json()) as { feedbackId: string }).feedbackId;
+      case 400:
+        throw new ListingError('bad-input', '입력이 올바르지 않습니다');
+      case 401:
+        throw new ListingError('unauthorized', '로그인이 필요합니다');
+      case 403:
+        throw new ListingError('unauthorized', '권한이 없습니다');
+      case 429:
+        throw new ListingError('rate-limited', '잠시 후 다시 시도하세요');
+      default:
+        throw new ListingError('network', `의견 전송 실패 (${res.status})`);
+    }
+  }
+
+  async listMyFeedback(): Promise<PlatformFeedbackEntry[]> {
+    return okJson(await pfetch('/me/feedback'), '내 의견');
   }
 }
 

@@ -18,6 +18,7 @@ import type { RealWallet } from './screens/Overview';
 import { Rankings } from './screens/Rankings';
 import { MarketManage } from './screens/MarketManage';
 import { Profile } from './screens/Profile';
+import { Feedback } from './screens/Feedback';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket } from './data/platform';
 import type { PlatformLedgerEntry } from './data/platform';
@@ -185,6 +186,10 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             />
           )}
 
+          {active === 'feedback' && (
+            <Feedback t={t} configured={platformConfigured} account={platformAccount} market={platformMkt} />
+          )}
+
           {(active === 'setups' || active === 'analysis') && (
             <Placeholder t={t} title={PLACEHOLDER[active].title} note={PLACEHOLDER[active].note} />
           )}
@@ -222,6 +227,7 @@ function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
     case 'setups': return 'MY SETUPS';
     case 'analysis': return 'ANALYSIS';
     case 'profile': return 'PROFILE';
+    case 'feedback': return 'FEEDBACK';
   }
 }
 
