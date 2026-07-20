@@ -7,6 +7,7 @@ import { F1SetupManager } from '../components/setup/F1SetupManager';
 import { useMockTelemetry } from '../hooks/useMockTelemetry';
 import { useWebRTCDataChannel } from '../hooks/useWebRTCDataChannel';
 import { isMockMode, mockScenario } from '../runtimeFlags';
+import { startLapHistoryTracker } from '../store/lapHistoryStore';
 import { startRaceMetaTracker } from '../store/raceMetaStore';
 import { useTelemetryStore } from '../store/telemetryStore';
 import type {
@@ -102,9 +103,11 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
   const sessionType = useTelemetryStore((s) => s.pitwallState?.session?.sessionType ?? '');
   const isQualiSession = QUALI_SESSION_RE.test(sessionType);
 
-  // 그리드/노티 lap 추적 — 뷰보다 상위, 앱 수명 1회 구독
+  // 그리드/노티 lap 추적 + 랩 히스토리 축적 — 뷰보다 상위, 앱 수명 1회 구독.
+  // 순서 고정: raceMetaTracker가 먼저 epoch를 갱신해야 lapHistory의 sessionKey 리셋이 성립한다.
   useEffect(() => {
     startRaceMetaTracker();
+    startLapHistoryTracker();
   }, []);
 
   useEffect(() => {
