@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getQualifyingBestLapTime, sortQualifyingDrivers } from '../../components/qualifying/leaderboardOrder';
 import { evaluateDriverTryState, type DriverTryState } from '../../components/qualifying/tryStatus';
 import { useQualifyingState } from '../../hooks/useQualifyingState';
 import { useTrackGaps } from '../../hooks/useTrackGaps';
 import { NavTabs } from '../../shell/NavTabs';
+import { TelemetryWaitingActions } from '../../shell/TelemetryWaitingActions';
 import type { ShellControls } from '../../shell/types';
 import { useRaceMetaStore } from '../../store/raceMetaStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
@@ -91,7 +92,13 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
 
   // ── 게이트(모든 hook 이후, Broadcast/PitWall과 동일 원칙) ──
   if (!session || allDrivers.length === 0) {
-    return <QualifyingEmpty controls={controls} message="Waiting for telemetry stream…" />;
+    return (
+      <QualifyingEmpty
+        controls={controls}
+        message="Waiting for telemetry stream…"
+        actions={<TelemetryWaitingActions controls={controls} />}
+      />
+    );
   }
   if (!isQualifying) {
     return (
@@ -137,7 +144,7 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
   );
 }
 
-function QualifyingEmpty({ controls, message, sub }: { controls: ShellControls; message: string; sub?: string }) {
+function QualifyingEmpty({ controls, message, sub, actions }: { controls: ShellControls; message: string; sub?: string; actions?: ReactNode }) {
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16, gap: 11 }}>
       <header style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: '11px 18px', boxShadow: 'var(--shadow-panel)' }}>
@@ -147,6 +154,7 @@ function QualifyingEmpty({ controls, message, sub }: { controls: ShellControls; 
       <div role="status" aria-live="polite" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
         <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 18, color: 'var(--text-secondary)' }}>{message}</div>
         {sub ? <div style={{ fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Current session · {sub}</div> : null}
+        {actions}
       </div>
     </div>
   );

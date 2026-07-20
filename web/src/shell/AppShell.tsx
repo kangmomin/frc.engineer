@@ -237,6 +237,9 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
     onOpenArchive: () => setArchiveOpen(true),
     onOpenSetup: () => setSetupOpen(true),
     onGoHome: goToMainScreen,
+    // 대기 화면 수동 재연결 — nonce 갱신으로 메인 연결 effect가 재실행되어
+    // 시그널링+PC를 처음부터 다시 수립한다(백오프 대기도 즉시 건너뜀).
+    onReconnect: forceReconnect,
     navDisabled: { qualifying: !isQualiSession },
     roomsActive: true,
   };

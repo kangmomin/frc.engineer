@@ -8,6 +8,8 @@ export interface ShellControls {
   onOpenArchive: () => void;
   onOpenSetup: () => void;
   onGoHome: () => void;
+  /** 현재 룸 대상 수동 재연결 (P2P 전체 재수립). 대기 화면 탈출구. */
+  onReconnect: () => void;
   /** 비활성 탭 (예: 비-quali 세션의 QUALI). */
   navDisabled?: Partial<Record<ViewId, boolean>>;
   /** 현재 원격 룸 액션 라벨/활성 (구 remoteAction 대응). */

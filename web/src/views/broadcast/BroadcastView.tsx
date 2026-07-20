@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { getTeamColor, getTeamName } from '../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel } from '../../constants/tyreCompounds';
 import { NavTabs } from '../../shell/NavTabs';
+import { TelemetryWaitingActions } from '../../shell/TelemetryWaitingActions';
 import type { ShellControls } from '../../shell/types';
 import { moveVsStart, useRaceMetaStore } from '../../store/raceMetaStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
@@ -70,7 +71,13 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
 
   // ── 게이트 (모든 hook 이후) ──
   if (!session || drivers.length === 0) {
-    return <BroadcastEmpty controls={controls} message="Waiting for telemetry stream…" />;
+    return (
+      <BroadcastEmpty
+        controls={controls}
+        message="Waiting for telemetry stream…"
+        actions={<TelemetryWaitingActions controls={controls} />}
+      />
+    );
   }
   if (!/^Race/i.test(sessionType)) {
     return <BroadcastEmpty controls={controls} message="World Feed is available during race sessions" sub={sessionType || undefined} />;
@@ -204,7 +211,7 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
   );
 }
 
-function BroadcastEmpty({ controls, message, sub }: { controls: ShellControls; message: string; sub?: string }) {
+function BroadcastEmpty({ controls, message, sub, actions }: { controls: ShellControls; message: string; sub?: string; actions?: ReactNode }) {
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16, gap: 11 }}>
       <header style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-panel)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-lg)', padding: '11px 18px', boxShadow: 'var(--shadow-panel)' }}>
@@ -214,6 +221,7 @@ function BroadcastEmpty({ controls, message, sub }: { controls: ShellControls; m
       <div role="status" aria-live="polite" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
         <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 18, color: 'var(--text-secondary)' }}>{message}</div>
         {sub ? <div style={{ fontSize: 12, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Current session · {sub}</div> : null}
+        {actions}
       </div>
     </div>
   );

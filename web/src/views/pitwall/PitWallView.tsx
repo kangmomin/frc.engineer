@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { NavTabs } from '../../shell/NavTabs';
+import { TelemetryWaitingActions } from '../../shell/TelemetryWaitingActions';
 import type { ShellControls } from '../../shell/types';
 import { useLapHistoryStore } from '../../store/lapHistoryStore';
 import { useRaceMetaStore } from '../../store/raceMetaStore';
@@ -200,6 +201,7 @@ function PitWallEmpty({ controls }: { controls: ShellControls }) {
       </header>
       <div role="status" aria-live="polite" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
         <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 18, color: 'var(--text-secondary)' }}>Waiting for telemetry stream…</div>
+        <TelemetryWaitingActions controls={controls} />
       </div>
     </div>
   );
