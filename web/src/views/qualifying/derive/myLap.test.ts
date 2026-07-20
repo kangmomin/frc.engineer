@@ -233,3 +233,23 @@ describe('deriveMyLap — threat watch fallback (player off-track)', () => {
     expect(vm.aheadSummary).toBe('No car ahead');
   });
 });
+
+describe('deriveMyLap — next corner', () => {
+  it('formats the next corner as "→ T{n}" when the track has corner data', () => {
+    // Suzuka(trackId 12) T1 apex ≈ 12.2% — 100m(1.7%) 지점에서는 T1이 다음 코너다.
+    const player = makeDriver({ lapDistance: 100 });
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession({ trackId: 12, trackLength: 5807 }), new Map(), makeQualiState());
+    expect(vm.nextCornerText).toBe('→ T1');
+  });
+
+  it('returns null on tracks without corner data (default fixture trackId 1)', () => {
+    const player = makeDriver();
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    expect(vm.nextCornerText).toBeNull();
+  });
+
+  it('returns null without a player (EMPTY_VM)', () => {
+    const vm = deriveMyLap(null, [], undefined, new Map(), EMPTY_GAP, makeSession({ trackId: 12, trackLength: 5807 }), new Map(), makeQualiState());
+    expect(vm.nextCornerText).toBeNull();
+  });
+});

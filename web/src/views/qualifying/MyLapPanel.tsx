@@ -55,15 +55,22 @@ export function MyLapPanel({ lap, detail }: MyLapPanelProps) {
         </div>
       </div>
 
-      <div
-        role="progressbar"
-        aria-label="Lap progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(lap.progressPct)}
-        style={{ width: '100%', height: 5, background: 'rgba(132,147,150,.18)', borderRadius: 3, overflow: 'hidden' }}
-      >
-        <div style={{ height: '100%', background: 'linear-gradient(90deg,var(--accent),var(--accent-lime))', width: `${lap.progressPct}%` }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div
+          role="progressbar"
+          aria-label="Lap progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(lap.progressPct)}
+          style={{ flex: 1, height: 5, background: 'rgba(132,147,150,.18)', borderRadius: 3, overflow: 'hidden' }}
+        >
+          <div style={{ height: '100%', background: 'linear-gradient(90deg,var(--accent),var(--accent-lime))', width: `${lap.progressPct}%` }} />
+        </div>
+        {lap.nextCornerText && (
+          <span style={{ flex: 'none', fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+            {lap.nextCornerText}
+          </span>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 7 }}>

@@ -2,6 +2,7 @@ import { getQualifyingBestLapTime } from '../../../components/qualifying/leaderb
 import type { DriverTryState } from '../../../components/qualifying/tryStatus';
 import type { QualifyingPhase, QualifyingState } from '../../../hooks/useQualifyingState';
 import type { TrackGap } from '../../../hooks/useTrackGaps';
+import { nextCornerNumber } from '../../../constants/trackCorners';
 import type { DriverInfo, SessionInfo } from '../../../types/telemetry';
 import { formatLapTime } from '../../../utils/formatters';
 import { formatSectorTime, type SectorAcc } from '../useSectorAccumulator';
@@ -50,6 +51,8 @@ export interface MyLapVM {
   deltaText: string;
   deltaColor: string;
   progressPct: number;
+  /** 진행바 옆 다음 코너('→ T5'). null = 코너 데이터 없는 트랙 — 미표시(fabrication 금지). */
+  nextCornerText: string | null;
   s1Text: string;
   s1Color: string;
   s2Text: string;
@@ -82,6 +85,7 @@ const EMPTY_VM: MyLapVM = {
   deltaText: DASH,
   deltaColor: 'var(--text-muted)',
   progressPct: 0,
+  nextCornerText: null,
   s1Text: DASH,
   s1Color: 'var(--text-muted)',
   s2Text: DASH,
@@ -144,6 +148,7 @@ export function deriveMyLap(
 
   const trackLength = session?.trackLength ?? 0;
   const progressPct = trackLength > 0 ? Math.min(100, Math.max(0, (player.lapDistance / trackLength) * 100)) : 0;
+  const nextCorner = nextCornerNumber(session?.trackId, player.lapDistance, trackLength);
 
   // currentSector는 0-based 와이어 값(Phase2 FIX-1 교훈 계승) — S1 완료(S2 진입)는 >=1, S2
   // 완료(S3 진입)는 >=2. S3는 라이브 필드가 없어 진행 중 표시(●●●)만 하고 역산하지 않는다.
@@ -210,6 +215,7 @@ export function deriveMyLap(
     deltaText,
     deltaColor,
     progressPct,
+    nextCornerText: nextCorner != null ? `→ T${nextCorner}` : null,
     s1Text: s1Live ? formatSectorTime(s1Ms) : DASH,
     s1Color: s1Live ? sectorTone(s1Ms, playerAcc?.bestS1) : 'var(--text-muted)',
     s2Text: s2Live ? formatSectorTime(s2Ms) : DASH,
