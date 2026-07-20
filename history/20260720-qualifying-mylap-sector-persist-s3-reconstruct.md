@@ -32,3 +32,41 @@
   - `derive/myLap.test.ts`: 라이브 게이팅 테스트 → disp 기반 테스트로 교체
 - **재발 시 대응**: simplify/code-review 등에서 "MyLap S3 역산은 fabrication" 지적이 재제기되면
   본 문서 인용(완료 랩 실측치 재사용, accumulator bestS3와 동일 기법)으로 종결.
+
+---
+
+## 후속 결정 (2026-07-20): 자체 역산 hook 폐기 → lapHistoryStore 재사용
+
+- **이슈**: 위 `usePlayerSectorDisplay`의 S3 역산이 실환경에서 **안 떴다**. FABLE end-to-end
+  분석 + 실측 캡처(`test-sets/quali-full-session`) 검증으로 원인 확정:
+  `lastLapTime`·`currentLapNum++`·섹터 리셋이 **같은 패킷에서 원자적으로** 뒤집힌다(옛 주석의
+  '롤오버 직전 틱 선반영' 가정은 사실과 반대였다). 그래서 롤오버 프레임의 `prev.lastLapTime`은
+  '직전 랩 총합'(첫 랩 뒤엔 0)이라 `s3 = prev.lastLapTime - s1 - s2`가 음수/오류 → `s3>0`
+  가드 실패로 **첫 완주 랩 후 S3가 계속 대시**(이후엔 오차 +수백~수천 ms의 틀린 값).
+  ※ 추가 확인: 사용자가 "어떠한 상황에서도 안 뜬다"고 한 근본 이유는 **돌리던 빌드(v4.46.0)가
+  S3 기능 커밋(`7a25b452`)보다 앞서** 애초에 S3 숫자 표시 코드 자체가 없었기 때문 — 재배포 필요.
+- **결정**: 자체 역산(`useSectorDisplay.ts` 전체: reducer+hook+테스트)을 **폐기**하고, 이미 검증·
+  배포된 `lapHistoryStore`의 `LapRecord.s3Ms`를 재사용한다. My Lap 섹터 표시는 **stateless
+  하이브리드**로 파생한다 — 현재 랩에서 완주한 S1/S2는 라이브(currentSector 게이팅), 아직 안 나온
+  슬롯과 S3는 직전 완료 랩(lapHistoryStore) 값으로 폴백.
+- **결정자**: 사용자 (버그 리포트 "섹터3 아직 안나오고") + 에이전트 (원인 분석/재설계)
+- **근거**:
+  - `lapHistoryStore`는 **원자적 +1 롤오버 프레임**에서 커밋한다 — 완주 랩 총합은 그 프레임의
+    `d.lastLapTime`, 그 랩 섹터는 직전 스냅샷(snap)에 남아 있어 `s3 = d.lastLapTime − snap.s1 −
+    snap.s2`가 안정적이다(코드의 '+1 경로'가 실제 주 경로). FABLE가 실측 캡처를 4Hz/2Hz·모든
+    샘플 오프셋으로 재현한 결과 4개 랩 모두 정확한 s3 커밋 확인. 동일 `s3Ms`가 이미
+    DriverDetailModal·PostRaceDebrief에서 표시 중 — 검증된 데이터.
+  - 중복 역산 로직 제거(DRY) + 상태 hook 삭제로 순 코드 감소.
+  - stateless라 rewind/세션 리셋 처리를 lapHistoryStore에 위임(자체 리셋 로직 불필요).
+- **수정 내역**:
+  - 삭제: `web/src/views/qualifying/useSectorDisplay.ts` + `.test.ts`
+  - `derive/myLap.ts`: `SectorDisplay` 인자 → `LastLapSectors`(직전 완료 랩) + 라이브 현재 섹터 폴백
+  - `QualifyingView.tsx`: hook 배선 제거 → `useLapHistoryStore`에서 플레이어 마지막 레코드 조회
+  - `derive/myLap.test.ts`: 하이브리드(라이브 오버라이드 + 폴백) 테스트로 교체
+  - **`useSectorAccumulator.ts`**: `bestS3` 역산이 같은 원자성 버그(`snap.lastLapTime` 사용)를
+    갖고 있어 bestS3가 틀리거나 첫 완주 랩까지 비었다 → `d.lastLapTime`(+1 롤오버만) 사용으로
+    정정. (bestS3는 S3 타일 색상·`computeOverallBestSectors`·tryStatus 베이스라인에 반영.)
+  - `lapHistoryStore.ts` 헤더/인라인 주석: '틱 선반영' 오기술을 원자적 전이·'+1 주 경로'로 정정.
+- **재발 시 대응**: "My Lap S3가 왜 lapHistoryStore를 거치나 / 자체 역산이 더 단순하지 않나" 또는
+  "롤오버 직전 틱에 lastLapTime이 먼저 갱신된다" 재제기 시 본 섹션 인용(전이는 원자적 동일 패킷 —
+  실측 확정 — 이라 자체 롤오버 역산은 신뢰 불가, 검증된 lapHistoryStore 소스로 통일).

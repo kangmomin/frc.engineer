@@ -4,12 +4,15 @@ import type { DriverInfo, SessionInfo } from '../../types/telemetry';
 
 /**
  * 레거시 `components/qualifying/QualifyingDashboard.tsx`(byte-frozen, 48-114)의
- * `useSectorAccumulator`를 그대로 이식한 신규 hook 파일(Phase3 Spec §3.2/§6). 로직은 원본과
- * 동일하다 — bestS1/S2는 라이브 sector1/2TimeMs의 최소(>0)이고, bestS3는 전용 필드가 없어
- * 랩 롤오버(currentLapNum 증가) 시 "직전 스냅샷"의 lastLapTime - sector1TimeMs - sector2TimeMs로
- * 역산한다. 이 세 필드는 롤오버 직전 틱에 이미 "같은 랩" 값으로 갱신되어 있다(실 텔레메트리
- * 필드 갱신 타이밍) — Pit Wall(Phase 2)이 포기하고 '—'로 degrade했던 정확한 S3를 Qualifying은
- * 이 역산으로 얻는다. sessionKey(trackId|sessionType|epoch) 변경 시 리셋 — epoch는
+ * `useSectorAccumulator`를 이식한 hook 파일(Phase3 Spec §3.2/§6). bestS1/S2는 라이브
+ * sector1/2TimeMs의 최소(>0)이고, bestS3는 전용 필드가 없어 랩 롤오버(currentLapNum 증가) 시
+ * lastLapTime - sector1TimeMs - sector2TimeMs로 역산한다.
+ *   ⚠ 실측 캡처(test-sets/quali-full-session) 검증 결과: lastLapTime·currentLapNum 증가·섹터
+ *   리셋은 "같은 패킷에서 원자적으로" 뒤집힌다(직전 틱 선반영이라는 옛 주석은 사실과 반대였다).
+ *   따라서 완주 랩 총합은 롤오버 프레임의 d.lastLapTime이고, 그 랩의 S1/S2는 직전 스냅샷(snap)에
+ *   남아 있다 → s3 = d.lastLapTime - snap.s1 - snap.s2. (과거 snap.lastLapTime 사용은 '직전 랩'
+ *   총합이라 bestS3가 틀리거나 첫 완주 랩까지 비어 있었다 — history 20260720 참조.)
+ * sessionKey(trackId|sessionType|epoch) 변경 시 리셋 — epoch는
  * raceMetaStore가 라이브 세션 리스타트(리더 랩 되감김) 시 증가시키는 값이다. 리플레이
  * 재생 중에는 ingest가 스킵되어 epoch가 갱신되지 않으므로, 리플레이 rewind는 아래
  * 효과에서 랩 번호 되감김을 직접 감지해 별도로 리셋한다.
@@ -83,8 +86,10 @@ export function useSectorAccumulator(drivers: DriverInfo[], session: SessionInfo
           acc = { ...acc, bestS2: s2 };
           accChanged = true;
         }
-        if (snap && d.currentLapNum > snap.currentLapNum && snap.lastLapTime > 0 && snap.sector1TimeMs > 0 && snap.sector2TimeMs > 0) {
-          const s3 = snap.lastLapTime - snap.sector1TimeMs - snap.sector2TimeMs;
+        // 원자적 롤오버: 완주 랩 총합은 롤오버 프레임 d.lastLapTime, 그 랩 섹터는 snap(직전 프레임).
+        // 프레임 드랍(+N 점프)은 snap 섹터가 d.lastLapTime의 랩과 어긋나므로 +1 롤오버만 신뢰한다.
+        if (snap && d.currentLapNum === snap.currentLapNum + 1 && d.lastLapTime > 0 && snap.sector1TimeMs > 0 && snap.sector2TimeMs > 0) {
+          const s3 = d.lastLapTime - snap.sector1TimeMs - snap.sector2TimeMs;
           if (s3 > 0 && (acc.bestS3 === 0 || s3 < acc.bestS3)) {
             acc = { ...acc, bestS3: s3 };
             accChanged = true;

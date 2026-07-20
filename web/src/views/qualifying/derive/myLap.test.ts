@@ -133,29 +133,38 @@ describe('deriveMyLap — best + live partial delta (no "Projected" fabrication)
   });
 });
 
-describe('deriveMyLap — sector display (persist trio, S3 from rollover backcalc)', () => {
-  it('renders no sector times when the display trio is empty (0 = 미표시)', () => {
-    const player = makeDriver();
-    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1: 0, s2: 0, s3: 0 });
+describe('deriveMyLap — sector display (live current + last-lap fallback, reliable S3)', () => {
+  it('renders no sector times when there is no last lap and nothing completed this lap', () => {
+    const player = makeDriver({ currentSector: 0 }); // 새 랩 S1 진행 중, 완주 섹터 없음
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), null);
     expect(vm.s1Text).toBe('—');
     expect(vm.s2Text).toBe('—');
     expect(vm.s3Text).toBe('—');
   });
 
-  it('renders the held trio — including a reconstructed S3 numeric (unlike the old ●●●/dash)', () => {
-    const player = makeDriver();
+  it('falls back to the last completed lap trio (incl. S3) while the new lap is still in sector 1', () => {
+    const player = makeDriver({ currentSector: 0 }); // 라이브 완주 섹터 없음 → 직전 랩으로 폴백
     const acc: SectorAcc = { bestS1: 30_000, bestS2: 31_000, bestS3: 28_000 };
-    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1: 30_123, s2: 31_500, s3: 28_900 });
+    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1Ms: 30_123, s2Ms: 31_500, s3Ms: 28_900 });
     expect(vm.s1Text).toBe('30.123');
     expect(vm.s2Text).toBe('31.500');
-    expect(vm.s3Text).toBe('28.900');
+    expect(vm.s3Text).toBe('28.900'); // S3가 신뢰성 있게 표시된다
     expect(vm.s3Text).toMatch(/\d/);
   });
 
+  it('overrides S1 with the current-lap live value once sector 1 completes; S2/S3 stay last-lap', () => {
+    // 현재 랩 S2 진행 중(currentSector=1): S1 라이브, S2/S3는 직전 완료 랩 유지(대시로 안 사라짐)
+    const player = makeDriver({ currentSector: 1, sector1TimeMs: 29_800, sector2TimeMs: 0 });
+    const vm = deriveMyLap(player, [], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1Ms: 30_123, s2Ms: 31_500, s3Ms: 28_900 });
+    expect(vm.s1Text).toBe('29.800');
+    expect(vm.s2Text).toBe('31.500');
+    expect(vm.s3Text).toBe('28.900');
+  });
+
   it('paints S3 purple when it matches/beats the personal best', () => {
-    const player = makeDriver();
+    const player = makeDriver({ currentSector: 0 });
     const acc: SectorAcc = { bestS1: 0, bestS2: 0, bestS3: 28_900 };
-    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1: 0, s2: 0, s3: 28_900 });
+    const vm = deriveMyLap(player, [], acc, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState(), { s1Ms: 0, s2Ms: 0, s3Ms: 28_900 });
     expect(vm.s3Color).toBe('var(--sector-purple)');
   });
 });

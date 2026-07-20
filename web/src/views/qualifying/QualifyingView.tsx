@@ -7,6 +7,7 @@ import { useTrackGaps } from '../../hooks/useTrackGaps';
 import { NavTabs } from '../../shell/NavTabs';
 import { TelemetryWaitingActions } from '../../shell/TelemetryWaitingActions';
 import type { ShellControls } from '../../shell/types';
+import { useLapHistoryStore } from '../../store/lapHistoryStore';
 import { useRaceMetaStore } from '../../store/raceMetaStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { deriveDriverCodes } from '../../utils/driverCodes';
@@ -22,7 +23,6 @@ import { deriveQualiSegment } from './derive/qualiSegment';
 import { MyLapPanel } from './MyLapPanel';
 import { QualifyingHeader } from './QualifyingHeader';
 import { buildTryBaseline, computeOverallBestSectors, useSectorAccumulator } from './useSectorAccumulator';
-import { usePlayerSectorDisplay } from './useSectorDisplay';
 
 const QUALI_SESSION_RE = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i;
 const DEFAULT_WEATHER_STEP = 5;
@@ -61,7 +61,6 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
   // 세션 리스타트/리플레이 rewind 시 누적기 리셋 키로 쓰이는 epoch (raceMetaStore).
   const epoch = useRaceMetaStore((s) => s.epoch);
   const accMap = useSectorAccumulator(allDrivers, session, epoch);
-  const sectorDisplay = usePlayerSectorDisplay(player, session, epoch);
   const qualiState = useQualifyingState(player, player?.lapInvalid ?? false, isQualifying);
   const trackGap = useTrackGaps(allDrivers, trackLength, playerIndex);
 
@@ -77,14 +76,22 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
   const segment = useMemo(() => deriveQualiSegment(sessionType), [sessionType]);
   const playerAcc = player ? accMap.get(player.index) : undefined;
   const leaderBest = getQualifyingBestLapTime(sortedDrivers[0]);
+  // My Lap 섹터 표시의 근간 — 직전 완료 랩의 S1/S2/S3(lapHistoryStore 역산 레코드). 라이브
+  // 와이어에 없는 S3를 신뢰성 있게 얻고, 다음 랩 완료 전까지 유지된다(커밋 시에만 참조 변경).
+  const lapHistory = useLapHistoryStore((s) => s.history);
+  const playerLastLap = useMemo(() => {
+    if (!player) return null;
+    const recs = lapHistory.get(player.index);
+    return recs && recs.length > 0 ? recs[recs.length - 1] : null;
+  }, [lapHistory, player]);
 
   const rows = useMemo(
     () => deriveClassificationRows(sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest, codes),
     [sortedDrivers, accMap, tryMap, overallBest, segment, player, leaderBest, codes],
   );
   const myLap = useMemo(
-    () => deriveMyLap(player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState, sectorDisplay),
-    [player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState, sectorDisplay],
+    () => deriveMyLap(player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState, playerLastLap),
+    [player, sortedDrivers, playerAcc, tryMap, trackGap, session, codes, qualiState, playerLastLap],
   );
   const cutoffWatch = useMemo(
     () => deriveCutoffWatch(player, sortedDrivers, segment, session?.sessionTimeLeft, codes),

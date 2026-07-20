@@ -9,11 +9,13 @@ import { useTelemetryStore } from './telemetryStore';
  * 완주 랩을 채록한다. raceMetaStore와 동일하게 앱 수명 1회 telemetryStore 구독으로 구동
  * (뷰 전환과 무관하게 축적 유지, 리플레이 프레임 스킵).
  *
- * 채록 정확성의 근거가 되는 와이어 불변식(설계 검증 루프 v5에서 확정):
+ * 채록 정확성의 근거가 되는 와이어 불변식:
  *  - 쌍 일관성: lastLapTime·currentLapNum은 같은 LapData 패킷의 필드 — 모든 프레임은 일관 쌍.
- *  - 게시 순서: 터미널 틱에 lastLapTime이 lapNum 증가보다 먼저 완주 랩 값으로 갱신된다
- *    (useSectorAccumulator.ts 헤더의 실측 선례). 따라서 고정 lapNum 중의 전이는
- *    ①그 랩의 종료 게시 또는 ②플래시백 revert 두 경우뿐이다.
+ *  - 전이 원자성(실측 재검증): lastLapTime의 완주 랩 값 갱신·currentLapNum 증가·섹터 리셋은
+ *    "같은 패킷에서 동시에" 일어난다(옛 주석의 '틱 선반영'은 사실과 반대였다). 따라서 정상 완주는
+ *    lapNum이 +1 되는 프레임에서 새 lastLapTime 전이로 관측되며, 이때의 완주 랩 섹터는 직전
+ *    스냅샷에 남아 있다 — 아래 '+1 경로'(currLap === t.lapNum + 1)가 실제 주 경로다.
+ *  - 고정 lapNum 중 lastLapTime 전이는 최종 랩 정지 또는 플래시백 revert에 해당한다.
  * 원칙: 확신 없는 랩 귀속은 기록하지 않는다(레포 파생 원칙 — fabrication 금지, 결측 degrade).
  */
 
@@ -175,8 +177,8 @@ export function createLapHistoryIngestor(): LapHistoryIngestor {
         }
 
         if (currLap === t.lapNum + 1) {
-          // 3. +1 폴백: 터미널 틱 프레임 드랍 시에만 정당 — 새 총합 전이 동반(freshness)이 증거.
-          //    불변이면 무통과 +1(garage 텔레포트류) → 커밋 없이 partial 재장전.
+          // 3. +1 롤오버(정상 완주의 주 경로): 전이가 원자적이라 lapNum이 +1 되는 프레임에서 새 총합
+          //    전이가 동반된다(freshness). 불변이면 무통과 +1(garage 텔레포트류) → 커밋 없이 partial 재장전.
           if (committed(currLap - 1) === undefined) {
             if (currLast > 0 && currLast !== t.lastLapTime) {
               commit(currLap - 1, currLast);
@@ -194,7 +196,7 @@ export function createLapHistoryIngestor(): LapHistoryIngestor {
         if (d.pitStatus > 0) t.pitSeen = true;
 
         if (currLast > 0 && currLast !== t.lastLapTime) {
-          // 4. 터미널 틱 전이(정상 경로 + 최종 랩 lapNum 정지 경로)
+          // 4. 고정 lapNum 중 총합 전이: 최종 랩 정지(더 이상 +1 안 됨) 또는 플래시백 revert 경로.
           const baselineActive = t.baseline !== null && currLap <= t.baseline.recordedLap + 1;
           const isRevert =
             committed(currLap - 1)?.lapMs === currLast || (baselineActive && t.baseline!.value === currLast);
