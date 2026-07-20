@@ -97,7 +97,7 @@ export function PitExitPanel({ vm }: { vm: PitExitVM | null }) {
 
   return (
     <Shell>
-      <PanelTitle title="Pit Exit" tone="tertiary" detail={`If boxing now · loss ${vm.pitLossText ?? '—'}`} />
+      <PanelTitle title="Pit Exit" tone="tertiary" detail={`If boxing now · loss ${vm.pitLossText ?? '—'}${vm.pitLossFallback ? ' (set)' : ''}`} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-md)' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>

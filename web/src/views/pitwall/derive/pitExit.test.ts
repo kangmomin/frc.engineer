@@ -233,3 +233,25 @@ describe('derivePitExit — scenarios (honest what-ifs)', () => {
     expect(vm.gameRejoin).toBe(4);
   });
 });
+
+describe('derivePitExit — pit-loss source flag', () => {
+  it('defaults pitLossFallback to false (track data source)', () => {
+    const vm = derivePitExit(me, standardField(), PIT_LOSS, makeSession())!;
+    expect(vm.pitLossFallback).toBe(false);
+  });
+
+  it('marks pitLossFallback true when caller passes the fallback flag', () => {
+    const vm = derivePitExit(me, standardField(), PIT_LOSS, makeSession(), true)!;
+    expect(vm.pitLossFallback).toBe(true);
+    expect(vm.pitLossText).toBe('20.0s'); // 폴백값도 정상 표시된다
+  });
+
+  it('suppresses the fallback flag while pitting when pit-loss is invalid', () => {
+    const pittingMe = makeDriver({ index: 0, name: 'Me', position: 5, pitStatus: 1 });
+    const f = [pittingMe, ...standardField().slice(1)];
+    const vm = derivePitExit(pittingMe, f, null, makeSession(), true)!;
+    expect(vm.pitting).toBe(true);
+    expect(vm.pitLossText).toBeNull();
+    expect(vm.pitLossFallback).toBe(false); // pitLossText가 null이면 출처 표기도 억제
+  });
+});

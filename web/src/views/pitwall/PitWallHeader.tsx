@@ -99,7 +99,7 @@ export function PitWallHeader({ controls, gpTitle, gpSubtitle, lap, weather, sta
         <button
           ref={settingsButtonRef}
           onClick={onToggleSettings}
-          title="Display settings"
+          title="Settings"
           aria-expanded={settingsOpen}
           aria-controls={DISPLAY_SETTINGS_ID}
           style={{
@@ -125,7 +125,7 @@ export function PitWallHeader({ controls, gpTitle, gpSubtitle, lap, weather, sta
             <circle cx="9" cy="8" r="2.6" fill="var(--bg-panel)" />
             <circle cx="15" cy="16" r="2.6" fill="var(--bg-panel)" />
           </svg>
-          Display
+          Settings
         </button>
       </div>
     </header>

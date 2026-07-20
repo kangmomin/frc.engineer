@@ -97,12 +97,19 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   // 각 derive 함수는 session=null/drivers=[]에 안전하므로 게이트 이전에 호출해도 무방하다.
   const rows = useMemo(() => deriveLeaderboardRows(drivers, player, is2026, session), [drivers, player, is2026, session]);
   const myCar = useMemo(() => deriveMyCar(player, drivers, session), [player, drivers, session]);
-  // 피트로스는 이미 로드 중인 strategyGuide 응답에서 가져온다(신규 RPC 없음). 초→ms.
-  const pitLossMs = useMemo(() => {
+  // 피트로스: 트랙 baseline(strategyGuide) 우선, 트랙값 부재가 '확정'(ready/unavailable)되면
+  // 사용자 폴백값(초→ms)을 쓴다. 로딩 중(idle/loading)엔 null 유지 → 폴백값이 먼저 떴다가
+  // 트랙값으로 점프하지 않는다. fallback 플래그로 출처를 pitExit VM에 전달(anti-fabrication 표기).
+  const pitLoss = useMemo(() => {
     const s = strategyGuide.data?.track.race_strategy?.pit_stop_time_lost_s;
-    return s != null && Number.isFinite(s) && s > 0 ? s * 1000 : null;
-  }, [strategyGuide.data]);
-  const pitExit = useMemo(() => derivePitExit(player, drivers, pitLossMs, session), [player, drivers, pitLossMs, session]);
+    const trackMs = s != null && Number.isFinite(s) && s > 0 ? s * 1000 : null;
+    if (trackMs != null) return { ms: trackMs as number | null, fallback: false };
+    if (strategyGuide.status === 'ready' || strategyGuide.status === 'unavailable') {
+      return { ms: prefs.pitLossSec * 1000, fallback: true };
+    }
+    return { ms: null as number | null, fallback: false };
+  }, [strategyGuide.data, strategyGuide.status, prefs.pitLossSec]);
+  const pitExit = useMemo(() => derivePitExit(player, drivers, pitLoss.ms, session, pitLoss.fallback), [player, drivers, pitLoss, session]);
   const tyreDetail = useMemo(() => deriveTyreDetail(player), [player]);
   const lapCounter = useMemo(() => deriveLapCounter(drivers, session), [drivers, session]);
   // WeatherPanel은 VM만 받는 순수 컴포넌트다(Spec §2 VM-only, FIX-4) — 컨테이너가 조립한다.
@@ -168,6 +175,8 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
           onTogglePanel={prefs.togglePanel}
           onResetWidths={prefs.resetWidths}
           is2026={is2026}
+          pitLossSec={prefs.pitLossSec}
+          onChangePitLossSec={prefs.setPitLossSec}
           onClose={closeSettings}
         />
       )}

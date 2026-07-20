@@ -25,6 +25,12 @@ export const DEFAULT_PANEL_VISIBILITY: Record<PanelKey, boolean> = {
 
 export const WEATHER_STEP_OPTIONS = [1, 5, 10, 15] as const;
 
+/** 폴백 피트로스 설정 범위(초). sender PitTimeLossMs clamp(5000~60000ms, cmd/sender/main.go:1224)와 동일 정책. */
+export const PIT_LOSS_MIN_SEC = 5;
+export const PIT_LOSS_MAX_SEC = 60;
+/** 기본 폴백 피트로스(초). sender defaultStrategyConfig.PitTimeLossMs(22000ms)와 일치. */
+export const DEFAULT_PIT_LOSS_SEC = 22;
+
 /** FIX-3: 값 타입까지 검증한다(문자열 등 이물 값이 boolean 자리에 섞이는 것을 방지). */
 function validateCols(parsed: unknown): Record<ColumnKey, boolean> | null {
   if (!parsed || typeof parsed !== 'object') return null;
@@ -62,6 +68,11 @@ function validateWeatherStep(parsed: unknown): number | null {
   return typeof parsed === 'number' && (WEATHER_STEP_OPTIONS as readonly number[]).includes(parsed) ? parsed : null;
 }
 
+/** 숫자·유한값만 통과시키고 [PIT_LOSS_MIN_SEC, PIT_LOSS_MAX_SEC]로 clamp한다(validateColW 선례). */
+function validatePitLossSec(parsed: unknown): number | null {
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? clamp(parsed, PIT_LOSS_MIN_SEC, PIT_LOSS_MAX_SEC) : null;
+}
+
 export interface DisplayPrefs {
   cols: Record<ColumnKey, boolean>;
   toggleCol: (key: ColumnKey) => void;
@@ -73,6 +84,9 @@ export interface DisplayPrefs {
   togglePanel: (key: PanelKey) => void;
   weatherStep: number;
   setWeatherStep: (step: number) => void;
+  /** 트랙 데이터 결측 시 쓰는 폴백 피트로스(초). */
+  pitLossSec: number;
+  setPitLossSec: (sec: number) => void;
 }
 
 interface DragState {
@@ -90,6 +104,7 @@ export function useDisplayPrefs(): DisplayPrefs {
   const [colW, setColW] = useLocalStorage<Partial<Record<WidthKey, number>>>('pw_colw', {}, validateColW);
   const [panels, setPanels] = useLocalStorage<Record<PanelKey, boolean>>('pw_panels', DEFAULT_PANEL_VISIBILITY, validatePanels);
   const [weatherStep, setWeatherStep] = useLocalStorage<number>('pw_wstep', 5, validateWeatherStep);
+  const [pitLossSec, setPitLossSecRaw] = useLocalStorage<number>('pw_pitloss', DEFAULT_PIT_LOSS_SEC, validatePitLossSec);
   // 드래그 중 실시간 시각 폭(비영속, plain state). pointermove마다 이 state만 갱신하고,
   // 영속 colW(및 그에 딸린 localStorage write)는 pointerup 1회로만 커밋한다(FIX-3/comp-H1:
   // 매 프레임 컨테이너 전체 재렌더 + localStorage 동기 write가 발생하던 hot-path 제거).
@@ -98,6 +113,10 @@ export function useDisplayPrefs(): DisplayPrefs {
   const toggleCol = (key: ColumnKey) => setCols((prev) => ({ ...prev, [key]: !prev[key] }));
   const togglePanel = (key: PanelKey) => setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
   const resetWidths = () => setColW({});
+  // 유한값만 clamp해 커밋한다(NaN/빈 입력이 pitLossMs=NaN으로 흘러 패널이 unavailable로 회귀하는 것을 방지).
+  const setPitLossSec = (sec: number) => {
+    if (Number.isFinite(sec)) setPitLossSecRaw(clamp(sec, PIT_LOSS_MIN_SEC, PIT_LOSS_MAX_SEC));
+  };
 
   /** 키보드 리사이즈(←/→ ±10px 등)용. 드래그와 동일하게 clamp를 재사용하고, no-op이면 setColW를 생략한다. */
   const nudgeWidth = (key: WidthKey, delta: number) => {
@@ -155,5 +174,5 @@ export function useDisplayPrefs(): DisplayPrefs {
     return result;
   }, [colW, dragState]);
 
-  return { cols, toggleCol, colW: resolvedColW, startResize, nudgeWidth, resetWidths, panels, togglePanel, weatherStep, setWeatherStep };
+  return { cols, toggleCol, colW: resolvedColW, startResize, nudgeWidth, resetWidths, panels, togglePanel, weatherStep, setWeatherStep, pitLossSec, setPitLossSec };
 }
