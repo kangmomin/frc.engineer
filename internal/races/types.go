@@ -140,6 +140,7 @@ type RacePenaltySummary struct {
 type RacePitSummary struct {
 	Stops               int    `json:"stops"`
 	PitLaneTimeMS       uint32 `json:"pitLaneTimeMs,omitempty"`
+	StationaryTimeMS    uint32 `json:"stationaryTimeMs,omitempty"` // 실측 정지 작업 시간(스톱 유형 분류 입력)
 	EstimatedTimeLostMS uint32 `json:"estimatedTimeLostMs,omitempty"`
 }
 
@@ -421,8 +422,16 @@ func buildDebrief(player dto.DriverInfo, state *dto.PitwallState, fastestLapMS u
 	if fastestLapMS > 0 && playerBest > fastestLapMS {
 		debrief.FastestLapDeltaMS = playerBest - fastestLapMS
 	}
-	if player.PitLaneTime > 0 {
-		debrief.Pit.PitLaneTimeMS = uint32(player.PitLaneTime)
+	if player.MeasuredPitLaneMs > 0 {
+		// 스톱 완료 시점에 확정된 실측값 — 종료 시점 라이브 PitLaneTime 리셋에 영향받지 않는다.
+		// PitLaneTimeMS는 이 measured 경로에서만 채워지므로, 업로더의 "실측만 업로드" 게이트가
+		// 라이브 폴백 부분값을 흘리지 않는다(Fable M3).
+		debrief.Pit.PitLaneTimeMS = uint32(player.MeasuredPitLaneMs)
+		debrief.Pit.StationaryTimeMS = uint32(player.MeasuredPitStopMs)
+		debrief.Pit.EstimatedTimeLostMS = uint32(player.MeasuredPitLaneMs)
+	} else if player.PitLaneTime > 0 {
+		// 라이브 폴백: 종료 시점 레인시간은 부분값일 수 있어 실측으로 신뢰하지 않는다.
+		// 표시용 추정(EstimatedTimeLostMS)으로만 남기고 PitLaneTimeMS는 비워 업로드에서 제외한다.
 		debrief.Pit.EstimatedTimeLostMS = uint32(player.PitLaneTime)
 	} else if player.NumPitStops > 0 {
 		debrief.Pit.EstimatedTimeLostMS = uint32(player.NumPitStops * 22000)

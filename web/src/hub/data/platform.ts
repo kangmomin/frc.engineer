@@ -128,6 +128,15 @@ export interface PlatformPaceRow {
   you: boolean;
 }
 
+// One measured pit-loss average row (GET /tracks/{id}/pit-loss). stopType is
+// classified server-side from stationary time: 'tyres' | 'wing' | 'unknown'.
+export interface PlatformPitLossRow {
+  stopType: string;
+  avgLaneMs: number; // mean pit-lane dwell (travel + stationary), ms
+  avgStatMs: number; // mean stationary (box work) time, ms
+  samples: number;
+}
+
 export type FeedbackCategory = 'bug' | 'suggestion' | 'other';
 
 // One of the caller's own feedback rows (GET /me/feedback).
@@ -220,6 +229,13 @@ export class PlatformMarket {
     const res = await pfetchOpen(`/leaderboards/pace?track=${trackId}&format=${encodeURIComponent(format)}`);
     if (res.status === 400) return [];
     return okJson(res, '레이스 페이스 리더보드');
+  }
+
+  // Measured pit-loss averages for a track, split by stop type (public).
+  async pitLoss(trackId: number, format: string): Promise<PlatformPitLossRow[]> {
+    const res = await pfetchOpen(`/tracks/${trackId}/pit-loss?format=${encodeURIComponent(format)}`);
+    if (res.status === 400) return [];
+    return okJson(res, '피트로스 평균');
   }
 
   async listMyRaces(): Promise<PlatformSellableRace[]> {

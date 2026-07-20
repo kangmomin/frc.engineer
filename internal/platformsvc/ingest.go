@@ -127,6 +127,16 @@ func validateUpload(req *UploadRequest) error {
 			return ErrBadUpload
 		}
 	}
+	if p := req.Pit; p != nil {
+		// pit 블록이 무효여도(lane==0 등) 레이스 전체를 버리지 않는다 — IngestRace가 lane>0일
+		// 때만 INSERT하므로 lane==0은 조용히 무시된다(Fable Minor 3). 다만 범위 밖·물리적으로
+		// 불가능한(정지 > 레인 체류) 값은 race_pit_loss를 오염시키므로 400으로 거부한다.
+		if p.PitLaneTimeMs > 600000 || p.StationaryMs > 600000 ||
+			p.Stops < 0 || p.Stops > 100 ||
+			(p.PitLaneTimeMs > 0 && p.StationaryMs > p.PitLaneTimeMs) { // 정지 ≤ 레인 체류(Minor 2)
+			return ErrBadUpload
+		}
+	}
 	return nil
 }
 
@@ -202,6 +212,17 @@ type UploadRequest struct {
 	Setup         *UploadSetup  `json:"setup,omitempty"`
 	SchemaVersion int           `json:"schemaVersion,omitempty"`
 	Detail        *UploadDetail `json:"detail,omitempty"`
+	Pit           *UploadPit    `json:"pit,omitempty"`
+}
+
+// UploadPit mirrors the measured fields of races.RacePitSummary. Stored
+// relationally in race_pit_loss for public track/type pit-loss averages. The
+// sender sends this only when a real measurement exists (PitLaneTimeMs>0); a
+// pure-estimate summary is omitted so averages stay measurement-only.
+type UploadPit struct {
+	Stops         int    `json:"stops,omitempty"`
+	PitLaneTimeMs uint32 `json:"pitLaneTimeMs"`
+	StationaryMs  uint32 `json:"stationaryMs,omitempty"`
 }
 
 // UploadDetail is the rich, private per-race document stored (versioned) in
@@ -400,6 +421,18 @@ func (s *Store) IngestRace(ctx context.Context, accountID string, req UploadRequ
 			raceID, req.SchemaVersion, string(payload),
 		); err != nil {
 			return nil, fmt.Errorf("platformsvc: insert race detail: %w", err)
+		}
+	}
+
+	// Measured pit-loss (relational, for public track/type averages). New-race path
+	// only — a duplicate returns via existingRace above, so PK=race_id is written
+	// once. Guarded on PitLaneTimeMs>0 so pure-estimate rows never dilute the average.
+	if req.Pit != nil && req.Pit.PitLaneTimeMs > 0 {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO platform.race_pit_loss (race_id, stops, pit_lane_time_ms, stationary_ms) VALUES ($1, $2, $3, $4)`,
+			raceID, req.Pit.Stops, int32(req.Pit.PitLaneTimeMs), int32(req.Pit.StationaryMs),
+		); err != nil {
+			return nil, fmt.Errorf("platformsvc: insert pit loss: %w", err)
 		}
 	}
 

@@ -39,6 +39,15 @@ type uploadRequest struct {
 	Setup         *uploadSetup  `json:"setup,omitempty"`
 	SchemaVersion int           `json:"schemaVersion,omitempty"`
 	Detail        *uploadDetail `json:"detail,omitempty"`
+	Pit           *uploadPit    `json:"pit,omitempty"`
+}
+
+// uploadPit mirrors platformsvc.UploadPit (sender must not import the platform DB
+// package). Sent only when a real measurement exists (PitLaneTimeMs>0).
+type uploadPit struct {
+	Stops         int    `json:"stops,omitempty"`
+	PitLaneTimeMs uint32 `json:"pitLaneTimeMs"`
+	StationaryMs  uint32 `json:"stationaryMs,omitempty"`
 }
 
 type uploadLap struct {
@@ -252,6 +261,14 @@ func buildUploadRequest(summary *races.RaceSummary) (*uploadRequest, bool) {
 	}
 	if len(detail.Stints) > 0 || len(detail.Dynamics) > 0 || len(detail.Events) > 0 {
 		req.Detail = detail
+	}
+	// 실측 피트로스만 업로드(PitLaneTimeMS>0). 추정치(stops*22000)는 평균을 오염시키므로 제외.
+	if d := summary.Debrief; d != nil && d.Pit.PitLaneTimeMS > 0 {
+		req.Pit = &uploadPit{
+			Stops:         d.Pit.Stops,
+			PitLaneTimeMs: d.Pit.PitLaneTimeMS,
+			StationaryMs:  d.Pit.StationaryTimeMS,
+		}
 	}
 	return req, true
 }

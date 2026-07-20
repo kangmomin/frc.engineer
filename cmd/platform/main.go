@@ -112,6 +112,7 @@ func main() {
 	mux.HandleFunc("/races", srv.handleUpload)
 	mux.HandleFunc("/leaderboards/tt", srv.handleLeaderboardTT)
 	mux.HandleFunc("/leaderboards/pace", srv.handleLeaderboardPace)
+	mux.HandleFunc("GET /tracks/{id}/pit-loss", srv.handlePitLoss)
 	mux.HandleFunc("GET /me/races", srv.handleMyRaces)
 	mux.HandleFunc("GET /me/listings", srv.handleMyListings)
 	mux.HandleFunc("GET /market/setups", srv.handleMarketSetups)
@@ -439,6 +440,27 @@ func (s *server) handleLeaderboardPace(w http.ResponseWriter, r *http.Request) {
 	}
 	// Rows carry an Authorization-dependent `you` flag; key any shared cache on it.
 	w.Header().Add("Vary", "Authorization")
+	w.Header().Set("Cache-Control", marketCacheControl)
+	writeJSON(w, http.StatusOK, rows)
+}
+
+// handlePitLoss serves measured pit-loss averages for a track, split by stop type.
+// Public (no viewer-dependent fields), so it is share-cacheable without Vary.
+func (s *server) handlePitLoss(w http.ResponseWriter, r *http.Request) {
+	trackID, err := strconv.Atoi(r.PathValue("id"))
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+	if err != nil || format == "" {
+		http.Error(w, "track and format required", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	rows, err := s.store.PitLossByTrack(ctx, trackID, format)
+	if err != nil {
+		s.log.Error("pit loss", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Cache-Control", marketCacheControl)
 	writeJSON(w, http.StatusOK, rows)
 }

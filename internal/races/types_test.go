@@ -49,6 +49,8 @@ func TestBuildSummaryIncludesDebrief(t *testing.T) {
 				TyreUsableLife:             &tyreUsableLife,
 				DeltaToRaceLeader:          2845,
 				PitLaneTime:                23120,
+				MeasuredPitLaneMs:          23120, // 실측 경로 — PitLaneTimeMS로 전달(업로드 대상)
+				MeasuredPitStopMs:          2400,
 				StintHistory:               []dto.StintInfoDTO{{Compound: "Soft", Laps: 17}, {Compound: "Medium", Laps: 12}},
 			},
 			{
@@ -80,6 +82,9 @@ func TestBuildSummaryIncludesDebrief(t *testing.T) {
 	}
 	if summary.Debrief.Pit.PitLaneTimeMS != 23120 {
 		t.Fatalf("pit lane time = %d, want 23120", summary.Debrief.Pit.PitLaneTimeMS)
+	}
+	if summary.Debrief.Pit.StationaryTimeMS != 2400 {
+		t.Fatalf("stationary time = %d, want 2400", summary.Debrief.Pit.StationaryTimeMS)
 	}
 	if summary.Debrief.Tyres.AverageWearPct != 61 {
 		t.Fatalf("average wear = %d, want 61", summary.Debrief.Tyres.AverageWearPct)

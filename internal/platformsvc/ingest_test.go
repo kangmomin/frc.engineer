@@ -158,6 +158,18 @@ func TestIngestBadUpload(t *testing.T) {
 	if !errors.Is(err, ErrBadUpload) {
 		t.Fatalf("non-finite setup err = %v, want ErrBadUpload", err)
 	}
+	// Pit: stationary > lane dwell is physically impossible — clean 400 before INSERT.
+	_, err = store.IngestRace(ctx, id, UploadRequest{SourceRaceID: "rp1", TrackID: 99, GameFormat: "F1 26",
+		Laps: []UploadLap{vlap(1, 88000)}, Pit: &UploadPit{PitLaneTimeMs: 5000, StationaryMs: 9000}})
+	if !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("pit stationary>lane err = %v, want ErrBadUpload", err)
+	}
+	// Pit: lane over the int4/CHECK ceiling (600000) — clean 400, not a 500 at INSERT.
+	_, err = store.IngestRace(ctx, id, UploadRequest{SourceRaceID: "rp2", TrackID: 99, GameFormat: "F1 26",
+		Laps: []UploadLap{vlap(1, 88000)}, Pit: &UploadPit{PitLaneTimeMs: 700000}})
+	if !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("pit lane over ceiling err = %v, want ErrBadUpload", err)
+	}
 }
 
 // TestValidateLapBoundsSectors covers the per-sector magnitude gate: a single
