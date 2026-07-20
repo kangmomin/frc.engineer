@@ -70,16 +70,25 @@ function sec(ms: number): string {
 }
 
 /**
- * 온트랙 레이싱 라이벌 판정(threatWatch.ts 선례 재사용): 피트 중(pitStatus>0)·개러지·은퇴
- * ·DNF 차는 제외한다. 이들의 deltaToPlayer는 "다들 유지" 가정을 깨거나 부재하므로, coverage
- * 분모와 exitPosition 기준에서 모두 빼야 정확 순위/스페이싱이 살아난다(Fable REVISE #2/#3).
+ * 온트랙 레이싱 라이벌 판정(threatWatch.ts 선례 재사용): 피트 중(pitStatus>0)·개러지(lapDist<0)
+ * ·은퇴·DNF 차는 제외한다. 이들의 deltaToPlayer는 "다들 유지" 가정을 깨거나 부재하므로 뺀다.
+ *
+ * resultStatus는 화이트리스트(=2/3)가 아니라 **블랙리스트**로 판정한다: 실측상 온트랙 레이싱 차가
+ * resultStatus=0(미보고, omitempty)/1(inactive)로 오는 세션이 있어, 2/3 강제는 전 그리드를
+ * 오탈락시켰다(라이브 진단: 나 제외 21대 전원 '비활성'). 물리 신호(핏 아님·트랙 위·순위 보유)로
+ * 온트랙을 판정하고, 명시적 '아웃'(DNF/DSQ/NC/retired)만 제외한다. 갭 부재는 하류 withGap이 거른다.
  */
+export function isDriverOutOfRace(resultStatus: number | undefined): boolean {
+  const rs = resultStatus ?? 0;
+  return rs === 4 || rs === 5 || rs === 6 || rs === 7; // DNF / DSQ / NC / retired
+}
+
 function isRacingRival(d: DriverInfo, playerIndex: number): boolean {
   return (
     d.index !== playerIndex
     && d.pitStatus === 0
     && d.lapDistance >= 0
-    && ((d.resultStatus ?? 0) === 2 || (d.resultStatus ?? 0) === 3)
+    && !isDriverOutOfRace(d.resultStatus)
     && d.position > 0
   );
 }
@@ -106,18 +115,18 @@ export function pitExitUnavailableReason(
     const others = drivers.filter((d) => d.index !== player.index);
     let inPit = 0;
     let offTrack = 0;
-    let notActive = 0;
+    let outOfRace = 0;
     let noPos = 0;
     for (const d of others) {
       if (d.pitStatus !== 0) inPit++;
       else if (d.lapDistance < 0) offTrack++;
-      else if ((d.resultStatus ?? 0) !== 2 && (d.resultStatus ?? 0) !== 3) notActive++;
+      else if (isDriverOutOfRace(d.resultStatus)) outOfRace++;
       else if (d.position <= 0) noPos++;
     }
     const noDelta = racingRivals.length - withGap.length;
     return (
       `투영 가능한 온트랙 라이벌 없음 (총 ${drivers.length}대, 나 제외 ${others.length}대 · ` +
-      `핏중 ${inPit} · 트랙밖(lapDist<0) ${offTrack} · 비활성(resultStatus≠2,3) ${notActive} · ` +
+      `핏중 ${inPit} · 트랙밖(lapDist<0) ${offTrack} · 아웃(DNF/DSQ/NC/retired) ${outOfRace} · ` +
       `순위없음 ${noPos} · 통과 ${racingRivals.length} · 갭결측 ${noDelta} · withGap ${withGap.length})`
     );
   }

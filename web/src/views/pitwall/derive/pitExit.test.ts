@@ -123,6 +123,31 @@ describe('derivePitExit — guards', () => {
   });
 });
 
+describe('derivePitExit — racing-rival status filter (blacklist)', () => {
+  it('includes an on-track car even when resultStatus is unreported (0)', () => {
+    // 실측: 온트랙 레이싱 차가 resultStatus=0(omitempty)로 오는 세션 존재. 물리 신호로 포함해야 한다.
+    const f = [
+      me,
+      makeDriver({ index: 1, name: 'Alpha', resultStatus: 0, pitStatus: 0, position: 2, lapDistance: 100, deltaToPlayer: 5_000, numPitStops: 0 }),
+    ];
+    const vm = derivePitExit(me, f, PIT_LOSS, makeSession())!;
+    expect(vm).not.toBeNull();
+    // proj = 5000-20000 = -15s → ahead
+    expect(vm.ahead?.code).toBe('ALP');
+  });
+
+  it('excludes only explicit out-of-race statuses (DNF/DSQ/NC/retired)', () => {
+    for (const rs of [4, 5, 6, 7]) {
+      const f = [
+        me,
+        makeDriver({ index: 1, name: 'Out', resultStatus: rs, pitStatus: 0, position: 2, lapDistance: 100, deltaToPlayer: 5_000 }),
+      ];
+      // 유일한 상대가 아웃 상태 → 투영 가능한 라이벌 0 → null
+      expect(derivePitExit(me, f, PIT_LOSS, makeSession())).toBeNull();
+    }
+  });
+});
+
 describe('derivePitExit — projection', () => {
   it('computes nearest ahead/behind, exit position, and traffic', () => {
     const vm = derivePitExit(me, standardField(), PIT_LOSS, makeSession())!;
