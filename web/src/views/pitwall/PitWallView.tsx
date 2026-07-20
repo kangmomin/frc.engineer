@@ -14,7 +14,7 @@ import { buildCornerMarks, wrapPct } from '../../ui/TrackStrip.derive';
 import { COL_ORDER } from './columns';
 import { deriveLeaderboardRows } from './derive/leaderboardRows';
 import { deriveMyCar } from './derive/myCar';
-import { derivePitExit, type PitLossSource } from './derive/pitExit';
+import { derivePitExit, pitExitUnavailableReason, type PitLossSource } from './derive/pitExit';
 import { deriveTyreDetail } from './derive/tyreDetail';
 import { deriveWeather } from './derive/weather';
 import { DisplaySettings } from './DisplaySettings';
@@ -115,6 +115,15 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
     return { ms: null as number | null, source: 'track' as PitLossSource };
   }, [player, strategyGuide.data, strategyGuide.status, prefs.pitLossSec]);
   const pitExit = useMemo(() => derivePitExit(player, drivers, pitLoss.ms, session, pitLoss.source), [player, drivers, pitLoss, session]);
+  // Pit Exit 패널이 "Pit-loss data unavailable"로 뜨는 사유를 콘솔에 남긴다. 매 프레임 도배를
+  // 피하려 pitExit이 null일 때의 사유가 '바뀔 때만' 로그한다(useMemo로 사유 문자열 안정화).
+  const pitExitReason = useMemo(
+    () => (pitExit == null ? pitExitUnavailableReason(player, drivers, pitLoss.ms) : null),
+    [pitExit, player, drivers, pitLoss.ms],
+  );
+  useEffect(() => {
+    if (pitExitReason) console.warn(`[PitExit] Pit-loss data unavailable — ${pitExitReason} (source=${pitLoss.source})`);
+  }, [pitExitReason, pitLoss.source]);
   const tyreDetail = useMemo(() => deriveTyreDetail(player), [player]);
   const lapCounter = useMemo(() => deriveLapCounter(drivers, session), [drivers, session]);
   // WeatherPanel은 VM만 받는 순수 컴포넌트다(Spec §2 VM-only, FIX-4) — 컨테이너가 조립한다.
