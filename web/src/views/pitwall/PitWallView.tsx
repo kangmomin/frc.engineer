@@ -6,10 +6,11 @@ import type { ShellControls } from '../../shell/types';
 import { useLapHistoryStore } from '../../store/lapHistoryStore';
 import { useRaceMetaStore } from '../../store/raceMetaStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
+import { cornersFor, nextCornerNumber } from '../../constants/trackCorners';
 import { deriveDriverCodes } from '../../utils/driverCodes';
 import { getRaceStatus, getTrackCondition } from '../../utils/raceDisplay';
 import { deriveLapCounter } from '../broadcast/derive/fieldDerivations';
-import { wrapPct } from '../../ui/TrackStrip.derive';
+import { buildCornerMarks, wrapPct } from '../../ui/TrackStrip.derive';
 import { COL_ORDER } from './columns';
 import { deriveLeaderboardRows } from './derive/leaderboardRows';
 import { deriveMyCar } from './derive/myCar';
@@ -104,11 +105,21 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
     if (!player || len === undefined || !Number.isFinite(len) || len <= 0 || !Number.isFinite(player.lapDistance)) {
       return null;
     }
+    const nextCorner = nextCornerNumber(session?.trackId, player.lapDistance, len);
     return {
       code: deriveDriverCodes(drivers).get(player.index) ?? '—',
       pct: wrapPct(player.lapDistance, len),
+      nextCornerText: nextCorner != null ? `→ T${nextCorner}` : null,
     };
   }, [player, drivers, session]);
+  // 코너 마커는 트랙이 바뀔 때만 재계산 — deps를 프리미티브로 잡아 4Hz pitwallState
+  // 객체 교체(참조 변경)마다 buildCornerMarks가 재실행되지 않게 한다.
+  const trackId = session?.trackId;
+  const trackLength = session?.trackLength;
+  const cornerMarks = useMemo(() => {
+    const cs = cornersFor(trackId, trackLength);
+    return cs && trackLength ? buildCornerMarks(cs, trackLength) : null;
+  }, [trackId, trackLength]);
 
   // ── 게이트(모든 hook 이후) ── Broadcast와 달리 비-Race 세션 게이트는 두지 않는다
   // (cockpit은 practice/race 모두 유효; quali는 QUALI 탭이 별도, Spec §1).
@@ -161,6 +172,7 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
             is2026={is2026}
             detail={`${drivers.length} Cars · ${activeColCount} fields · ${is2026 ? 'F1 26' : 'F1 25'}`}
             trackPos={trackPos}
+            cornerMarks={cornerMarks}
             openDriverIndex={openDriverIdx}
             onOpenDriver={openDriverDetail}
             onResizeStart={prefs.startResize}

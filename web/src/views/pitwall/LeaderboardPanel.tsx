@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { formatPenaltyEntry, summarizePenalties } from '../../constants/penalties';
 import { PanelTitle } from '../../ui';
+import type { CornerMark } from '../../ui/TrackStrip.derive';
 import { COL_ALIGN, COL_ORDER, MAX_COL_WIDTH, MIN_COL_WIDTH, columnHeadLabel, type ColumnKey, type WidthKey } from './columns';
 import type { LeaderRow } from './derive/leaderboardRows';
 import { TrackPositionStrip } from './TrackPositionStrip';
@@ -34,7 +35,9 @@ export interface LeaderboardPanelProps {
   is2026: boolean;
   detail: string;
   /** 상단 현 위치 스트립. null이면 미표시(트랙 길이/거리 결측 degrade). */
-  trackPos: { code: string; pct: number } | null;
+  trackPos: { code: string; pct: number; nextCornerText: string | null } | null;
+  /** 실측 코너 마커 (trackId/trackLength 기준 메모이즈). null = 데이터 없는 트랙. */
+  cornerMarks: CornerMark[] | null;
   /** 상세 모달이 열린 드라이버 index (rowBg 강조용). null=닫힘. */
   openDriverIndex: number | null;
   onOpenDriver: (index: number, triggerEl: HTMLElement) => void;
@@ -43,7 +46,7 @@ export interface LeaderboardPanelProps {
 }
 
 /** 목업 리더보드 섹션의 가변 컬럼 레이아웃을 실데이터(LeaderRow)로 렌더하는 순수 컴포넌트. */
-export function LeaderboardPanel({ rows, cols, colW, is2026, detail, trackPos, openDriverIndex, onOpenDriver, onResizeStart, onNudgeWidth }: LeaderboardPanelProps) {
+export function LeaderboardPanel({ rows, cols, colW, is2026, detail, trackPos, cornerMarks, openDriverIndex, onOpenDriver, onResizeStart, onNudgeWidth }: LeaderboardPanelProps) {
   const active = COL_ORDER.filter((k) => cols[k]);
   // All-fixed tracks so a resize handle follows the cursor (was minmax(…,1.1fr)),
   // + a trailing flex spacer so row backgrounds/borders span the panel and there's
@@ -85,7 +88,9 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, trackPos, o
       }}
     >
       <PanelTitle title="Cockpit Leaderboard" tone="primary" detail={detail} />
-      {trackPos && <TrackPositionStrip code={trackPos.code} pct={trackPos.pct} />}
+      {trackPos && (
+        <TrackPositionStrip code={trackPos.code} pct={trackPos.pct} cornerMarks={cornerMarks} nextCornerText={trackPos.nextCornerText} />
+      )}
       {/* ARIA table 구조(FIX-6): 실 <table>이 아닌 CSS grid div이므로 role로 시맨틱을 부여한다.
           outer(role=table) → header row(role=row, table의 직계 자식) / body(role=rowgroup) →
           각 데이터 row(role=row). 순수 레이아웃용 중간 wrapper는 role="presentation"으로 밝혀
