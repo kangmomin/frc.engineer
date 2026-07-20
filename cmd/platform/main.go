@@ -125,6 +125,8 @@ func main() {
 	mux.HandleFunc("POST /listings/{id}/purchase", srv.handlePurchase)
 	mux.HandleFunc("GET /listings/{id}/reviews", srv.handleListReviews)
 	mux.HandleFunc("POST /listings/{id}/reviews", srv.handleCreateReview)
+	mux.HandleFunc("POST /feedback", srv.handleCreateFeedback)
+	mux.HandleFunc("GET /me/feedback", srv.handleMyFeedback)
 
 	httpServer := &http.Server{
 		Addr:              ":" + port,
@@ -872,6 +874,81 @@ func (s *server) handleCreateReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+// Feedback limits.
+const (
+	feedbackRatePerMin = 5
+	feedbackMaxBytes   = 16 << 10 // 2000 runes × 4B worst-case UTF-8 + JSON overhead
+)
+
+// handleCreateFeedback records a piece of free-text user feedback (bug/suggestion/other).
+func (s *server) handleCreateFeedback(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, err := s.authenticate(ctx, r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if p.Scope != platformsvc.ScopeWeb {
+		http.Error(w, "web session required", http.StatusForbidden)
+		return
+	}
+	if p.Banned {
+		http.Error(w, "account banned", http.StatusForbidden)
+		return
+	}
+	allowed, err := s.store.AllowRate(ctx, p.AccountID+":feedback", feedbackRatePerMin)
+	if err != nil {
+		s.log.Error("feedback rate limit", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !allowed {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
+	var req platformsvc.CreateFeedbackRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, feedbackMaxBytes)).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	id, err := s.store.SubmitFeedback(ctx, p.AccountID, req)
+	switch {
+	case errors.Is(err, platformsvc.ErrBadUpload):
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	case err != nil:
+		s.log.Error("submit feedback", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"feedbackId": id})
+}
+
+// handleMyFeedback lists the caller's own submitted feedback. Web scope only;
+// own private data → uncacheable.
+func (s *server) handleMyFeedback(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, err := s.authenticate(ctx, r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if p.Scope != platformsvc.ScopeWeb {
+		http.Error(w, "web session required", http.StatusForbidden)
+		return
+	}
+	entries, err := s.store.ListMyFeedback(ctx, p.AccountID)
+	if err != nil {
+		s.log.Error("my feedback", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, entries)
 }
 
 // viewerStrict resolves an OPTIONAL Bearer for listing detail. No Authorization
