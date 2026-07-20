@@ -101,7 +101,25 @@ export function pitExitUnavailableReason(
   const racingRivals = drivers.filter((d) => isRacingRival(d, player.index));
   const withGap = racingRivals.filter((d) => d.deltaToPlayer != null && Number.isFinite(d.deltaToPlayer));
   if (withGap.length === 0) {
-    return `투영 가능한 온트랙 라이벌 없음 (racingRivals=${racingRivals.length}, withGap=${withGap.length})`;
+    // 왜 라이벌이 0인지 조건별로 분해한다(첫 실패 조건에 귀속). 라이브 세션에서 어느 필터가
+    // 전부 걸러내는지(솔로/그리드 전/전원 핏/비활성) 콘솔만 보고 판별할 수 있게 한다.
+    const others = drivers.filter((d) => d.index !== player.index);
+    let inPit = 0;
+    let offTrack = 0;
+    let notActive = 0;
+    let noPos = 0;
+    for (const d of others) {
+      if (d.pitStatus !== 0) inPit++;
+      else if (d.lapDistance < 0) offTrack++;
+      else if ((d.resultStatus ?? 0) !== 2 && (d.resultStatus ?? 0) !== 3) notActive++;
+      else if (d.position <= 0) noPos++;
+    }
+    const noDelta = racingRivals.length - withGap.length;
+    return (
+      `투영 가능한 온트랙 라이벌 없음 (총 ${drivers.length}대, 나 제외 ${others.length}대 · ` +
+      `핏중 ${inPit} · 트랙밖(lapDist<0) ${offTrack} · 비활성(resultStatus≠2,3) ${notActive} · ` +
+      `순위없음 ${noPos} · 통과 ${racingRivals.length} · 갭결측 ${noDelta} · withGap ${withGap.length})`
+    );
   }
   return null;
 }
