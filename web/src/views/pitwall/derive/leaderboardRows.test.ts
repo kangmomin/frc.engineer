@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { LapRecord } from '../../../store/lapHistoryStore';
 import type { CarDamage, DriverInfo, SessionInfo } from '../../../types/telemetry';
 import {
   damageTone,
@@ -100,6 +101,10 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     trackLength: 5000,
     ...overrides,
   };
+}
+
+function makeLap(overrides: Partial<LapRecord> = {}): LapRecord {
+  return { lap: 5, lapMs: 90_000, s1Ms: 0, s2Ms: 0, s3Ms: 0, wearPct: null, pit: null, ...overrides };
 }
 
 // ── getDamageSummaryItems / damageTone ──
@@ -277,11 +282,27 @@ describe('deriveSectorCells', () => {
     const d = makeDriver({ currentSector: 2, sector2TimeMs: 30456 });
     expect(deriveSectorCells(d, null).s2.text).toBe('30.456');
   });
-  it('S3 always degrades to dash — no cross-lap fabrication from lastLap - s1 - s2', () => {
-    const d = makeDriver({ currentSector: 2, lastLapTime: 90000, sector1TimeMs: 28000, sector2TimeMs: 32000 });
-    const cells = deriveSectorCells(d, null);
+  it('S3 dashes when there is no completed-lap record yet (first lap, no history)', () => {
+    const d = makeDriver({ currentSector: 2, sector1TimeMs: 28000, sector2TimeMs: 32000 });
+    const cells = deriveSectorCells(d, null, null);
     expect(cells.s3.text).toBe('—');
     expect(cells.s3.color).toBe('var(--text-muted)');
+  });
+  it('S3 shows the last completed lap s3Ms (lapHistoryStore, not cross-lap fabrication)', () => {
+    const d = makeDriver({ currentSector: 0 });
+    const cells = deriveSectorCells(d, null, makeLap({ s3Ms: 22102 }));
+    expect(cells.s3.text).toBe('22.102');
+  });
+  it('S1/S2 persist the last completed lap while the new lap is still in sector 1', () => {
+    const d = makeDriver({ currentSector: 0, sector1TimeMs: 0, sector2TimeMs: 0 }); // 새 랩 시작
+    const cells = deriveSectorCells(d, null, makeLap({ s1Ms: 28123, s2Ms: 30456 }));
+    expect(cells.s1.text).toBe('28.123'); // '·'로 즉시 사라지지 않음
+    expect(cells.s2.text).toBe('30.456');
+  });
+  it('current-lap live S1 overrides the last-lap fallback once sector 1 completes', () => {
+    const d = makeDriver({ currentSector: 1, sector1TimeMs: 27900 });
+    const cells = deriveSectorCells(d, null, makeLap({ s1Ms: 28123 }));
+    expect(cells.s1.text).toBe('27.900'); // 현재 랩 라이브 우선
   });
   it('yellow flag zone overrides personal-best tone', () => {
     const d = makeDriver({ currentSector: 1, sector1TimeMs: 28000, bestSector1Ms: 27000 });

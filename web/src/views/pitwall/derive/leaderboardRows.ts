@@ -1,3 +1,4 @@
+import type { LapRecord } from '../../../store/lapHistoryStore';
 import { getTeamColor, getTeamShort } from '../../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompounds';
 import type { DriverInfo, PenaltyLogEntry, SessionInfo } from '../../../types/telemetry';
@@ -113,12 +114,13 @@ export function derivePenaltyBadge(driver: DriverInfo): { label: string; color: 
 }
 
 /**
- * Sector 컬럼(Spec §3.3, FIX-1로 정정). S1/S2는 currentSector 진행도로 완료 여부를 판단한다.
- * currentSector는 와이어 기준 **0-based**다(Go internal/packets/lapdata.go:28
- * `Sector uint8 //0=s1,1=s2,2=s3`, pitwall_manager.go:470에서 무변환 전달) — S1 완료(S2 진입)는
- * currentSector>=1, S2 완료(S3 진입)는 currentSector>=2. S3는 전용 필드가 없고, sector1/2TimeMs
- * (현재 랩 진행 중 값)와 lastLapTime(직전 완주 랩 총합)을 섞어 역산하면 서로 다른 랩의 값을
- * 빼는 fabrication이 되므로(Spec §9 위반) 상시 '—'로 degrade한다.
+ * Sector 컬럼(Spec §3.3, FIX-1로 정정). currentSector는 와이어 기준 **0-based**다(Go
+ * internal/packets/lapdata.go:28 `Sector uint8 //0=s1,1=s2,2=s3`) — S1 완료(S2 진입)는
+ * currentSector>=1, S2 완료(S3 진입)는 currentSector>=2.
+ *   표시 정책: 현재 랩에서 완주한 S1/S2는 라이브 값, 아직 안 나온 슬롯과 S3는 직전 완료 랩
+ *   (lapHistoryStore LapRecord — 원자적 +1 롤오버 커밋의 실측 s1/s2/s3)으로 폴백한다. 이로써
+ *   새 랩 시작 시 S1/S2가 즉시 사라지지 않고, S3도 표시된다. S3는 '현재 랩 값 섞기'가 아니라
+ *   '같은 완료 랩'의 lastLapTime−s1−s2라 fabrication이 아니다(history 20260720 참조).
  */
 function sectorTone(currentMs: number, bestMs: number | null | undefined, flag: number): string {
   if (flag === 3 || flag === 4) return flag === 3 ? '#eab308' : 'var(--accent-red)';
@@ -134,24 +136,31 @@ export interface SectorCellVM {
 export function deriveSectorCells(
   driver: DriverInfo,
   session: SessionInfo | null,
+  lastLap: LapRecord | null = null,
 ): { s1: SectorCellVM; s2: SectorCellVM; s3: SectorCellVM } {
   const flag1 = getSectorFlag(session?.marshalZones, 1);
   const flag2 = getSectorFlag(session?.marshalZones, 2);
 
-  // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화(0=미완주=DOT).
+  // sector1/2TimeMs는 Go DTO omitempty라 미완주 섹터는 undefined다 — 0으로 정규화(0=미완주).
   const s1Ms = driver.sector1TimeMs ?? 0;
   const s2Ms = driver.sector2TimeMs ?? 0;
-  const s1Valid = driver.currentSector >= 1 && s1Ms > 0;
-  const s2Valid = driver.currentSector >= 2 && s2Ms > 0;
-
+  // 현재 랩 라이브(완주 시)를 우선, 없으면 직전 완료 랩으로 폴백. S3는 라이브 필드가 없어 항상 직전 랩.
+  const liveS1 = driver.currentSector >= 1 && s1Ms > 0 ? s1Ms : 0;
+  const liveS2 = driver.currentSector >= 2 && s2Ms > 0 ? s2Ms : 0;
+  const dispS1 = liveS1 > 0 ? liveS1 : lastLap?.s1Ms ?? 0;
+  const dispS2 = liveS2 > 0 ? liveS2 : lastLap?.s2Ms ?? 0;
+  const dispS3 = lastLap?.s3Ms ?? 0;
+  // marshal flag 톤은 라이브 현재 섹터에만 적용(폴백된 직전 랩 값엔 best 비교 톤만).
   return {
-    s1: s1Valid
-      ? { text: (s1Ms / 1000).toFixed(3), color: sectorTone(s1Ms, driver.bestSector1Ms, flag1) }
+    s1: dispS1 > 0
+      ? { text: (dispS1 / 1000).toFixed(3), color: sectorTone(dispS1, driver.bestSector1Ms, liveS1 > 0 ? flag1 : 0) }
       : { text: DOT, color: 'var(--text-muted)' },
-    s2: s2Valid
-      ? { text: (s2Ms / 1000).toFixed(3), color: sectorTone(s2Ms, driver.bestSector2Ms, flag2) }
+    s2: dispS2 > 0
+      ? { text: (dispS2 / 1000).toFixed(3), color: sectorTone(dispS2, driver.bestSector2Ms, liveS2 > 0 ? flag2 : 0) }
       : { text: DOT, color: 'var(--text-muted)' },
-    s3: { text: DASH, color: 'var(--text-muted)' },
+    s3: dispS3 > 0
+      ? { text: (dispS3 / 1000).toFixed(3), color: sectorTone(dispS3, driver.bestSector3Ms, 0) }
+      : { text: DASH, color: 'var(--text-muted)' },
   };
 }
 
@@ -385,6 +394,7 @@ export function deriveLeaderboardRows(
   player: DriverInfo | null,
   is2026: boolean,
   session: SessionInfo | null,
+  lapHistory?: Map<number, LapRecord[]>,
 ): LeaderRow[] {
   const validLaps = drivers.map((d) => d.lastLapTime).filter((t) => t > 0);
   const fastestMs = validLaps.length ? Math.min(...validLaps) : null;
@@ -413,7 +423,9 @@ export function deriveLeaderboardRows(
     const pen = derivePenaltyBadge(driver);
     const tyre = tyreCell(driver);
     const pit = pitCell(driver);
-    const sector = deriveSectorCells(driver, session);
+    const recs = lapHistory?.get(driver.index);
+    const lastLap = recs && recs.length > 0 ? recs[recs.length - 1] : null;
+    const sector = deriveSectorCells(driver, session, lastLap);
     const dmg = damageCell(driver);
     const wear = tyreWearCell(driver);
     const fuel = isFuelVisible(driver, player, teamResolved)

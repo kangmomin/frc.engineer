@@ -95,7 +95,7 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   // rows/myCar/lapCounter를 게이트 앞에서 useMemo로 고정한다(FIX-3/comp-H1) — 컬럼 리사이즈
   // 드래그·설정 팝오버 토글 등 이 값들과 무관한 리렌더마다 파생 전체를 재계산하지 않도록 한다.
   // 각 derive 함수는 session=null/drivers=[]에 안전하므로 게이트 이전에 호출해도 무방하다.
-  const rows = useMemo(() => deriveLeaderboardRows(drivers, player, is2026, session), [drivers, player, is2026, session]);
+  const rows = useMemo(() => deriveLeaderboardRows(drivers, player, is2026, session, lapHistory), [drivers, player, is2026, session, lapHistory]);
   const myCar = useMemo(() => deriveMyCar(player, drivers, session), [player, drivers, session]);
   // 피트로스: 트랙 baseline(strategyGuide) 우선, 트랙값 부재가 '확정'(ready/unavailable)되면
   // 사용자 폴백값(초→ms)을 쓴다. 로딩 중(idle/loading)엔 null 유지 → 폴백값이 먼저 떴다가

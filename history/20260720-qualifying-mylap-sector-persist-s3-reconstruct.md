@@ -70,3 +70,26 @@
 - **재발 시 대응**: "My Lap S3가 왜 lapHistoryStore를 거치나 / 자체 역산이 더 단순하지 않나" 또는
   "롤오버 직전 틱에 lastLapTime이 먼저 갱신된다" 재제기 시 본 섹션 인용(전이는 원자적 동일 패킷 —
   실측 확정 — 이라 자체 롤오버 역산은 신뢰 불가, 검증된 lapHistoryStore 소스로 통일).
+
+---
+
+## 후속 결정 (2026-07-21): Race(Pit Wall) 리더보드 sector 컬럼에도 동일 적용
+
+- **이슈**: 사용자가 실제로 보던 화면은 Qualifying이 아니라 **Race(Pit Wall) 뷰**였다. 리더보드
+  `sector` 컬럼(`deriveSectorCells`)은 S3를 상시 `'—'`로 하드코딩("현재 랩 sector1/2 + lastLapTime
+  혼합 = fabrication"이라며)했고, S1/S2도 currentSector 게이팅이라 새 랩 시작 시 즉시 '·'로 사라졌다.
+  → 최초 요청("섹터3 안나오고 너무 빨리 사라짐")의 진짜 대상.
+- **결정**: `deriveSectorCells`를 My Lap과 동일한 lapHistoryStore 하이브리드로 전환한다 — 현재 랩
+  라이브 S1/S2 우선, 미완 슬롯과 S3는 드라이버별 직전 완료 랩 레코드로 폴백. S3는 '같은 완료 랩'의
+  실측(lastLapTime−s1−s2, 원자적 +1 커밋)이라 fabrication 아님.
+- **근거**: lapHistoryStore는 전 드라이버 히스토리(Map<index, LapRecord[]>)를 이미 축적 → 리더보드
+  전 드라이버에 드라이버별 마지막 레코드로 S3/폴백 제공 가능. 커밋 시에만 참조 변경이라 리렌더 저비용.
+  marshal flag 톤은 라이브 현재 섹터에만 적용(폴백 값엔 best 비교 톤).
+- **결정자**: 사용자 (Race 중점 리다이렉트) + 에이전트
+- **수정 내역**:
+  - `derive/leaderboardRows.ts`: `deriveSectorCells(driver, session, lastLap?)` + `deriveLeaderboardRows`에
+    `lapHistory?` 인자 추가(드라이버별 마지막 레코드 조회), 'S3 상시 대시=fabrication' 주석 정정
+  - `PitWallView.tsx`: 이미 있던 `lapHistory`를 `deriveLeaderboardRows`에 전달
+  - `derive/leaderboardRows.test.ts`: 폴백/라이브 오버라이드/직전 랩 S3 테스트 추가
+- **재발 시 대응**: "리더보드 S3는 fabrication이라 대시여야" 재제기 시 본 섹션 인용(같은 완료 랩 실측,
+  My Lap과 동일 검증 소스).
