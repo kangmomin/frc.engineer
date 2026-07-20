@@ -14,3 +14,25 @@
 .pulse {
   animation: pw-pulse 1.6s ease-in-out infinite;
 }
+
+/* 리더보드 행 → 드라이버 상세 모달 오픈 버튼 (목업 172; hover는 인라인 불가라 모듈로). */
+.openBtn {
+  margin-left: auto;
+  flex: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--bg-panel-border);
+}
+
+.openBtn:hover,
+.openBtn:focus-visible {
+  border-color: var(--accent);
+  background: rgba(0, 229, 255, 0.1);
+}
