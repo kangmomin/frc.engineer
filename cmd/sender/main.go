@@ -59,7 +59,6 @@ type senderConfig struct {
 	OverlayWindows       *overlayWindowSettings   `json:"overlayWindows,omitempty"`
 	PlatformBaseURL      string                   `json:"platformBaseUrl,omitempty"`
 	UploadToken          string                   `json:"uploadToken,omitempty"`
-	AutoUpload           bool                     `json:"autoUpload,omitempty"`
 	// OverlayLanBind opt-in: 설정/오버레이 HTTP 서버를 전 인터페이스에 바인드해
 	// 듀얼PC/OBS 등 LAN 기기에서 /radar·/weather·/strategy 접근을 복원한다.
 	// 기본 false(루프백 전용) — 켜면 설정 API도 LAN에 노출되므로 명시적 선택일 때만.
@@ -428,7 +427,6 @@ func main() {
 	cfgOverlayWindows := overlayWindowDefaults
 	cfgPlatformBaseURL := normalizePlatformBaseURL("")
 	cfgUploadToken := ""
-	cfgAutoUpload := false
 	if saved := savedConfig; saved != nil && len(saved.ForwardTargets) > 0 {
 		cfgForwardTargets = saved.ForwardTargets
 		forwarder.UpdateTargets(cfgForwardTargets)
@@ -442,7 +440,6 @@ func main() {
 		cfgOverlayWindows = defaultedOverlayWindowSettings(saved.OverlayWindows)
 		cfgPlatformBaseURL = normalizePlatformBaseURL(saved.PlatformBaseURL)
 		cfgUploadToken = saved.UploadToken
-		cfgAutoUpload = saved.AutoUpload
 		cfgOverlayLanBind = saved.OverlayLanBind
 	}
 	cfgStrategySettings := map[int8]trackStrategyConfig{}
@@ -984,7 +981,6 @@ func main() {
 		rs := raceStorage
 		saveEnabled := cfgSaveFiles
 		storageMode := cfgDataStorageMode
-		autoUpload := cfgAutoUpload
 		token := cfgUploadToken
 		base := cfgPlatformBaseURL
 		cfgMu.Unlock()
@@ -1035,9 +1031,9 @@ func main() {
 		broadcastSummary.Replay = nil
 		broadcaster.BroadcastRaceResult(&broadcastSummary)
 
-		// Optional auto-upload: fire-and-forget so a slow/failed network never
-		// blocks the save path. Only when paired and the race carries rich detail.
-		if autoUpload && token != "" {
+		// Auto-upload: fire-and-forget so a slow/failed network never blocks the
+		// save path. Always on when paired — pairing is the upload consent gate.
+		if token != "" {
 			if req, ok := buildUploadRequest(summary); ok {
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), uploadHTTPTimeout)
@@ -1119,7 +1115,6 @@ func main() {
 			OverlayWindows:       cloneOverlayWindowSettings(cfgOverlayWindows),
 			PlatformBaseURL:      cfgPlatformBaseURL,
 			UploadToken:          cfgUploadToken,
-			AutoUpload:           cfgAutoUpload,
 			OverlayLanBind:       cfgOverlayLanBind,
 		}
 	}
@@ -1471,7 +1466,6 @@ func main() {
 	mux.HandleFunc("GET /api/upload/status", func(w http.ResponseWriter, r *http.Request) {
 		cfgMu.Lock()
 		paired := cfgUploadToken != ""
-		autoUpload := cfgAutoUpload
 		cfgMu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		// platformBaseUrl은 UI(settings.html·Driver Pack)의 웹 허브 안내 링크 전용 —
@@ -1479,28 +1473,7 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]any{
 			"paired":          paired,
 			"platformBaseUrl": defaultHubBaseURL,
-			"autoUpload":      autoUpload,
 		})
-	})
-
-	mux.HandleFunc("POST /api/upload/auto", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			AutoUpload bool `json:"autoUpload"`
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "invalid body"})
-			return
-		}
-		cfgMu.Lock()
-		cfgAutoUpload = body.AutoUpload
-		saveErr := saveSenderConfig(buildSenderConfigSnapshot())
-		cfgMu.Unlock()
-		if saveErr != nil {
-			logger.Warn("failed to persist auto-upload flag", "error", saveErr)
-		}
-		json.NewEncoder(w).Encode(map[string]bool{"autoUpload": body.AutoUpload})
 	})
 
 	mux.HandleFunc("POST /api/races/{id}/upload", func(w http.ResponseWriter, r *http.Request) {

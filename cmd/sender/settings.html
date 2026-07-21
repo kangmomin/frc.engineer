@@ -991,15 +991,6 @@
       <input type="text" id="pairCode" maxlength="64" placeholder="웹 허브에서 발급한 코드">
     </div>
     <button class="secondary-btn" id="pairBtn" type="button">기기 페어링</button>
-    <div class="field" style="margin-top:12px">
-      <div class="toggle-row">
-        <label>레이스 종료 시 자동 업로드</label>
-        <label class="toggle">
-          <input type="checkbox" id="autoUpload">
-          <span class="slider"></span>
-        </label>
-      </div>
-    </div>
   </div>
 
 
@@ -2107,7 +2098,6 @@
   const $pairStatus = document.getElementById('uploadPairStatus');
   const $pairCode = document.getElementById('pairCode');
   const $pairBtn = document.getElementById('pairBtn');
-  const $autoUpload = document.getElementById('autoUpload');
   const $pairModalBackdrop = document.getElementById('pairModalBackdrop');
   const $pairModalCode = document.getElementById('pairModalCode');
   const $pairModalBtn = document.getElementById('pairModalBtn');
@@ -2161,7 +2151,6 @@
       const r = await fetch('/api/upload/status');
       const d = await r.json();
       $pairStatus.textContent = d.paired ? '페어링됨' : '미페어링';
-      $autoUpload.checked = !!d.autoUpload;
       if (typeof d.platformBaseUrl === 'string' && /^https?:\/\//i.test(d.platformBaseUrl)) {
         $pairModalHubLink.href = d.platformBaseUrl;
       }
@@ -2216,19 +2205,6 @@
   $pairModalBtn.addEventListener('click', submitPairModal);
   $pairModalCode.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); submitPairModal(); }
-  });
-
-  $autoUpload.addEventListener('change', async () => {
-    try {
-      await fetch('/api/upload/auto', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ autoUpload: $autoUpload.checked }),
-      });
-      showToast($autoUpload.checked ? '자동 업로드 켜짐' : '자동 업로드 꺼짐', true);
-    } catch (e) {
-      showToast('저장 실패', false);
-    }
   });
 
   renderOverlayStatePills();

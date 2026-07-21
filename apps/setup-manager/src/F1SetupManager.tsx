@@ -753,7 +753,6 @@ function useSenderConnection(senderUrl: string) {
 interface SenderUploadStatus {
   paired?: boolean;
   platformBaseUrl?: string;
-  autoUpload?: boolean;
 }
 
 type PairingGate = "checking" | "paired" | "unpaired";
