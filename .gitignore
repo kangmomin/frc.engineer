@@ -21,6 +21,9 @@ Thumbs.db
 .env
 .env.local
 
+# MCP config — pithub DB 접속 문자열(프로덕션 자격증명) 포함, 커밋 금지
+.mcp.json
+
 # Large data files
 data/packets/
 data/races/
