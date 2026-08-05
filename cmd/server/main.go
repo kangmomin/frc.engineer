@@ -178,6 +178,7 @@ func main() {
 			Info:    counts.Info,
 		}, timeline, detail, time.Now())
 		summary.DataStorageMode = mode
+		summary.Incidents = processor.GetIncidentClips(sessionUID)
 		if mode == rtconfig.DataStorageModeSummary || mode == rtconfig.DataStorageModeAdvanced {
 			summary.Replay = convertReplayTimeline(processor.GetReplayTimeline(sessionUID))
 		}
@@ -186,9 +187,10 @@ func main() {
 			return err
 		}
 
-		// Broadcast result (without replay data) to connected clients
+		// Broadcast result (without replay/incident data) to connected clients
 		broadcast := *summary
 		broadcast.Replay = nil
+		broadcast.Incidents = nil
 		if msg, err := json.Marshal(dto.WSResponse{Type: dto.MessageTypeRaceResult, Data: broadcast}); err == nil {
 			hub.Broadcast(msg)
 		}

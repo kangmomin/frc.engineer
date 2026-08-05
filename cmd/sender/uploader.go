@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -87,9 +88,35 @@ type uploadSetup struct {
 }
 
 type uploadDetail struct {
-	Stints   []uploadStint   `json:"stints,omitempty"`
-	Dynamics []uploadDynamic `json:"dynamics,omitempty"`
-	Events   []uploadEvent   `json:"events,omitempty"`
+	Stints    []uploadStint    `json:"stints,omitempty"`
+	Dynamics  []uploadDynamic  `json:"dynamics,omitempty"`
+	Events    []uploadEvent    `json:"events,omitempty"`
+	Incidents []uploadIncident `json:"incidents,omitempty"`
+}
+
+// uploadIncident (+participant/frame) mirrors dto.IncidentClip and the platform's
+// UploadIncident. The block rides inside Detail (race_detail JSONB) and is
+// budget-trimmed by races.TrimIncidentsForUpload before mapping.
+type uploadIncident struct {
+	SessionTimeMs   int64                       `json:"sessionTimeMs"`
+	WindowStartMs   int64                       `json:"windowStartMs"`
+	FrameIntervalMs int                         `json:"frameIntervalMs"`
+	Lap             int                         `json:"lap,omitempty"`
+	Collisions      [][2]int                    `json:"collisions"`
+	Participants    []uploadIncidentParticipant `json:"participants"`
+	Frames          []uploadIncidentFrame       `json:"frames"`
+}
+
+type uploadIncidentParticipant struct {
+	Idx      int     `json:"idx"`
+	Name     string  `json:"name,omitempty"`
+	IsPlayer bool    `json:"isPlayer,omitempty"`
+	MinDistM float64 `json:"minDistM"`
+}
+
+type uploadIncidentFrame struct {
+	TMs  int64       `json:"tMs"`
+	Cars [][]float64 `json:"cars"`
 }
 
 type uploadStint struct {
@@ -206,10 +233,19 @@ func uploadRace(ctx context.Context, baseURL, token string, req *uploadRequest) 
 	}
 }
 
+// uploadRequestSafetyBytes is the final whole-request guard under the platform's
+// 512 KiB body cap: past it the incidents block is dropped entirely so a fat clip
+// set can never take the lap upload down with it.
+const uploadRequestSafetyBytes = 480 << 10
+
 // buildUploadRequest maps a stored race summary to the platform upload contract.
 // Returns (nil, false) when the summary has no rich per-lap detail — the platform
 // requires at least one lap, and only rich (Detail-bearing) summaries carry it.
-func buildUploadRequest(summary *races.RaceSummary) (*uploadRequest, bool) {
+// logger reports incident trimming (nil falls back to slog.Default).
+func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploadRequest, bool) {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	if summary == nil || summary.Detail == nil || len(summary.Detail.Laps) == 0 {
 		return nil, false
 	}
@@ -259,7 +295,29 @@ func buildUploadRequest(summary *races.RaceSummary) (*uploadRequest, bool) {
 			Severity: e.Severity, DriverName: e.DriverName,
 		})
 	}
-	if len(detail.Stints) > 0 || len(detail.Dynamics) > 0 || len(detail.Events) > 0 {
+	trimmedIncidents, droppedClips := races.TrimIncidentsForUpload(summary.Incidents)
+	if droppedClips > 0 {
+		logger.Warn("incident clips trimmed for upload budget", "id", summary.ID, "droppedClips", droppedClips, "kept", len(trimmedIncidents))
+	}
+	for _, c := range trimmedIncidents {
+		inc := uploadIncident{
+			SessionTimeMs:   c.SessionTimeMS,
+			WindowStartMs:   c.WindowStartMS,
+			FrameIntervalMs: c.FrameIntervalMS,
+			Lap:             c.Lap,
+			Collisions:      c.Collisions,
+		}
+		for _, pt := range c.Participants {
+			inc.Participants = append(inc.Participants, uploadIncidentParticipant{
+				Idx: pt.Idx, Name: pt.Name, IsPlayer: pt.IsPlayer, MinDistM: pt.MinDistM,
+			})
+		}
+		for _, f := range c.Frames {
+			inc.Frames = append(inc.Frames, uploadIncidentFrame{TMs: f.TMS, Cars: f.Cars})
+		}
+		detail.Incidents = append(detail.Incidents, inc)
+	}
+	if len(detail.Stints) > 0 || len(detail.Dynamics) > 0 || len(detail.Events) > 0 || len(detail.Incidents) > 0 {
 		req.Detail = detail
 	}
 	// 실측 피트로스만 업로드(PitLaneTimeMS>0). 추정치(stops*22000)는 평균을 오염시키므로 제외.
@@ -268,6 +326,16 @@ func buildUploadRequest(summary *races.RaceSummary) (*uploadRequest, bool) {
 			Stops:         d.Pit.Stops,
 			PitLaneTimeMs: d.Pit.PitLaneTimeMS,
 			StationaryMs:  d.Pit.StationaryTimeMS,
+		}
+	}
+	// 최종 안전망: 전체 요청이 안전 상한을 넘으면 incidents만 통째로 내려 랩 업로드를 지킨다.
+	if req.Detail != nil && len(req.Detail.Incidents) > 0 {
+		if raw, err := json.Marshal(req); err != nil || len(raw) > uploadRequestSafetyBytes {
+			logger.Warn("incidents dropped from upload (request over safety cap)", "id", summary.ID, "clips", len(req.Detail.Incidents))
+			req.Detail.Incidents = nil
+			if len(req.Detail.Stints) == 0 && len(req.Detail.Dynamics) == 0 && len(req.Detail.Events) == 0 {
+				req.Detail = nil
+			}
 		}
 	}
 	return req, true

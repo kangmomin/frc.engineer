@@ -40,6 +40,11 @@ type RaceSummary struct {
 	Debrief         *RaceDebrief             `json:"debrief,omitempty"`
 	Detail          *RaceDetail              `json:"detail,omitempty"`
 	Replay          *ReplayTimeline          `json:"replay,omitempty"`
+	// Incidents is the player-involved collision capture block. Top-level (not in
+	// Detail) so every DataChannel path can strip it like Replay — the untrimmed
+	// local block can far exceed the 256KB SCTP budget. The upload path sends a
+	// budget-trimmed copy (TrimIncidentsForUpload) inside the race_detail payload.
+	Incidents []dto.IncidentClip `json:"incidents,omitempty"`
 }
 
 // RaceDetail is the rich, player-centric sub-block (per-lap timings/dynamics, the

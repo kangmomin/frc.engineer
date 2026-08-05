@@ -3,6 +3,7 @@ package platformsvc
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 )
@@ -252,6 +253,107 @@ func TestValidateUploadDetail(t *testing.T) {
 	if err := validateUpload(fatStints); !errors.Is(err, ErrBadUpload) {
 		t.Fatalf("over-cap stints err = %v, want ErrBadUpload", err)
 	}
+}
+
+// validIncidentClip builds a minimal clip that passes every validIncident bound:
+// two participants (48-rune name at the cap), one collision pair, one frame with
+// a full 14-value car row plus a nil (missed-tick) column.
+func validIncidentClip() UploadIncident {
+	car := make([]float64, incidentCarFrameValues)
+	car[9] = 287.4 // 임의 유한값 (speedKmh 자리)
+	return UploadIncident{
+		SessionTimeMs:   512_340,
+		WindowStartMs:   511_340,
+		FrameIntervalMs: 50,
+		Lap:             3,
+		Collisions:      [][2]int{{4, 11}},
+		Participants: []UploadIncidentParticipant{
+			{Idx: 4, Name: strings.Repeat("가", maxIncidentNameLen), IsPlayer: true},
+			{Idx: 11, MinDistM: 0.4},
+		},
+		Frames: []UploadIncidentFrame{{TMs: 511_340, Cars: [][]float64{car, nil}}},
+	}
+}
+
+// TestValidateUploadIncidents exercises the incident-clip structural bounds (no
+// DB): count caps at Detail level and per-clip index ranges, name rune length,
+// frame-array shape and float finiteness. Sender-side clamps enforce the same
+// numbers at the source, so any rejection here means a hand-crafted payload.
+func TestValidateUploadIncidents(t *testing.T) {
+	base := func(clips ...UploadIncident) *UploadRequest {
+		return &UploadRequest{
+			SourceRaceID: "r1", TrackID: 99, GameFormat: "F1 26", SchemaVersion: 1,
+			Laps:   []UploadLap{vlap(1, 88000)},
+			Detail: &UploadDetail{Incidents: clips},
+		}
+	}
+
+	if err := validateUpload(base(validIncidentClip())); err != nil {
+		t.Fatalf("valid incident rejected: %v", err)
+	}
+
+	// Detail 레벨 개수 상한 (클립 자체는 전부 유효).
+	fat := make([]UploadIncident, maxDetailIncidents+1)
+	for i := range fat {
+		fat[i] = validIncidentClip()
+	}
+	if err := validateUpload(base(fat...)); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("over-cap incidents err = %v, want ErrBadUpload", err)
+	}
+
+	// 클립별 구조 검증: 유효한 클립에서 한 필드씩만 망가뜨려 400을 확인한다.
+	reject := func(name string, mutate func(*UploadIncident)) {
+		t.Helper()
+		clip := validIncidentClip()
+		mutate(&clip)
+		if err := validateUpload(base(clip)); !errors.Is(err, ErrBadUpload) {
+			t.Fatalf("%s: err = %v, want ErrBadUpload", name, err)
+		}
+	}
+	reject("negative session time", func(c *UploadIncident) { c.SessionTimeMs = -1 })
+	reject("window start after t0", func(c *UploadIncident) { c.WindowStartMs = c.SessionTimeMs + 1 })
+	reject("zero frame interval", func(c *UploadIncident) { c.FrameIntervalMs = 0 })
+	reject("lap over cap", func(c *UploadIncident) { c.Lap = maxLapNumber + 1 })
+	reject("no collisions", func(c *UploadIncident) { c.Collisions = nil })
+	reject("over-cap collisions", func(c *UploadIncident) {
+		c.Collisions = make([][2]int, maxIncidentCollisions+1)
+		for i := range c.Collisions {
+			c.Collisions[i] = [2]int{4, 11}
+		}
+	})
+	reject("collision self-pair", func(c *UploadIncident) { c.Collisions = [][2]int{{4, 4}} })
+	reject("collision idx past grid", func(c *UploadIncident) {
+		c.Collisions = [][2]int{{4, maxIncidentVehicleIdx + 1}}
+	})
+	reject("no participants", func(c *UploadIncident) { c.Participants = nil })
+	reject("over-cap participants", func(c *UploadIncident) {
+		// zero-value 참가자는 개별 검사를 통과하므로 개수 상한만 격리된다.
+		c.Participants = make([]UploadIncidentParticipant, maxIncidentParticipants+1)
+	})
+	reject("participant idx past grid", func(c *UploadIncident) {
+		c.Participants[1].Idx = maxIncidentVehicleIdx + 1
+	})
+	reject("participant name over rune cap", func(c *UploadIncident) {
+		c.Participants[0].Name = strings.Repeat("가", maxIncidentNameLen+1)
+	})
+	reject("negative min distance", func(c *UploadIncident) { c.Participants[1].MinDistM = -0.1 })
+	reject("NaN min distance", func(c *UploadIncident) { c.Participants[1].MinDistM = math.NaN() })
+	reject("no frames", func(c *UploadIncident) { c.Frames = nil })
+	reject("over-cap frames", func(c *UploadIncident) {
+		frame := c.Frames[0]
+		c.Frames = make([]UploadIncidentFrame, maxIncidentFrames+1)
+		for i := range c.Frames {
+			c.Frames[i] = frame
+		}
+	})
+	reject("negative frame time", func(c *UploadIncident) { c.Frames[0].TMs = -1 })
+	reject("more car columns than participants", func(c *UploadIncident) {
+		c.Frames[0].Cars = append(c.Frames[0].Cars, nil)
+	})
+	reject("car row wrong arity", func(c *UploadIncident) {
+		c.Frames[0].Cars[0] = c.Frames[0].Cars[0][:incidentCarFrameValues-1]
+	})
+	reject("non-finite car value", func(c *UploadIncident) { c.Frames[0].Cars[0][3] = math.Inf(1) })
 }
 
 func TestIngestTyreNormalized(t *testing.T) {

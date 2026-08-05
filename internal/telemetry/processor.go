@@ -114,6 +114,9 @@ type Processor struct {
 	banLookup        func(playerName string) bool
 	onBanStateChange func(banned bool)
 	banned           atomic.Bool
+
+	// Player-involved collision capture (own mutex inside; fed from processPacket)
+	incidents *incidentRecorder
 }
 
 // NewProcessor creates a new telemetry processor
@@ -123,7 +126,7 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 		interval = time.Second / time.Duration(updateRateHz)
 	}
 
-	return &Processor{
+	p := &Processor{
 		parser:          parser,
 		hub:             hub,
 		deltaCalculator: NewDeltaCalculator(),
@@ -132,6 +135,8 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 		minInterval:     interval,
 		pitwallInterval: 250 * time.Millisecond,
 	}
+	p.incidents = newIncidentRecorder(logger, p.pitwallManager.GetDriverName)
+	return p
 }
 
 // SetFastBroadcaster sets the optional high-frequency broadcaster for position data.
@@ -246,6 +251,14 @@ func (p *Processor) GetReplayTimeline(sessionUID uint64) *ReplayTimeline {
 	}
 }
 
+// GetIncidentClips returns the session's captured incident clips, finalizing any
+// still-open capture window first (race end can precede the +1s deadline).
+// Non-destructive: repeat calls return the same clips, so the save callback's
+// failure-retry path stays safe.
+func (p *Processor) GetIncidentClips(sessionUID uint64) []dto.IncidentClip {
+	return p.incidents.snapshot(sessionUID)
+}
+
 // Start begins processing packets from the UDP listener
 func (p *Processor) Start(ctx context.Context, packets <-chan []byte) {
 	updateHz := "unlimited"
@@ -283,6 +296,7 @@ func (p *Processor) processPacket(data []byte) {
 
 	p.observeSessionUID(parsed.Header.SessionUID)
 	p.observeReplaySession(parsed.Header.SessionUID)
+	p.incidents.observeSession(parsed.Header.SessionUID)
 
 	// Feed pitwall manager with all packet types first, so ban evaluation and
 	// every downstream broadcast observe the latest participants / player index.
@@ -329,6 +343,18 @@ func (p *Processor) processPacket(data []byte) {
 	// automatically lifts the ban on a subsequent packet.
 	if p.evaluateBan() {
 		return
+	}
+
+	// Incident recorder feed: full-grid latest caches + ~20Hz motion sampling.
+	// Deliberately after the ban gate — a banned sender must not capture.
+	if parsed.Telemetry != nil {
+		p.incidents.noteTelemetry(parsed.Telemetry)
+	}
+	if parsed.LapData != nil {
+		p.incidents.noteLapData(parsed.LapData)
+	}
+	if parsed.Motion != nil {
+		p.incidents.noteMotion(parsed.Motion, parsed.Header)
 	}
 
 	// Handle event packets (penalties, warnings, race control)
@@ -580,6 +606,17 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 			Severity:   "info",
 			DriverName: driverName,
 		}
+
+	case packets.EventCollision:
+		// 이벤트 헤더의 PlayerCarIndex를 직접 쓴다 — pm.playerIndex는 Motion 미수신 시 0.
+		if coll, ok := event.EventDetails.(*packets.CollisionEvent); ok {
+			p.incidents.onCollision(&event.Header, coll.Vehicle1Idx, coll.Vehicle2Idx)
+		}
+		return
+
+	case packets.EventFlashback:
+		p.incidents.onFlashback()
+		return
 
 	default:
 		if shouldFinalize {

@@ -52,6 +52,17 @@ const (
 	maxDetailDynamics = 500
 	maxDetailEvents   = 200
 	maxSchemaVersion  = 32767 // SMALLINT ceiling (race_detail.schema_version)
+
+	// Incident-clip caps. The sender enforces the same bounds at the source
+	// (incident recorder + races.TrimIncidentsForUpload); these mirror them so a
+	// forged or buggy payload gets a clean 400 instead of bloating race_detail.
+	maxDetailIncidents        = 20
+	maxIncidentParticipants   = 10
+	maxIncidentFrames         = 101 // 5s merged window at nominal 50ms + endpoints
+	maxIncidentCollisions     = 20
+	maxIncidentNameLen        = 48
+	maxIncidentVehicleIdx     = 23 // 2026 grid: 24 slots
+	incidentCarFrameValues    = 14
 )
 
 // validTyres whitelists the compound strings that may reach the public pace
@@ -123,8 +134,14 @@ func validateUpload(req *UploadRequest) error {
 		}
 		if len(req.Detail.Stints) > maxDetailStints ||
 			len(req.Detail.Dynamics) > maxDetailDynamics ||
-			len(req.Detail.Events) > maxDetailEvents {
+			len(req.Detail.Events) > maxDetailEvents ||
+			len(req.Detail.Incidents) > maxDetailIncidents {
 			return ErrBadUpload
+		}
+		for i := range req.Detail.Incidents {
+			if !validIncident(&req.Detail.Incidents[i]) {
+				return ErrBadUpload
+			}
 		}
 	}
 	if p := req.Pit; p != nil {
@@ -155,6 +172,73 @@ func setupFloatsFinite(s *UploadSetup) bool {
 		floatFinite(s.RearLeftTyrePressure) && floatFinite(s.RearRightTyrePressure) &&
 		floatFinite(s.FrontLeftTyrePressure) && floatFinite(s.FrontRightTyrePressure) &&
 		floatFinite(s.FuelLoad)
+}
+
+// validIncident enforces the structural bounds of one incident clip: index
+// ranges, count caps, name length, frame-array shape and float finiteness. Like
+// every Detail check this is structural only — contents are never trusted for a
+// server-derived value. Non-finite floats would also 500 at the canonical
+// re-marshal, so they get a clean 400 here (mirrors the setup-float guard).
+func validIncident(inc *UploadIncident) bool {
+	if inc.SessionTimeMs < 0 || inc.WindowStartMs < 0 || inc.WindowStartMs > inc.SessionTimeMs {
+		return false
+	}
+	if inc.FrameIntervalMs < 1 || inc.FrameIntervalMs > 1000 {
+		return false
+	}
+	if inc.Lap < 0 || inc.Lap > maxLapNumber {
+		return false
+	}
+	if len(inc.Collisions) < 1 || len(inc.Collisions) > maxIncidentCollisions {
+		return false
+	}
+	for _, pair := range inc.Collisions {
+		if pair[0] < 0 || pair[0] > maxIncidentVehicleIdx ||
+			pair[1] < 0 || pair[1] > maxIncidentVehicleIdx || pair[0] == pair[1] {
+			return false
+		}
+	}
+	if len(inc.Participants) < 1 || len(inc.Participants) > maxIncidentParticipants {
+		return false
+	}
+	for i := range inc.Participants {
+		pt := &inc.Participants[i]
+		if pt.Idx < 0 || pt.Idx > maxIncidentVehicleIdx {
+			return false
+		}
+		if utf8.RuneCountInString(pt.Name) > maxIncidentNameLen {
+			return false
+		}
+		if !floatFinite(pt.MinDistM) || pt.MinDistM < 0 {
+			return false
+		}
+	}
+	if len(inc.Frames) < 1 || len(inc.Frames) > maxIncidentFrames {
+		return false
+	}
+	for i := range inc.Frames {
+		f := &inc.Frames[i]
+		if f.TMs < 0 {
+			return false
+		}
+		if len(f.Cars) > len(inc.Participants) {
+			return false
+		}
+		for _, car := range f.Cars {
+			if car == nil {
+				continue
+			}
+			if len(car) != incidentCarFrameValues {
+				return false
+			}
+			for _, v := range car {
+				if !floatFinite(v) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // UploadLap is one lap in an ingest payload. Every field is attacker-controlled;
@@ -231,9 +315,38 @@ type UploadPit struct {
 // and the event/issue timeline. Stored opaquely — validated for size, re-marshaled
 // canonically, never trusted for any server-derived value.
 type UploadDetail struct {
-	Stints   []UploadStint   `json:"stints,omitempty"`
-	Dynamics []UploadDynamic `json:"dynamics,omitempty"`
-	Events   []UploadEvent   `json:"events,omitempty"`
+	Stints    []UploadStint    `json:"stints,omitempty"`
+	Dynamics  []UploadDynamic  `json:"dynamics,omitempty"`
+	Events    []UploadEvent    `json:"events,omitempty"`
+	Incidents []UploadIncident `json:"incidents,omitempty"`
+}
+
+// UploadIncident mirrors the sender's uploadIncident (dto.IncidentClip): a
+// player-involved collision capture. Frames[i].Cars[j] aligns with
+// Participants[j]; each non-nil entry is a fixed 14-value array. Structural
+// bounds are enforced in validIncident; the contents stay opaque.
+type UploadIncident struct {
+	SessionTimeMs   int64                       `json:"sessionTimeMs"`
+	WindowStartMs   int64                       `json:"windowStartMs"`
+	FrameIntervalMs int                         `json:"frameIntervalMs"`
+	Lap             int                         `json:"lap,omitempty"`
+	Collisions      [][2]int                    `json:"collisions"`
+	Participants    []UploadIncidentParticipant `json:"participants"`
+	Frames          []UploadIncidentFrame       `json:"frames"`
+}
+
+// UploadIncidentParticipant mirrors dto.IncidentParticipant.
+type UploadIncidentParticipant struct {
+	Idx      int     `json:"idx"`
+	Name     string  `json:"name,omitempty"`
+	IsPlayer bool    `json:"isPlayer,omitempty"`
+	MinDistM float64 `json:"minDistM"`
+}
+
+// UploadIncidentFrame mirrors dto.IncidentFrame.
+type UploadIncidentFrame struct {
+	TMs  int64       `json:"tMs"`
+	Cars [][]float64 `json:"cars"`
 }
 
 // UploadStint mirrors races.RaceStint.

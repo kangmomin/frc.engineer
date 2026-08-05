@@ -184,10 +184,47 @@ func TestBuildSummaryRichDetail(t *testing.T) {
 	}
 }
 
+// worstIncidentClip builds one maximal merged clip — 10 participants × 101
+// frames × 20 collisions — with every value at the full post-rounding JSON
+// width the recorder emits, so the budget math sees the true worst case.
+func worstIncidentClip(t0MS int64) dto.IncidentClip {
+	clip := dto.IncidentClip{
+		SessionTimeMS:   t0MS,
+		WindowStartMS:   t0MS - 1000,
+		FrameIntervalMS: 50,
+		Lap:             78,
+	}
+	for i := range 20 {
+		clip.Collisions = append(clip.Collisions, [2]int{0, (i % 23) + 1})
+	}
+	for j := range 10 {
+		clip.Participants = append(clip.Participants, dto.IncidentParticipant{
+			Idx: j, Name: strings.Repeat("D", 32), IsPlayer: j == 0, MinDistM: 39.97,
+		})
+	}
+	for f := range 101 {
+		cars := make([][]float64, 10)
+		for j := range cars {
+			cars[j] = []float64{
+				-2345.67, -102.34, -1987.65, // pos (2dp)
+				-88.25, -12.75, -91.5, // vel (2dp)
+				-3.142,       // yaw (3dp)
+				-4.85, -5.12, // gLat, gLong
+				351.75,         // speedKmh
+				1, 0.85, -0.75, // throttle, brake, steer
+				8, // gear
+			}
+		}
+		clip.Frames = append(clip.Frames, dto.IncidentFrame{TMS: clip.WindowStartMS + int64(f*50), Cars: cars})
+	}
+	return clip
+}
+
 // TestRaceSummarySerializationSizeUnderBudget guards the size double-constraint: a
-// worst-case rich summary (broadcast strips Replay) must fit both the Chrome SCTP
-// receive buffer (256KB, DataChannel) and the platform HTTP cap (512KiB). JSON is a
-// conservative upper bound for the msgpack wire form, so JSON < 256KB proves both.
+// worst-case rich summary (broadcast strips Replay and Incidents) must fit the
+// Chrome SCTP receive buffer (256KB, DataChannel), and the upload form — summary
+// plus TrimIncidentsForUpload output — must fit the platform HTTP cap (512KiB).
+// JSON is a conservative upper bound for the msgpack wire form.
 func TestRaceSummarySerializationSizeUnderBudget(t *testing.T) {
 	const (
 		sctpBudget = 256 * 1024
@@ -233,6 +270,7 @@ func TestRaceSummarySerializationSizeUnderBudget(t *testing.T) {
 	}
 	summary.Detail = detail
 
+	// 브로드캐스트(SCTP) 형태: Incidents nil — 세 strip 지점과 동일 조건.
 	data, err := json.Marshal(summary)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -240,8 +278,29 @@ func TestRaceSummarySerializationSizeUnderBudget(t *testing.T) {
 	if len(data) >= sctpBudget {
 		t.Fatalf("worst-case summary = %d bytes, exceeds SCTP budget %d", len(data), sctpBudget)
 	}
-	if len(data) >= httpBudget {
-		t.Fatalf("worst-case summary = %d bytes, exceeds HTTP budget %d", len(data), httpBudget)
+	t.Logf("worst-case rich summary JSON = %d bytes (SCTP budget %d)", len(data), sctpBudget)
+
+	// 업로드(HTTP) 형태: 워스트 incidents(20클립 × 10대 × 101프레임, raw ~2MB)를
+	// 업로드 경로와 동일하게 트리밍해 부착한다. 트리밍 블록이 자체 예산(300KB)을
+	// 지키면 요청 전체도 512KiB 안에 남아야 한다.
+	var clips []dto.IncidentClip
+	for i := range 20 {
+		clips = append(clips, worstIncidentClip(600_000+int64(i)*30_000))
 	}
-	t.Logf("worst-case rich summary JSON = %d bytes (SCTP budget %d, HTTP budget %d)", len(data), sctpBudget, httpBudget)
+	trimmed, _ := TrimIncidentsForUpload(clips)
+	if len(trimmed) == 0 {
+		t.Fatal("trimming dropped every clip — budget check vacuous")
+	}
+	if size := serializedIncidentsSize(trimmed); size > incidentUploadBudgetBytes {
+		t.Fatalf("trimmed incidents = %d bytes, exceeds upload budget %d", size, incidentUploadBudgetBytes)
+	}
+	summary.Incidents = trimmed
+	withIncidents, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal with incidents: %v", err)
+	}
+	if len(withIncidents) >= httpBudget {
+		t.Fatalf("summary + trimmed incidents = %d bytes, exceeds HTTP budget %d", len(withIncidents), httpBudget)
+	}
+	t.Logf("summary + trimmed incidents JSON = %d bytes (HTTP budget %d)", len(withIncidents), httpBudget)
 }

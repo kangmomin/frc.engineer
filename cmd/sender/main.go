@@ -743,6 +743,10 @@ func main() {
 				Error:     errorMessage,
 			})
 		}
+		// 아카이브 상세도 단일 DataChannel 메시지 — 미트리밍 incidents(워스트 ~2MB)는
+		// SCTP 256KB 예산을 깨므로 여기서만 제외한다. 공용 clone 헬퍼에서 strip하면
+		// 수동 업로드 경로(loadRaceSummaryWithoutReplay 공유)의 클립까지 유실되므로 금지.
+		summary.Incidents = nil
 		return encodeP2PResponse(dto.WSResponse{
 			Type:      dto.MessageTypeRaceSummary,
 			RequestID: requestID,
@@ -993,6 +997,10 @@ func main() {
 			Info:    counts.Info,
 		}, timeline, detail, time.Now())
 		summary.DataStorageMode = rtconfig.NormalizeDataStorageMode(storageMode)
+		// 사고 클립: DataStorageMode 무관 상시 부착(요약 파이프라인 상시 활성 원칙).
+		// 로컬은 원본 그대로, 업로드는 buildUploadRequest에서 예산 트리밍, DataChannel
+		// 전송 경로들은 각자 strip한다.
+		summary.Incidents = processor.GetIncidentClips(sessionUID)
 		// 리플레이 타임라인은 로컬 저장 전용 대용량 부속 — 저장이 켜져 있을 때만 부착
 		// (꺼져 있으면 SetReplayRecording도 꺼져 있어 어차피 프레임이 없다).
 		if saveEnabled && (summary.DataStorageMode == rtconfig.DataStorageModeSummary || summary.DataStorageMode == rtconfig.DataStorageModeAdvanced) {
@@ -1029,12 +1037,13 @@ func main() {
 		// but the full replay would not. Mirrors cmd/server's broadcast strip.
 		broadcastSummary := *summary
 		broadcastSummary.Replay = nil
+		broadcastSummary.Incidents = nil // 미트리밍 클립 블록도 SCTP 예산 밖 — 전송 제외
 		broadcaster.BroadcastRaceResult(&broadcastSummary)
 
 		// Auto-upload: fire-and-forget so a slow/failed network never blocks the
 		// save path. Always on when paired — pairing is the upload consent gate.
 		if token != "" {
-			if req, ok := buildUploadRequest(summary); ok {
+			if req, ok := buildUploadRequest(summary, logger); ok {
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), uploadHTTPTimeout)
 					defer cancel()
@@ -1505,7 +1514,7 @@ func main() {
 			}
 			return
 		}
-		req, ok := buildUploadRequest(summary)
+		req, ok := buildUploadRequest(summary, logger)
 		if !ok {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			json.NewEncoder(w).Encode(map[string]string{"error": "이 레이스에는 업로드할 랩 데이터가 없습니다"})
