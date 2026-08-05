@@ -1,5 +1,5 @@
 const { app, BrowserWindow, Menu, dialog, globalShortcut, ipcMain } = require('electron');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -155,6 +155,13 @@ function normalizeStoredPath(value) {
 let senderProcess = null;
 let isQuitting = false;
 let registeredOverlayHotkeys = {};
+// 강제 업데이트 게이트 상태 — { version, phase: 'downloading' | 'installing' | 'failed' }
+// phase 가 'failed' 면 fail-open 상태(게이트 해제)이므로 sender 기동을 다시 허용한다.
+let mandatoryUpdate = null;
+
+function isUpdateGateActive() {
+  return Boolean(mandatoryUpdate) && mandatoryUpdate.phase !== 'failed';
+}
 
 async function postSenderToggle(kind) {
   const endpointMap = {
@@ -368,6 +375,11 @@ function startSender() {
   if (senderProcess || isQuitting) {
     return;
   }
+  // 강제 업데이트 중에는 구버전 sender 가 다시 뜨지 않도록 차단
+  if (isUpdateGateActive()) {
+    console.log('[sender] Start skipped: mandatory update in progress');
+    return;
+  }
 
   const bin = findSenderBinary();
   if (!bin) {
@@ -459,6 +471,11 @@ async function stopSender() {
 }
 
 ipcMain.handle('restart-sender', async () => {
+  // 게이트를 우회해 sender 를 되살리는 경로 차단
+  if (isUpdateGateActive()) {
+    console.log('[sender] Restart blocked: mandatory update in progress');
+    return;
+  }
   await stopSender();
   // stopSender 대기 중 앱 종료가 시작됐으면 재기동하지 않음
   if (isQuitting) {
@@ -468,18 +485,72 @@ ipcMain.handle('restart-sender', async () => {
 });
 
 // ─── Auto-updater ───
-function setupAutoUpdater(win) {
-  // 창이 이미 파괴된 뒤 도착하는 updater 이벤트가 예외를 던지지 않도록 가드
-  const sendStatus = (payload) => {
+const UPDATE_FAILURES_KEY = 'mandatory_update_failures';
+const MAX_GATE_FAILURES = 3; // 동일 버전이 이만큼 실패하면 그 버전은 강제하지 않는다
+const MAX_DOWNLOAD_RETRIES = 2;
+const INSTALL_WATCHDOG_MS = 15000;
+// electron.net 의 ClientRequest 는 'socket' 이벤트를 내지 않아 electron-updater 의
+// 소켓 타임아웃(httpExecutor.addTimeOutHandler)이 설치되지 않는다. 반열림 연결에서
+// 다운로드가 에러 없이 멈추면 빠져나갈 경로가 없으므로 진행률 기준 자체 워치독을 둔다.
+const DOWNLOAD_STALL_MS = 120000;
+const RELEASES_URL = 'https://github.com/kangmomin/frc.engineer-deploy/releases';
+
+// 마지막 상태를 캐시하고 모든 창에 브로드캐스트 — 창이 재생성되거나
+// 렌더러 마운트 전에 이벤트가 도착해도 상태가 유실되지 않는다.
+let lastUpdateStatus = null;
+
+function broadcastUpdateStatus(payload) {
+  lastUpdateStatus = payload;
+  BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) {
       win.webContents.send('update-status', payload);
     }
-  };
+  });
+}
 
+ipcMain.handle('get-update-status', () => lastUpdateStatus);
+
+function readUpdateFailures(version) {
+  const record = readSettings()[UPDATE_FAILURES_KEY];
+  return record && record.version === version ? Number(record.count) || 0 : 0;
+}
+
+// NSIS 설치는 성공/실패를 알려주지 않는다 — NsisUpdater.doInstall 은 spawn 직후
+// 무조건 true 를 반환하고 앱은 곧바로 종료된다. 그래서 "실패를 감지해서" 세는 것이
+// 불가능하므로 **시도 시점에 미리** 센다. 설치가 실제로 성공했다면 다음 실행에서
+// clearUpdateFailuresIfInstalled() 가 지운다.
+function recordUpdateFailure(version) {
+  const count = readUpdateFailures(version) + 1;
+  try {
+    const data = readSettings();
+    data[UPDATE_FAILURES_KEY] = { version, count };
+    writeSettings(data);
+  } catch (error) {
+    console.error('[updater] Failed to persist failure count:', error.message);
+  }
+  return count;
+}
+
+function clearUpdateFailuresIfInstalled() {
+  const data = readSettings();
+  const record = data[UPDATE_FAILURES_KEY];
+  // 기록된 버전으로 지금 실행 중이면 그 설치는 성공한 것이다
+  if (!record || record.version !== app.getVersion()) {
+    return;
+  }
+  delete data[UPDATE_FAILURES_KEY];
+  try {
+    writeSettings(data);
+  } catch (error) {
+    console.error('[updater] Failed to clear failure count:', error.message);
+  }
+}
+
+function setupAutoUpdater(win) {
   if (!autoUpdater) {
     console.warn('[updater] Auto updates disabled because electron-updater is unavailable.');
     win.webContents.once('did-finish-load', () => {
-      sendStatus({ status: 'unavailable' });
+      broadcastUpdateStatus({ status: 'unavailable' });
     });
     ipcMain.removeAllListeners('install-update');
     ipcMain.on('install-update', () => {
@@ -491,27 +562,117 @@ function setupAutoUpdater(win) {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  let downloadRetries = 0;
+  let stallTimer = null;
+
+  // fail-open: 강제 게이트를 풀고 앱을 다시 사용 가능한 상태로 되돌린다.
+  // 업데이터가 깨진 릴리스를 배포해도 전체 사용자가 영구히 잠기지 않도록 하는 안전장치.
+  function releaseGate(version) {
+    clearTimeout(stallTimer);
+    mandatoryUpdate = { version, phase: 'failed' };
+    registerOverlayHotkeys(readSettings()[OVERLAY_HOTKEYS_KEY] || {});
+    startSender();
+    broadcastUpdateStatus({ status: 'error', version, releasesUrl: RELEASES_URL });
+  }
+
+  // 진행률이 갱신될 때마다 다시 건다 — 느리지만 진행 중인 다운로드는 죽이지 않고,
+  // 완전히 멈춘 연결만 걸러낸다.
+  function armStallWatchdog(version) {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      if (mandatoryUpdate && mandatoryUpdate.phase === 'downloading') {
+        const failures = recordUpdateFailure(version);
+        console.error(`[updater] Download stalled for ${DOWNLOAD_STALL_MS}ms (failures=${failures}) — releasing gate`);
+        releaseGate(version);
+      }
+    }, DOWNLOAD_STALL_MS);
+  }
+
+  async function installMandatoryUpdate(version) {
+    clearTimeout(stallTimer);
+    await stopSender();
+    // 설치 결과는 알 수 없으므로(위 recordUpdateFailure 주석 참조) 시도 직전에 카운트한다.
+    // writeSettings 는 동기라 곧바로 이어지는 app.quit() 이후에도 남는다.
+    recordUpdateFailure(version);
+    // quitAndInstall 이 종료 없이 반환되는 경로(BaseUpdater.install → false)를 대비한 워치독
+    setTimeout(() => {
+      if (mandatoryUpdate && mandatoryUpdate.phase === 'installing') {
+        console.error(`[updater] Install did not quit within ${INSTALL_WATCHDOG_MS}ms — releasing gate`);
+        releaseGate(version);
+      }
+    }, INSTALL_WATCHDOG_MS);
+    try {
+      autoUpdater.quitAndInstall(true, true);
+    } catch (error) {
+      console.error('[updater] quitAndInstall threw:', error.message);
+    }
+  }
+
   autoUpdater.on('update-available', (info) => {
     console.log('[updater] Update available:', info.version);
-    sendStatus({ status: 'available', version: info.version });
+    const failures = readUpdateFailures(info.version);
+    if (failures >= MAX_GATE_FAILURES) {
+      // 이 버전은 이미 여러 번 설치에 실패했다 — 강제하지 않고 기존 선택형 흐름으로 되돌린다
+      console.warn(`[updater] Skipping mandatory gate for ${info.version} (failures=${failures})`);
+      broadcastUpdateStatus({ status: 'available', version: info.version });
+      return;
+    }
+    mandatoryUpdate = { version: info.version, phase: 'downloading' };
+    // 오버레이 핫키가 게이트 뒤에서 계속 동작하지 않도록 해제
+    unregisterOverlayHotkeys();
+    armStallWatchdog(info.version);
+    broadcastUpdateStatus({ status: 'mandatory', phase: 'downloading', version: info.version, percent: 0 });
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    sendStatus({
-      status: 'downloading',
-      percent: Math.round(progress.percent),
-    });
+    const percent = Math.round(progress.percent);
+    if (mandatoryUpdate && mandatoryUpdate.phase === 'downloading') {
+      armStallWatchdog(mandatoryUpdate.version);
+      broadcastUpdateStatus({ status: 'mandatory', phase: 'downloading', version: mandatoryUpdate.version, percent });
+      return;
+    }
+    // 게이트가 생략된 경우 — 기존 하단 진행 바 유지
+    broadcastUpdateStatus({ status: 'downloading', percent });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[updater] Update downloaded:', info.version);
-    sendStatus({ status: 'ready', version: info.version });
+    if (!isUpdateGateActive()) {
+      // 게이트가 생략/해제된 경우 — 기존 배너로 안내만 하고 설치는 사용자에게 맡긴다
+      broadcastUpdateStatus({ status: 'ready', version: info.version });
+      return;
+    }
+    mandatoryUpdate = { version: info.version, phase: 'installing' };
+    broadcastUpdateStatus({ status: 'mandatory', phase: 'installing', version: info.version });
+    void installMandatoryUpdate(info.version);
   });
 
   autoUpdater.on('error', (err) => {
     console.error('[updater] Error:', err.message);
+    if (!isUpdateGateActive()) {
+      return;
+    }
+    const { version, phase } = mandatoryUpdate;
+    if (phase === 'downloading' && downloadRetries < MAX_DOWNLOAD_RETRIES) {
+      downloadRetries += 1;
+      const delay = downloadRetries * 5000;
+      console.log(`[updater] Retrying download in ${delay}ms (${downloadRetries}/${MAX_DOWNLOAD_RETRIES})`);
+      setTimeout(() => {
+        autoUpdater.downloadUpdate().catch((error) => {
+          console.error('[updater] Retry failed:', error.message);
+        });
+      }, delay);
+      return;
+    }
+    // installing 단계는 installMandatoryUpdate 가 이미 선기록했으므로 중복 카운트하지 않는다
+    if (phase === 'downloading') {
+      const failures = recordUpdateFailure(version);
+      console.error(`[updater] Mandatory download failed (failures=${failures}) — releasing gate`);
+    }
+    releaseGate(version);
   });
 
+  ipcMain.removeAllListeners('install-update');
   ipcMain.on('install-update', () => {
     void stopSender().finally(() => {
       autoUpdater.quitAndInstall(true, true);
@@ -519,9 +680,16 @@ function setupAutoUpdater(win) {
   });
 
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error('[updater] Check failed:', err.message);
-    });
+    autoUpdater
+      .checkForUpdates()
+      .then((result) => {
+        // AppUpdater 는 다운로드 실패 시 dispatchError 후 rethrow 하므로,
+        // 여기서 흡수하지 않으면 unhandled rejection 이 남는다.
+        result?.downloadPromise?.catch(() => {});
+      })
+      .catch((err) => {
+        console.error('[updater] Check failed:', err.message);
+      });
   }, 3000);
 }
 
@@ -608,6 +776,8 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    // 이 버전으로 실행됐다는 것은 설치가 성공했다는 뜻 — 선기록한 실패 카운트를 지운다
+    clearUpdateFailuresIfInstalled();
     registerOverlayHotkeys(readSettings()[OVERLAY_HOTKEYS_KEY] || {});
     startSender();
     const win = createWindow();
@@ -626,7 +796,26 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
-  void stopSender();
+  const proc = senderProcess;
+  if (!proc) {
+    return;
+  }
+  senderProcess = null;
+  // before-quit 은 await 할 수 없다. 비동기 종료는 NSIS 인스톨러가
+  // 아직 잠겨 있는 sender exe 를 덮어쓰려다 실패하는 경쟁을 만들 수 있어 동기로 죽인다.
+  if (isWin && proc.pid) {
+    try {
+      spawnSync('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { stdio: 'ignore', windowsHide: true });
+    } catch (error) {
+      console.error('[sender] taskkill failed:', error instanceof Error ? error.message : String(error));
+    }
+    return;
+  }
+  try {
+    proc.kill('SIGKILL');
+  } catch {
+    // 이미 종료된 프로세스는 무시
+  }
 });
 
 app.on('will-quit', () => {
