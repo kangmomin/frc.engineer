@@ -121,8 +121,9 @@ SELECT stops, pit_lane_time_ms, stationary_ms FROM platform.race_pit_loss WHERE 
   - `PITHUB_PLATFORM_URL` 기본값: `https://pithub.up.railway.app`
   - `PITHUB_ADMIN_TOKEN` = 관리자 계정의 **web 세션 토큰** (허브 로그인 후 브라우저
     localStorage `pitwall.platformToken`). **전 계정 권한을 가진 secret이다 — 출력/로그 금지.**
-    TTL 30일: 401이면 재로그인해 토큰 갱신 안내. 403이면 해당 계정이 서버
-    `PLATFORM_ADMIN_ACCOUNT_IDS`에 미등록 — 등록 안내.
+    TTL 30일: 401이면 재로그인해 토큰 갱신 안내. 403이면 계정에 `pithub.race-analyze.create`
+    권한 없음(admin Role 미보유) — `PLATFORM_ADMIN_ACCOUNT_IDS`에 계정 UUID를 넣고 재기동
+    (부팅 시 admin Role 멱등 부여)하거나 `/rbac/accounts/{id}/roles`로 Role 할당 안내.
 - **업로드** (`jq -Rs`로 HTML을 JSON 안전 임베드):
   ```bash
   jq -n --rawfile html docs/race-analysis-YYYYMMDD-<track>.html \
