@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { hasPermission } from "./permissions";
 
 import {
   SETUP_FIELDS,
@@ -82,6 +83,9 @@ interface SenderStatus {
   invite?: SenderInvite;
   peers?: SenderPeer[];
   paired?: boolean;
+  // 플랫폼 권한(자문 게이트 전용): null/부재 = 미확인 → fail-open(허용),
+  // 배열 = 그랜트 노드 원본(hasPermission으로 매칭 — includes 금지)
+  permissions?: string[] | null;
 }
 
 interface SenderSession {
@@ -1492,6 +1496,11 @@ export function F1SetupManager() {
   const { connected: senderConnected, status: senderStatus, session: liveSession, player: livePlayer, detectedTrack, latestRaceResult } = useSenderConnection(senderUrl);
   const { gate: pairingGate, platformBaseUrl: pairingPlatformBaseUrl, markJustPaired } = usePairingGate(senderUrl, senderConnected, senderStatus);
   const pairingGateActive = pairingGate === "unpaired";
+  // sender.setup.read 자문 게이트 — 구 sender(필드 없음)·미확인(null)·sender 미연결은
+  // 전부 허용(fail-open). 카탈로그 데이터는 빌드타임 번들이므로 이 게이트는 UI 안내일
+  // 뿐 보안 경계가 아니다. 매칭 규칙 canonical: internal/rbac (includes 금지).
+  const setupAllowed =
+    !senderStatus || senderStatus.permissions == null || hasPermission(senderStatus.permissions, "sender.setup.read");
   const rootContentRef = useRef<HTMLDivElement>(null);
 
   // React 18: inert 프로퍼티가 없어 ref로 DOM 속성을 직접 set/remove
@@ -2002,7 +2011,19 @@ export function F1SetupManager() {
             </div>
           ) : null}
 
-          {section === "setup-manager" && setupWorkspace === "builder" ? (
+          {section === "setup-manager" && setupWorkspace === "builder" && !setupAllowed ? (
+            <Panel title="SETUP CATALOG">
+              <div style={{ padding: 14, borderRadius: 4, background: "rgba(255,82,92,0.08)", color: P.danger, fontSize: 12, lineHeight: 1.7 }}>
+                셋업 카탈로그 이용 권한이 없습니다 — 운영자에게 문의하세요.
+                <div style={{ marginTop: 6, fontSize: 10, color: P.muted }}>
+                  플랫폼 계정에 sender.setup.read 권한이 없는 상태입니다. 레이더 / 전략 / 세션 분석 등
+                  다른 기능은 계속 사용할 수 있습니다.
+                </div>
+              </div>
+            </Panel>
+          ) : null}
+
+          {section === "setup-manager" && setupWorkspace === "builder" && setupAllowed ? (
           <>
             <Panel title="AUTO CONTEXT">
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
