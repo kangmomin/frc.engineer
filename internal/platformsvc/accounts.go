@@ -28,15 +28,32 @@ type Account struct {
 // UpsertSteamAccount inserts or updates a Steam user account keyed by
 // SteamID64, refreshing the display fields (persona/avatar). It returns the
 // account id. The caller must pass a validated 17-digit SteamID64.
+//
+// A genuinely NEW account is also granted the default 'user' role in the same
+// statement. (xmax = 0) is true only on the INSERT arm of ON CONFLICT DO
+// UPDATE — a widely relied-on idiom rather than a documented guarantee, so
+// the behavior is pinned by integration tests (new → granted; role revoked →
+// re-login → stays revoked). If it ever breaks, fall back to a two-query tx
+// keyed on an inserted flag. Granting only on creation is deliberate: an
+// operator-revoked role must NOT resurrect on the next login.
 func (s *Store) UpsertSteamAccount(ctx context.Context, steamID64, persona, avatarURL string) (string, error) {
 	var id string
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO platform.accounts AS acc (steam_id64, persona, avatar_url, kind)
-		VALUES ($1, $2, $3, 'user')
-		ON CONFLICT (steam_id64) DO UPDATE
-		    SET persona = COALESCE(NULLIF(EXCLUDED.persona, ''), acc.persona),
-		        avatar_url = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), acc.avatar_url)
-		RETURNING id`,
+		WITH acc AS (
+		    INSERT INTO platform.accounts AS a (steam_id64, persona, avatar_url, kind)
+		    VALUES ($1, $2, $3, 'user')
+		    ON CONFLICT (steam_id64) DO UPDATE
+		        SET persona = COALESCE(NULLIF(EXCLUDED.persona, ''), a.persona),
+		            avatar_url = COALESCE(NULLIF(EXCLUDED.avatar_url, ''), a.avatar_url)
+		    RETURNING id, (xmax = 0) AS inserted
+		), grant_default AS (
+		    INSERT INTO platform.account_roles (account_id, role_id)
+		    SELECT acc.id, r.id
+		    FROM acc JOIN platform.roles r ON r.name = 'user'
+		    WHERE acc.inserted
+		    ON CONFLICT DO NOTHING
+		)
+		SELECT id FROM acc`,
 		steamID64, persona, avatarURL,
 	).Scan(&id)
 	if err != nil {

@@ -28,10 +28,16 @@ const (
 var ErrBanned = errors.New("platformsvc: account banned")
 
 // Principal identifies the authenticated account behind a session token.
+// Permissions carries the account's RAW grant nodes (role-assigned, any
+// depth — e.g. "pithub" for admin), never an expanded leaf list; check with
+// rbac.HasPermission, not slice contains. Re-aggregated on every lookup, so
+// a role revocation takes effect on the next request without invalidating
+// sessions.
 type Principal struct {
-	AccountID string
-	Scope     string
-	Banned    bool
+	AccountID   string
+	Scope       string
+	Banned      bool
+	Permissions []string
 }
 
 // CreateSession issues a new session token for the account and stores only its
@@ -71,18 +77,30 @@ func (s *Store) CreateSession(ctx context.Context, accountID, scope string, ttl 
 // not enforced here — callers reject Banned principals on action routes.
 func (s *Store) LookupSession(ctx context.Context, token string) (Principal, error) {
 	var p Principal
+	// ARRAY(subquery) yields '{}' (not NULL) for zero roles, so accounts with
+	// every role revoked scan cleanly into an empty slice.
 	err := s.pool.QueryRow(ctx, `
-		SELECT s.account_id, s.scope, (b.account_id IS NOT NULL)
+		SELECT s.account_id, s.scope, (b.account_id IS NOT NULL),
+		       ARRAY(
+		           SELECT DISTINCT rp.permission_name
+		           FROM platform.account_roles ar
+		           JOIN platform.role_permissions rp ON rp.role_id = ar.role_id
+		           WHERE ar.account_id = s.account_id
+		           ORDER BY 1
+		       )
 		FROM platform.sessions s
 		LEFT JOIN platform.account_bans b ON b.account_id = s.account_id
 		WHERE s.token_hash = $1 AND s.expires_at > now()`,
 		hashToken(token),
-	).Scan(&p.AccountID, &p.Scope, &p.Banned)
+	).Scan(&p.AccountID, &p.Scope, &p.Banned, &p.Permissions)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Principal{}, ErrNotFound
 	}
 	if err != nil {
 		return Principal{}, fmt.Errorf("platformsvc: lookup session: %w", err)
+	}
+	if p.Permissions == nil { // keep JSON emitting [] rather than null
+		p.Permissions = []string{}
 	}
 	return p, nil
 }

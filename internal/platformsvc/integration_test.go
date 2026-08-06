@@ -10,6 +10,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"frc.engineer/internal/rbac"
 )
 
 // testStore opens the store against PLATFORM_TEST_DATABASE_URL, migrates, and
@@ -39,13 +41,36 @@ func testStore(t *testing.T) *Store {
 		platform.account_bans, platform.races, platform.race_setup, platform.laps,
 		platform.snapshots, platform.listings, platform.wallets,
 		platform.ledger_entries, platform.purchases, platform.reviews, platform.feedback,
-		platform.race_analysis
+		platform.race_analysis, platform.account_roles
 		RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	if _, err = store.pool.Exec(ctx, `DELETE FROM platform.accounts WHERE kind = 'user'`); err != nil {
 		t.Fatalf("delete user accounts: %v", err)
+	}
+	// RBAC: drop test-created roles and restore the seed roles' grants to the
+	// canonical lists so tests that mutate 'user'/'admin' grants cannot leak
+	// into later tests. platform.permissions/platform.roles themselves are
+	// never truncated (migration-seed preservation, same principle as the
+	// system accounts). The restore lists are the internal/rbac constants —
+	// the third pin alongside the 009 seed and AllSeededNodes.
+	if _, err = store.pool.Exec(ctx, `DELETE FROM platform.roles WHERE name NOT IN ('user','admin')`); err != nil {
+		t.Fatalf("delete custom roles: %v", err)
+	}
+	if _, err = store.pool.Exec(ctx, `DELETE FROM platform.role_permissions`); err != nil {
+		t.Fatalf("clear role grants: %v", err)
+	}
+	for role, grants := range map[string][]string{
+		rbac.RoleUser:  rbac.SeedUserGrants(),
+		rbac.RoleAdmin: rbac.SeedAdminGrants(),
+	} {
+		if _, err = store.pool.Exec(ctx, `
+			INSERT INTO platform.role_permissions (role_id, permission_name)
+			SELECT r.id, p FROM platform.roles r, unnest($1::text[]) AS p
+			WHERE r.name = $2`, grants, role); err != nil {
+			t.Fatalf("restore %s grants: %v", role, err)
+		}
 	}
 	return store
 }
