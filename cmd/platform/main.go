@@ -77,7 +77,8 @@ func main() {
 	)
 	secureCookies := strings.HasPrefix(baseURL, "https://")
 
-	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies}
+	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies,
+		adminIDs: parseAdminAccountIDs(os.Getenv("PLATFORM_ADMIN_ACCOUNT_IDS"), logger)}
 
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
 
@@ -128,6 +129,10 @@ func main() {
 	mux.HandleFunc("POST /listings/{id}/reviews", srv.handleCreateReview)
 	mux.HandleFunc("POST /feedback", srv.handleCreateFeedback)
 	mux.HandleFunc("GET /me/feedback", srv.handleMyFeedback)
+	mux.HandleFunc("POST /analysis", srv.handleCreateAnalysis)
+	mux.HandleFunc("GET /analysis", srv.handleListAnalyses)
+	mux.HandleFunc("GET /analysis/{id}", srv.handleGetAnalysis)
+	mux.HandleFunc("POST /analysis/{id}/delete", srv.handleDeleteAnalysis)
 
 	httpServer := &http.Server{
 		Addr:              ":" + port,
@@ -159,6 +164,36 @@ type server struct {
 	log           *slog.Logger
 	frontendURL   string
 	secureCookies bool
+	// adminIDs gates the analysis-report endpoints (PLATFORM_ADMIN_ACCOUNT_IDS).
+	// env 기반인 이유: accounts.kind는 경제 시스템 계정 모델(싱글턴 강제)이라 확장
+	// 불가하고, 단일 운영자 전제에선 ALLOWED_ORIGINS와 같은 운영 모델이 맞다.
+	// 추후 공개/참가자 공유로 완화할 때는 이 게이트만 제거하면 된다.
+	adminIDs map[string]struct{}
+}
+
+// isAdmin reports whether the account is an operator. Unknown/empty env means
+// nobody is — fail-closed.
+func (s *server) isAdmin(accountID string) bool {
+	_, ok := s.adminIDs[strings.ToLower(accountID)]
+	return ok
+}
+
+// parseAdminAccountIDs parses the comma-separated operator UUID allowlist.
+// 오타 항목은 warn+skip — 운영자 env 실수로 플랫폼 전체가 죽으면 안 된다.
+func parseAdminAccountIDs(raw string, logger *slog.Logger) map[string]struct{} {
+	ids := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.ToLower(strings.TrimSpace(part))
+		if p == "" {
+			continue
+		}
+		if _, err := uuid.Parse(p); err != nil {
+			logger.Warn("ignoring malformed admin account id", "value", p)
+			continue
+		}
+		ids[p] = struct{}{}
+	}
+	return ids
 }
 
 const oidcStateCookie = "platform_oidc_state"
@@ -281,7 +316,11 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, account)
+	// admin은 순수 additive 필드 — 기존 클라이언트는 미지 키로 무시한다.
+	writeJSON(w, http.StatusOK, struct {
+		*platformsvc.Account
+		Admin bool `json:"admin"`
+	}{account, s.isAdmin(p.AccountID)})
 }
 
 // handlePair mints a device pairing code for the logged-in (web) account.
@@ -971,6 +1010,150 @@ func (s *server) handleMyFeedback(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, entries)
+}
+
+// Analysis-report limits. The body cap is deliberately larger than the stored
+// html cap (256 KiB, platformsvc.maxAnalysisHTMLBytes mirror): a legitimate
+// document's JSON escaping (quotes/backslashes/\n/\t) can roughly double it, so
+// 1 MiB keeps every valid report decodable while control-char-stuffed
+// pathological payloads still die at the cap — acceptable on an admin-only
+// endpoint.
+const (
+	analysisMaxBytes   = 1 << 20
+	analysisRatePerMin = 10
+)
+
+// adminGate runs the shared auth prologue for the analysis endpoints:
+// authenticate → web scope → ban → operator allowlist. The admin check comes
+// before any path parsing or DB access so non-admins get a uniform 403 with no
+// existence oracle.
+func (s *server) adminGate(ctx context.Context, w http.ResponseWriter, r *http.Request) (platformsvc.Principal, bool) {
+	p, err := s.authenticate(ctx, r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return platformsvc.Principal{}, false
+	}
+	if p.Scope != platformsvc.ScopeWeb {
+		http.Error(w, "web session required", http.StatusForbidden)
+		return platformsvc.Principal{}, false
+	}
+	if p.Banned {
+		http.Error(w, "account banned", http.StatusForbidden)
+		return platformsvc.Principal{}, false
+	}
+	if !s.isAdmin(p.AccountID) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return platformsvc.Principal{}, false
+	}
+	return p, true
+}
+
+// handleCreateAnalysis stores one operator-authored race analysis report.
+func (s *server) handleCreateAnalysis(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	p, ok := s.adminGate(ctx, w, r)
+	if !ok {
+		return
+	}
+	allowed, err := s.store.AllowRate(ctx, p.AccountID+":analysis", analysisRatePerMin)
+	if err != nil {
+		s.log.Error("analysis rate limit", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !allowed {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
+	var req platformsvc.CreateAnalysisRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, analysisMaxBytes)).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	id, err := s.store.CreateAnalysis(ctx, p.AccountID, req)
+	if errors.Is(err, platformsvc.ErrBadUpload) {
+		http.Error(w, "bad upload", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		s.log.Error("create analysis", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"analysisId": id})
+}
+
+// handleListAnalyses returns report metadata (bodies excluded), newest first.
+func (s *server) handleListAnalyses(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.adminGate(ctx, w, r); !ok {
+		return
+	}
+	metas, err := s.store.ListAnalyses(ctx)
+	if err != nil {
+		s.log.Error("list analyses", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, metas)
+}
+
+// handleGetAnalysis returns one full report as JSON. The html rides inside the
+// JSON body on purpose — the API never serves it as text/html, so the untrusted
+// document has no execution path on this origin; rendering isolation is the
+// SPA's sandboxed iframe.
+func (s *server) handleGetAnalysis(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.adminGate(ctx, w, r); !ok {
+		return
+	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	doc, err := s.store.GetAnalysis(ctx, id)
+	if errors.Is(err, platformsvc.ErrNotFound) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.log.Error("get analysis", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, doc)
+}
+
+// handleDeleteAnalysis removes one report (POST — CORS allows GET/POST only,
+// same as delist).
+func (s *server) handleDeleteAnalysis(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.adminGate(ctx, w, r); !ok {
+		return
+	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	err := s.store.DeleteAnalysis(ctx, id)
+	if errors.Is(err, platformsvc.ErrNotFound) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.log.Error("delete analysis", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // viewerStrict resolves an OPTIONAL Bearer for listing detail. No Authorization
