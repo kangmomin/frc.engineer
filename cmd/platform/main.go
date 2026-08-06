@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 
 	"frc.engineer/internal/platformsvc"
+	"frc.engineer/internal/rbac"
 )
 
 func main() {
@@ -63,6 +64,28 @@ func main() {
 	}
 	logger.Info("migrations applied")
 
+	// PLATFORM_ADMIN_ACCOUNT_IDS is the admin-ROLE bootstrap: each listed
+	// account is idempotently granted the 'admin' role at boot. Removing an id
+	// from the env does NOT revoke the role — permanent removal = remove here
+	// AND revoke via the /rbac API (or SQL). Failures warn and boot continues
+	// (an env typo must not kill the platform); the assignment persists across
+	// restarts, so a transient failure only matters on the very first boot
+	// with a given id. Restarting with the env set is also the recovery path
+	// for an admin who revoked their own role.
+	bootCtx, bootCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	for id := range parseAdminAccountIDs(os.Getenv("PLATFORM_ADMIN_ACCOUNT_IDS"), logger) {
+		granted, err := store.AssignRole(bootCtx, id, rbac.RoleAdmin)
+		switch {
+		case errors.Is(err, platformsvc.ErrNotFound):
+			logger.Warn("admin bootstrap: unknown account id", "accountId", id)
+		case err != nil:
+			logger.Warn("admin bootstrap failed", "accountId", id, "error", err)
+		case granted:
+			logger.Info("admin role granted from env", "accountId", id)
+		}
+	}
+	bootCancel()
+
 	// OpenID realm / return URL derive from PUBLIC_BASE_URL (the platform's own
 	// public origin). FRONTEND_URL is where the Hub SPA lives; the callback
 	// hands the session token back there.
@@ -77,8 +100,7 @@ func main() {
 	)
 	secureCookies := strings.HasPrefix(baseURL, "https://")
 
-	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies,
-		adminIDs: parseAdminAccountIDs(os.Getenv("PLATFORM_ADMIN_ACCOUNT_IDS"), logger)}
+	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies}
 
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
 
@@ -133,6 +155,14 @@ func main() {
 	mux.HandleFunc("GET /analysis", srv.handleListAnalyses)
 	mux.HandleFunc("GET /analysis/{id}", srv.handleGetAnalysis)
 	mux.HandleFunc("POST /analysis/{id}/delete", srv.handleDeleteAnalysis)
+	mux.HandleFunc("GET /permissions", srv.handlePermissions)
+	mux.HandleFunc("GET /rbac/permissions", srv.handleRBACPermissions)
+	mux.HandleFunc("GET /rbac/roles", srv.handleRBACListRoles)
+	mux.HandleFunc("POST /rbac/roles", srv.handleRBACCreateRole)
+	mux.HandleFunc("POST /rbac/roles/{name}/delete", srv.handleRBACDeleteRole)
+	mux.HandleFunc("POST /rbac/roles/{name}/permissions", srv.handleRBACSetRolePermissions)
+	mux.HandleFunc("GET /rbac/accounts/{id}/roles", srv.handleRBACGetAccountRoles)
+	mux.HandleFunc("POST /rbac/accounts/{id}/roles", srv.handleRBACSetAccountRoles)
 
 	httpServer := &http.Server{
 		Addr:              ":" + port,
@@ -164,22 +194,11 @@ type server struct {
 	log           *slog.Logger
 	frontendURL   string
 	secureCookies bool
-	// adminIDs gates the analysis-report endpoints (PLATFORM_ADMIN_ACCOUNT_IDS).
-	// env 기반인 이유: accounts.kind는 경제 시스템 계정 모델(싱글턴 강제)이라 확장
-	// 불가하고, 단일 운영자 전제에선 ALLOWED_ORIGINS와 같은 운영 모델이 맞다.
-	// 추후 공개/참가자 공유로 완화할 때는 이 게이트만 제거하면 된다.
-	adminIDs map[string]struct{}
 }
 
-// isAdmin reports whether the account is an operator. Unknown/empty env means
-// nobody is — fail-closed.
-func (s *server) isAdmin(accountID string) bool {
-	_, ok := s.adminIDs[strings.ToLower(accountID)]
-	return ok
-}
-
-// parseAdminAccountIDs parses the comma-separated operator UUID allowlist.
-// 오타 항목은 warn+skip — 운영자 env 실수로 플랫폼 전체가 죽으면 안 된다.
+// parseAdminAccountIDs parses the comma-separated UUID list that seeds the
+// admin-role bootstrap in main(). 오타 항목은 warn+skip — 운영자 env 실수로
+// 플랫폼 전체가 죽으면 안 된다.
 func parseAdminAccountIDs(raw string, logger *slog.Logger) map[string]struct{} {
 	ids := make(map[string]struct{})
 	for _, part := range strings.Split(raw, ",") {
@@ -306,9 +325,11 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	// 게이트는 authenticate만: /me에 permission을 걸면 Role 0개 계정이 401/403을
+	// 받고, 웹 fetchMe가 그 응답에 토큰을 지워 락아웃 루프가 된다. ban 시에도
+	// 응답하는 것 역시 현행 유지(자기 조회 semantics).
+	p, ok := s.gate(ctx, w, r, gateSpec{})
+	if !ok {
 		return
 	}
 	account, err := s.store.GetAccount(ctx, p.AccountID)
@@ -316,11 +337,15 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	// admin은 순수 additive 필드 — 기존 클라이언트는 미지 키로 무시한다.
+	// permissions는 그랜트 노드 원본(전개 아님 — hasPermission으로 매칭할 것).
+	// admin은 deprecated: 유일한 실소비자였던 구버전 웹의 ANALYSIS 게이트
+	// semantics(분석 열람 가능 여부)를 보존하는 호환 필드다. 신규 소비자 금지 —
+	// permissions를 쓸 것.
 	writeJSON(w, http.StatusOK, struct {
 		*platformsvc.Account
-		Admin bool `json:"admin"`
-	}{account, s.isAdmin(p.AccountID)})
+		Admin       bool     `json:"admin"`
+		Permissions []string `json:"permissions"`
+	}{account, rbac.HasPermission(p.Permissions, rbac.PermAnalyzeRead), p.Permissions})
 }
 
 // handlePair mints a device pairing code for the logged-in (web) account.
@@ -331,17 +356,8 @@ func (s *server) handlePair(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermDeviceCreate})
+	if !ok {
 		return
 	}
 	code, err := s.store.CreatePairing(ctx, p.AccountID)
@@ -396,17 +412,8 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeUpload {
-		http.Error(w, "upload token required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeUpload, blockBanned: true, permission: rbac.PermRaceCreate})
+	if !ok {
 		return
 	}
 	allowed, err := s.store.AllowRate(ctx, p.AccountID+":upload", uploadRatePerMin)
@@ -544,13 +551,8 @@ func (s *server) browseMarket(w http.ResponseWriter, r *http.Request, kind strin
 func (s *server) handleMyRaces(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead})
+	if !ok {
 		return
 	}
 	races, err := s.store.ListMyRaces(ctx, p.AccountID)
@@ -568,13 +570,8 @@ func (s *server) handleMyRaces(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleMyListings(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermMarketRead})
+	if !ok {
 		return
 	}
 	listings, err := s.store.ListMyListings(ctx, p.AccountID)
@@ -594,17 +591,8 @@ func (s *server) handleMyListings(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleCreateListing(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermMarketCreate})
+	if !ok {
 		return
 	}
 	allowed, err := s.store.AllowRate(ctx, p.AccountID+":listing", listingRatePerMin)
@@ -712,13 +700,9 @@ func (s *server) handleSimilar(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleDelist(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
+	// 현행 보존: delist는 ban 차단이 없었다 — RBAC 전환에서도 유지(기록된 후속 과제).
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermMarketUpdate})
+	if !ok {
 		return
 	}
 	id, ok := pathUUID(r)
@@ -726,7 +710,7 @@ func (s *server) handleDelist(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	err = s.store.Delist(ctx, p.AccountID, id)
+	err := s.store.Delist(ctx, p.AccountID, id)
 	if errors.Is(err, platformsvc.ErrNotFound) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -751,17 +735,8 @@ const (
 func (s *server) handleWallet(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermWalletRead})
+	if !ok {
 		return
 	}
 	balance, err := s.store.GetWallet(ctx, p.AccountID)
@@ -778,17 +753,8 @@ func (s *server) handleWallet(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleLedger(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermWalletRead})
+	if !ok {
 		return
 	}
 	entries, err := s.store.GetLedger(ctx, p.AccountID)
@@ -807,17 +773,8 @@ func (s *server) handleLedger(w http.ResponseWriter, r *http.Request) {
 func (s *server) handlePurchase(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermPurchaseCreate})
+	if !ok {
 		return
 	}
 	allowed, err := s.store.AllowRate(ctx, p.AccountID+":purchase", purchaseRatePerMin)
@@ -885,17 +842,8 @@ func (s *server) handleListReviews(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleCreateReview(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermReviewCreate})
+	if !ok {
 		return
 	}
 	allowed, err := s.store.AllowRate(ctx, p.AccountID+":review", reviewRatePerMin)
@@ -947,17 +895,8 @@ const (
 func (s *server) handleCreateFeedback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
-		return
-	}
-	if p.Banned {
-		http.Error(w, "account banned", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermFeedbackCreate})
+	if !ok {
 		return
 	}
 	allowed, err := s.store.AllowRate(ctx, p.AccountID+":feedback", feedbackRatePerMin)
@@ -993,13 +932,8 @@ func (s *server) handleCreateFeedback(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleMyFeedback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, err := s.authenticate(ctx, r)
-	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermFeedbackRead})
+	if !ok {
 		return
 	}
 	entries, err := s.store.ListMyFeedback(ctx, p.AccountID)
@@ -1023,25 +957,42 @@ const (
 	analysisRatePerMin = 10
 )
 
-// adminGate runs the shared auth prologue for the analysis endpoints:
-// authenticate → web scope → ban → operator allowlist. The admin check comes
-// before any path parsing or DB access so non-admins get a uniform 403 with no
-// existence oracle.
-func (s *server) adminGate(ctx context.Context, w http.ResponseWriter, r *http.Request) (platformsvc.Principal, bool) {
+// gateSpec declares a route's auth prologue. The zero value means
+// "authenticate only" (/me, /permissions). Fields are opt-in so every route
+// preserves its exact pre-RBAC scope/ban behavior — the known inconsistencies
+// (e.g. delist not ban-blocked) are deliberately preserved as recorded
+// follow-ups; do not "fix" them here.
+type gateSpec struct {
+	scope       string // platformsvc.ScopeWeb / ScopeUpload; "" = no scope check
+	blockBanned bool
+	permission  string // rbac node; "" = no permission check
+}
+
+// gate runs authenticate → scope → ban → permission (the adminGate order,
+// generalized to every authenticated route). The permission check precedes
+// any path parsing or DB access, and denial is a uniform 403 "forbidden" —
+// no existence oracle for under-privileged callers. Rate limits stay in the
+// handlers (domain-specific keys/limits, and they must not be consumed by
+// requests this gate rejects).
+func (s *server) gate(ctx context.Context, w http.ResponseWriter, r *http.Request, spec gateSpec) (platformsvc.Principal, bool) {
 	p, err := s.authenticate(ctx, r)
 	if err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return platformsvc.Principal{}, false
 	}
-	if p.Scope != platformsvc.ScopeWeb {
-		http.Error(w, "web session required", http.StatusForbidden)
+	if spec.scope != "" && p.Scope != spec.scope {
+		msg := "web session required"
+		if spec.scope == platformsvc.ScopeUpload {
+			msg = "upload token required"
+		}
+		http.Error(w, msg, http.StatusForbidden)
 		return platformsvc.Principal{}, false
 	}
-	if p.Banned {
+	if spec.blockBanned && p.Banned {
 		http.Error(w, "account banned", http.StatusForbidden)
 		return platformsvc.Principal{}, false
 	}
-	if !s.isAdmin(p.AccountID) {
+	if spec.permission != "" && !rbac.HasPermission(p.Permissions, spec.permission) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return platformsvc.Principal{}, false
 	}
@@ -1052,7 +1003,7 @@ func (s *server) adminGate(ctx context.Context, w http.ResponseWriter, r *http.R
 func (s *server) handleCreateAnalysis(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	p, ok := s.adminGate(ctx, w, r)
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermAnalyzeCreate})
 	if !ok {
 		return
 	}
@@ -1088,7 +1039,7 @@ func (s *server) handleCreateAnalysis(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleListAnalyses(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	if _, ok := s.adminGate(ctx, w, r); !ok {
+	if _, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermAnalyzeRead}); !ok {
 		return
 	}
 	metas, err := s.store.ListAnalyses(ctx)
@@ -1108,7 +1059,7 @@ func (s *server) handleListAnalyses(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleGetAnalysis(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	if _, ok := s.adminGate(ctx, w, r); !ok {
+	if _, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermAnalyzeRead}); !ok {
 		return
 	}
 	id, ok := pathUUID(r)
@@ -1135,7 +1086,7 @@ func (s *server) handleGetAnalysis(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleDeleteAnalysis(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	if _, ok := s.adminGate(ctx, w, r); !ok {
+	if _, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermAnalyzeDelete}); !ok {
 		return
 	}
 	id, ok := pathUUID(r)
@@ -1154,6 +1105,257 @@ func (s *server) handleDeleteAnalysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handlePermissions returns the caller's own effective grant nodes — raw, not
+// leaf-expanded (clients must match with the shared hasPermission rule, never
+// slice contains). Scope-agnostic on purpose: the sender's upload token is the
+// primary consumer (advisory local gates fetched at app boot). Answers while
+// banned, like /me — self-inspection is not an action route. No permission
+// gate: asking "what may I do" must work for zero-role accounts.
+func (s *server) handlePermissions(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{})
+	if !ok {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string][]string{"permissions": p.Permissions})
+}
+
+// RBAC management limits. One shared mutation budget across the /rbac POST
+// endpoints — operator tooling, not a hot path; the limit is an abuse backstop.
+const (
+	rbacRatePerMin = 30
+	rbacMaxBytes   = 4 << 10
+)
+
+// rbacGate is the shared prologue for management endpoints; mutating handlers
+// additionally pass rate=true to draw from the shared budget.
+func (s *server) rbacGate(ctx context.Context, w http.ResponseWriter, r *http.Request, permission string, rate bool) (platformsvc.Principal, bool) {
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: permission})
+	if !ok {
+		return platformsvc.Principal{}, false
+	}
+	if rate {
+		allowed, err := s.store.AllowRate(ctx, p.AccountID+":rbac", rbacRatePerMin)
+		if err != nil {
+			s.log.Error("rbac rate limit", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return platformsvc.Principal{}, false
+		}
+		if !allowed {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return platformsvc.Principal{}, false
+		}
+	}
+	return p, true
+}
+
+// handleRBACPermissions lists the grantable permission catalog (every node,
+// any depth — the admin UI/tooling picks grants from this).
+func (s *server) handleRBACPermissions(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACRead, false); !ok {
+		return
+	}
+	names, err := s.store.ListPermissionNames(ctx)
+	if err != nil {
+		s.log.Error("rbac list permissions", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, names)
+}
+
+// handleRBACListRoles returns all roles with their grants.
+func (s *server) handleRBACListRoles(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACRead, false); !ok {
+		return
+	}
+	roles, err := s.store.ListRoles(ctx)
+	if err != nil {
+		s.log.Error("rbac list roles", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, roles)
+}
+
+// handleRBACCreateRole creates an empty role (grants come via the permissions
+// replace endpoint).
+func (s *server) handleRBACCreateRole(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACCreate, true); !ok {
+		return
+	}
+	var body struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, rbacMaxBytes)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	id, err := s.store.CreateRole(ctx, body.Name, body.Description)
+	switch {
+	case errors.Is(err, platformsvc.ErrBadUpload):
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	case errors.Is(err, platformsvc.ErrDuplicate):
+		http.Error(w, "role exists", http.StatusConflict)
+		return
+	case err != nil:
+		s.log.Error("rbac create role", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"roleId": id})
+}
+
+// handleRBACDeleteRole deletes a custom role (POST — CORS allows GET/POST
+// only, delist precedent). The seed roles are refused in the store.
+func (s *server) handleRBACDeleteRole(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACDelete, true); !ok {
+		return
+	}
+	name, ok := pathRoleName(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	err := s.store.DeleteRole(ctx, name)
+	switch {
+	case errors.Is(err, platformsvc.ErrForbidden):
+		http.Error(w, "seed role protected", http.StatusForbidden)
+		return
+	case errors.Is(err, platformsvc.ErrNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	case err != nil:
+		s.log.Error("rbac delete role", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRBACSetRolePermissions replaces a role's grants wholesale (idempotent
+// set semantics — no add/remove pairs).
+func (s *server) handleRBACSetRolePermissions(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACUpdate, true); !ok {
+		return
+	}
+	name, ok := pathRoleName(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	var body struct {
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, rbacMaxBytes)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	err := s.store.SetRolePermissions(ctx, name, body.Permissions)
+	switch {
+	case errors.Is(err, platformsvc.ErrBadUpload):
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	case errors.Is(err, platformsvc.ErrNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	case err != nil:
+		s.log.Error("rbac set role permissions", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRBACGetAccountRoles returns one account's role assignments.
+func (s *server) handleRBACGetAccountRoles(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACRead, false); !ok {
+		return
+	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	roles, err := s.store.GetAccountRoles(ctx, id)
+	switch {
+	case errors.Is(err, platformsvc.ErrNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	case err != nil:
+		s.log.Error("rbac get account roles", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string][]string{"roles": roles})
+}
+
+// handleRBACSetAccountRoles replaces one account's role assignments wholesale.
+// No last-admin self-revoke protection by design: recovery is an env-bootstrap
+// restart or SQL, and a count-based guard would add a race for no real safety.
+func (s *server) handleRBACSetAccountRoles(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACUpdate, true); !ok {
+		return
+	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	var body struct {
+		Roles []string `json:"roles"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, rbacMaxBytes)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	err := s.store.SetAccountRoles(ctx, id, body.Roles)
+	switch {
+	case errors.Is(err, platformsvc.ErrBadUpload):
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	case errors.Is(err, platformsvc.ErrNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	case err != nil:
+		s.log.Error("rbac set account roles", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// pathRoleName returns the {name} path value only if it is a well-formed role
+// name — anything else collapses to a uniform 404 (pathUUID convention).
+func pathRoleName(r *http.Request) (string, bool) {
+	name := r.PathValue("name")
+	if !rbac.ValidRoleName(name) {
+		return "", false
+	}
+	return name, true
 }
 
 // viewerStrict resolves an OPTIONAL Bearer for listing detail. No Authorization
