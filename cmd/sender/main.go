@@ -26,6 +26,7 @@ import (
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
+	"frc.engineer/internal/rbac"
 	"frc.engineer/internal/rtc"
 	"frc.engineer/internal/strategydata"
 	"frc.engineer/internal/telemetry"
@@ -427,6 +428,11 @@ func main() {
 	cfgOverlayWindows := overlayWindowDefaults
 	cfgPlatformBaseURL := normalizePlatformBaseURL("")
 	cfgUploadToken := ""
+	// 플랫폼에서 가져온 계정 권한(자문 게이트 전용 — 보안 경계 아님). 메모리 캐시만:
+	// cfgPermsFetched=false(미확인)면 전 기능 허용(fail-open, 20260727 업데이트
+	// 게이트·banlist 폴러와 동일 정책). 차단은 fetch 200 + 그랜트 미커버일 때만.
+	var cfgPermissions []string
+	cfgPermsFetched := false
 	if saved := savedConfig; saved != nil && len(saved.ForwardTargets) > 0 {
 		cfgForwardTargets = saved.ForwardTargets
 		forwarder.UpdateTargets(cfgForwardTargets)
@@ -942,13 +948,15 @@ func main() {
 			}
 		}
 	}
-	// shouldBeConnected gates (re)connection on the nickname ban + device pairing —
-	// used here, by the ban-state callback, and the config path.
+	// shouldBeConnected gates (re)connection on the nickname ban + device pairing
+	// + the advisory broadcast permission — used here, by the ban-state callback,
+	// the permissions refresh, and the config path. 권한 미확인(fail-open)이면 허용.
 	shouldBeConnected := func() bool {
 		cfgMu.Lock()
 		paired := cfgUploadToken != ""
+		broadcastAllowed := !cfgPermsFetched || rbac.HasPermission(cfgPermissions, rbac.PermBroadcastCreate)
 		cfgMu.Unlock()
-		return paired && !processor.IsBanned()
+		return paired && broadcastAllowed && !processor.IsBanned()
 	}
 
 	// When the player's nickname enters/leaves the ban list, hard-stop or resume.
@@ -965,6 +973,72 @@ func main() {
 			go connectWithRetry()
 		}
 	})
+
+	// applyPermissions stores fetched grants (advisory gates only) and, on an
+	// allow↔deny transition of the broadcast permission, hard-stops or resumes
+	// the pitwall session — same pattern as the nickname-ban handler above.
+	// The fetch is async, so a deny can arrive after the boot connect already
+	// succeeded. Stale guard: responses for a superseded upload token (device
+	// re-paired to another account mid-flight) are dropped.
+	applyPermissions := func(fetchedToken string, perms []string) {
+		cfgMu.Lock()
+		if cfgUploadToken != fetchedToken {
+			cfgMu.Unlock()
+			return
+		}
+		wasAllowed := !cfgPermsFetched || rbac.HasPermission(cfgPermissions, rbac.PermBroadcastCreate)
+		cfgPermissions = perms
+		cfgPermsFetched = true
+		nowAllowed := rbac.HasPermission(perms, rbac.PermBroadcastCreate)
+		cfgMu.Unlock()
+		logger.Info("platform permissions fetched", "grants", len(perms), "broadcastAllowed", nowAllowed)
+		if wasAllowed && !nowAllowed {
+			go peerManager.Close()
+			logger.Warn("pitwall broadcast denied by platform permissions — session closed")
+			systray.SetTooltip("FRC Pitwall Sender " + appVersion + " — 송출 권한 없음")
+		} else if !wasAllowed && nowAllowed && shouldBeConnected() {
+			logger.Info("pitwall broadcast permission granted — reconnecting")
+			go connectWithRetry()
+		}
+	}
+
+	// refreshPermissions fetches the paired account's grant nodes once ("앱 기동
+	// 시 업데이트 확인과 같은 타이밍" — boot and re-pair, no periodic re-check;
+	// the platform enforces for real on every request, this is advisory UX).
+	// Fail-open: unpaired / network failure / old server 404 / 401·403 all keep
+	// the previous state. Only network-class errors retry (10s → 30s); an HTTP
+	// response of any status is final for this run.
+	refreshPermissions := func() {
+		cfgMu.Lock()
+		token := cfgUploadToken
+		base := cfgPlatformBaseURL
+		cfgMu.Unlock()
+		if token == "" {
+			return
+		}
+		for _, delay := range []time.Duration{0, 10 * time.Second, 30 * time.Second} {
+			if delay > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(delay):
+				}
+			}
+			fctx, fcancel := context.WithTimeout(ctx, uploadHTTPTimeout)
+			perms, status, err := fetchPermissions(fctx, base, token)
+			fcancel()
+			if err == nil {
+				applyPermissions(token, perms)
+				return
+			}
+			if status != 0 {
+				logger.Warn("permissions fetch rejected — advisory gates stay open (fail-open)",
+					"status", status, "error", err)
+				return
+			}
+			logger.Warn("permissions fetch network error, will retry", "error", err)
+		}
+	}
 
 	if shouldBeConnected() {
 		go connectWithRetry()
@@ -1089,6 +1163,10 @@ func main() {
 			}
 		}
 	}()
+
+	// 앱 기동 시 1회, 페어링된 계정의 플랫폼 권한을 가져와 자문 게이트에 적용
+	// (미페어링이면 즉시 반환 — 페어링 성공 시점에 다시 호출된다).
+	go refreshPermissions()
 
 	// Report the player nickname to signaling (for server-side IP auto-ban).
 	// Synced periodically since the nickname is only known after telemetry arrives.
@@ -1254,6 +1332,15 @@ func main() {
 		rp := cfgRoomPassword
 		dashboardURL := cfgEngineerDashboardURL
 		paired := cfgUploadToken != ""
+		// permissions: null=미확인(fail-open — 소비자는 허용으로 판정), 배열=확정
+		// 그랜트 노드 원본. setup-manager가 3초 폴링으로 게이트에 쓴다.
+		var perms []string
+		if cfgPermsFetched {
+			perms = cfgPermissions
+			if perms == nil {
+				perms = []string{}
+			}
+		}
 		cfgMu.Unlock()
 		senderState := buildSenderState(sf, tr, mode)
 
@@ -1276,6 +1363,7 @@ func main() {
 			"weatherActive":      weatherOv.IsRunning(),
 			"banned":             processor.IsBanned(),
 			"paired":             paired,
+			"permissions":        perms,
 			"strategyActive":     strategyOv.IsRunning(),
 			"invite":             invite,
 			"peers":              peers,
@@ -1459,16 +1547,24 @@ func main() {
 		}
 		cfgMu.Lock()
 		wasPaired := cfgUploadToken != ""
+		wasAllowed := !cfgPermsFetched || rbac.HasPermission(cfgPermissions, rbac.PermBroadcastCreate)
 		cfgUploadToken = token
+		// 재페어링은 계정이 바뀌었을 수 있다 — 이전 계정의 권한 캐시를 무효화한다
+		// (새 계정은 fetch 성공 전까지 fail-open; 이전 거부가 이월되지 않음).
+		cfgPermissions = nil
+		cfgPermsFetched = false
 		saveErr := saveSenderConfig(buildSenderConfigSnapshot())
 		cfgMu.Unlock()
 		if saveErr != nil {
 			logger.Warn("failed to persist upload token", "error", saveErr)
 		}
-		if !wasPaired && shouldBeConnected() {
+		// 신규 페어링, 또는 직전 계정이 송출 거부로 세션이 닫혀 있던 재페어링이면
+		// 연결을 (재)시작한다. 이미 연결·허용 상태의 재페어링은 건드리지 않는다.
+		if (!wasPaired || !wasAllowed) && shouldBeConnected() {
 			logger.Info("device paired — starting pitwall connection")
 			go connectWithRetry()
 		}
+		go refreshPermissions()
 		json.NewEncoder(w).Encode(map[string]bool{"paired": true})
 	})
 

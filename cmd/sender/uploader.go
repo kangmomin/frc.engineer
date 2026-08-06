@@ -163,6 +163,34 @@ func normalizePlatformBaseURL(raw string) string {
 	return trimmed
 }
 
+// fetchPermissions retrieves the paired account's grant nodes from the
+// platform (GET /permissions). Advisory only — the caller fail-opens on any
+// error. status is 0 for network-class failures (retryable) and the HTTP
+// status otherwise (final: old servers 404, expired tokens 401 — all
+// fail-open sites, not errors to surface to the user).
+func fetchPermissions(ctx context.Context, baseURL, token string) ([]string, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/permissions", nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := (&http.Client{Timeout: uploadHTTPTimeout}).Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, resp.StatusCode, fmt.Errorf("permissions fetch: status %d", resp.StatusCode)
+	}
+	var out struct {
+		Permissions []string `json:"permissions"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("permissions fetch: malformed response")
+	}
+	return out.Permissions, resp.StatusCode, nil
+}
+
 // exchangePairing swaps a pairing code for an upload-scope device token.
 // 401 → invalid/expired code; 403 → banned account.
 func exchangePairing(ctx context.Context, baseURL, code string) (string, error) {
@@ -224,8 +252,11 @@ func uploadRace(ctx context.Context, baseURL, token string, req *uploadRequest) 
 		return &out, resp.StatusCode, nil
 	case http.StatusConflict:
 		return nil, resp.StatusCode, fmt.Errorf("업로드 진행 중 (잠시 후 재시도)")
-	case http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusUnauthorized:
 		return nil, resp.StatusCode, fmt.Errorf("인증 만료 — 다시 페어링하세요")
+	case http.StatusForbidden:
+		// RBAC 도입 후 403은 토큰 문제가 아니라 권한/밴 — 재페어링 안내는 오도다.
+		return nil, resp.StatusCode, fmt.Errorf("플랫폼 권한이 없습니다 — 운영자에게 문의하세요")
 	case http.StatusTooManyRequests:
 		return nil, resp.StatusCode, fmt.Errorf("요청이 많습니다 — 잠시 후 재시도")
 	default:
