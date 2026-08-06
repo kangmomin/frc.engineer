@@ -27,6 +27,7 @@ import {
   captureTokenFromFragment, fetchMe, beginSteamLogin, platformLogout, createPairingCode, getSessionToken,
 } from './data/session';
 import type { PlatformAccount } from './data/session';
+import { canViewAnalysis } from './data/permissions';
 
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
 
@@ -195,9 +196,10 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             <Placeholder t={t} title={PLACEHOLDER.setups.title} note={PLACEHOLDER.setups.note} />
           )}
 
-          {/* ANALYSIS: admin 계정에만 실화면 — 비-admin은 기존 플레이스홀더 그대로. */}
+          {/* ANALYSIS: race-analyze 열람 권한이 있을 때만 실화면 — 아니면 기존
+              플레이스홀더 그대로. 진짜 경계는 서버 게이트(RBAC)다. */}
           {active === 'analysis' && (
-            platformAccount?.admin ? (
+            canViewAnalysis(platformAccount) ? (
               <Analysis t={t} market={platformMkt} />
             ) : (
               <Placeholder t={t} title={PLACEHOLDER.analysis.title} note={PLACEHOLDER.analysis.note} />

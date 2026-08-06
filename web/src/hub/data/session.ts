@@ -23,8 +23,12 @@ export interface PlatformAccount {
   verified: boolean;
   banned: boolean;
   createdAt: string;
-  // 운영자 여부 (분석 리포트 화면 게이트). 구버전 서버 응답에는 없다 — 옵셔널.
+  // 운영자 여부. deprecated — RBAC 도입 후엔 permissions가 진실이고 이 필드는
+  // 구서버 호환 폴백(canViewAnalysis 참조). 구버전 서버 응답에는 없다 — 옵셔널.
   admin?: boolean;
+  // RBAC 그랜트 노드 원본(leaf 전개 아님) — data/permissions.ts의 hasPermission으로
+  // 매칭한다(includes 금지). 구버전 서버 응답에는 없다 — 옵셔널.
+  permissions?: string[];
 }
 
 export function getSessionToken(): string | null {
