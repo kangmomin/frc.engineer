@@ -224,3 +224,53 @@ describe('feedback', () => {
     await expect(mkt.listMyFeedback()).rejects.toMatchObject({ reason: 'unauthorized' });
   });
 });
+
+describe('analysis reports', () => {
+  it('listAnalyses hits /analysis and returns metadata rows', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const rows = [{ id: 'A-1', sessionUid: '9116587583701622513', trackName: 'Bahrain', title: '종합 분석', createdAt: '2026-08-06T00:00:00Z' }];
+    const fetchMock = vi.fn().mockResolvedValue(res(200, rows));
+    vi.stubGlobal('fetch', fetchMock);
+    const out = await mkt.listAnalyses();
+    expect(out).toEqual(rows);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/analysis');
+  });
+
+  it('listAnalyses 403 (non-admin) → unauthorized', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(403)));
+    await expect(mkt.listAnalyses()).rejects.toMatchObject({ reason: 'unauthorized' });
+  });
+
+  it('getAnalysis returns the full doc and 404 → not-found', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const doc = { id: 'A-1', title: 'T', createdAt: '2026-08-06T00:00:00Z', html: '<html></html>' };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(200, doc)));
+    expect(await mkt.getAnalysis('A-1')).toEqual(doc);
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(404)));
+    await expect(mkt.getAnalysis('A-x')).rejects.toMatchObject({ reason: 'not-found' });
+  });
+
+  it('deleteAnalysis resolves on 204 and maps 404 → not-found', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const fetchMock = vi.fn().mockResolvedValue(res(204));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.deleteAnalysis('A-1');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/analysis/A-1/delete');
+    expect(init.method).toBe('POST');
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(404)));
+    await expect(mkt.deleteAnalysis('A-x')).rejects.toMatchObject({ reason: 'not-found' });
+  });
+
+  it('deleteAnalysis does not fetch without a token', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(mkt.deleteAnalysis('A-1')).rejects.toMatchObject({ reason: 'unauthorized' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

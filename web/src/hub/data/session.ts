@@ -23,6 +23,8 @@ export interface PlatformAccount {
   verified: boolean;
   banned: boolean;
   createdAt: string;
+  // 운영자 여부 (분석 리포트 화면 게이트). 구버전 서버 응답에는 없다 — 옵셔널.
+  admin?: boolean;
 }
 
 export function getSessionToken(): string | null {

@@ -153,6 +153,21 @@ export interface CreateFeedbackInput {
   body: string;
 }
 
+// 분석 리포트 메타 (GET /analysis — 본문 html은 목록에 실리지 않는다).
+export interface PlatformAnalysisMeta {
+  id: string;
+  sessionUid?: string;
+  trackName?: string;
+  title: string;
+  createdAt: string;
+}
+
+// 분석 리포트 전체 (GET /analysis/{id}). html은 신뢰 불가 문서로 취급 —
+// 반드시 sandbox iframe(srcDoc)으로만 렌더한다.
+export interface PlatformAnalysisDoc extends PlatformAnalysisMeta {
+  html: string;
+}
+
 // ListingError carries a coarse, user-facing reason so the sell modal can show a
 // Korean message without re-deriving it from a raw status code.
 export type ListingErrorReason =
@@ -400,6 +415,32 @@ export class PlatformMarket {
 
   async listMyFeedback(): Promise<PlatformFeedbackEntry[]> {
     return okJson(await pfetch('/me/feedback'), '내 의견');
+  }
+
+  // --- Analysis reports (admin 전용 — 서버가 env 허용목록으로 게이트) ---
+
+  async listAnalyses(): Promise<PlatformAnalysisMeta[]> {
+    return okJson(await pfetch('/analysis'), '분석 리포트 목록');
+  }
+
+  async getAnalysis(id: string): Promise<PlatformAnalysisDoc> {
+    const res = await pfetch(`/analysis/${encodeURIComponent(id)}`);
+    if (res.status === 404) {
+      throw new ListingError('not-found', '리포트를 찾을 수 없습니다');
+    }
+    return okJson(res, '분석 리포트');
+  }
+
+  async deleteAnalysis(id: string): Promise<void> {
+    const res = await pfetch(`/analysis/${encodeURIComponent(id)}/delete`, { method: 'POST' });
+    if (res.status === 204) return;
+    if (res.status === 404) {
+      throw new ListingError('not-found', '이미 삭제된 리포트입니다');
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new ListingError('unauthorized', '권한이 없습니다');
+    }
+    throw new ListingError('network', `삭제 실패 (${res.status})`);
   }
 }
 

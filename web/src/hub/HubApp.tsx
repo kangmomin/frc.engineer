@@ -19,6 +19,7 @@ import { Rankings } from './screens/Rankings';
 import { MarketManage } from './screens/MarketManage';
 import { Profile } from './screens/Profile';
 import { Feedback } from './screens/Feedback';
+import { Analysis } from './screens/Analysis';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket } from './data/platform';
 import type { PlatformLedgerEntry } from './data/platform';
@@ -190,8 +191,17 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             <Feedback t={t} configured={platformConfigured} account={platformAccount} market={platformMkt} />
           )}
 
-          {(active === 'setups' || active === 'analysis') && (
-            <Placeholder t={t} title={PLACEHOLDER[active].title} note={PLACEHOLDER[active].note} />
+          {active === 'setups' && (
+            <Placeholder t={t} title={PLACEHOLDER.setups.title} note={PLACEHOLDER.setups.note} />
+          )}
+
+          {/* ANALYSIS: admin 계정에만 실화면 — 비-admin은 기존 플레이스홀더 그대로. */}
+          {active === 'analysis' && (
+            platformAccount?.admin ? (
+              <Analysis t={t} market={platformMkt} />
+            ) : (
+              <Placeholder t={t} title={PLACEHOLDER.analysis.title} note={PLACEHOLDER.analysis.note} />
+            )
           )}
         </main>
       </div>
