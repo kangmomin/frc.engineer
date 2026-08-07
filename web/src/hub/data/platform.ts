@@ -168,6 +168,25 @@ export interface PlatformAnalysisDoc extends PlatformAnalysisMeta {
   html: string;
 }
 
+// RBAC 관리 (GET /rbac/roles). permissions는 그랜트 노드 원본(임의 깊이) —
+// 계층 매칭은 data/permissions.ts의 hasPermission으로 한다.
+export interface PlatformRole {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  createdAt: string;
+}
+
+// 계정 피커 한 행 (GET /rbac/accounts?q=).
+export interface PlatformAccountRoles {
+  id: string;
+  persona: string;
+  avatarUrl?: string;
+  kind: string;
+  roles: string[];
+}
+
 // ListingError carries a coarse, user-facing reason so the sell modal can show a
 // Korean message without re-deriving it from a raw status code.
 export type ListingErrorReason =
@@ -441,6 +460,95 @@ export class PlatformMarket {
       throw new ListingError('unauthorized', '권한이 없습니다');
     }
     throw new ListingError('network', `삭제 실패 (${res.status})`);
+  }
+
+  // --- RBAC 관리 (pithub.rbac.* — 서버가 게이트한다) ---
+  // 변경 계열은 전부 치환(replace) semantics다: 보낸 배열이 곧 전체가 된다.
+  // 화면이 체크박스로 현재 상태를 통째로 보내는 이유가 이것이다.
+
+  async listRoles(): Promise<PlatformRole[]> {
+    return okJson(await pfetch('/rbac/roles'), 'Role 목록');
+  }
+
+  async listPermissionCatalog(): Promise<string[]> {
+    return okJson(await pfetch('/rbac/permissions'), '권한 카탈로그');
+  }
+
+  async searchAccounts(q: string): Promise<PlatformAccountRoles[]> {
+    return okJson(await pfetch(`/rbac/accounts?q=${encodeURIComponent(q)}`), '계정 검색');
+  }
+
+  async createRole(name: string, description: string): Promise<string> {
+    const res = await pfetch('/rbac/roles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description }),
+    });
+    switch (res.status) {
+      case 201:
+        return ((await res.json()) as { roleId: string }).roleId;
+      case 400:
+        throw new ListingError('bad-input', 'Role 이름이 올바르지 않습니다 (소문자·숫자·하이픈, 32자 이내)');
+      case 409:
+        throw new ListingError('conflict', '이미 있는 Role입니다');
+      case 401:
+      case 403:
+        throw new ListingError('unauthorized', '권한이 없습니다');
+      case 429:
+        throw new ListingError('rate-limited', '잠시 후 다시 시도하세요');
+      default:
+        throw new ListingError('network', `Role 생성 실패 (${res.status})`);
+    }
+  }
+
+  async deleteRole(name: string): Promise<void> {
+    const res = await pfetch(`/rbac/roles/${encodeURIComponent(name)}/delete`, { method: 'POST' });
+    if (res.status === 204) return;
+    if (res.status === 403) {
+      throw new ListingError('unauthorized', '시드 Role은 삭제할 수 없습니다');
+    }
+    if (res.status === 404) {
+      throw new ListingError('not-found', '이미 없는 Role입니다');
+    }
+    throw new ListingError('network', `Role 삭제 실패 (${res.status})`);
+  }
+
+  async setRolePermissions(name: string, permissions: string[]): Promise<void> {
+    const res = await pfetch(`/rbac/roles/${encodeURIComponent(name)}/permissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ permissions }),
+    });
+    if (res.status === 204) return;
+    throw rbacMutationError(res.status, '권한 저장');
+  }
+
+  async setAccountRoles(accountId: string, roles: string[]): Promise<void> {
+    const res = await pfetch(`/rbac/accounts/${encodeURIComponent(accountId)}/roles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roles }),
+    });
+    if (res.status === 204) return;
+    throw rbacMutationError(res.status, 'Role 할당');
+  }
+}
+
+// rbacMutationError maps the shared 204/400/401/403/404/429 shape of the /rbac
+// replace endpoints onto a user-facing reason.
+function rbacMutationError(status: number, what: string): ListingError {
+  switch (status) {
+    case 400:
+      return new ListingError('bad-input', '알 수 없는 항목이 포함되어 있습니다');
+    case 401:
+    case 403:
+      return new ListingError('unauthorized', '권한이 없습니다');
+    case 404:
+      return new ListingError('not-found', '대상을 찾을 수 없습니다');
+    case 429:
+      return new ListingError('rate-limited', '잠시 후 다시 시도하세요');
+    default:
+      return new ListingError('network', `${what} 실패 (${status})`);
   }
 }
 

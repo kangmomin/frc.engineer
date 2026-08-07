@@ -1,12 +1,15 @@
 // Hub sidebar — logo, nav, user footer (hub.dc.html:29-48).
 import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
+import { canManageRBAC } from '../data/permissions';
 
-export type HubScreen = 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback';
+export type HubScreen = 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'access';
 
 const MONO = "'JetBrains Mono',monospace";
 
-const NAV: { id: HubScreen; label: string; idx: string }[] = [
+// ACCESS는 rbac 권한이 있을 때만 노출되므로 목록 끝에 두어 앞 항목의 번호가
+// 노출 여부에 따라 흔들리지 않게 한다. 노출은 편의일 뿐 — 경계는 서버 게이트다.
+const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean }[] = [
   { id: 'overview', label: 'OVERVIEW', idx: '01' },
   { id: 'rankings', label: 'RANKINGS', idx: '02' },
   { id: 'market', label: 'MARKET', idx: '03' },
@@ -14,6 +17,7 @@ const NAV: { id: HubScreen; label: string; idx: string }[] = [
   { id: 'analysis', label: 'ANALYSIS', idx: '05' },
   { id: 'profile', label: 'PROFILE', idx: '06' },
   { id: 'feedback', label: 'FEEDBACK', idx: '07' },
+  { id: 'access', label: 'ACCESS', idx: '08', needsRBAC: true },
 ];
 
 interface Props {
@@ -46,7 +50,7 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account }: Props) {
       </div>
 
       <nav style={{ padding: '14px 0', flex: 1, overflowY: 'auto' }}>
-        {NAV.map((item) => {
+        {NAV.filter((item) => !item.needsRBAC || canManageRBAC(account)).map((item) => {
           const on = active === item.id;
           return (
             <button

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canViewAnalysis, hasPermission } from './permissions';
+import { canManageRBAC, canViewAnalysis, hasPermission } from './permissions';
 import type { PlatformAccount } from './session';
 
 // internal/rbac/rbac_test.go의 테이블과 동형 — Go/TS 매칭 규칙이 갈라지면 여기서 잡힌다.
@@ -48,5 +48,34 @@ describe('canViewAnalysis', () => {
     expect(canViewAnalysis({ ...base, admin: true })).toBe(true);
     expect(canViewAnalysis({ ...base, admin: false })).toBe(false);
     expect(canViewAnalysis(base)).toBe(false);
+  });
+});
+
+describe('canManageRBAC', () => {
+  const base: PlatformAccount = {
+    id: 'a', steamId64: '7', persona: 'P', avatarUrl: '', kind: 'user',
+    verified: false, banned: false, createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  it('null account → false', () => {
+    expect(canManageRBAC(null)).toBe(false);
+  });
+
+  it('rbac.read를 덮는 그랜트 → true', () => {
+    expect(canManageRBAC({ ...base, permissions: ['pithub'] })).toBe(true);
+    expect(canManageRBAC({ ...base, permissions: ['pithub.rbac'] })).toBe(true);
+    expect(canManageRBAC({ ...base, permissions: ['pithub.rbac.read'] })).toBe(true);
+  });
+
+  it('덮지 않는 그랜트 → false', () => {
+    expect(canManageRBAC({ ...base, permissions: ['pithub.race.read'] })).toBe(false);
+    expect(canManageRBAC({ ...base, permissions: ['pithub.rbac.update'] })).toBe(false);
+    expect(canManageRBAC({ ...base, permissions: [] })).toBe(false);
+  });
+
+  // canViewAnalysis와 다른 점: 구서버 폴백이 없다 — /rbac/*가 없는 서버에서
+  // admin 불리언만 보고 화면을 열면 전부 404가 되는 빈 화면이 된다.
+  it('permissions 부재(구서버) → admin이어도 false', () => {
+    expect(canManageRBAC({ ...base, admin: true })).toBe(false);
   });
 });

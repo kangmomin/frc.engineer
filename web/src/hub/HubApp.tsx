@@ -20,6 +20,7 @@ import { MarketManage } from './screens/MarketManage';
 import { Profile } from './screens/Profile';
 import { Feedback } from './screens/Feedback';
 import { Analysis } from './screens/Analysis';
+import { Access } from './screens/Access';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket } from './data/platform';
 import type { PlatformLedgerEntry } from './data/platform';
@@ -27,7 +28,7 @@ import {
   captureTokenFromFragment, fetchMe, beginSteamLogin, platformLogout, createPairingCode, getSessionToken,
 } from './data/session';
 import type { PlatformAccount } from './data/session';
-import { canViewAnalysis } from './data/permissions';
+import { canViewAnalysis, canManageRBAC } from './data/permissions';
 
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
 
@@ -205,6 +206,16 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
               <Placeholder t={t} title={PLACEHOLDER.analysis.title} note={PLACEHOLDER.analysis.note} />
             )
           )}
+
+          {/* ACCESS: rbac 권한이 있을 때만. Sidebar가 항목 자체를 감추지만, 권한을
+              잃은 채 화면이 열려 있는 경우(회수 후 재조회)를 위해 여기서도 막는다. */}
+          {active === 'access' && (
+            canManageRBAC(platformAccount) ? (
+              <Access t={t} market={platformMkt} selfAccountId={platformAccount?.id ?? null} />
+            ) : (
+              <Placeholder t={t} title="ACCESS" note="권한 관리는 rbac 권한이 있는 계정에서만 열립니다." />
+            )
+          )}
         </main>
       </div>
     </div>
@@ -240,6 +251,7 @@ function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
     case 'analysis': return 'ANALYSIS';
     case 'profile': return 'PROFILE';
     case 'feedback': return 'FEEDBACK';
+    case 'access': return 'ACCESS · 권한 관리';
   }
 }
 

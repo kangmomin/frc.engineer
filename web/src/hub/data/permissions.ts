@@ -19,3 +19,11 @@ export function canViewAnalysis(account: PlatformAccount | null): boolean {
   if (account.permissions) return hasPermission(account.permissions, 'pithub.race-analyze.read');
   return account.admin === true;
 }
+
+// canManageRBAC: 허브 ACCESS 스크린 게이트. canViewAnalysis와 달리 구서버 admin
+// 불리언 폴백을 두지 않는다 — 이 화면이 호출하는 /rbac/* 자체가 RBAC 서버에만
+// 존재하므로, 폴백은 없는 API를 부르는 빈 화면만 만든다. 진짜 경계는 서버 게이트다.
+export function canManageRBAC(account: PlatformAccount | null): boolean {
+  if (!account?.permissions) return false;
+  return hasPermission(account.permissions, 'pithub.rbac.read');
+}
