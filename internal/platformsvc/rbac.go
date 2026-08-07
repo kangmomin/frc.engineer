@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,6 +23,12 @@ import (
 const (
 	maxRolePermissions = 64
 	maxAccountRoles    = 16
+	// maxAccountSearch caps one account-picker page. The picker is a search
+	// box, not a directory: past this the operator narrows the query.
+	maxAccountSearch = 50
+	// maxAccountQuery bounds the search term so a pathological pattern can't
+	// be handed to ILIKE.
+	maxAccountQuery = 64
 )
 
 // Role is a named permission set as returned by the management API.
@@ -194,6 +201,67 @@ func (s *Store) SetRolePermissions(ctx context.Context, name string, perms []str
 		return fmt.Errorf("platformsvc: set role permissions: %w", err)
 	}
 	return nil
+}
+
+// AccountRoles is one account with its role assignments — the management UI's
+// account picker row. Deliberately not the full account shape: the picker needs
+// identity and roles, nothing else.
+type AccountRoles struct {
+	ID        string   `json:"id"`
+	Persona   string   `json:"persona"`
+	AvatarURL string   `json:"avatarUrl,omitempty"`
+	Kind      string   `json:"kind"`
+	Roles     []string `json:"roles"`
+}
+
+// likeEscape neutralizes LIKE wildcards so a persona containing % or _ matches
+// literally. Pairs with `ESCAPE '\'` at the call site.
+func likeEscape(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+// SearchAccounts returns accounts whose persona contains q (case-insensitive),
+// each with its assigned roles, capped at maxAccountSearch. An empty q returns
+// the first page so the picker opens on real rows rather than a blank box.
+// System accounts (treasury, fee sink) are included: they are assignable rows
+// in the same table, and hiding them would misrepresent who holds what.
+func (s *Store) SearchAccounts(ctx context.Context, q string) ([]AccountRoles, error) {
+	q = strings.TrimSpace(q)
+	if len([]rune(q)) > maxAccountQuery {
+		q = string([]rune(q)[:maxAccountQuery])
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.persona, a.avatar_url, a.kind,
+		       ARRAY(
+		           SELECT r.name FROM platform.account_roles ar
+		           JOIN platform.roles r ON r.id = ar.role_id
+		           WHERE ar.account_id = a.id ORDER BY r.name
+		       )
+		FROM platform.accounts a
+		WHERE $1 = '' OR a.persona ILIKE '%' || $2 || '%' ESCAPE '\'
+		ORDER BY a.persona, a.created_at
+		LIMIT $3`,
+		q, likeEscape(q), maxAccountSearch)
+	if err != nil {
+		return nil, fmt.Errorf("platformsvc: search accounts: %w", err)
+	}
+	defer rows.Close()
+	out := []AccountRoles{}
+	for rows.Next() {
+		var a AccountRoles
+		if err := rows.Scan(&a.ID, &a.Persona, &a.AvatarURL, &a.Kind, &a.Roles); err != nil {
+			return nil, fmt.Errorf("platformsvc: search accounts: %w", err)
+		}
+		if a.Roles == nil {
+			a.Roles = []string{}
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("platformsvc: search accounts: %w", err)
+	}
+	return out, nil
 }
 
 // GetAccountRoles returns the role names assigned to the account, sorted.

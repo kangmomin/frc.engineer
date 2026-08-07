@@ -161,6 +161,7 @@ func main() {
 	mux.HandleFunc("POST /rbac/roles", srv.handleRBACCreateRole)
 	mux.HandleFunc("POST /rbac/roles/{name}/delete", srv.handleRBACDeleteRole)
 	mux.HandleFunc("POST /rbac/roles/{name}/permissions", srv.handleRBACSetRolePermissions)
+	mux.HandleFunc("GET /rbac/accounts", srv.handleRBACSearchAccounts)
 	mux.HandleFunc("GET /rbac/accounts/{id}/roles", srv.handleRBACGetAccountRoles)
 	mux.HandleFunc("POST /rbac/accounts/{id}/roles", srv.handleRBACSetAccountRoles)
 
@@ -1283,6 +1284,26 @@ func (s *server) handleRBACSetRolePermissions(w http.ResponseWriter, r *http.Req
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRBACSearchAccounts backs the management UI's account picker: accounts
+// matching ?q= (persona substring, empty = first page) with their roles. Read
+// path, so it takes no mutation budget. The per-account GET below stays as the
+// by-id lookup for tooling that already knows the UUID.
+func (s *server) handleRBACSearchAccounts(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.rbacGate(ctx, w, r, rbac.PermRBACRead, false); !ok {
+		return
+	}
+	accounts, err := s.store.SearchAccounts(ctx, r.URL.Query().Get("q"))
+	if err != nil {
+		s.log.Error("rbac search accounts", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, accounts)
 }
 
 // handleRBACGetAccountRoles returns one account's role assignments.
