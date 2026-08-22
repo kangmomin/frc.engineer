@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Silverstone 종합 분석 · 2026-08-14</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0e13; --card:#141a23; --card2:#1a212c; --line:#26303d;
+  --tx:#e4e9f0; --tx2:#93a1b5; --tx3:#63718a;
+  --a:#4ade80; --b:#fbbf24; --r:#f87171; --i:#60a5fa;
+}
+body{background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+  line-height:1.7;-webkit-font-smoothing:antialiased;padding-bottom:70px}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px}
+.hero{padding:46px 0 30px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--tx3);text-transform:uppercase;font-weight:600}
+h1{font-size:29px;line-height:1.32;margin:12px 0 14px;letter-spacing:-.02em}
+.lede{color:var(--tx2);font-size:15px}
+.lede b{color:var(--tx)}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;
+  padding:5px 13px;font-size:12.5px;color:var(--tx2)}
+nav{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.94);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);margin-bottom:34px}
+nav .wrap{display:flex;gap:5px;overflow-x:auto;padding:11px 16px;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav a{color:var(--tx2);text-decoration:none;font-size:13px;white-space:nowrap;
+  padding:5px 11px;border-radius:7px;transition:.15s}
+nav a:hover{background:var(--card2);color:var(--tx)}
+section{margin:0 0 48px}
+h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em;scroll-margin-top:66px}
+h2 .num{color:var(--tx3);font-size:14px;font-weight:600;margin-right:9px}
+.sub{color:var(--tx3);font-size:13.5px;margin-bottom:20px}
+h3{font-size:15.5px;margin:28px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0}
+.note{border-left:3px solid var(--i);background:rgba(96,165,250,.07);
+  border-radius:0 10px 10px 0;padding:14px 16px;margin:14px 0;font-size:14px;color:var(--tx2)}
+.warn{border-left-color:var(--b);background:rgba(251,191,36,.07)}
+.bad{border-left-color:var(--r);background:rgba(248,113,113,.07)}
+.good{border-left-color:var(--a);background:rgba(74,222,128,.07)}
+.note b{color:var(--tx)}
+.key{background:linear-gradient(135deg,rgba(74,222,128,.1),rgba(96,165,250,.05));
+  border:1px solid rgba(74,222,128,.3);border-radius:14px;padding:22px;margin:18px 0}
+.key.amber{background:linear-gradient(135deg,rgba(251,191,36,.09),rgba(248,113,113,.04));
+  border-color:rgba(251,191,36,.3)}
+.key .k{font-size:11px;letter-spacing:.13em;color:var(--a);font-weight:700;text-transform:uppercase}
+.key.amber .k{color:var(--b)}
+.key p{margin-top:9px;font-size:15.5px;line-height:1.65}
+.key p+p{margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(142px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}
+.stat .l{font-size:11.5px;color:var(--tx3);margin-bottom:5px}
+.stat .v{font-size:21px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.stat .d{font-size:11.5px;color:var(--tx3);margin-top:3px}
+.va{color:var(--a)}.vb{color:var(--b)}.vr{color:var(--r)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0;
+  border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:460px}
+th{background:var(--card2);color:var(--tx2);font-weight:600;text-align:left;
+  padding:11px 13px;font-size:12px;letter-spacing:.03em;white-space:nowrap}
+td{padding:10px 13px;border-top:1px solid var(--line);color:var(--tx2);vertical-align:top}
+td.n{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td strong{color:var(--tx)}
+tr.hl td{background:rgba(74,222,128,.06)}
+tr.hlr td{background:rgba(248,113,113,.06)}
+.led{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;
+  background:var(--card2);border:1px solid var(--line);border-radius:12px;
+  padding:16px;overflow-x:auto;line-height:2;white-space:pre;color:var(--tx2)}
+.led .pos{color:var(--a)}.led .neg{color:var(--r)}.led .zero{color:var(--tx3)}
+.led .tot{color:var(--tx);font-weight:700}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 8px 10px;margin:14px 0}
+.legend{display:flex;gap:15px;justify-content:center;flex-wrap:wrap;font-size:12.5px;color:var(--tx2);margin-bottom:10px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.p-win{background:rgba(251,191,36,.16);color:var(--b)}
+.p-sg{background:rgba(248,113,113,.13);color:#fca5a5}
+.p-pen{background:rgba(251,191,36,.13);color:var(--b)}
+.p-cln{background:rgba(74,222,128,.13);color:var(--a)}
+.p-ri{background:rgba(96,165,250,.14);color:var(--i)}
+.p-na{background:rgba(99,113,138,.18);color:var(--tx3)}
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;background:var(--card2);
+  padding:1.5px 6px;border-radius:5px;font-size:.88em;color:#a5d6ff;border:1px solid var(--line)}
+.foot{border-top:1px solid var(--line);margin-top:46px;padding-top:22px;color:var(--tx3);font-size:12.5px}
+@media(max-width:600px){
+  h1{font-size:24px} .hero{padding:32px 0 24px} h2{font-size:19px}
+  .stat .v{font-size:19px} .led{font-size:11px}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Race Analysis · Silverstone Circuit · United Kingdom</div>
+  <h1>리드를 빼앗은 건 언더컷, 되찾은 건 무결점이었다</h1>
+  <p class="lede">2026-08-14 실버스톤 25랩, 20대 멀티플레이. <b>HARANG</b>과 <b>Lumen</b>은 25랩 내내
+     1.8초 이상 벌어진 적이 없다. Lumen은 L9 언더컷으로 리드를 빼앗아 7랩을 지켰고,
+     HARANG은 L18에 되찾은 뒤 두 차례의 접촉 공세를 버텨 <b>0.46초</b> 차로 이겼다.
+     격차의 재료는 페이스가 아니라 <b>실수의 유무</b>였다 — HARANG은 25랩 동안 스핀 0, 락업 0, 페널티 0.</p>
+  <div class="meta">
+    <span class="chip">F1 26 · 25랩 · 그리드 20대</span>
+    <span class="chip">KST 08-14 23:55 시작</span>
+    <span class="chip">텔레메트리 5계정</span>
+    <span class="chip">사고 클립 17개 → 12국면</span>
+    <span class="chip">FIA 2026 규정 과실 판정</span>
+  </div>
+</header>
+</div>
+
+<nav><div class="wrap">
+  <a href="#result">결과</a>
+  <a href="#duel">우승 결투</a>
+  <a href="#ledger">0.46초 원장</a>
+  <a href="#strategy">전략·피트</a>
+  <a href="#fia">사고·FIA 판정</a>
+  <a href="#penalty">페널티</a>
+  <a href="#dyn">다이내믹스</a>
+  <a href="#verify">검증</a>
+  <a href="#limit">한계</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- 01 결론 -->
+<section id="result">
+  <div class="key">
+    <div class="k">핵심 결론</div>
+    <p><b>승부의 구조</b> — 두 사람의 국면별 순수 페이스 차는 랩당 0.1초 미만이었다
+       (미디엄 L2–8: 91.300 vs 91.398 / 하드 L12–17: 90.832 vs 90.850).
+       리드는 딱 두 번 바뀌었고 둘 다 트랙 위 배틀이 아닌 다른 메커니즘이었다:
+       <b>L9 언더컷(스윙 −2.32초)</b>과 <b>L18 재역전(한 랩에 +0.84초)</b>.</p>
+    <p><b>격차의 재료</b> — 최종 0.46초를 만든 최대 단일 항목은 <b>L6 접촉 직후 Lumen의 스핀(+1.06초)</b>이다.
+       Lumen은 락업 30회·스핀 2회를 기록했고 HARANG은 <b>둘 다 0회</b>.
+       종반 Lumen의 접촉 공세 2회(L23·L24)는 FIA 2026 규정 기준 모두 Lumen 과실 우세로 판정됐다.</p>
+  </div>
+
+  <h2><span class="num">01</span>결과 요약</h2>
+  <p class="sub">누적 랩타임 재구성 기준 (스탠딩 스타트 공통 기점 · 비업로더 15대의 순위는 미상)</p>
+  <div class="grid">
+    <div class="stat"><div class="l">우승</div><div class="v vb">HARANG</div><div class="d">2320.1s · Race Winner 이벤트 확인</div></div>
+    <div class="stat"><div class="l">마진 (vs Lumen)</div><div class="v va">+0.46s</div><div class="d">Lumen P2는 [추정]</div></div>
+    <div class="stat"><div class="l">레이스 베스트랩*</div><div class="v">1:30.099</div><div class="d">HARANG L2 (*업로더 5인 중)</div></div>
+    <div class="stat"><div class="l">Q3 (업로더 3인 중 최속)</div><div class="v">1:29.262</div><div class="d">HARANG · Lumen +0.446 · 폴 여부 [추정]</div></div>
+  </div>
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>누적 시간</th><th>갭</th><th>베스트랩</th><th>스톱</th><th>페널티</th><th>비고</th></tr>
+    <tr class="hl"><td><strong>HARANG</strong> <span class="pill p-win">WINNER</span></td><td class="n">2320.1s</td><td class="n">—</td><td class="n">1:30.099 (L2)</td><td class="n">1 (L11)</td><td><span class="pill p-cln">없음</span></td><td>스핀 0 · 락업 0</td></tr>
+    <tr><td><strong>Lumen</strong></td><td class="n">2320.5s</td><td class="n">+0.46</td><td class="n">1:30.195 (L2)</td><td class="n">1 (L10)</td><td><span class="pill p-cln">없음</span></td><td>P2 [추정] · L11–17 리드</td></tr>
+    <tr><td><strong>sumin07198</strong></td><td class="n">2368.7s</td><td class="n">+48.6</td><td class="n">1:31.150 (L2)</td><td class="n">1 (L12)</td><td>경고 1 (L11 접촉)</td><td>업로더 중 P3 [추정]</td></tr>
+    <tr><td><strong>RedJamong</strong></td><td class="n">2402.3s</td><td class="n">+82.3</td><td class="n">1:30.834 (L2)</td><td class="n">2 (L10·L19)</td><td><span class="pill p-sg">Stop-Go</span> + <span class="pill p-pen">TP</span></td><td>L1 혼전 연루 · L19 재스톱</td></tr>
+    <tr><td><strong>AVA STREET CLUB</strong></td><td class="n">2랩 기록</td><td class="n">—</td><td class="n">1:37.518 (L2)</td><td class="n">1 (L1)</td><td><span class="pill p-sg">Stop-Go</span></td><td>L2 이후 기록 없음 — 리타이어 [추정]</td></tr>
+  </table></div>
+  <div class="note">순위와 갭은 5개 계정의 <b>누적 랩타임을 재구성</b>한 값이다. 게임의 공식 최종 순위(타임 페널티
+    가산 포함)는 업로드되지 않으며, 비업로더 15대 중 이 4명 사이에 끼어든 차가 있을 수 있다 — 그래서 P2·P3에
+    [추정]을 붙였다. 단 HARANG의 우승은 게임 이벤트 <code>Race Winner</code>(L26)로 직접 확인된다.</div>
+</section>
+
+<!-- 02 결투 -->
+<section id="duel">
+  <h2><span class="num">02</span>우승 결투 — 25랩 내내 1.8초 이내</h2>
+  <p class="sub">갭 = Lumen 누적 − HARANG 누적. 양수면 HARANG 리드. L10은 피트 사이클 중간값(+23.9s)이라 축에서 클램프.</p>
+  <div class="chart">
+    <div class="legend"><span><i style="background:var(--b)"></i>Lumen − HARANG 갭</span>
+      <span><i style="background:var(--r);height:8px;width:8px;border-radius:50%"></i>접촉 국면</span></div>
+    <svg viewBox="0 0 820 230" width="100%" height="auto" role="img" aria-label="HARANG-Lumen 갭 추이">
+      <line x1="45" y1="143" x2="775" y2="143" stroke="#26303d" stroke-width="1" stroke-dasharray="4 4"/>
+      <text x="38" y="147" fill="#63718a" font-size="10" text-anchor="end">0s</text>
+      <line x1="45" y1="100" x2="775" y2="100" stroke="#1a212c" stroke-width="1"/>
+      <text x="38" y="104" fill="#63718a" font-size="10" text-anchor="end">+1</text>
+      <line x1="45" y1="58" x2="775" y2="58" stroke="#1a212c" stroke-width="1"/>
+      <text x="38" y="62" fill="#63718a" font-size="10" text-anchor="end">+2</text>
+      <line x1="45" y1="185" x2="775" y2="185" stroke="#1a212c" stroke-width="1"/>
+      <text x="38" y="189" fill="#63718a" font-size="10" text-anchor="end">−1</text>
+      <polyline fill="none" stroke="#fbbf24" stroke-width="2.2" points="45,122 75,117 106,116 136,137 167,133 197,88 228,94 258,93 288,68 319,15 349,166 380,176 410,163 440,167 471,171 501,173 532,162 562,126 592,121 623,134 653,131 684,133 714,121 745,136 775,123"/>
+      <circle cx="197" cy="88" r="5" fill="#f87171"/><text x="197" y="76" fill="#f87171" font-size="10" text-anchor="middle">L6 접촉+스핀</text>
+      <circle cx="471" cy="171" r="5" fill="#f87171"/><text x="471" y="207" fill="#f87171" font-size="10" text-anchor="middle">L15 접촉</text>
+      <circle cx="714" cy="121" r="5" fill="#f87171"/><text x="700" y="106" fill="#f87171" font-size="10" text-anchor="middle">L23</text>
+      <circle cx="745" cy="136" r="5" fill="#f87171"/><text x="757" y="158" fill="#f87171" font-size="10" text-anchor="middle">L24</text>
+      <text x="319" y="30" fill="#63718a" font-size="10" text-anchor="middle">L10 (+23.9 클램프)</text>
+      <text x="349" y="192" fill="#4ade80" font-size="10" text-anchor="middle">언더컷 −0.56</text>
+      <text x="562" y="114" fill="#93a1b5" font-size="10" text-anchor="middle">L18 재역전</text>
+      <g fill="#63718a" font-size="10" text-anchor="middle">
+        <text x="45" y="222">L1</text><text x="167" y="222">L5</text><text x="319" y="222">L10</text>
+        <text x="471" y="222">L15</text><text x="623" y="222">L20</text><text x="775" y="222">L25</text>
+      </g>
+    </svg>
+  </div>
+
+  <h3>5개 국면</h3>
+  <div class="scroll"><table>
+    <tr><th>국면</th><th>랩</th><th>갭 변화</th><th>무슨 일이</th></tr>
+    <tr><td><strong>① 초반 통제</strong></td><td class="n">L1–9</td><td class="n">+0.49 → +1.76</td><td>HARANG 스타트 리드 유지(L1 종료 +0.49). L6 에스에서 2와이드 접촉(국면 G4) 직후 Lumen 스핀 기록 — 이 랩에만 +1.06s. 접촉 자체는 racing incident 판정(§05)</td></tr>
+    <tr><td><strong>② 언더컷</strong></td><td class="n">L9–11</td><td class="n">+1.76 → −0.56</td><td>Lumen이 L9 종료 피트인(M→H). 프레시 하드 L11 1:30.616 vs HARANG 피트랩 1:55.077. 스윙 −2.32s로 리드 역전</td></tr>
+    <tr><td><strong>③ Lumen 리드</strong></td><td class="n">L11–17</td><td class="n">−0.56 → −0.46</td><td>7랩간 최대 −0.80. HARANG이 L15 제동 구간에서 후미 접촉(G8 — HARANG 과실 우세)했으나 추월 실패</td></tr>
+    <tr><td><strong>④ 재역전</strong></td><td class="n">L18</td><td class="n">−0.46 → +0.38</td><td>한 랩에 +0.84s. 이 랩엔 접촉 클립도 Lumen의 스핀·락업 급증도 없다 — 메커니즘 미확정(§10)</td></tr>
+    <tr><td><strong>⑤ 파이널 어택</strong></td><td class="n">L19–25</td><td class="n">+0.38 → +0.46</td><td>L23 병주 접촉(G10)·L24 제동 구간 접촉(G11) — 둘 다 FIA 기준 Lumen 과실 우세. L24 종료 시 갭 +0.14까지 압박했으나 최종랩 HARANG +0.32 회수</td></tr>
+  </table></div>
+</section>
+
+<!-- 03 원장 -->
+<section id="ledger">
+  <h2><span class="num">03</span>0.46초는 어디서 왔나 — 원장</h2>
+  <p class="sub">국면별 갭 변화의 합. 성분 합계 = 최종 마진 (오차 0.00s)</p>
+  <div class="led">① L1–9   초반 통제 (L6 Lumen 스핀 +1.06 포함)   <span class="pos">+1.76</span>
+② L10–11 언더컷 스윙                          <span class="neg">−2.32</span>
+③ L12–17 Lumen 리드 유지 국면                 <span class="pos">+0.10</span>
+④ L18    재역전                               <span class="pos">+0.84</span>
+⑤ L19–22 소강                                 <span class="neg">−0.15</span>
+⑥ L23–25 파이널 어택 (접촉 2회)               <span class="pos">+0.23</span>
+──────────────────────────────────────────────
+합계                                          <span class="tot">+0.46  = 최종 마진 ✓</span></div>
+  <div class="note good"><b>재조정 통과</b>: 여섯 성분의 합 +0.46s가 누적 랩타임 최종 마진(2320.5 − 2320.1)과
+    소수 둘째 자리까지 일치한다. 페이스가 대등했기에(국면 평균 델타 &lt; 0.1s/랩) 원장의 큰 항목은 전부
+    <b>이벤트</b>다: 스핀 하나, 피트 스윙 하나, 재역전 하나.</div>
+</section>
+
+<!-- 04 전략·피트 -->
+<section id="strategy">
+  <h2><span class="num">04</span>전략과 피트 — 전원 M→H 1스톱, 다른 건 타이밍뿐</h2>
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>스틴트</th><th>피트랩</th><th>레인 통과</th><th>정지 작업</th><th>랩타임 손실</th></tr>
+    <tr><td><strong>Lumen</strong></td><td>M 1–9 → H 10–25</td><td class="n">L10 (S1)</td><td class="n">33.2s</td><td class="n">2.5s</td><td class="n">24.7s</td></tr>
+    <tr><td><strong>HARANG</strong></td><td>M 1–10 → H 11–25</td><td class="n">L11 (S1)</td><td class="n">33.5s</td><td class="n">2.5s</td><td class="n">24.9s</td></tr>
+    <tr><td><strong>sumin07198</strong></td><td>M 1–11 → H 12–25</td><td class="n">L12 (S1)</td><td class="n">33.5s</td><td class="n">2.5s</td><td class="n">24.7s</td></tr>
+    <tr class="hlr"><td><strong>RedJamong</strong></td><td>M 1–9 → H 10–25</td><td class="n">L10 + L19</td><td class="n">33.0s (마지막 계측)</td><td class="n">2.5s</td><td class="n">37.7s + 25.5s</td></tr>
+  </table></div>
+  <h3>피트 손실 분해가 맞아떨어진다</h3>
+  <p style="font-size:14.5px;color:var(--tx2)">실버스톤 피트 레인 통과는 <b>~33초</b>(1스톱 3계정 모두 33.2~33.5s로 동일 — 이 필드가
+  누적이 아니라 <b>1회 통과 시간</b>임을 보여준다). 레인이 우회하는 트랙 구간을 레이스 속도로 달리면 ~11초이므로,
+  순손실 ≈ 33 − 11 + 정지 2.5 ≈ <b>24.5초</b>. 실제 S1 랩타임 손실 관측값 24.7~24.9초와 일치한다.</p>
+  <div class="note warn"><b>RedJamong의 두 스톱</b> — L10 스톱은 손실 37.7s로 정상 스톱보다 +12.8s 크다:
+    L1 혼전으로 받은 Stop-Go 서빙이 이 패스에 포함된 것과 정합 [추정].
+    L19 스톱은 <b>컴파운드 변화 없이</b>(H→H) 25.5s — L17 접촉(G9) 2랩 뒤라 손상 수리로 추정 [추정].</div>
+  <h3>언더컷의 실제 크기</h3>
+  <p style="font-size:14.5px;color:var(--tx2)">L9 종료 시점 Lumen은 1.76s 뒤였다. Lumen의 피트랩(L10 1:54.449) 동안 HARANG은 낡은 미디엄으로
+  1:32.309밖에 못 갔고, HARANG의 피트랩(L11 1:55.077) 동안 Lumen은 프레시 하드로 <b>1:30.616</b>을 꽂았다.
+  두 랩 스윙 −2.32s → L11 종료 시 Lumen이 0.56s 앞. 교과서적 언더컷이고, 이 레이스에서 리드가 바뀐 두 번 중 한 번이다.</p>
+</section>
+
+<!-- 05 사고·FIA -->
+<section id="fia">
+  <h2><span class="num">05</span>사고 12국면 — FIA 2026 규정 과실 판정</h2>
+  <p class="sub">판정 기준: 2026 F1 Driving Standards Guidelines + Penalty Guidelines + ISC Appendix L (위키 §3 절차).
+    게임 판정과 병기하며 게임 판정을 근거로 쓰지 않는다. 미러 라인 임계값 등 일부 기하 기준은 [추정].</p>
+  <div class="note"><b>방법</b> — 5계정이 같은 세션을 업로드해 클립 17개가 수집됐고, 세션 시각(t0) 5초 그룹핑으로
+    <b>12개 국면</b>으로 병합했다. 양측 시점이 모두 있는 5개 국면(G4·G5·G8·G10·G11)은 상호 기하(dLong/dLat)가
+    부호 반전으로 0.1~0.5m 이내 일치 — 계정 간 좌표 교차 검증 통과.</div>
+  <div class="scroll"><table>
+    <tr><th>국면</th><th>랩</th><th>당사자</th><th>상황 (텔레메트리)</th><th>게임 판정</th><th>FIA 판정 (확신도)</th></tr>
+    <tr><td class="n">G0</td><td class="n">L1</td><td>10대 혼전<br>(T1 진입)</td><td>제어 상실한 Dokkaebi(슬립 −18.7°, yaw −129°/s)가 후방에서 RedJamong 쪽으로 슬라이드. 연쇄의 기점은 클립 밖</td><td>Stop-Go 5장<br>(§06 참조)</td><td><span class="pill p-na">판정 불가 — 서술만</span> 단일 시점 클립으로 10대 과실 배분 불가. 랩1 T1 관용 원칙(DSG-D) 적용 국면 (낮음)</td></tr>
+    <tr><td class="n">G1</td><td class="n">L3</td><td>sumin ↔ AD</td><td>고속 코너, AD가 인사이드에서 2.4m 뒤진 채(미러 라인 미달) 유지 중 측면 수렴 접촉</td><td>없음</td><td><b>AD 과실 우세</b> — DSG-A(i) 미충족 (중간)</td></tr>
+    <tr><td class="n">G2</td><td class="n">L4</td><td>RedJamong ↔ DDAO</td><td>중속 코너 진입, 노즈-투-테일(dLong +4.8m). 선행 DDAO의 이상 제동 징후 없음(brk 0.13)</td><td>없음</td><td><b>RedJamong 과실 우세</b> — 후미 추돌 기하 (중간)</td></tr>
+    <tr><td class="n">G3</td><td class="n">L5</td><td>sumin ↔ Leebul</td><td>저속 헤어핀 출구, Leebul 인사이드 반차 앞 + 상호 수렴, 경미 측면 접촉</td><td>없음</td><td><span class="pill p-ri">racing incident</span> (낮음)</td></tr>
+    <tr><td class="n">G4</td><td class="n">L6</td><td><strong>HARANG ↔ Lumen</strong></td><td>226km/h 에스 구간 2와이드(측면 2.7m). 측면 갭은 오히려 벌어지는 중 — 수렴 주도자 없음. 직후 Lumen 스핀 기록</td><td>없음</td><td><span class="pill p-ri">racing incident</span> — 양측 클립 교차 확인 (중간)</td></tr>
+    <tr><td class="n">G5</td><td class="n">L6</td><td>sumin ↔ RedJamong</td><td>저속 헤어핀, RedJamong 인사이드 완전 병주(dLong 0.0m — 미러 라인 충족, 인사이드 권리 성립), 상호 수렴 측면 터치</td><td>없음</td><td><span class="pill p-ri">racing incident</span> (중간)</td></tr>
+    <tr><td class="n">G6</td><td class="n">L11</td><td>sumin ↔ kolly</td><td>제동 구간, 1초간 +9.8m 접근 후 후미 추돌(brk 0.60 급제동). 선행차 이상 제동 없음</td><td>sumin 경고<br>(Small collision)</td><td><b>sumin 과실 우세</b> — 게임 판정과 일치 (높음)</td></tr>
+    <tr><td class="n">G7</td><td class="n">L13</td><td>HARANG ↔ Dokkaebi</td><td>백마커 [추정] 통과 중 대각 경미 접촉. 최근접이 충돌 마커 +1.0s 뒤라 기하 신뢰 낮음</td><td>없음</td><td><span class="pill p-ri">racing incident</span> (낮음)</td></tr>
+    <tr><td class="n">G8</td><td class="n">L15</td><td><strong>HARANG ↔ Lumen</strong></td><td>제동 구간 추격 중 1초간 3.2m 접근, 선행 Lumen 후미 접촉(dLong +4.8m — 미러 라인 미충족)</td><td>없음</td><td><b>HARANG 과실 우세</b> — DSG-A(i) 미충족 상태의 추돌 기하 (중간)</td></tr>
+    <tr><td class="n">G9</td><td class="n">L17</td><td>RedJamong ↔ Leebul</td><td>코너 진입 상호 수렴, RedJamong 인사이드 레벨(권리 성립), 경미 측면 접촉. RedJamong은 2랩 뒤 수리 스톱 [추정]</td><td>없음</td><td><span class="pill p-ri">racing incident</span> (낮음)</td></tr>
+    <tr class="hlr"><td class="n">G10</td><td class="n">L23</td><td><strong>HARANG ↔ Lumen</strong></td><td>완전 병주(dLong ±0.5m). HARANG 직진 유지(steer 0.00, yaw −3°/s), Lumen이 1초간 측면 갭 5.4→1.9m 수렴(yaw +40°/s)</td><td>없음</td><td><b>Lumen 과실 우세</b> — 수렴 전량이 Lumen 쪽. 단 코너 출구 자연 궤적이면 racing incident 반론 여지 (중간)</td></tr>
+    <tr class="hlr"><td class="n">G11</td><td class="n">L24</td><td><strong>HARANG ↔ Lumen</strong></td><td>제동 구간(양측 제동 중), Lumen이 4.7m 뒤에서(미러 라인 미충족) 1초간 2.0m 수렴, 리어 쿼터 접촉</td><td>없음</td><td><b>Lumen 과실 우세</b> — DSG-A(i) 미충족 + 수렴 주도 (중간~높음)</td></tr>
+  </table></div>
+  <div class="note warn"><b>우승 결투의 접촉 4회 스코어카드</b> — G4 racing incident · G8 HARANG 과실 · G10/G11 Lumen 과실.
+    게임은 네 번 모두 페널티를 주지 않았다. FIA 기준으로도 전부 경미 접촉(속도差 ≤ 5km/h, 양측 완주)이라
+    실제 스튜어드라도 조사 후 No Further Action 가능성이 높은 수준 — 다만 과실 방향은 위와 같다.</div>
+</section>
+
+<!-- 06 페널티 -->
+<section id="penalty">
+  <h2><span class="num">06</span>페널티 — 5중 중복을 걷어내면 25건</h2>
+  <p class="sub">5개 계정이 같은 세션을 업로드해 이벤트가 최대 5중으로 중복 기록된다.
+    (드라이버, 메시지, 타임스탬프 ±15s) 클러스터링으로 실제 발부 건수를 복원했다: 원시 361건 → 79 클러스터, 그중 페널티 25건.</p>
+  <div class="grid">
+    <div class="stat"><div class="l">실제 페널티</div><div class="v">25건</div><div class="d">원시 이벤트 361건에서 복원</div></div>
+    <div class="stat"><div class="l">L1 혼전 Stop-Go</div><div class="v vr">5장</div><div class="d">RedJamong·AVA·Dokkaebi·ryno·yoshi7910</div></div>
+    <div class="stat"><div class="l">업로더 5계정 페널티</div><div class="v">3건</div><div class="d">RedJamong 2 · AVA 1 · 나머지 0</div></div>
+  </div>
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>건수</th><th>내역 (랩은 본인 업로드가 있으면 확정, 아니면 근사 <code>?</code>)</th></tr>
+    <tr><td>GORK</td><td class="n">4</td><td>Unserved stop-go→TP L3? · Multiple warnings TP L16? · Big collision Stop-Go L18? · 블루플랙 무시 Stop-Go L23?</td></tr>
+    <tr><td>AD</td><td class="n">3</td><td>Unserved stop-go→TP L3? · 피트 과속 Stop-Go L8? · 피트 과속 Stop-Go L20?</td></tr>
+    <tr><td>Visacard</td><td class="n">3</td><td>Unserved stop-go→TP L3? · Big collision Stop-Go L18? · Multiple warnings TP L22?</td></tr>
+    <tr class="hlr"><td><strong>RedJamong</strong></td><td class="n">2</td><td>Big collision Stop-Go <b>L1</b>(혼전, 본인 랩 확정) · Multiple warnings TP <b>L23</b></td></tr>
+    <tr><td>ANT gami</td><td class="n">2</td><td>Unserved stop-go→TP L3? · 피트 과속 Stop-Go L11?</td></tr>
+    <tr><td>DDAO / Leebul</td><td class="n">2+2</td><td>각각 Multiple warnings TP ×2</td></tr>
+    <tr><td>AVA STREET CLUB</td><td class="n">1</td><td>Big collision Stop-Go <b>L1</b>(본인 랩 확정)</td></tr>
+    <tr><td>Dokkaebi · ryno · yoshi7910 · kolly · ddlpa0505 · ocroissanton</td><td class="n">각 1</td><td>L1 혼전 Stop-Go 3장 + Multiple warnings TP 3건</td></tr>
+  </table></div>
+  <div class="note"><b>랩 표기 원칙</b> — 이벤트의 랩 태그는 <b>업로더의 현재 랩</b>이다. 따라서 본인이 업로더인
+    드라이버(RedJamong·AVA·sumin)의 페널티 랩만 확정이고, 비업로더의 랩은 근사치라 <code>?</code>를 붙였다.</div>
+</section>
+
+<!-- 07 다이내믹스 -->
+<section id="dyn">
+  <h2><span class="num">07</span>드라이버 다이내믹스 — 0.46초의 정체</h2>
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>스핀</th><th>락업</th><th>언더스티어 평균</th><th>오버스티어 평균</th><th>특이 랩</th></tr>
+    <tr class="hl"><td><strong>HARANG</strong></td><td class="n">0</td><td class="n">0</td><td class="n">29.1%</td><td class="n">0.16%</td><td>없음 — 25랩 무결점</td></tr>
+    <tr><td><strong>Lumen</strong></td><td class="n">2</td><td class="n">30</td><td class="n">22.6%</td><td class="n">0.56%</td><td>L6 스핀(G4 접촉 직후, 그 랩 +1.06s) · L26 쿨다운랩 스핀</td></tr>
+    <tr><td><strong>sumin07198</strong></td><td class="n">0</td><td class="n">50</td><td class="n">35.2%</td><td class="n">0.05%</td><td>L3 락업 5(G1 접촉 랩) · L25 락업 4</td></tr>
+    <tr><td><strong>RedJamong</strong></td><td class="n">0</td><td class="n">9</td><td class="n">26.1%</td><td class="n">0.68%</td><td>—</td></tr>
+    <tr><td><strong>AVA STREET CLUB</strong></td><td class="n">5</td><td class="n">3</td><td class="n">39.1%</td><td class="n">5.21%</td><td>L3에만 스핀 4 · OS 14.4%</td></tr>
+  </table></div>
+  <p style="font-size:14.5px;color:var(--tx2)">Lumen의 낮은 언더스티어(22.6%)와 많은 락업(30회)은 더 예리한 프론트를 가진
+  셋업/스타일을 시사한다 — 페이스는 HARANG과 대등했지만 그 대가가 L6 스핀이었다. sumin은 반대로 언더스티어 35.2% +
+  락업 50회의 프론트-리미티드 조합으로 랩당 ~1.3초를 잃었다. <b>결국 우승 결투의 승부처는 페이스가 아니라 관리였다.</b></p>
+</section>
+
+<!-- 08 검증 -->
+<section id="verify">
+  <h2><span class="num">08</span>검증 — 이 리포트가 스스로를 믿는 근거</h2>
+  <ul class="ck" style="list-style:none;margin:12px 0">
+    <li style="padding:8px 0;border-bottom:1px solid rgba(38,48,61,.55)">✅ <b>원장 재조정</b> — 결투 갭 6성분 합 +0.46s = 최종 마진 (오차 0.00s)</li>
+    <li style="padding:8px 0;border-bottom:1px solid rgba(38,48,61,.55)">✅ <b>피트 손실 재조정</b> — 레인 33s − 우회 구간 ~11s + 정지 2.5s ≈ 관측 손실 24.7~24.9s</li>
+    <li style="padding:8px 0;border-bottom:1px solid rgba(38,48,61,.55)">✅ <b>계정 간 좌표 교차 검증</b> — 양측 클립 5개 국면의 상호 dLong/dLat가 부호 반전으로 0.1~0.5m 이내 일치</li>
+    <li style="padding:8px 0;border-bottom:1px solid rgba(38,48,61,.55)">✅ <b>이벤트 중복 복원</b> — 361 원시 이벤트가 (드라이버·메시지·ts±15s) 클러스터로 79건 정합. 단순 ÷5 가정은 GORK 사례로 반증되어 폐기</li>
+    <li style="padding:8px 0">✅ <b>독립 신호 정합</b> — L6 접촉(클립) ↔ Lumen 스핀(다이내믹스) ↔ +1.06s(랩타임), L11 추돌(클립) ↔ sumin 경고(이벤트), L17 접촉(클립) ↔ L19 무교체 스톱(랩·스틴트)이 서로 다른 데이터 소스에서 교차 확인</li>
+  </ul>
+</section>
+
+<!-- 09 한계 -->
+<section id="limit">
+  <h2><span class="num">09</span>해석 한계</h2>
+  <div class="card" style="font-size:14px;color:var(--tx2)">
+    <p>· <b>랩 단위 갭</b> — 갭은 랩 완료 시점 스냅샷이다. 랩 중간의 순간 순위(특히 L6·L23의 병주)는 클립 기하로만 부분 복원된다.</p>
+    <p style="margin-top:8px">· <b>비업로더 15대</b> — 랩타임·순위 데이터가 전혀 없다. P2/P3 표기가 [추정]인 이유이며, "레이스 베스트랩"도 업로더 5인 한정이다.</p>
+    <p style="margin-top:8px">· <b>타임 페널티 미반영</b> — 누적 랩타임에는 레이스 후 가산되는 타임 페널티(예: RedJamong Multiple warnings)가 포함되지 않는다. 공식 최종 갭은 이보다 벌어졌을 수 있다.</p>
+    <p style="margin-top:8px">· <b>FIA 판정의 기하 임계값</b> — 미러 라인(dLong −0.8m)·차 길이(5.6m)는 [추정] 값이다(위키 §4.0). 판정 확신도에 이미 반영했다.</p>
+    <p style="margin-top:8px">· <b>코너명 미표기</b> — 클립 좌표를 트랙 맵에 대응시킬 기준 데이터가 없어 "에스 구간", "헤어핀" 같은 기하 기반 서술만 사용했다.</p>
+  </div>
+</section>
+
+<!-- 10 미해명 -->
+<section id="unresolved">
+  <h2><span class="num">10</span>미해명 항목</h2>
+  <div class="card" style="font-size:14px;color:var(--tx2)">
+    <p>① <b>L18 재역전의 메커니즘</b> — 한 랩 +0.84s 스윙인데 접촉 클립도, Lumen의 스핀·락업 급증도 없다. 트랙 위 추월인지 Lumen의 (다이내믹스에 안 잡힌) 실수인지 확정 불가.</p>
+    <p style="margin-top:8px">② <b>Stop-Go 서빙 시점</b> — RedJamong의 Stop-Go는 L1 발부인데 서빙 정황(피트 손실 +12.8s)은 L10 스톱에서 관측된다. "3랩 내 서빙" 규칙과 맞지 않는데 Unserved 전환도 없었다 — 게임의 서빙 규칙이 알려진 것과 다르거나, L10 손실에 다른 원인이 있을 수 있다.</p>
+    <p style="margin-top:8px">③ <b>G7의 시각 어긋남</b> — 충돌 마커(t0)와 최근접 시각이 1.0s 어긋난다. 클립 병합 또는 마커 지연으로 보이나 원인 미확인. G7 판정 확신도를 '낮음'으로 둔 이유이며, G4에도 유사한 어긋남(최근접 +0.97s)이 있다.</p>
+  </div>
+</section>
+
+<footer class="foot">
+  race-analysis 스킬 산출물 · 데이터: pithub 플랫폼 DB (세션 8772986355183653734, 계정 5) ·
+  과실 판정 기준: <code>.claude/skills/race-analysis/references/fia-driving-standards.md</code> (FIA 2026 원문 기반) ·
+  생성 2026-08-15
+</footer>
+
+</div>
+</body>
+</html>

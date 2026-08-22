@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monza Short Q 분석 · 2026-08-21</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0e13; --card:#141a23; --card2:#1a212c; --line:#26303d;
+  --tx:#e4e9f0; --tx2:#93a1b5; --tx3:#63718a;
+  --a:#4ade80; --b:#fbbf24; --r:#f87171; --i:#60a5fa;
+}
+body{background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+  line-height:1.7;-webkit-font-smoothing:antialiased;padding-bottom:70px}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px}
+
+.hero{padding:46px 0 30px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--tx3);text-transform:uppercase;font-weight:600}
+h1{font-size:29px;line-height:1.32;margin:12px 0 14px;letter-spacing:-.02em}
+.lede{color:var(--tx2);font-size:15px}
+.lede b{color:var(--tx)}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;
+  padding:5px 13px;font-size:12.5px;color:var(--tx2)}
+
+nav{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.94);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);margin-bottom:34px}
+nav .wrap{display:flex;gap:5px;overflow-x:auto;padding:11px 16px;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav a{color:var(--tx2);text-decoration:none;font-size:13px;white-space:nowrap;
+  padding:5px 11px;border-radius:7px;transition:.15s}
+nav a:hover{background:var(--card2);color:var(--tx)}
+
+section{margin:0 0 48px}
+h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em;scroll-margin-top:66px}
+h2 .num{color:var(--tx3);font-size:14px;font-weight:600;margin-right:9px}
+.sub{color:var(--tx3);font-size:13.5px;margin-bottom:20px}
+h3{font-size:15.5px;margin:28px 0 10px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0}
+
+.note{border-left:3px solid var(--i);background:rgba(96,165,250,.07);
+  border-radius:0 10px 10px 0;padding:14px 16px;margin:14px 0;font-size:14px;color:var(--tx2)}
+.warn{border-left-color:var(--b);background:rgba(251,191,36,.07)}
+.bad{border-left-color:var(--r);background:rgba(248,113,113,.07)}
+.good{border-left-color:var(--a);background:rgba(74,222,128,.07)}
+.note b{color:var(--tx)}
+
+.key{background:linear-gradient(135deg,rgba(74,222,128,.1),rgba(96,165,250,.05));
+  border:1px solid rgba(74,222,128,.3);border-radius:14px;padding:22px;margin:18px 0}
+.key .k{font-size:11px;letter-spacing:.13em;color:var(--a);font-weight:700;text-transform:uppercase}
+.key p{margin-top:9px;font-size:15.5px;line-height:1.65}
+.key p+p{margin-top:12px}
+.key b{color:var(--tx)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(142px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}
+.stat .l{font-size:11.5px;color:var(--tx3);margin-bottom:5px}
+.stat .v{font-size:21px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.stat .d{font-size:11.5px;color:var(--tx3);margin-top:3px}
+.va{color:var(--a)}.vb{color:var(--b)}.vr{color:var(--r)}
+
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0;
+  border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:460px}
+th{background:var(--card2);color:var(--tx2);font-weight:600;text-align:left;
+  padding:11px 13px;font-size:12px;letter-spacing:.03em;white-space:nowrap}
+td{padding:10px 13px;border-top:1px solid var(--line);color:var(--tx2);vertical-align:top}
+td.n{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td strong{color:var(--tx)}
+tr.hl td{background:rgba(74,222,128,.06)}
+.pb{color:var(--a);font-weight:700}
+
+.led{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;
+  background:var(--card2);border:1px solid var(--line);border-radius:12px;
+  padding:16px;overflow-x:auto;line-height:2;white-space:pre;color:var(--tx2)}
+.led .pos{color:var(--a)}.led .neg{color:var(--r)}.led .zero{color:var(--tx3)}
+.led .tot{color:var(--tx);font-weight:700}
+
+ul.ck{list-style:none;margin:12px 0}
+ul.ck li{padding:8px 0 8px 28px;position:relative;font-size:14px;color:var(--tx2);
+  border-bottom:1px solid rgba(38,48,61,.55)}
+ul.ck li:last-child{border-bottom:none}
+ul.ck li::before{position:absolute;left:0;top:8px}
+ul.ck li.y::before{content:"✅"}
+ul.ck li.n::before{content:"❌"}
+ul.ck li.w::before{content:"⚠️"}
+ul.ck li.q::before{content:"❓"}
+ul.ck li b{color:var(--tx)}
+
+.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 8px 10px;margin:14px 0}
+.chart .cap{font-size:12px;color:var(--tx3);text-align:center;margin-bottom:8px;padding:0 10px}
+.legend{display:flex;gap:15px;justify-content:center;flex-wrap:wrap;font-size:12.5px;color:var(--tx2);margin-bottom:10px}
+.legend i{display:inline-block;width:14px;height:8px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;background:var(--card2);
+  padding:1.5px 6px;border-radius:5px;font-size:.88em;color:#a5d6ff;border:1px solid var(--line)}
+.foot{border-top:1px solid var(--line);margin-top:46px;padding-top:22px;color:var(--tx3);font-size:12.5px}
+@media(max-width:600px){
+  h1{font-size:24px} .hero{padding:32px 0 24px} h2{font-size:19px}
+  .stat .v{font-size:19px} .led{font-size:11px}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Race Analysis · Autodromo Nazionale Monza · Short Qualifying</div>
+  <h1>S1·S2 최속을 한 랩에 묶고도, S3가 0.26초를 돌려줬다</h1>
+  <p class="lede">2026-08-21 밤 몬자 쇼트 퀄리파잉, <b>ANT gami</b>의 플랫폼 <b>첫 업로드</b>.
+     소프트로 달린 타임드 3랩은 전부 유효했고 랩마다 빨라졌다(−0.100초 → −0.157초).
+     마지막 랩은 S1·S2 개인 최속을 동시에 만들었지만 <b>S3에서 +0.258초를 반납</b>해,
+     이론상 베스트 <b>1:45.032</b>를 0.259초 남기고 세션이 끝났다.
+     퀄리 3랩·단일 업로더 데이터 — 이 리포트의 스코프는 그만큼 좁다.</p>
+  <div class="meta">
+    <span class="chip">F1 25 · Short Q</span>
+    <span class="chip">KST 08-21 22:20</span>
+    <span class="chip">Soft 3랩 · 전 랩 유효</span>
+    <span class="chip">단일 업로더 (계정 첫 업로드)</span>
+    <span class="chip">plausible ✓</span>
+  </div>
+</header>
+</div>
+
+<nav><div class="wrap">
+  <a href="#result">결과</a>
+  <a href="#sector">랩·섹터 분해</a>
+  <a href="#theo">이론상 베스트</a>
+  <a href="#dyn">다이내믹스</a>
+  <a href="#tyre">타이어</a>
+  <a href="#absent">데이터 공백</a>
+  <a href="#limit">한계</a>
+  <a href="#open">미해명</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- 00 결론 -->
+<section>
+  <div class="key">
+    <div class="k">핵심 결론 · 두 문장</div>
+    <p><b>수렴하는 세션이었다</b> — 이론상 베스트(1:45.032) 대비 각 랩이 남긴 잔차는
+       <b>516 → 416 → 259ms</b>로 단조 수렴했다. 드라이버는 랩마다 빨라졌고,
+       세 랩의 편차는 0.257초에 불과하다.</p>
+    <p><b>마지막 조각은 S3였다</b> — 최종 랩(L3)은 S1(−64ms)·S2(−351ms)를 동시에
+       개인 최속으로 만들었지만, S3에서 L2 대비 <b>+258ms</b>를 반납했다.
+       같은 랩에 <b>락업 4회·언더스티어 30.5%</b>가 기록돼 있다 —
+       다만 랩 단위 지표라 섹터 귀속은 불가능하다(<b>[추정]</b> 연결만 가능).</p>
+  </div>
+
+  <ul class="ck">
+    <li class="y"><b>확정</b> — 타임드 3랩 전부 유효, 단조 개선, 섹터 합 ≈ 랩타임 재조정 오차 각 랩 1ms 이내.</li>
+    <li class="y"><b>확정</b> — 이론상 베스트 1:45.032. 실측 베스트와의 잔차 0.259초는 <b>전부 L3의 S3 반납</b>(+258ms)과 반올림 1ms다.</li>
+    <li class="q"><b>가설</b> — L3의 락업 4회 ↔ S3 반납의 인과. 락업은 랩 단위 카운트라 섹터에 귀속할 수 없다.</li>
+    <li class="w"><b>계측 공백</b> — 다이내믹스가 L3부터만 존재한다. 센더가 세션 중간에 붙었다는 [추정]이 유력하며, 그렇다면 L3 지표는 부분 랩 계측일 수 있다.</li>
+    <li class="n"><b>없음</b> — 이벤트·사고 클립·순위(분류) 데이터가 전무하다. 사고 클립이 없으므로 <b>FIA 과실 판정은 해당 없음(스킵)</b>.</li>
+  </ul>
+</section>
+
+<!-- 01 결과 -->
+<section>
+  <h2 id="result"><span class="num">01</span>세션 결과</h2>
+  <p class="sub">업로더 1명(ANT gami) 기준. 그리드·순위 데이터는 존재하지 않는다 (<code>snapshots</code> 0건).</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">베스트 랩</div><div class="v va">1:45.291</div><div class="d">L3 · Soft · 유효</div></div>
+    <div class="stat"><div class="l">이론상 베스트</div><div class="v">1:45.032</div><div class="d">최속 섹터 합</div></div>
+    <div class="stat"><div class="l">유효 랩</div><div class="v">3 / 3</div><div class="d">invalid 0</div></div>
+    <div class="stat"><div class="l">세션 내 개선</div><div class="v va">−0.257s</div><div class="d">L1 → L3</div></div>
+  </div>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>랩</th><th>랩타임</th><th>S1</th><th>S2</th><th>S3</th><th>타이어</th><th>유효</th><th>랩 델타</th></tr></thead>
+    <tbody>
+      <tr><td>L1</td><td class="n">1:45.548</td><td class="n">31.132</td><td class="n">45.535</td><td class="n">28.880</td><td>Soft</td><td>✓</td><td class="n">—</td></tr>
+      <tr><td>L2</td><td class="n">1:45.448</td><td class="n">31.137</td><td class="n">45.476</td><td class="n pb">28.834</td><td>Soft</td><td>✓</td><td class="n">−0.100</td></tr>
+      <tr class="hl"><td>L3</td><td class="n"><strong>1:45.291</strong></td><td class="n pb">31.073</td><td class="n pb">45.125</td><td class="n">29.092</td><td>Soft</td><td>✓</td><td class="n">−0.157</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sub" style="margin-top:6px">초록 숫자 = 세션 내 개인 최속 섹터. L3가 S1·S2를, L2가 S3를 가져갔다.</p>
+
+  <div class="note"><b>재조정 검증.</b> 세 랩 모두 섹터 합이 랩타임보다 정확히 <b>1ms 작다</b>
+    (L1: 105,547 vs 105,548 · L2: 105,447 vs 105,448 · L3: 105,290 vs 105,291) —
+    ms 반올림에 의한 계통 오차로 판단하며, 이하 모든 분해는 이 1ms를 명시하고 계산했다.</div>
+</section>
+
+<!-- 02 랩·섹터 분해 -->
+<section>
+  <h2 id="sector"><span class="num">02</span>랩 델타는 어느 섹터에서 왔나</h2>
+  <p class="sub">국면 분리: 3랩 연속 타임드 랩(중간 피트 없음, 동일 소프트) — 단일 국면이므로 랩 간 직접 비교가 유효하다.</p>
+
+  <div class="led"><span class="zero">L1 → L2   −0.100s</span>
+  S1  <span class="neg">+0.005</span>   <span class="zero">사실상 동일</span>
+  S2  <span class="pos">−0.059</span>
+  S3  <span class="pos">−0.046</span>
+  <span class="tot">합  −0.100  = 랩 델타와 일치 ✓</span>
+
+<span class="zero">L2 → L3   −0.157s</span>
+  S1  <span class="pos">−0.064</span>
+  S2  <span class="pos">−0.351</span>   <span class="zero">← 개선의 본체</span>
+  S3  <span class="neg">+0.258</span>   <span class="zero">← 반납</span>
+  <span class="tot">합  −0.157  = 랩 델타와 일치 ✓</span></div>
+
+  <p>L2까지의 개선은 잔잔했다(S2·S3에서 조금씩). L3의 개선은 구조가 다르다 —
+     <b>S1과 S2에서 0.415초를 벌고 S3에서 0.258초를 돌려준</b>, 큰 진폭의 랩이었다.
+     S2 −0.351초는 세션 전체에서 가장 큰 단일 섹터 개선이다.</p>
+</section>
+
+<!-- 03 이론상 베스트 -->
+<section>
+  <h2 id="theo"><span class="num">03</span>이론상 베스트와 잔차의 수렴</h2>
+  <p class="sub">이론상 베스트 = 개인 최속 섹터 합: 31.073 (L3) + 45.125 (L3) + 28.834 (L2) = <b>1:45.032</b></p>
+
+  <div class="chart">
+    <div class="cap">각 랩이 개인 최속 섹터 대비 남긴 시간 (ms) — L3는 S1·S2가 0, 잔차 전부가 S3</div>
+    <div class="legend">
+      <span><i style="background:#63718a"></i>L1</span>
+      <span><i style="background:#60a5fa"></i>L2</span>
+      <span><i style="background:#4ade80"></i>L3</span>
+    </div>
+    <svg viewBox="0 0 720 250" width="100%" role="img" aria-label="랩별 섹터 잔차 막대 그래프">
+      <g stroke="#26303d" stroke-width="1">
+        <line x1="50" y1="200" x2="700" y2="200"/>
+        <line x1="50" y1="163.4" x2="700" y2="163.4" stroke-dasharray="3,4"/>
+        <line x1="50" y1="126.8" x2="700" y2="126.8" stroke-dasharray="3,4"/>
+        <line x1="50" y1="90.2" x2="700" y2="90.2" stroke-dasharray="3,4"/>
+        <line x1="50" y1="53.7" x2="700" y2="53.7" stroke-dasharray="3,4"/>
+      </g>
+      <g fill="#63718a" font-size="11" font-family="ui-monospace,Menlo,monospace">
+        <text x="44" y="204" text-anchor="end">0</text>
+        <text x="44" y="167" text-anchor="end">100</text>
+        <text x="44" y="131" text-anchor="end">200</text>
+        <text x="44" y="94" text-anchor="end">300</text>
+        <text x="44" y="58" text-anchor="end">400</text>
+      </g>
+      <!-- S1 group: L1 +59, L2 +64, L3 0 -->
+      <rect x="90"  y="178.4" width="42" height="21.6" rx="3" fill="#63718a"/>
+      <rect x="140" y="176.6" width="42" height="23.4" rx="3" fill="#60a5fa"/>
+      <rect x="190" y="198"   width="42" height="2"    rx="1" fill="#4ade80"/>
+      <g fill="#93a1b5" font-size="11.5" font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+        <text x="111" y="172">+59</text><text x="161" y="170">+64</text><text x="211" y="192" fill="#4ade80">0</text>
+      </g>
+      <!-- S2 group: L1 +410, L2 +351, L3 0 -->
+      <rect x="330" y="50"    width="42" height="150"  rx="3" fill="#63718a"/>
+      <rect x="380" y="71.6"  width="42" height="128.4" rx="3" fill="#60a5fa"/>
+      <rect x="430" y="198"   width="42" height="2"    rx="1" fill="#4ade80"/>
+      <g fill="#93a1b5" font-size="11.5" font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+        <text x="351" y="44">+410</text><text x="401" y="65">+351</text><text x="451" y="192" fill="#4ade80">0</text>
+      </g>
+      <!-- S3 group: L1 +46, L2 0, L3 +258 -->
+      <rect x="570" y="183.2" width="42" height="16.8" rx="3" fill="#63718a"/>
+      <rect x="620" y="198"   width="42" height="2"    rx="1" fill="#60a5fa"/>
+      <rect x="670" y="105.6" width="42" height="94.4" rx="3" fill="#4ade80"/>
+      <g fill="#93a1b5" font-size="11.5" font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+        <text x="591" y="177">+46</text><text x="641" y="192" fill="#60a5fa">0</text><text x="691" y="99" fill="#f87171">+258</text>
+      </g>
+      <g fill="#93a1b5" font-size="13" font-weight="600" text-anchor="middle">
+        <text x="161" y="228">S1</text><text x="401" y="228">S2</text><text x="641" y="228">S3</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="l">L1 잔차 (랩타임 기준)</div><div class="v">+0.516</div><div class="d">섹터 분해 합 +515ms + 반올림 1ms</div></div>
+    <div class="stat"><div class="l">L2 잔차</div><div class="v vb">+0.416</div><div class="d">섹터 분해 합 +415ms + 반올림 1ms</div></div>
+    <div class="stat"><div class="l">L3 잔차</div><div class="v va">+0.259</div><div class="d">= S3 +258ms + 반올림 1ms</div></div>
+  </div>
+
+  <p>잔차가 <b>516 → 416 → 259ms</b>로 수렴한 세션이다 — 세 랩 중 가장 “아까운” 랩은 없었고,
+     매 랩이 직전 랩보다 이론상 베스트에 가까웠다. 남은 0.259초의 출처는 단일하다:
+     <b>L3의 S3가 L2의 S3(28.834)보다 258ms 느렸다</b>는 것. 랩이 한 번 더 있었다면
+     1:45.0대 진입이 산술적으로는 가능한 위치였다 <b>[추정]</b> — 다만 세션은 여기서 끝났다.</p>
+</section>
+
+<!-- 04 다이내믹스 -->
+<section>
+  <h2 id="dyn"><span class="num">04</span>다이내믹스 — 기록된 것은 L3뿐이다</h2>
+  <p class="sub">주행 특성 텔레메트리(락업·언더/오버스티어·스핀)는 L3와 L4에만 존재한다.</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">L3 · 락업</div><div class="v vr">4회</div><div class="d">부분 랩 계측 가능성 → 하한값</div></div>
+    <div class="stat"><div class="l">L3 · 언더스티어</div><div class="v vb">30.5%</div><div class="d">오버스티어 1.4%</div></div>
+    <div class="stat"><div class="l">L3 · 스핀</div><div class="v">0</div><div class="d">—</div></div>
+    <div class="stat"><div class="l">L4</div><div class="v">전부 0</div><div class="d">인랩 [추정]</div></div>
+  </div>
+
+  <div class="note"><b>부재 ≠ 무이벤트 — 그리고 그 증명.</b> L4에 “모두 0”인 행이 <b>존재</b>한다는 사실이
+    중요하다: 이 파이프라인은 이벤트가 없는 랩도 0으로 채운 행을 만든다. 따라서 L1·L2의
+    행 자체가 없는 것은 “조용한 랩”이 아니라 <b>계측이 없었다</b>는 뜻이다.
+    센더(텔레메트리 수집기)가 세션 중간, L3 근방에 붙었다는 추정이 유력하다 <b>[추정]</b>.</div>
+
+  <div class="note warn"><b>따라서 L3 지표는 보수적으로 읽어야 한다.</b> 캡처가 L3 도중 시작됐다면
+    락업 4회는 <b>하한값</b>이고, 언더스티어 30.5%는 분모(계측 구간)가 완전 랩이 아닐 수 있다.
+    “L3의 락업이 S3 반납을 만들었다”는 서사는 매력적이지만 — 락업 카운트는 랩 단위라
+    섹터에 귀속할 수 없고, 몬자 S3(아스카리 탈출 이후~파라볼리카)와의 연결은
+    <b>[추정]</b> 이상으로 승격할 수 없다.</div>
+</section>
+
+<!-- 05 타이어 -->
+<section>
+  <h2 id="tyre"><span class="num">05</span>타이어 · 스틴트</h2>
+  <p class="sub">단일 스틴트, 단일 컴파운드 — 퀄리 세션의 정상 형태.</p>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>스틴트</th><th>컴파운드</th><th>구간</th><th>사용 랩</th><th>종료 마모</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>Soft</strong></td><td class="n">L1 → L4</td><td class="n">4랩</td><td class="n">7%</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>타임드 랩은 3개인데 스틴트는 4랩이다 — 4랩째는 랩타임이 기록되지 않은
+     <b>인랩 또는 미완주 랩</b>으로 판단한다 <b>[추정]</b> (L4 다이내믹스 행이 전부 0인 것과 부합).
+     소프트 4랩에 마모 7%는 퀄리 런으로 정상 범위다. 피트 손실 데이터(<code>race_pit_loss</code>)는
+     0건 — 퀄리 세션이므로 정상이다.</p>
+</section>
+
+<!-- 06 데이터 공백 -->
+<section>
+  <h2 id="absent"><span class="num">06</span>이 세션에 없는 데이터</h2>
+  <p class="sub">분석 차원 체크리스트 중 데이터가 지원하지 않아 다루지 못한 항목의 명시적 목록.</p>
+
+  <ul class="ck">
+    <li class="n"><b>이벤트 로그 없음</b> — payload에 <code>events</code> 키 자체가 없다. 페널티·경고·트랙 리밋 이력은 확인 불가 (모든 랩이 서버 판정 유효인 것과는 정합적).</li>
+    <li class="n"><b>사고 클립 없음</b> — <code>incidents</code> 없음. 따라서 <b>FIA 과실 판정 절차는 해당 없음(스킵)</b>.</li>
+    <li class="n"><b>순위·그리드 없음</b> — <code>snapshots</code> 0건. 이 퀄리에서 몇 위였는지는 알 수 없다.</li>
+    <li class="n"><b>라이벌 없음</b> — 같은 세션 UID의 타 계정 업로드 0건. 국면 동등 비교 대상이 없다.</li>
+    <li class="n"><b>셋업 연결 불가</b> — 로컬 RaceSummary 없음(DB 단독 분석). DB의 셋업은 공개 금지 원칙에 따라 사용하지 않는다.</li>
+  </ul>
+</section>
+
+<!-- 07 해석 한계 -->
+<section>
+  <h2 id="limit"><span class="num">07</span>해석 한계</h2>
+  <p class="sub">방법론상 이 리포트가 원리적으로 말할 수 없는 것.</p>
+
+  <div class="card">
+    <ul class="ck">
+      <li class="w"><b>표본 3랩</b> — 랩타임 추이·일관성에 대한 모든 서술은 3개 표본 위에 있다. “수렴”은 관측이지 통계적 추세가 아니다.</li>
+      <li class="w"><b>랩 단위 다이내믹스</b> — 락업·언더스티어는 랩 단위 집계라 섹터 손실과의 인과를 데이터로 연결할 수 없다.</li>
+      <li class="w"><b>부분 랩 계측 가능성</b> — 다이내믹스 캡처가 L3 도중 시작됐다면 L3의 지표는 완전 랩 값이 아니다 (§04).</li>
+      <li class="w"><b>맥락 부재</b> — 단일 업로더·첫 업로드라 이 드라이버의 평소 페이스 베이스라인이 없고, 트랙 상태(러버링·기온)도 기록에 없다.</li>
+      <li class="w"><b>교차 세션 비교 불가</b> — 플랫폼의 몬자 선례(2026-07-24, F1 26, 퀄리 1:19.7대)는 게임·차량 클래스가 달라 국면 동등 비교의 전제가 성립하지 않는다.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 08 미해명 항목 -->
+<section>
+  <h2 id="open"><span class="num">08</span>미해명 항목</h2>
+  <p class="sub">데이터가 답을 주지 않아 열린 채로 남기는 의문.</p>
+
+  <div class="card">
+    <ul class="ck">
+      <li class="q"><b>절대 페이스 1:45.291의 정체</b> — 몬자에서 F1 차량의 통상 퀄리 페이스(플랫폼 선례 1:19.7대) 대비 약 25초 느리다. 기록상 컴파운드는 드라이 소프트로 확정되므로(수집 파이프라인이 Inter/Wet을 별도 코드로 구분) 풀 웻 주행은 아니다. 차량 클래스(F1 외 클래스 가능성)·날씨·어시스트 설정이 DB에 기록되지 않아 원인을 확정할 수 없다. 후보: 비 F1 차량 클래스 / 초심자 페이스 / 부분 우천 <b>[추정]</b>.</li>
+      <li class="q"><b>다이내믹스 L1·L2 부재의 정확한 원인</b> — “센더 늦은 접속” 추정이 유력하나(§04 논증), 업로드는 정상 랩 데이터를 3랩 모두 갖고 있어 랩타임 경로와 다이내믹스 경로의 캡처 시점이 왜 달랐는지는 설명되지 않는다.</li>
+      <li class="q"><b>L3 이후 세션 종료 경위</b> — 잔차 수렴 추세상 추가 랩의 동기가 충분했는데 L4는 타임 없이 끝났다. 시간 만료인지 자발적 종료인지 데이터로 알 수 없다.</li>
+    </ul>
+  </div>
+</section>
+
+<footer class="foot">
+  데이터: <code>platform.races</code> · <code>platform.laps</code> · <code>platform.race_detail</code> (stints·dynamics) ·
+  <code>platform.race_pit_loss</code> (0건) · <code>platform.snapshots</code> (0건) ·
+  race_id <code>ca94d16f-1b56-43a3-abb0-5f354a21d2e1</code> · 세션 UID <code>5422519449953514268</code><br>
+  조회 2026-08-22 · 생성: race-analysis 스킬 · 모든 분해는 본문에 재조정(합계 일치) 결과를 명시함
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spa 종합 분석 · 2026-08-15</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0e13; --card:#141a23; --card2:#1a212c; --line:#26303d;
+  --tx:#e4e9f0; --tx2:#93a1b5; --tx3:#63718a;
+  --a:#4ade80; --b:#fbbf24; --r:#f87171; --i:#60a5fa;
+}
+body{background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+  line-height:1.7;-webkit-font-smoothing:antialiased;padding-bottom:70px}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px}
+
+.hero{padding:46px 0 30px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--tx3);text-transform:uppercase;font-weight:600}
+h1{font-size:29px;line-height:1.32;margin:12px 0 14px;letter-spacing:-.02em}
+.lede{color:var(--tx2);font-size:15px}
+.lede b{color:var(--tx)}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;
+  padding:5px 13px;font-size:12.5px;color:var(--tx2)}
+
+nav{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.94);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);margin-bottom:34px}
+nav .wrap{display:flex;gap:5px;overflow-x:auto;padding:11px 16px;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav a{color:var(--tx2);text-decoration:none;font-size:13px;white-space:nowrap;
+  padding:5px 11px;border-radius:7px;transition:.15s}
+nav a:hover{background:var(--card2);color:var(--tx)}
+
+section{margin:0 0 48px}
+h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em;scroll-margin-top:66px}
+h2 .num{color:var(--tx3);font-size:14px;font-weight:600;margin-right:9px}
+.sub{color:var(--tx3);font-size:13.5px;margin-bottom:20px}
+h3{font-size:15.5px;margin:28px 0 10px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0}
+
+.note{border-left:3px solid var(--i);background:rgba(96,165,250,.07);
+  border-radius:0 10px 10px 0;padding:14px 16px;margin:14px 0;font-size:14px;color:var(--tx2)}
+.warn{border-left-color:var(--b);background:rgba(251,191,36,.07)}
+.bad{border-left-color:var(--r);background:rgba(248,113,113,.07)}
+.good{border-left-color:var(--a);background:rgba(74,222,128,.07)}
+.note b{color:var(--tx)}
+
+.key{background:linear-gradient(135deg,rgba(74,222,128,.1),rgba(96,165,250,.05));
+  border:1px solid rgba(74,222,128,.3);border-radius:14px;padding:22px;margin:18px 0}
+.key.amber{background:linear-gradient(135deg,rgba(251,191,36,.09),rgba(248,113,113,.04));
+  border-color:rgba(251,191,36,.3)}
+.key .k{font-size:11px;letter-spacing:.13em;color:var(--a);font-weight:700;text-transform:uppercase}
+.key.amber .k{color:var(--b)}
+.key p{margin-top:9px;font-size:15.5px;line-height:1.65}
+.key p+p{margin-top:12px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(142px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}
+.stat .l{font-size:11.5px;color:var(--tx3);margin-bottom:5px}
+.stat .v{font-size:21px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.stat .d{font-size:11.5px;color:var(--tx3);margin-top:3px}
+.va{color:var(--a)}.vb{color:var(--b)}.vr{color:var(--r)}
+
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0;
+  border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:460px}
+th{background:var(--card2);color:var(--tx2);font-weight:600;text-align:left;
+  padding:11px 13px;font-size:12px;letter-spacing:.03em;white-space:nowrap}
+td{padding:10px 13px;border-top:1px solid var(--line);color:var(--tx2);vertical-align:top}
+td.n{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td strong{color:var(--tx)}
+tr.hl td{background:rgba(74,222,128,.06)}
+tr.hlr td{background:rgba(248,113,113,.06)}
+
+.led{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;
+  background:var(--card2);border:1px solid var(--line);border-radius:12px;
+  padding:16px;overflow-x:auto;line-height:2;white-space:pre;color:var(--tx2)}
+.led .pos{color:var(--r)}.led .neg{color:var(--a)}.led .zero{color:var(--tx3)}
+.led .tot{color:var(--tx);font-weight:700}
+
+ul.ck{list-style:none;margin:12px 0}
+ul.ck li{padding:8px 0 8px 28px;position:relative;font-size:14px;color:var(--tx2);
+  border-bottom:1px solid rgba(38,48,61,.55)}
+ul.ck li:last-child{border-bottom:none}
+ul.ck li::before{position:absolute;left:0;top:8px}
+ul.ck li.y::before{content:"✅"}
+ul.ck li.n::before{content:"❌"}
+ul.ck li.w::before{content:"⚠️"}
+ul.ck li.q::before{content:"❓"}
+ul.ck li b{color:var(--tx)}
+
+.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 8px 10px;margin:14px 0}
+.chart .cap{font-size:12px;color:var(--tx3);text-align:center;margin:8px 10px 4px;line-height:1.55}
+.legend{display:flex;gap:15px;justify-content:center;flex-wrap:wrap;font-size:12.5px;color:var(--tx2);margin-bottom:10px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.p-pen{background:rgba(251,191,36,.13);color:var(--b)}
+.p-warn{background:rgba(251,191,36,.13);color:var(--b)}
+.p-coll{background:rgba(248,113,113,.16);color:var(--r)}
+.p-cln{background:rgba(74,222,128,.13);color:var(--a)}
+.p-up{background:rgba(96,165,250,.14);color:var(--i)}
+
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;background:var(--card2);
+  padding:1.5px 6px;border-radius:5px;font-size:.88em;color:#a5d6ff;border:1px solid var(--line)}
+.foot{border-top:1px solid var(--line);margin-top:46px;padding-top:22px;color:var(--tx3);font-size:12.5px}
+@media(max-width:600px){
+  h1{font-size:24px} .hero{padding:32px 0 24px} h2{font-size:19px}
+  .stat .v{font-size:19px} .led{font-size:11px}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Race Analysis · Circuit de Spa-Francorchamps</div>
+  <h1>세 번 부딪혔고, 세 번 모두 나란히 달리고 있었다</h1>
+  <p class="lede">2026-08-15 01:09 KST, 스파 레이스. <b>sumin07198</b>은 4랩을 클린하게 기록한 뒤
+     마지막 랩에서 <b>sdy</b>와 세 번 접촉했다. 충돌 클립의 상대 위치를 기하 분해한 결과,
+     세 접촉 모두 추돌이 아니라 <b>사이드-바이-사이드 상태의 휠-투-휠 접촉</b>이었고
+     — 전부 sdy의 <b>같은 쪽 측면</b>에서 일어났다. 마지막 접촉 후 그 랩은 끝내 기록되지 못했다.</p>
+  <div class="meta">
+    <span class="chip">F1 26 · Race</span>
+    <span class="chip">KST 08-15 01:09 업로드</span>
+    <span class="chip">기록 랩 4 + 파이널 랩</span>
+    <span class="chip">접촉 클립 3건 (20Hz 프레임)</span>
+    <span class="chip">Medium 노스톱</span>
+    <span class="chip">단독 업로드 (sumin07198)</span>
+  </div>
+</header>
+</div>
+
+<nav><div class="wrap">
+  <a href="#result">결과</a>
+  <a href="#timeline">타임라인</a>
+  <a href="#laps">랩·섹터</a>
+  <a href="#dyn">다이내믹스</a>
+  <a href="#final">파이널 랩 3접촉</a>
+  <a href="#rules">규정 이벤트</a>
+  <a href="#strategy">전략·타이어</a>
+  <a href="#verify">검증</a>
+  <a href="#limit">한계·미해명</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- ══════════════ 01 결과 ══════════════ -->
+<section>
+  <h2 id="result"><span class="num">01</span>결과 요약</h2>
+  <p class="sub">플랫폼 DB(<code>platform.races/laps/race_detail</code>) 기준. 업로더 본인 데이터만 존재한다 — 그리드·최종 순위는 없다.</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">베스트 랩 (L2)</div><div class="v va">1:49.287</div><div class="d">plausible ✓</div></div>
+    <div class="stat"><div class="l">기록된 랩</div><div class="v">4</div><div class="d">valid 4 / 4</div></div>
+    <div class="stat"><div class="l">파이널 랩 (L5)</div><div class="v vr">미기록</div><div class="d">주행 흔적은 존재</div></div>
+    <div class="stat"><div class="l">접촉 클립</div><div class="v vr">3</div><div class="d">전부 L5 · 상대 sdy</div></div>
+    <div class="stat"><div class="l">피트 스톱</div><div class="v">0</div><div class="d">Medium 단일 스틴트</div></div>
+    <div class="stat"><div class="l">경고 (본인)</div><div class="v vb">1</div><div class="d">L5 코너컷</div></div>
+  </div>
+
+  <div class="key">
+    <div class="k">이 레이스가 남긴 것</div>
+    <p>랩 1의 스핀(+4.5초)을 빼면 L2~L4는 1:49~1:51의 안정적 페이스였고, 베스트랩은 언더스티어가
+       가장 적었던 랩에서 나왔다. 승부는 <b>마지막 랩</b>에 몰려 있다: Les Combes 진입 추격전에서
+       시작된 sdy와의 배틀이 300km/h 직선 병주를 거쳐 Bus Stop 제동 구간의 휠-투-휠로 이어졌고,
+       마지막 접촉 3초 뒤 코너컷 경고, 그 <b>6.9초 뒤 세션이 끝났다</b>. 랩 5의 랩타임은 없다.</p>
+  </div>
+</section>
+
+<!-- ══════════════ 02 타임라인 ══════════════ -->
+<section>
+  <h2 id="timeline"><span class="num">02</span>세션 재구성</h2>
+  <p class="sub">이벤트는 epoch(KST 변환, 측정값), 클립은 세션 시간(측정값)으로 기록된다. 두 축의 정렬은
+     <b>가정 하나</b>로 고정했다: L5 코너컷 경고(업로드 6.9초 전)를 접촉③ 직후의 시케인 통과에 연결. [추정]</p>
+
+  <div class="scroll"><table>
+    <tr><th>랩</th><th>시각 / 세션시간</th><th>사건</th><th>비고</th></tr>
+    <tr><td>—</td><td class="n">≈ 01:00:34 KST</td><td>세션 시작</td><td>정렬 가정 기반 역산 [추정]</td></tr>
+    <tr><td>L1</td><td class="n">1:53.756</td><td>스핀 1 · 락업 2</td><td>스핀 위치 데이터 없음</td></tr>
+    <tr class="hl"><td>L2</td><td class="n">1:49.287</td><td><strong>베스트 랩</strong></td><td>언더스티어 최소(28.7%)</td></tr>
+    <tr><td>L2</td><td class="n">01:02:54.754</td><td><span class="pill p-warn">sdy 경고①</span> 코너컷</td><td>RC 메시지</td></tr>
+    <tr><td>L3</td><td class="n">01:05:26.096</td><td><span class="pill p-warn">sdy 경고②</span> 코너컷</td><td></td></tr>
+    <tr><td>L4</td><td class="n">01:07:15.518</td><td><span class="pill p-warn">sdy 경고③</span> → <span class="pill p-pen">+2초 페널티</span></td><td>경고 누적</td></tr>
+    <tr><td>L4</td><td class="n">01:07:18.838</td><td><span class="pill p-warn">sdy 경고④</span> 코너컷</td><td>페널티 3.3초 뒤</td></tr>
+    <tr class="hlr"><td>L5</td><td class="n">세션 479.6s</td><td><span class="pill p-coll">접촉①</span> Les Combes 진입부 [추정]</td><td>140km/h대 · 대각 오버랩</td></tr>
+    <tr class="hlr"><td>L5</td><td class="n">세션 548.8s</td><td><span class="pill p-coll">접촉②</span> Blanchimont 부근 [추정]</td><td>300km/h대 · 병주 중 측면</td></tr>
+    <tr class="hlr"><td>L5</td><td class="n">세션 555.9s</td><td><span class="pill p-coll">접촉③</span> Bus Stop 제동 구간 [추정]</td><td>137km/h · 완전 병주</td></tr>
+    <tr><td>L5</td><td class="n">01:09:50.939</td><td><span class="pill p-warn">sumin07198 경고</span> 코너컷</td><td>접촉③ 직후 [정렬 가정]</td></tr>
+    <tr><td>—</td><td class="n">01:09:57.829</td><td><span class="pill p-up">업로드</span> = 세션 종료</td><td>경고 6.9초 뒤</td></tr>
+  </table></div>
+
+  <div class="note">정렬 가정 하에서 sdy의 경고 4건이 모두 <b>귀속 랩의 세션 시간 구간 안</b>에 떨어진다.
+    레이스 스타트 오프셋(라이트 시퀀스)은 δ ≈ 5~7초로 추정되며, 이 값으로 클립 세 건의 랩 내
+    경과 시간(+29s / +98s / +105s)이 아래 05장의 속도 프로파일과 상호 정합한다.</div>
+</section>
+
+<!-- ══════════════ 03 랩·섹터 ══════════════ -->
+<section>
+  <h2 id="laps"><span class="num">03</span>랩·섹터 분해</h2>
+  <p class="sub">재조정: 4랩 모두 <b>S1+S2+S3 = 랩타임, 오차 ≤ 1ms</b>(ms 반올림 범위 내). <code>races.best_lap_ms</code>와 L2 일치.</p>
+
+  <div class="scroll"><table>
+    <tr><th>랩</th><th>랩타임</th><th>Δ 베스트</th><th>S1</th><th>S2</th><th>S3</th><th>타이어</th><th>비고</th></tr>
+    <tr><td>L1</td><td class="n">1:53.756</td><td class="n" style="color:var(--r)">+4.469</td><td class="n">35.294</td><td class="n">47.572</td><td class="n">30.889</td><td>M</td><td>스핀 1 — 손실 대부분 S1(+2.719)</td></tr>
+    <tr class="hl"><td>L2</td><td class="n"><strong>1:49.287</strong></td><td class="n">—</td><td class="n">32.575</td><td class="n"><strong>46.683</strong></td><td class="n"><strong>30.028</strong></td><td>M</td><td>베스트 · S2/S3 세션 베스트</td></tr>
+    <tr><td>L3</td><td class="n">1:50.880</td><td class="n" style="color:var(--r)">+1.593</td><td class="n">33.161</td><td class="n">47.466</td><td class="n">30.252</td><td>M</td><td>전 섹터 고른 손실</td></tr>
+    <tr><td>L4</td><td class="n">1:50.839</td><td class="n" style="color:var(--r)">+1.552</td><td class="n"><strong>32.483</strong></td><td class="n">47.205</td><td class="n">31.150</td><td>M</td><td>S1 세션 베스트 · S3 +1.122</td></tr>
+    <tr><td>L5</td><td class="n" style="color:var(--r)">미기록</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td>M</td><td>접촉 3 · 스핀 2 · 경고 1</td></tr>
+  </table></div>
+
+  <div class="led"><span class="tot">이론 베스트 조합</span>  S1 32.483 (L4) + S2 46.683 (L2) + S3 30.028 (L2)
+= <span class="tot">1:49.194</span>   실제 베스트 대비 <span class="neg">−0.093</span>  → 베스트랩 자체가 이미 조합에 근접</div>
+
+  <div class="note"><b>L4의 역설.</b> S1은 세션 베스트(32.483)를 찍고도 랩 전체는 +1.552 —
+    네트 손실은 전부 S2·S3에서 나왔고(S3 단독 +1.122 = 델타의 72%), S1의 −0.092가 일부를 상쇄했다.
+    같은 랩에 락업이 4회(세션 최다) 기록됐으나, 섹터 경계·코너 귀속 데이터가 없어
+    락업→S3 손실의 인과는 확정하지 않는다(04장 참조).</div>
+</section>
+
+<!-- ══════════════ 04 다이내믹스 ══════════════ -->
+<section>
+  <h2 id="dyn"><span class="num">04</span>다이내믹스 — 랩별 관측 병렬</h2>
+  <p class="sub">기록 랩이 4개뿐이므로 상관을 주장하지 않는다. 관측을 나란히 놓을 뿐이다.</p>
+
+  <div class="scroll"><table>
+    <tr><th>랩</th><th>랩타임</th><th>언더스티어 %</th><th>오버스티어 %</th><th>락업</th><th>스핀</th></tr>
+    <tr><td>L1</td><td class="n">1:53.756</td><td class="n" style="color:var(--r)">37.5</td><td class="n">1.8</td><td class="n">2</td><td class="n" style="color:var(--r)">1</td></tr>
+    <tr class="hl"><td>L2</td><td class="n"><strong>1:49.287</strong></td><td class="n" style="color:var(--a)">28.7</td><td class="n">0.0</td><td class="n">1</td><td class="n">0</td></tr>
+    <tr><td>L3</td><td class="n">1:50.880</td><td class="n">32.5</td><td class="n">3.0</td><td class="n">2</td><td class="n">0</td></tr>
+    <tr><td>L4</td><td class="n">1:50.839</td><td class="n">34.8</td><td class="n">1.4</td><td class="n" style="color:var(--r)">4</td><td class="n">0</td></tr>
+    <tr class="hlr"><td>L5</td><td class="n">미기록</td><td class="n">22.0</td><td class="n" style="color:var(--r)">6.2</td><td class="n">2</td><td class="n" style="color:var(--r)">2</td></tr>
+  </table></div>
+
+  <div class="note">방향성은 일관된다: <b>가장 빠른 랩(L2)이 언더스티어 최소</b>였고, 기록 랩 중 가장 느린
+    L1이 최대(37.5%)였다. L5는 언더스티어가 가장 낮은 대신 오버스티어(6.2%)와 스핀(2회)이 세션 최대 —
+    한계 초과 주행의 패턴이지만, 표본 4~5랩으로는 여기까지만 말할 수 있다.</div>
+</section>
+
+<!-- ══════════════ 05 파이널 랩 ══════════════ -->
+<section>
+  <h2 id="final"><span class="num">05</span>파이널 랩 — 세 번의 접촉, 기하 분해</h2>
+  <p class="sub">충돌 클립 3건(각 ±1초, 20Hz)의 상대 위치를 sdy 속도벡터 기준 <b>전후(along)/측면(cross)</b>으로
+     분해했다. along&lt;0 = sumin07198이 sdy 뒤. 접촉 판정 자체는 게임 충돌 이벤트가 기준이고, 기하는 그 정황을 재구성한다.</p>
+
+  <div class="key amber">
+    <div class="k">기하가 말하는 것</div>
+    <p>세 접촉 모두 <b>측면 간격이 1.4~2.0m까지 수렴</b>한 순간 일어났다 — F1 차폭(2.0m) 기준
+       <b>차체가 맞닿는 간격</b>이다. 그리고 세 번 모두 sumin07198은 sdy의 <b>같은 쪽 측면</b>에 있었다
+       (상대 위치 부호가 전 프레임 동일). 후미 추돌은 한 건도 없다: 접촉 순간 전후 간격은
+       각각 −3.4m(대각 오버랩) / −2.8m(전륜 병주) / <b>−0.55m(완전 병주)</b>였다.</p>
+  </div>
+
+  <h3>접촉① — Les Combes 진입부 [추정] · 세션 479.6s (L5 +29s)</h3>
+  <p style="font-size:14px;color:var(--tx2)">191km/h에서 제동하며 시작해 6.4m 뒤에서 1.6m 뒤까지,
+     2초 동안 순수하게 종방향으로 따라붙었다. 접촉 순간 전후 −3.4m·측면 1.7m — 앞차 뒷바퀴 옆에
+     앞바퀴를 넣은 <b>대각 오버랩</b> 접촉. 조향 궤적(우→좌 전환)은 복합 코너 진입과 일치한다.</p>
+  <div class="chart">
+    <div class="legend"><span><i style="background:var(--a)"></i>sumin07198 중심 궤적</span>
+      <span><i style="background:var(--i)"></i>sdy 차체(기준 원점)</span>
+      <span><i style="background:var(--r)"></i>접촉 순간</span></div>
+    <div id="rp1"></div>
+    <div class="cap">sdy 기준 상대 좌표(m). 차체 사각형은 5.63×2.00m 평행 가정 [추정] · 좌우 방향은 좌표계 규약 미확인(거울 대칭 가능)</div>
+  </div>
+
+  <h3>접촉② — Blanchimont 부근 [추정] · 세션 548.8s (L5 +98s)</h3>
+  <p style="font-size:14px;color:var(--tx2)">양쪽 모두 <b>스로틀 100%, 303~306km/h</b>. 전후 간격은
+     −1.4~−2.9m로 이미 전륜이 겹친 병주 상태였고, 측면 간격이 4.2m → 1.9m로 수렴하다 접촉,
+     이후 3.0m로 재확산했다. 300km/h 직선 병주 중의 측면 접촉 — 양 차 모두 속도를 잃지 않고 계속 달렸다.</p>
+  <div class="chart"><div id="rp2"></div>
+    <div class="cap">접촉 후 측면 간격이 다시 벌어지는 궤적까지 클립에 담겨 있다</div></div>
+
+  <h3>접촉③ — Bus Stop 제동 구간 [추정] · 세션 555.9s (L5 +105s) · 접촉②로부터 7.1초</h3>
+  <p style="font-size:14px;color:var(--tx2)">전후 간격 <b>−0.35~−0.87m — 사실상 완전한 사이드-바이-사이드</b>.
+     두 차가 나란히 228km/h에서 풀브레이킹(브레이크 0.5~0.85)에 들어갔고, 측면 간격이 1.89m까지
+     수렴한 137km/h 시점에 접촉했다. 시케인을 향한 병주 제동 대결의 전형이다.</p>
+  <div class="chart"><div id="rp3"></div>
+    <div class="cap">전후 간격이 1m 미만 — 세 클립 중 가장 완전한 병주 상태의 접촉</div></div>
+
+  <div class="chart">
+    <div class="legend"><span><i style="background:var(--a)"></i>sumin07198</span>
+      <span><i style="background:var(--i)"></i>sdy</span></div>
+    <div id="spd3"></div>
+    <div class="cap">접촉③ 속도 트레이스 — 0.5m 간격을 유지한 채 두 차가 거의 동일한 감속 곡선을 그린다 (228→89km/h)</div>
+  </div>
+
+  <div class="bad note"><b>접촉 이후.</b> 접촉③의 3초 뒤 sumin07198에게 코너컷 경고(“ran wide, gained time minor”)가
+    기록됐고 [정렬 가정], L5 다이내믹스에는 스핀 2회가 남아 있다. 세션은 경고 6.9초 뒤 종료됐다.
+    스핀 회복에 필요한 시간을 감안하면 <b>피니시 라인을 넘지 못한 채 세션이 끝났을 가능성</b>이 높다 [추정] —
+    L5 랩타임이 <code>laps</code>에 없는 것과 정합하는 해석이다.</div>
+
+  <div class="note"><b>스핀 2회의 귀속.</b> L5는 접촉③ 시점(랩 경과 ~105s)까지 클린 랩(1:50.8)과 동일한
+    구간 배분으로 진행됐다 — 300km/h 풀스로틀(Blanchimont 프로파일)과 제동 228→89(Bus Stop 프로파일)가
+    속도 데이터로 위치를 독립 고정한다. 즉 랩 중반까지 큰 손실이 없었으므로, 스핀 2회는
+    <b>접촉③ 이후 국면</b>으로 귀속하는 것이 정합적이다 [추정].</div>
+</section>
+
+<!-- ══════════════ 06 규정 이벤트 ══════════════ -->
+<section>
+  <h2 id="rules"><span class="num">06</span>규정 이벤트</h2>
+  <p class="sub">RC 메시지 로그 기준. 과실 판정은 데이터에 없다 — 발생 사실만 기록한다.</p>
+
+  <div class="scroll"><table>
+    <tr><th>대상</th><th>내용</th><th>횟수/크기</th><th>랩</th></tr>
+    <tr><td><strong>sdy</strong></td><td>코너컷 경고 (ran wide, gained time minor)</td><td class="n">4회</td><td class="n">L2·L3·L4·L4</td></tr>
+    <tr><td><strong>sdy</strong></td><td>경고 누적 타임 페널티</td><td class="n">+2초</td><td class="n">L4</td></tr>
+    <tr><td><strong>sumin07198</strong></td><td>코너컷 경고 (ran wide, gained time minor)</td><td class="n">1회</td><td class="n">L5</td></tr>
+  </table></div>
+
+  <div class="note">sdy는 L4에 +2초 페널티를 안은 채 파이널 랩의 배틀에 들어갔다. 이 페널티가 최종 결과에
+    어떻게 반영됐는지는 <b>순위 데이터가 없어 판단할 수 없다</b>.</div>
+</section>
+
+<!-- ══════════════ 07 전략·타이어 ══════════════ -->
+<section>
+  <h2 id="strategy"><span class="num">07</span>전략·타이어</h2>
+  <p class="sub">짧은 레이스의 전략은 단순했다 — 분석할 것은 전략이 아니라 메타데이터의 모순이다.</p>
+
+  <ul class="ck">
+    <li class="y"><b>Medium 단일 스틴트, 피트 0회</b> — <code>race_pit_loss</code> 0행. 이 거리에서 노스톱은 자연스럽다.</li>
+    <li class="n"><b>타이어 마모 데이터 없음</b> — 스틴트 메타에 wear 필드 미기록. 마모 분석 불가.</li>
+    <li class="w"><b>스틴트 메타 모순</b> — 스틴트가 <code>startLap 1 → endLap 12 (12랩)</code>으로 기록돼 있으나
+      실주행은 기록 4랩 + 파이널 랩이다. 스틴트 길이 판정은 <code>laps</code> 테이블을 기준으로 했다.
+      모순의 원인은 09장 미해명 항목 참조.</li>
+  </ul>
+</section>
+
+<!-- ══════════════ 08 검증 ══════════════ -->
+<section>
+  <h2 id="verify"><span class="num">08</span>재조정·검증 요약</h2>
+  <p class="sub">이 리포트의 모든 분해가 통과/실패한 검증 목록. 실패도 그대로 둔다.</p>
+
+  <ul class="ck">
+    <li class="y"><b>섹터 합 = 랩타임</b> — 4/4랩, 오차 ≤ 1ms (ms 반올림 범위)</li>
+    <li class="y"><b><code>races.best_lap_ms</code> = L2 랩타임</b> — 109,287ms 일치</li>
+    <li class="y"><b>이벤트 랩 귀속</b> — 정렬 가정 하 5건 전부 귀속 랩의 세션 시간 구간 내</li>
+    <li class="y"><b>클립 위치 ↔ 속도 프로파일 상호 정합</b> — 300km/h 풀스로틀 구간(접촉②)과
+      고속 제동 228→89(접촉③)의 7.1초 간격이 Blanchimont→Bus Stop 구간과 일치</li>
+    <li class="y"><b>접촉 기하 ↔ 게임 충돌 판정 정합</b> — 세 클립 모두 게임이 충돌을 기록한 시점에
+      측면 간격이 차폭 수준(1.7~2.0m)까지 수렴</li>
+    <li class="w"><b>스틴트 메타 불일치</b> — endLap 12 vs 실주행 5랩. laps 기준으로 판정하고 미해명으로 남김</li>
+    <li class="n"><b>최종 순위·그리드 검증 불가</b> — 단독 업로드, 순위 데이터 부재</li>
+    <li class="n"><b>라이벌 페이스 비교 불가</b> — 같은 세션의 타 계정 업로드 없음.
+      Belgium 레이스 자체가 플랫폼에 이 한 건뿐이라 트랙 레퍼런스 페이스도 없다</li>
+  </ul>
+</section>
+
+<!-- ══════════════ 09 한계·미해명 ══════════════ -->
+<section>
+  <h2 id="limit"><span class="num">09</span>해석의 한계와 미해명 항목</h2>
+  <p class="sub">이 문서가 <b>말할 수 없는 것</b>들이다.</p>
+
+  <div class="card">
+    <h3 style="margin-top:0">해석 한계</h3>
+    <ul class="ck">
+      <li class="w"><b>거리는 차량 중심 간 거리다</b> — 20Hz 샘플의 3D 중심 간 거리이며, 차체 접촉 여부의
+        판정 주체는 게임 충돌 이벤트다. 기하 재구성(차체 사각형)은 5.63×2.00m·평행 헤딩 가정을 쓴다.</li>
+      <li class="w"><b>트랙 위치 귀속은 전부 [추정]</b> — 좌표→트랙 매핑 없이 랩 경과시간+속도 프로파일로
+        귀속했다. “Les Combes/Blanchimont/Bus Stop”은 정황 일치이지 좌표 확인이 아니다.</li>
+      <li class="w"><b>좌우 방향 미확정</b> — 상대 위치의 부호가 전 클립에서 일관됨(같은 쪽)은 확인했으나,
+        그 쪽이 왼쪽인지 오른쪽인지는 좌표계 규약을 확인하지 않아 말할 수 없다. 그림은 거울 대칭일 수 있다.</li>
+      <li class="w"><b>epoch↔세션시간 정렬은 가정 1개에 의존</b> — L5 경고를 접촉③ 직후에 연결했다.
+        이 가정이 틀리면 타임라인의 KST 역산(세션 시작 등)이 수 초 단위로 이동한다. 단, 랩 귀속 결론은 유지된다.</li>
+      <li class="w"><b>표본 4랩</b> — 언더스티어↔랩타임은 관측 병렬이지 상관 주장이 아니다.</li>
+      <li class="n"><b>sdy 시점 데이터 없음</b> — sdy의 랩타임·다이내믹스는 없다. 클립 프레임과 RC 메시지에
+        잡힌 것이 전부다.</li>
+      <li class="n"><b>그리드·최종 순위·완주 여부 없음</b> — 누가 앞섰고 누가 이겼는지 이 데이터로는 알 수 없다.</li>
+      <li class="n"><b>셋업 연결 분석 없음</b> — 로컬 RaceSummary(<code>detail.setup</code>) 부재.
+        DB의 셋업 스냅샷은 마켓 자산 비공개 원칙에 따라 리포트에 사용하지 않는다.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">미해명 항목</h3>
+    <ul class="ck">
+      <li class="q"><b>스틴트 메타 endLap=12의 출처</b> — 실주행 5랩과 모순. 가설 두 개를 병기한다:
+        ① 게임 StintHistory에 세션 외 타이어 사용(예: 예선에서 같은 세트 사용)이 혼입,
+        ② 캡처 시점 <code>CurrentLapNum</code> 이상치. 어느 쪽도 현 데이터로 확정 불가.</li>
+      <li class="q"><b>L5 랩타임 부재의 정확한 사유</b> — 미완주(라인 미통과)가 정황상 우세하나 [추정],
+        완주 후 파이널 랩 미플러시 가능성도 배제 못 한다.</li>
+      <li class="q"><b>L5 스핀 2회의 정확한 시점·위치</b> — 클립 윈도우 밖. 접촉③ 이후 국면 귀속은 정황 논증이다.</li>
+      <li class="q"><b>L1 스핀의 위치와 맥락</b> — 클립 없음(충돌 미수반 스핀은 클립을 만들지 않는다).</li>
+      <li class="q"><b>접촉①→② 사이 67초의 배틀 양상</b> — 클립은 충돌 ±1초만 남긴다. 그 사이 두 차가
+        어떤 간격으로 달렸는지는 데이터가 없다.</li>
+      <li class="q"><b>sdy +2초 페널티의 결과 반영</b> — 순위 데이터 부재로 판단 불가.</li>
+    </ul>
+  </div>
+</section>
+
+<div class="foot">
+  <p>데이터 출처: <code>platform.races</code> / <code>laps</code> / <code>race_detail</code>(stints·dynamics·events·incidents) / <code>race_pit_loss</code> / <code>accounts</code></p>
+  <p style="margin-top:6px">세션: <code>20260815_010957_belgium_6411517782386808738</code> · 업로더 sumin07198 (persona 기준).
+     접촉 기하는 sdy 속도벡터 기준 along/cross 분해(20Hz 프레임, 100ms 다운샘플)로 재구성했다.</p>
+  <p style="margin-top:6px">드라이버별 리포트는 생성하지 않았다 — 로컬 RaceSummary(<code>drivers[]</code>)가 없어 그리드 데이터가 부재하다.</p>
+</div>
+
+</div>
+
+<script>
+/* ── 접촉 클립 상대 위치 (sdy 기준, [along m, cross m] @100ms) ── */
+const C1=[[-6.36,2.90],[-6.03,2.91],[-5.73,2.85],[-5.42,2.74],[-5.07,2.60],[-4.77,2.46],[-4.49,2.31],[-4.22,2.17],[-3.98,2.02],[-3.70,1.88],[-3.41,1.69],[-3.14,1.69],[-2.87,1.63],[-2.60,1.58],[-2.33,1.50],[-2.10,1.43],[-1.95,1.38],[-1.81,1.40],[-1.58,1.37],[-1.55,1.40]];
+const C2=[[-1.39,4.15],[-1.48,4.06],[-1.55,3.90],[-1.73,3.69],[-1.88,3.44],[-2.03,3.20],[-2.16,2.96],[-2.33,2.75],[-2.50,2.49],[-2.65,2.22],[-2.81,1.93],[-2.84,1.86],[-2.87,1.93],[-2.91,2.09],[-2.94,2.20],[-2.95,2.35],[-3.03,2.48],[-3.10,2.65],[-3.20,2.82],[-3.26,3.00]];
+const C3=[[-0.62,2.93],[-0.65,2.92],[-0.74,2.92],[-0.85,2.91],[-0.87,2.86],[-0.86,2.76],[-0.82,2.62],[-0.74,2.46],[-0.64,2.27],[-0.61,2.09],[-0.55,1.96],[-0.55,1.89],[-0.54,1.89],[-0.50,1.93],[-0.46,2.00],[-0.43,2.08],[-0.35,2.19],[-0.35,2.30],[-0.40,2.42]];
+const T0={rp1:10,rp2:10,rp3:10}; /* t0(충돌) 인덱스 */
+
+function relplot(id,pts,cap1,cap2){
+  const AL=-7.2, AH=3.4, CL=-1.35, CH=4.6;      /* 공유 범위(m) — 등축 */
+  const W=760, PL=40, PR=12, PT=10, PB=26;
+  const s=(W-PL-PR)/(AH-AL);
+  const H=PT+PB+(CH-CL)*s;
+  const X=a=>PL+(a-AL)*s, Y=c=>PT+(CH-c)*s;
+  const t0=T0[id], CAR_L=5.63, CAR_W=2.0;
+  let g='';
+  /* 그리드 */
+  for(let a=-7;a<=3;a++){const maj=(a%2===0);
+    g+='<line x1="'+X(a)+'" y1="'+PT+'" x2="'+X(a)+'" y2="'+(H-PB)+'" stroke="#26303d" stroke-width="'+(a===0?1.5:0.6)+'"/>';
+    if(maj&&a<2)g+='<text x="'+X(a)+'" y="'+(H-PB+15)+'" fill="#63718a" font-size="10" text-anchor="middle">'+a+'m</text>';}
+  for(let c=-1;c<=4;c++){
+    g+='<line x1="'+PL+'" y1="'+Y(c)+'" x2="'+(W-PR)+'" y2="'+Y(c)+'" stroke="#26303d" stroke-width="'+(c===0?1.5:0.6)+'"/>';
+    g+='<text x="'+(PL-6)+'" y="'+(Y(c)+3.5)+'" fill="#63718a" font-size="10" text-anchor="end">'+c+'</text>';}
+  /* sdy 차체 (원점 기준) */
+  g+='<rect x="'+X(-CAR_L/2)+'" y="'+Y(CAR_W/2)+'" width="'+(CAR_L*s)+'" height="'+(CAR_W*s)+'" rx="6" fill="rgba(96,165,250,.13)" stroke="#60a5fa" stroke-width="1.4"/>';
+  g+='<text x="'+X(0)+'" y="'+(Y(0)+4)+'" fill="#60a5fa" font-size="11" font-weight="600" text-anchor="middle">sdy →</text>';
+  /* 플레이어 차체 @접촉 */
+  const p0=pts[t0];
+  g+='<rect x="'+X(p0[0]-CAR_L/2)+'" y="'+Y(p0[1]+CAR_W/2)+'" width="'+(CAR_L*s)+'" height="'+(CAR_W*s)+'" rx="6" fill="rgba(74,222,128,.07)" stroke="#4ade80" stroke-width="1.2" stroke-dasharray="5 4"/>';
+  /* 궤적 */
+  const path=pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ');
+  g+='<path d="'+path+'" fill="none" stroke="#4ade80" stroke-width="2.2" stroke-linejoin="round"/>';
+  g+='<circle cx="'+X(pts[0][0])+'" cy="'+Y(pts[0][1])+'" r="4.5" fill="#0b0e13" stroke="#4ade80" stroke-width="2"/>';
+  const pe=pts[pts.length-1];
+  g+='<circle cx="'+X(pe[0])+'" cy="'+Y(pe[1])+'" r="4.5" fill="#4ade80"/>';
+  g+='<circle cx="'+X(p0[0])+'" cy="'+Y(p0[1])+'" r="5.5" fill="#f87171" stroke="#0b0e13" stroke-width="1.5"/>';
+  g+='<text x="'+(X(p0[0])+9)+'" y="'+(Y(p0[1])-8)+'" fill="#f87171" font-size="11" font-weight="600">접촉</text>';
+  g+='<text x="'+(X(pts[0][0])-8)+'" y="'+(Y(pts[0][1])-9)+'" fill="#4ade80" font-size="11" font-weight="600" text-anchor="start">sumin07198 (−1.0s)</text>';
+  /* 축 라벨 */
+  g+='<text x="'+(W-PR)+'" y="'+(H-PB+15)+'" fill="#63718a" font-size="10" text-anchor="end">전후 간격 along (− = 뒤)</text>';
+  g+='<text x="'+(PL-24)+'" y="'+(H-PB-8)+'" fill="#63718a" font-size="10">측면(m)</text>';
+  g+=cap1?('<text x="'+(PL+8)+'" y="'+(PT+14)+'" fill="#93a1b5" font-size="11.5" font-weight="600">'+cap1+'</text>'):'';
+  g+=cap2?('<text x="'+(PL+8)+'" y="'+(PT+30)+'" fill="#63718a" font-size="10.5">'+cap2+'</text>'):'';
+  document.getElementById(id).innerHTML=
+    '<svg viewBox="0 0 '+W+' '+H.toFixed(0)+'" style="width:100%;height:auto;display:block">'+g+'</svg>';
+}
+relplot('rp1',C1,'접촉① Les Combes 진입부 [추정]','191→101km/h 제동·코너링 — 6.4m 추격이 대각 오버랩으로');
+relplot('rp2',C2,'접촉② Blanchimont 부근 [추정]','303~306km/h 풀스로틀 병주 — 측면 4.2→1.9m 수렴 후 재확산');
+relplot('rp3',C3,'접촉③ Bus Stop 제동 [추정]','228→89km/h 동시 풀브레이킹 — 전후 1m 미만의 완전 병주');
+
+/* ── 접촉③ 속도 트레이스 ── */
+(function(){
+  const P=[228,216,205,195,186,178,169,161,152,145,137,129,122,116,111,105,100,94,89];
+  const O=[229,220,209,199,188,179,169,160,152,146,137,132,126,120,114,109,104,101,98];
+  const t0i=10, W=760, H=250, PL=44, PR=14, PT=12, PB=26, lo=80, hi=240;
+  const n=P.length;
+  const X=i=>PL+(W-PL-PR)*i/(n-1);
+  const Y=v=>PT+(H-PT-PB)*(1-(v-lo)/(hi-lo));
+  const path=a=>a.map((v,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)).join(' ');
+  let g='';
+  [80,120,160,200,240].forEach(v=>{
+    g+='<line x1="'+PL+'" y1="'+Y(v)+'" x2="'+(W-PR)+'" y2="'+Y(v)+'" stroke="#26303d" stroke-width="1"/>';
+    if(v<240)g+='<text x="'+(PL-7)+'" y="'+(Y(v)+3.5)+'" fill="#63718a" font-size="10" text-anchor="end">'+v+'</text>';});
+  [-1,-0.5,0,0.5].forEach(t=>{const i=t0i+t*10;if(i<0||i>n-1)return;
+    g+='<text x="'+X(i)+'" y="'+(H-PB+15)+'" fill="#63718a" font-size="10" text-anchor="middle">'+(t>0?'+':'')+t+'s</text>';});
+  g+='<line x1="'+X(t0i)+'" y1="'+PT+'" x2="'+X(t0i)+'" y2="'+(H-PB)+'" stroke="#f87171" stroke-width="1.3" stroke-dasharray="4 4"/>';
+  g+='<text x="'+(X(t0i)+6)+'" y="'+(PT+12)+'" fill="#f87171" font-size="11" font-weight="600">접촉 (137km/h)</text>';
+  g+='<path d="'+path(O)+'" fill="none" stroke="#60a5fa" stroke-width="2.2"/>';
+  g+='<path d="'+path(P)+'" fill="none" stroke="#4ade80" stroke-width="2.2"/>';
+  g+='<text x="'+(X(2))+'" y="'+(Y(P[2])+18)+'" fill="#4ade80" font-size="11" font-weight="600">sumin07198</text>';
+  g+='<text x="'+(X(2))+'" y="'+(Y(O[2])-10)+'" fill="#60a5fa" font-size="11" font-weight="600">sdy</text>';
+  g+='<text x="'+(PL-30)+'" y="'+(PT-1)+'" fill="#63718a" font-size="10">km/h</text>';
+  document.getElementById('spd3').innerHTML=
+    '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">'+g+'</svg>';
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monza 개별 드라이버 분석 · 2026-07-25</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0e13; --card:#141a23; --card2:#1a212c; --line:#26303d;
+  --tx:#e4e9f0; --tx2:#93a1b5; --tx3:#63718a;
+  --a:#4ade80; --b:#fbbf24; --r:#f87171; --i:#60a5fa;
+}
+body{background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+  line-height:1.7;-webkit-font-smoothing:antialiased;padding-bottom:70px}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px}
+
+.hero{padding:42px 0 26px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--tx3);text-transform:uppercase;font-weight:600}
+h1{font-size:28px;line-height:1.32;margin:12px 0 12px;letter-spacing:-.02em}
+.lede{color:var(--tx2);font-size:15px}
+.lede b{color:var(--tx)}
+
+/* tabs */
+.tabs{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.94);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);margin-bottom:30px}
+.tabs .wrap{display:flex;gap:6px;overflow-x:auto;padding:11px 16px;scrollbar-width:none}
+.tabs .wrap::-webkit-scrollbar{display:none}
+.tb{background:var(--card2);border:1px solid var(--line);color:var(--tx2);
+  padding:8px 16px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;
+  white-space:nowrap;transition:.15s;font-family:inherit;display:flex;align-items:center;gap:7px}
+.tb:hover{color:var(--tx)}
+.tb.on{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+.tb .dot{width:8px;height:8px;border-radius:50%}
+.tb.on .dot{box-shadow:0 0 0 2px rgba(0,0,0,.15)}
+.pane{display:none}
+.pane.on{display:block}
+
+section{margin:0 0 42px}
+h2{font-size:20px;margin:0 0 6px;letter-spacing:-.01em}
+h2 .num{color:var(--tx3);font-size:13px;font-weight:600;margin-right:8px}
+.sub{color:var(--tx3);font-size:13.5px;margin-bottom:18px}
+h3{font-size:15.5px;margin:26px 0 10px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0}
+
+.note{border-left:3px solid var(--i);background:rgba(96,165,250,.07);
+  border-radius:0 10px 10px 0;padding:14px 16px;margin:14px 0;font-size:14px;color:var(--tx2)}
+.warn{border-left-color:var(--b);background:rgba(251,191,36,.07)}
+.bad{border-left-color:var(--r);background:rgba(248,113,113,.07)}
+.good{border-left-color:var(--a);background:rgba(74,222,128,.07)}
+.note b{color:var(--tx)}
+
+.key{border-radius:14px;padding:20px;margin:16px 0;border:1px solid}
+.key.g{background:linear-gradient(135deg,rgba(74,222,128,.1),rgba(96,165,250,.04));border-color:rgba(74,222,128,.3)}
+.key.o{background:linear-gradient(135deg,rgba(251,191,36,.1),rgba(248,113,113,.04));border-color:rgba(251,191,36,.3)}
+.key .k{font-size:11px;letter-spacing:.13em;font-weight:700;text-transform:uppercase}
+.key.g .k{color:var(--a)}.key.o .k{color:var(--b)}
+.key p{margin-top:8px;font-size:15px;line-height:1.65}
+.key p+p{margin-top:11px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat .l{font-size:11.5px;color:var(--tx3);margin-bottom:5px}
+.stat .v{font-size:20px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.stat .d{font-size:11.5px;color:var(--tx3);margin-top:3px}
+.va{color:var(--a)}.vb{color:var(--b)}.vr{color:var(--r)}
+
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0;
+  border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:440px}
+th{background:var(--card2);color:var(--tx2);font-weight:600;text-align:left;
+  padding:10px 12px;font-size:12px;white-space:nowrap}
+td{padding:9px 12px;border-top:1px solid var(--line);color:var(--tx2);vertical-align:top}
+td.n{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td strong{color:var(--tx)}
+tr.hl td{background:rgba(74,222,128,.06)}
+tr.hlr td{background:rgba(248,113,113,.06)}
+tr.dim td{color:var(--tx3)}
+
+.led{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;
+  background:var(--card2);border:1px solid var(--line);border-radius:12px;
+  padding:16px;overflow-x:auto;line-height:2;white-space:pre;color:var(--tx2)}
+.led .pos{color:var(--a)}.led .neg{color:var(--r)}.led .zero{color:var(--tx3)}
+.led .tot{color:var(--tx);font-weight:700}
+
+ul.ck{list-style:none;margin:10px 0}
+ul.ck li{padding:8px 0 8px 28px;position:relative;font-size:14px;color:var(--tx2);
+  border-bottom:1px solid rgba(38,48,61,.55)}
+ul.ck li:last-child{border-bottom:none}
+ul.ck li::before{position:absolute;left:0;top:8px}
+ul.ck li.y::before{content:"✅"}
+ul.ck li.n::before{content:"❌"}
+ul.ck li.w::before{content:"⚠️"}
+ul.ck li.q::before{content:"❓"}
+ul.ck li b{color:var(--tx)}
+
+.mer{background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:18px 10px;margin:14px 0;overflow-x:auto}
+.mer .cap{font-size:12px;color:var(--tx3);text-align:center;margin-bottom:10px;padding:0 10px}
+.mermaid{display:flex;justify-content:center;min-width:280px}
+
+/* setup list */
+.slist{display:grid;grid-template-columns:1fr auto;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13.5px;margin:14px 0}
+.slist>div{background:var(--card);padding:8px 12px}
+.slist .hd{background:var(--card2);color:var(--tx2);font-size:11.5px;font-weight:600}
+.slist .val{font-family:ui-monospace,Menlo,monospace;text-align:right;font-variant-numeric:tabular-nums}
+.slist .df{color:var(--b)}
+
+/* participant cards */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin:16px 0}
+.pc{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px}
+.pc.dsq{border-color:rgba(248,113,113,.45)}
+.pc.sev{border-color:rgba(248,113,113,.28)}
+.pc.win{border-color:rgba(251,191,36,.45)}
+.pc h4{font-size:15px;margin:0 0 8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.pc .tl{list-style:none;margin-top:8px;font-size:12.5px}
+.pc .tl li{display:flex;gap:9px;padding:3.5px 0;color:var(--tx2);align-items:baseline}
+.pc .tl .lp{font-family:ui-monospace,Menlo,monospace;color:var(--tx3);flex:0 0 30px;font-size:11.5px}
+.pc .tl .w{color:var(--tx2)}
+.pc .tl .p{color:#fca5a5}
+.pc .tl .i{color:var(--b);font-weight:600}
+.pc .sm{font-size:11.5px;color:var(--tx3);margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.p-dsq{background:rgba(248,113,113,.16);color:var(--r)}
+.p-win{background:rgba(251,191,36,.16);color:var(--b)}
+.p-sg{background:rgba(248,113,113,.13);color:#fca5a5}
+.p-pen{background:rgba(251,191,36,.13);color:var(--b)}
+.p-cln{background:rgba(74,222,128,.13);color:var(--a)}
+.p-up{background:rgba(96,165,250,.14);color:var(--i)}
+
+.tyre{display:inline-block;width:18px;height:18px;border-radius:50%;font-size:10px;
+  line-height:18px;text-align:center;font-weight:700;vertical-align:-3px}
+.t-h{background:rgba(228,233,240,.15);color:#e4e9f0;border:1.5px solid #e4e9f0}
+.t-m{background:rgba(251,191,36,.15);color:var(--b);border:1.5px solid var(--b)}
+
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;background:var(--card2);
+  padding:1.5px 6px;border-radius:5px;font-size:.88em;color:#a5d6ff;border:1px solid var(--line)}
+.foot{border-top:1px solid var(--line);margin-top:44px;padding-top:22px;color:var(--tx3);font-size:12.5px}
+@media(max-width:600px){
+  h1{font-size:23px} .hero{padding:30px 0 22px} h2{font-size:18px}
+  .stat .v{font-size:18px} .led{font-size:11px} .pgrid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Driver Analysis · Monza · 2026-07-25</div>
+  <h1>드라이버별 개별 분석</h1>
+  <p class="lede">풀 텔레메트리를 업로드한 <b>Ryul</b>과 <b>RedJamong</b>의 랩 단위 분석,
+     그리고 이벤트 로그에서 확인된 <b>참가자 21명</b>의 인시던트 타임라인.
+     모든 이름은 게임 내 스팀 계정명이다.</p>
+</header>
+</div>
+
+<div class="tabs"><div class="wrap">
+  <button class="tb on" data-t="ryul"><span class="dot" style="background:#4ade80"></span>Ryul</button>
+  <button class="tb" data-t="red"><span class="dot" style="background:#fbbf24"></span>RedJamong</button>
+  <button class="tb" data-t="field"><span class="dot" style="background:#60a5fa"></span>참가자 21명</button>
+</div></div>
+
+<div class="wrap">
+
+<!-- ══════════════ RYUL ══════════════ -->
+<div class="pane on" id="p-ryul">
+
+  <div class="key g">
+    <div class="k">Ryul · 한 줄 요약</div>
+    <p><b>흔들리지 않았다.</b> 26랩 내내 이상 랩 2개를 빼면 페이스가 일정했고,
+       연료가 줄어드는 만큼 정직하게 빨라졌다. 상대의 붕괴 구간에서 격차를 벌린 것도
+       특별한 공격이 아니라 <b>자기 페이스를 유지한 결과</b>다.</p>
+    <p style="font-size:14px;color:var(--tx2)">다만 최종 마진 3.70초 중 <b>본인이 실제로 만들어낸 부분은 크지 않다</b>.
+       클린 구간의 순수 우위는 랩당 0.5~0.7초 수준이었다.</p>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="l">총 주행시간</div><div class="v va">39:38.963</div><div class="d">1위 (맞대결)</div></div>
+    <div class="stat"><div class="l">베스트 랩</div><div class="v">1:22.917</div><div class="d">L19 · Medium</div></div>
+    <div class="stat"><div class="l">전략</div><div class="v" style="font-size:16px">H 17 → M 9</div><div class="d">1스톱 · L17 피트</div></div>
+    <div class="stat"><div class="l">락업</div><div class="v va">19<span style="font-size:13px;color:var(--tx3)">회</span></div><div class="d">랩당 0.73회</div></div>
+    <div class="stat"><div class="l">평균 언더스티어</div><div class="v vr">35.03%</div><div class="d">상대보다 6.8%p 높음</div></div>
+    <div class="stat"><div class="l">평균 오버스티어</div><div class="v va">0.20%</div><div class="d">매우 안정</div></div>
+    <div class="stat"><div class="l">스핀</div><div class="v va">0</div><div class="d">무사고</div></div>
+    <div class="stat"><div class="l">페널티</div><div class="v va">0</div><div class="d">경고 3건만</div></div>
+  </div>
+
+  <section>
+    <h2><span class="num">01</span>스틴트 구조</h2>
+    <div class="mer">
+      <div class="cap">Ryul · 하드 롱런 후반 미디엄</div>
+      <pre class="mermaid">
+flowchart TD
+  A["스타트<br/>Hard · 연료 10랩분"] --> B["L1~L16<br/>하드 롱런 16랩"]
+  B --> C["L17 피트인<br/>정지 2.088초"]
+  C --> D["L18~L26<br/>Medium 9랩"]
+  D --> E["종료<br/>마모 H 36% / M 29%"]
+  style B fill:#1f2a35,stroke:#93a1b5,color:#e4e9f0
+  style D fill:#3d3320,stroke:#fbbf24,color:#e4e9f0
+      </pre>
+    </div>
+
+    <div class="note good"><b>롱런 판단은 결과적으로 옳았다.</b>
+      17랩을 쓴 하드로도 랩타임이 전혀 늘지 않았다(L13~L16 기울기 사실상 0).
+      마모가 관측되지 않은 레이스였으므로 연장의 대가가 없었다.
+      <b>단, 이는 사후적 결과다</b> — 마모가 정상적으로 발생하는 조건이었다면 리스크였다.</div>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>랩별 기록</h2>
+    <p class="sub">Δ는 RedJamong 대비. 음수 = Ryul이 느림.</p>
+    <div class="scroll"><table id="t-ryul">
+      <thead><tr><th>랩</th><th>타이어</th><th>랩타임</th><th>Δ vs Red</th><th>국면</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>잘한 것 / 아쉬운 것</h2>
+    <ul class="ck">
+      <li class="y"><b>제동 절제</b> — 락업 19회(랩당 0.73회)로 상대의 40% 수준. 오버스티어 0.20%로 차량을 안정적으로 유지했다.</li>
+      <li class="y"><b>페이스 일관성</b> — 클린 구간의 랩타임 산포가 작다. L2~4 대비 L9~12에서 랩당 0.46초 빨라진 것은 연료 소모에 따른 정상 반응이다.</li>
+      <li class="y"><b>S3 강점</b> — 초반 클린 구간에서 상대 대비 S3에서만 0.658초를 벌었다. 리어윙 3(vs 6)의 저항 감소와 방향이 일치한다 <span style="color:var(--tx3)">(가설 · n=3)</span>.</li>
+      <li class="q"><b>L15 이상 랩</b> — 1:25.824로 전후 대비 +2.3초. 원인 불명이며, 이 한 랩이 피트 사이클 분해의 75%를 차지한다.</li>
+      <li class="q"><b>L25 대형 손실</b> — S3만 57.0초(정상 대비 +29초). 중립화 추종만으로 설명되지 않는다.</li>
+      <li class="w"><b>언더스티어 35.03%</b> — 상대보다 6.8%p 높다. 프론트 안티롤바 7(딱딱)과 방향이 일치하나, 단일 귀속은 불가하다.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>셋업</h2>
+    <p class="sub">노란색 = 상대와 다른 값.</p>
+    <div class="slist">
+      <div class="hd">파라미터</div><div class="hd val">값</div>
+      <div>프론트윙 / 리어윙</div><div class="val df">25 / 3</div>
+      <div>차동 On / Off Throttle</div><div class="val df">100 / 30</div>
+      <div>프론트 / 리어 안티롤바</div><div class="val"><span class="df">7</span> / 15</div>
+      <div>프론트 / 리어 서스펜션</div><div class="val df">40 / 1</div>
+      <div>프론트 / 리어 캠버</div><div class="val">−3.5 / −2.0</div>
+      <div>프론트 / 리어 토우</div><div class="val">0 / 0.1</div>
+      <div>라이드하이트 F / R</div><div class="val">23 / 48</div>
+      <div>브레이크 압력 / 바이어스</div><div class="val">100 / 57</div>
+      <div>엔진 브레이킹</div><div class="val">50</div>
+      <div>타이어 압력 F / R</div><div class="val">29.5 / <span class="df">26.0</span></div>
+      <div>밸러스트 / 연료</div><div class="val">6 / <span class="df">10</span></div>
+    </div>
+    <div class="note warn"><b>연료 10랩분은 여유가 큰 편이다.</b> 상대(5랩분)의 두 배로,
+      그만큼 초반 차가 무겁다. 초반 클린 구간에서 이미 앞섰다는 점을 감안하면
+      <b>연료를 줄였을 때의 잠재 페이스는 더 높았을 수 있다</b> <span style="color:var(--tx3)">(추정 · 검증 불가)</span>.</div>
+  </section>
+</div>
+
+<!-- ══════════════ RED JAMONG ══════════════ -->
+<div class="pane" id="p-red">
+
+  <div class="key o">
+    <div class="k">RedJamong · 한 줄 요약</div>
+    <p><b>레이스를 잃은 건 전략이 아니라 L9~L12 네 랩이다.</b>
+       그 전까지 랩당 0.71초 차로 붙어 있었고, 그 네 랩에서만 <b>13.92초</b>를 잃었다.
+       직전 L7에 락업이 <b>한 랩에 8회</b> 몰렸고, 붕괴가 시작된 <b>L9에 오버스티어 최대값(3.70%)</b>이 찍혔다.</p>
+    <p style="font-size:14px;color:var(--tx2)">그리고 결정적으로 — <b>타이어를 갈고 나서 페이스가 완전히 돌아왔다.</b>
+       이것이 이 레이스에서 가장 강한 단서다.</p>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="l">총 주행시간</div><div class="v vb">39:42.665</div><div class="d">+3.702s</div></div>
+    <div class="stat"><div class="l">베스트 랩</div><div class="v">1:23.038</div><div class="d">L18 · Hard</div></div>
+    <div class="stat"><div class="l">전략</div><div class="v" style="font-size:16px">M 13 → H 13</div><div class="d">1스톱 · L13 피트</div></div>
+    <div class="stat"><div class="l">락업</div><div class="v vr">47<span style="font-size:13px;color:var(--tx3)">회</span></div><div class="d">L7에만 8회</div></div>
+    <div class="stat"><div class="l">평균 언더스티어</div><div class="v va">28.25%</div><div class="d">상대보다 낮음</div></div>
+    <div class="stat"><div class="l">평균 오버스티어</div><div class="v">0.30%</div><div class="d">최대 3.70% (L9)</div></div>
+    <div class="stat"><div class="l">스핀</div><div class="v va">0</div><div class="d">무사고</div></div>
+    <div class="stat"><div class="l">페널티</div><div class="v va">0</div><div class="d">경고 1건만</div></div>
+  </div>
+
+  <section>
+    <h2><span class="num">01</span>무슨 일이 있었나</h2>
+
+    <div class="led"><span class="zero">L2~L4   클린 초반          </span>  <span class="zero">랩당 −0.71s</span>  <span class="zero">← 정상 범위</span>
+<span class="zero">L5~L8   중립화 추정 ①      </span>  <span class="zero">중립      </span>  <span class="neg">← L7 락업 8회</span>
+<span class="tot">L9~L12  붕괴               </span>  <span class="neg tot">랩당 −3.48s</span>  <span class="zero">← 여기서 13.92초 손실</span>
+<span class="zero">L13     조기 피트          </span>  <span class="zero">          </span>  <span class="zero">← 대응 (동기 미확정)</span>
+<span class="pos">L19~L21 피트 후 클린       </span>  <span class="pos">랩당 −0.52s</span>  <span class="pos">← 완전 회복</span></div>
+
+    <div class="key g" style="margin-top:18px">
+      <div class="k">가장 강한 단서 — 타이어 교체 후 회복</div>
+      <p>붕괴 구간(L9~12)에서 랩당 <b>3.48초</b> 뒤졌던 것이,
+         타이어를 갈고 난 뒤(L19~21) <b>0.52초</b>로 돌아왔다.
+         이는 사고 이전 클린 구간의 격차(<b>0.71초</b>)보다도 <b>작다</b>.</p>
+      <p style="font-size:14px;color:var(--tx2)">차량 성능이 완전히 복원됐다는 뜻이다.
+         에어로 대미지는 피트에서 자동으로 고쳐지지 않으므로,
+         이 회복 패턴은 <b>타이어 쪽 문제(플랫스팟)</b> 가설을 상대적으로 더 지지한다.
+         <span style="color:var(--tx3)">단, 컴파운드(M→H)와 연료량이 동시에 바뀌었으므로 결정적 증명은 아니다.</span></p>
+    </div>
+
+    <div class="mer">
+      <div class="cap">RedJamong의 레이스 전개</div>
+      <pre class="mermaid">
+flowchart TD
+  A["L1~L4<br/>Medium · 랩당 −0.71s"] --> B["L5~L8<br/>중립화 · L7 락업 8회"]
+  B --> C["L9<br/>오버스티어 최대 3.70%"]
+  C --> D["L9~L12<br/>랩당 −3.48s"]
+  D --> E["L13 조기 피트<br/>→ Hard"]
+  E --> F["L19~L21<br/>랩당 −0.52s"]
+  F --> G["페이스 완전 회복"]
+  style D fill:#3d2020,stroke:#f87171,color:#e4e9f0
+  style G fill:#1f3d2b,stroke:#4ade80,color:#e4e9f0
+      </pre>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>손실이 발생한 위치</h2>
+    <p class="sub">L2~L4 → L9~L12 섹터별 평균 변화. 음수 = 빨라짐.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>섹터</th><th>L2~L4</th><th>L9~L12</th><th>변화</th><th>손실 비중</th></tr></thead>
+      <tbody>
+        <tr class="hlr"><td><strong>S1</strong></td><td class="n">27.681</td><td class="n">29.004</td>
+          <td class="n" style="color:var(--r)"><strong>+1.323s</strong></td><td>57%</td></tr>
+        <tr><td><strong>S2</strong></td><td class="n">28.738</td><td class="n">29.399</td>
+          <td class="n" style="color:var(--r)">+0.661s</td><td>29%</td></tr>
+        <tr><td><strong>S3</strong></td><td class="n">28.690</td><td class="n">29.019</td>
+          <td class="n" style="color:var(--r)">+0.329s</td><td>14%</td></tr>
+        <tr class="dim"><td><strong>랩 합</strong></td><td class="n">1:25.110</td><td class="n">1:27.422</td>
+          <td class="n">+2.312s</td><td>100%</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="note bad"><b>세 섹터 모두에서 잃었다.</b> S1 집중(57%)이 두드러지지만
+      특정 코너의 문제가 아니라 <b>전면적 성능 저하</b> 패턴이다.
+      S1 집중은 <b>제동 성능 저하</b>(플랫스팟)와 <b>직선 속도 결손</b>(드래그 증가) 양쪽 모두와 부합하며,
+      섹터 데이터만으로는 구분되지 않는다. 다만 §01의 회복 패턴이 전자 쪽을 지지한다.</div>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>랩별 기록</h2>
+    <p class="sub">Δ는 Ryul 대비. 음수 = RedJamong이 느림.</p>
+    <div class="scroll"><table id="t-red">
+      <thead><tr><th>랩</th><th>타이어</th><th>랩타임</th><th>Δ vs Ryul</th><th>국면</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>잘한 것 / 아쉬운 것</h2>
+    <ul class="ck">
+      <li class="y"><b>초반 페이스는 경쟁력 있었다</b> — L2~L4에서 0.71초 차. 게다가 더 부드러운 미디엄을 신고도 뒤졌다는 점을 보면, 순수 페이스 차는 이보다 작을 수 있다.</li>
+      <li class="y"><b>피트 후 완전히 회복했다</b> — L19~21에서 0.52초 차. 문제 상황을 끝까지 끌고 가지 않았다.</li>
+      <li class="y"><b>깨끗한 레이스</b> — 페널티 0건, 경고 1건(L26 경미 코너컷), 스핀 0회.</li>
+      <li class="w"><b>락업 47회</b> — 상대의 2.5배. 다만 이 중 8회가 L7 한 랩에 몰려 있어 <b>평시 습관과 사고 정황을 분리해야</b> 한다.</li>
+      <li class="q"><b>L7~L9 사이에 일어난 일이 레이스를 결정했다</b> — 그를 당사자로 하는 충돌 이벤트 로그가 없어 사고 연루 여부조차 확인되지 않는다.</li>
+      <li class="q"><b>L13 피트의 동기 미확정</b> — 슬럼프 대응인지 원래 계획인지 판별 불가. 결과적으로는 손실을 끊는 데 기여했다.</li>
+    </ul>
+
+    <div class="note warn"><b>“조기 피트로 3.37초를 회수했다”는 과대평가다.</b>
+      L13~L18의 −3.368초를 분해하면 —
+      피트 사이클 순손익 <b>+0.588초</b>, Ryul의 L15 이상 랩 <b>+2.513초</b>,
+      L16 신품 하드 델타 <b>+0.267초</b>.
+      <b>언더컷에 실제로 귀속되는 부분은 0.267초뿐</b>이며 나머지는 상대 측 사정이다.</div>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>셋업</h2>
+    <p class="sub">노란색 = 상대와 다른 값.</p>
+    <div class="slist">
+      <div class="hd">파라미터</div><div class="hd val">값</div>
+      <div>프론트윙 / 리어윙</div><div class="val df">22 / 6</div>
+      <div>차동 On / Off Throttle</div><div class="val df">90 / 40</div>
+      <div>프론트 / 리어 안티롤바</div><div class="val"><span class="df">1</span> / 15</div>
+      <div>프론트 / 리어 서스펜션</div><div class="val df">41 / 8</div>
+      <div>프론트 / 리어 캠버</div><div class="val">−3.5 / −2.0</div>
+      <div>프론트 / 리어 토우</div><div class="val">0 / 0.1</div>
+      <div>라이드하이트 F / R</div><div class="val">23 / 48</div>
+      <div>브레이크 압력 / 바이어스</div><div class="val">100 / 57</div>
+      <div>엔진 브레이킹</div><div class="val">50</div>
+      <div>타이어 압력 F / R</div><div class="val">29.5 / <span class="df">26.5</span></div>
+      <div>밸러스트 / 연료</div><div class="val">6 / <span class="df">5</span></div>
+    </div>
+    <div class="note"><b>고다운포스 방향의 셋업이다.</b> 리어윙 6·프론트 ARB 1은 코너 그립 우선 세팅이며,
+      실제로 S2에서 상대보다 0.045초 빨랐고 평균 언더스티어도 6.8%p 낮았다 — <b>셋업 의도와 결과가 일치</b>한다.
+      대신 저항이 커서 S3(직선 비중 높음)에서 0.658초를 내줬다.
+      <span style="color:var(--tx3)">가설 · n=3, 드라이버·연료·컴파운드 교락</span></div>
+    <div class="note bad"><b>락업 차이를 셋업으로 설명할 수는 없다.</b>
+      브레이크 압력(100)과 바이어스(57)가 양쪽 <b>완전히 동일</b>하다.
+      제동 관련 셋업이 같은데 락업이 2.5배 차이 난다면, 원인은 셋업이 아니라
+      <b>드라이빙 스타일 또는 그날의 상황</b>에 있다.</div>
+  </section>
+</div>
+
+<!-- ══════════════ FIELD ══════════════ -->
+<div class="pane" id="p-field">
+
+  <div class="key" style="background:linear-gradient(135deg,rgba(96,165,250,.1),rgba(74,222,128,.04));border-color:rgba(96,165,250,.3)">
+    <div class="k" style="color:var(--i)">참가자 21명</div>
+    <p>두 업로더의 이벤트 피드를 <b>합집합·중복제거</b>해 얻은 명단이다.
+       이름은 모두 게임 내 스팀 계정명이며, 인시던트 심각도 순으로 정렬했다.</p>
+    <p style="font-size:14px;color:var(--tx2)"><b>주의:</b> 경고·페널티를 한 번도 받지 않은 드라이버는 로그에 나타나지 않는다.
+       완전히 클린하게 달린 참가자는 여기 빠져 있으므로, 이것은 <b>참가자 명부가 아니라 인시던트 목록</b>이다.</p>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="l">확인된 드라이버</div><div class="v">21<span style="font-size:13px;color:var(--tx3)">명</span></div><div class="d">이벤트 발생자만</div></div>
+    <div class="stat"><div class="l">Stop-Go 10초</div><div class="v vr">6<span style="font-size:13px;color:var(--tx3)">건</span></div><div class="d">5명</div></div>
+    <div class="stat"><div class="l">3초 페널티</div><div class="v vb">5<span style="font-size:13px;color:var(--tx3)">건</span></div><div class="d">5명</div></div>
+    <div class="stat"><div class="l">총 이벤트</div><div class="v">63<span style="font-size:13px;color:var(--tx3)">건</span></div><div class="d">중복제거 후</div></div>
+  </div>
+
+  <div class="pgrid" id="pcards"></div>
+
+  <div class="note"><b>인시던트 패턴 요약.</b>
+    페널티 사유 1위는 <b>코너컷 시간이득</b>(5건), 2위는 <b>피트레인 과속</b>(3건)이다.
+    몬자는 시케인 3개가 모두 컷 유혹이 큰 저속 구간이라 코너컷 경고가 다수 발생했고,
+    피트레인 과속이 3명에게서 나온 것은 <b>피트 진입 감속 타이밍</b>에 개선 여지가 있음을 시사한다.</div>
+</div>
+
+<div class="foot">
+  <p>데이터 출처: <code>platform.races</code> / <code>laps</code> / <code>race_detail</code> / <code>race_setup</code> / <code>race_pit_loss</code> / <code>accounts</code></p>
+  <p style="margin-top:6px">드라이버 이름은 <code>platform.accounts.persona</code>(Steam) 및 게임 내 참가자명 기준.
+     모든 수치는 독립 모델 2회 교차검증을 거쳤다.</p>
+  <p style="margin-top:6px">종합 분석: <code>race-analysis-20260725-monza.html</code></p>
+</div>
+
+</div>
+
+<script>
+/* ── 탭 ── */
+document.querySelectorAll('.tb').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.tb').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    document.getElementById('p-'+b.dataset.t).classList.add('on');
+    window.scrollTo({top:0,behavior:'smooth'});
+  };
+});
+
+/* ── 랩 데이터 ── */
+const RY=[90076,84896,84104,84199,98427,97259,115736,121512,84232,84682,83388,83467,84132,84002,85824,83519,89929,103907,82917,83210,83397,87159,99316,94561,121519,83593];
+const RJ=[87855,84874,85766,84690,98797,97294,115885,121131,87929,88148,86852,86759,90482,104799,83311,83252,83063,83038,84146,83260,83664,92071,101835,96023,102722,85019];
+
+function fmt(ms){
+  const s=ms/1000, m=Math.floor(s/60), r=(s-m*60);
+  return m+':'+(r<10?'0':'')+r.toFixed(3);
+}
+function phase(l){
+  if(l===1)return['스타트',''];
+  if(l<=4)return['클린 초반',''];
+  if(l<=8)return['중립화 추정 ①','dim'];
+  if(l<=12)return['격차 발생',''];
+  if(l<=18)return['피트 사이클',''];
+  if(l<=21)return['클린 후반',''];
+  if(l<=25)return['중립화 추정 ②','dim'];
+  return['최종랩',''];
+}
+function build(id,own,opp,pitIn,pitOut,tyre1,tyre2,switchLap){
+  const tb=document.querySelector('#'+id+' tbody');
+  let h='';
+  for(let i=0;i<26;i++){
+    const l=i+1;
+    const d=opp[i]-own[i];               /* 양수 = 본인이 빠름 */
+    const ph=phase(l);
+    const isT2 = l>=switchLap;
+    const tc = isT2?tyre2:tyre1;
+    const tcls = tc==='H'?'t-h':'t-m';
+    let mark='';
+    if(l===pitIn)mark=' <span class="pill p-pen">피트인</span>';
+    if(l===pitOut)mark=' <span class="pill p-cln">아웃랩</span>';
+    let cls=ph[1]?' class="dim"':'';
+    if(l>=9&&l<=12)cls=(d>0)?' class="hl"':' class="hlr"';
+    const dc = d>0?'var(--a)':'var(--r)';
+    h+='<tr'+cls+'><td class="n"><strong>L'+l+'</strong>'+mark+'</td>'
+      +'<td><span class="tyre '+tcls+'">'+tc+'</span></td>'
+      +'<td class="n">'+fmt(own[i])+'</td>'
+      +'<td class="n" style="color:'+dc+'">'+(d>0?'+':'')+(d/1000).toFixed(3)+'</td>'
+      +'<td style="font-size:12.5px">'+ph[0]+'</td></tr>';
+  }
+  tb.innerHTML=h;
+}
+build('t-ryul',RY,RJ,17,18,'H','M',18);
+build('t-red',RJ,RY,13,14,'M','H',14);
+
+/* ── 참가자 (스팀 계정명) ── */
+const P=[
+ {n:'AD',ev:[[25,'w','코너컷 (경미)']]},
+ {n:'DDAO',ev:[[13,'p','Stop-Go: 피트레인 과속 (10초)'],[14,'w','코너컷 (경미)'],[17,'w','코너컷 (현저한 시간이득)'],[18,'w','코너컷 (현저한 시간이득)']]},
+ {n:'ddlpa0505',ev:[[1,'w','코너컷 (경미)'],[5,'p','3초 페널티: 코너컷 시간이득'],[9,'w','코너컷 (경미)'],[23,'p','Stop-Go: 피트레인 과속 (10초)']]},
+ {n:'Dokkaebi',ev:[[18,'w','코너컷 (경미)'],[23,'p','Stop-Go: 피트레인 과속 (10초)']]},
+ {n:'GORK',ev:[[22,'w','코너컷 (경미)']]},
+ {n:'Haoul',ev:[[3,'w','코너컷 (경미)']]},
+ {n:'HARANG',ev:[[17,'w','코너컷 (경미)']]},
+ {n:'jaeseonchoi',ev:[[2,'w','코너컷 (경미)'],[13,'w','소형 접촉'],[13,'p','Stop-Go: 코너컷 시간이득 (10초)']]},
+ {n:'kolly',ev:[[3,'w','코너컷 (경미)'],[10,'w','소형 접촉'],[10,'p','3초 페널티: 코너컷 시간이득'],[11,'w','코너컷 (경미)'],[15,'w','소형 접촉'],[16,'w','소형 접촉']]},
+ {n:'Leebul',ev:[[17,'w','코너컷 (경미)'],[26,'w','소형 접촉']]},
+ {n:'Lumen',ev:[[26,'w','코너컷 (경미)'],[27,'w','코너컷 (경미)']]},
+ {n:'OD3H',ev:[[9,'w','소형 접촉']]},
+ {n:'RedJamong',ev:[[26,'w','코너컷 (경미)']],tag:'업로더'},
+ {n:'ryno',ev:[[2,'w','코너컷 (경미)'],[15,'w','코너컷 (경미)'],[16,'w','코너컷 (경미)'],[27,'i','레이스 위너']],tag:'우승'},
+ {n:'Ryul',ev:[[2,'w','코너컷 (경미)'],[2,'w','소형 접촉'],[18,'w','코너컷 (경미)']],tag:'업로더'},
+ {n:'Sony',ev:[[1,'w','코너컷 (경미)'],[3,'w','코너컷 (경미)'],[26,'w','코너컷 시간이득'],[26,'p','3초 페널티: 경고 누적'],[27,'p','실격: 역주행 블로킹']],tag:'실격'},
+ {n:'soundplay04',ev:[[2,'w','코너컷 (경미)'],[4,'w','코너컷 (경미)'],[9,'w','소형 접촉'],[25,'w','코너컷 (경미)'],[25,'p','3초 페널티: 경고 누적'],[26,'w','코너컷 (경미)'],[27,'w','코너컷 (경미)']]},
+ {n:'SsGgA',ev:[[7,'p','Stop-Go: 옐로 플래그 무시 (10초)'],[7,'p','3초 페널티: 코너컷 시간이득'],[10,'w','코너컷 (경미)']]},
+ {n:'sumin07198',ev:[[2,'w','소형 접촉'],[3,'w','피트 출구선 침범'],[4,'w','코너컷 (경미)'],[13,'w','코너컷 (경미)']]},
+ {n:'uno',ev:[[1,'w','소형 접촉'],[9,'w','소형 접촉'],[10,'w','코너컷 (경미)'],[14,'w','코너컷 (경미)']]},
+ {n:'yoshi7910',ev:[[5,'p','Stop-Go: 대형 접촉 (10초)'],[14,'w','코너컷 (현저한 시간이득)'],[15,'w','코너컷 (현저한 시간이득)']],tag:'중립화 유발 추정'}
+];
+(function(){
+  const rows=P.map(p=>{
+    const pen=p.ev.filter(e=>e[1]==='p');
+    const sg=pen.filter(e=>/Stop-Go/.test(e[2])).length;
+    const dsq=pen.some(e=>/실격/.test(e[2]));
+    const coll=p.ev.filter(e=>/접촉/.test(e[2])).length;
+    let sev=pen.length*3+sg*3+coll+p.ev.length*0.2;
+    if(dsq)sev=100;
+    let grade,cls,box;
+    if(dsq){grade='실격';cls='p-dsq';box='dsq';}
+    else if(sg){grade='중대';cls='p-sg';box='sev';}
+    else if(pen.length){grade='페널티';cls='p-pen';box='';}
+    else if(coll){grade='접촉';cls='p-pen';box='';}
+    else{grade='경미';cls='p-cln';box='';}
+    if(p.tag==='우승')box='win';
+    return {p:p,sev:sev,grade:grade,cls:cls,box:box,pen:pen,coll:coll};
+  }).sort((a,b)=>b.sev-a.sev);
+
+  document.getElementById('pcards').innerHTML=rows.map(r=>{
+    const t=r.p.tag;
+    const tcls=t==='우승'?'p-win':t==='실격'?'p-dsq':t==='업로더'?'p-up':'p-sg';
+    const tag=t?'<span class="pill '+tcls+'">'+t+'</span>':'';
+    const tl=r.p.ev.map(e=>
+      '<li><span class="lp">L'+e[0]+'</span><span class="'+e[1]+'">'+e[2]+'</span></li>').join('');
+    const warn=r.p.ev.filter(e=>e[1]==='w').length;
+    const sm='경고 '+warn+'건 · 페널티 '+r.pen.length+'건'+(r.coll?' · 접촉 '+r.coll+'건':'');
+    return '<div class="pc '+r.box+'">'
+      +'<h4>'+r.p.n+' <span class="pill '+r.cls+'">'+r.grade+'</span>'+tag+'</h4>'
+      +'<ul class="tl">'+tl+'</ul>'
+      +'<div class="sm">'+sm+'</div></div>';
+  }).join('');
+})();
+</script>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  securityLevel: 'loose',
+  flowchart: {
+    useMaxWidth: true,
+    htmlLabels: true
+  }
+});
+</script>
+
+</body>
+</html>
