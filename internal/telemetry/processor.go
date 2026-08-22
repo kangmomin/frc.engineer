@@ -95,6 +95,21 @@ type Processor struct {
 	raceSummaryCounters     RaceSummaryCounts
 	raceSummaryTimeline     []dto.RaceControlNotification
 	raceSummaryRichTimeline []dto.RaceControlNotification
+	// finalSavePending holds the trigger of a FAILED final-class save so the idle
+	// tick retries it as final (not mislabeled as a checkpoint). Guarded by
+	// raceSummaryMu; cleared on session change and on successful final save.
+	finalSavePending string
+
+	// Checkpoint-save mode (sender only; cmd/server keeps legacy behavior).
+	// Must be set before Start — read without a mutex from the processor goroutine,
+	// same happens-before contract as SetBanChecker.
+	checkpointSaves bool
+	// done is closed when Start returns — lets the host wait for the shutdown
+	// flush that runs inside Start's ctx.Done path.
+	done chan struct{}
+	// Idle-save bookkeeping, owned exclusively by the Start goroutine.
+	lastPacketAt     time.Time
+	lastCheckpointAt time.Time
 
 	// Atomic counter for unique race-control notification IDs
 	rcSeq atomic.Int64
@@ -134,6 +149,7 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 		logger:          logger,
 		minInterval:     interval,
 		pitwallInterval: 250 * time.Millisecond,
+		done:            make(chan struct{}),
 	}
 	p.incidents = newIncidentRecorder(logger, p.pitwallManager.GetDriverName)
 	return p
@@ -166,6 +182,20 @@ func (p *Processor) SetRaceSummaryRecording(enabled bool) {
 	p.raceSummaryMu.Lock()
 	p.raceSummaryEnabled = enabled
 	p.raceSummaryMu.Unlock()
+}
+
+// SetCheckpointSaves enables checkpoint-class summary saves (idle-timeout /
+// session-switch / shutdown flush) and demotes CHQF/RCWN to checkpoints so a
+// premature "race winner" event can no longer freeze the summary before the
+// player finishes. cmd/sender enables this; cmd/server keeps legacy behavior.
+// Must be called before Start (read lock-free from the processor goroutine).
+func (p *Processor) SetCheckpointSaves(enabled bool) {
+	p.checkpointSaves = enabled
+}
+
+// Done is closed when Start returns — after the shutdown flush has completed.
+func (p *Processor) Done() <-chan struct{} {
+	return p.done
 }
 
 // SetPitwallStateObserver sets an optional callback for emitted pitwall snapshots.
@@ -259,27 +289,104 @@ func (p *Processor) GetIncidentClips(sessionUID uint64) []dto.IncidentClip {
 	return p.incidents.snapshot(sessionUID)
 }
 
+// idleSaveAfter / idleSaveTick drive the idle checkpoint: with no telemetry for
+// idleSaveAfter (game closed or quit mid-session), the current session's summary
+// is checkpoint-saved so the data survives even without a session-end event.
+const (
+	idleSaveAfter = 3 * time.Minute
+	idleSaveTick  = 30 * time.Second
+)
+
 // Start begins processing packets from the UDP listener
 func (p *Processor) Start(ctx context.Context, packets <-chan []byte) {
+	defer close(p.done)
+
 	updateHz := "unlimited"
 	if p.minInterval > 0 {
 		updateHz = fmt.Sprintf("%d", int(time.Second/p.minInterval))
 	}
 	p.logger.Info("telemetry processor started", "updateRateHz", updateHz)
 
+	ticker := time.NewTicker(idleSaveTick)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
+			if p.checkpointSaves {
+				p.flushOnShutdown()
+			}
 			p.logger.Info("telemetry processor shutting down")
 			return
 
 		case data, ok := <-packets:
 			if !ok {
+				if p.checkpointSaves {
+					p.flushOnShutdown()
+				}
 				return
 			}
 			p.processPacket(data)
+
+		case <-ticker.C:
+			if p.checkpointSaves {
+				p.idleCheck()
+			}
 		}
 	}
+}
+
+// idleCheck runs on the Start goroutine: after idleSaveAfter without packets,
+// checkpoint-save the active unsaved session (or retry a failed final save with
+// its original trigger) so a silently dead session still leaves a summary.
+func (p *Processor) idleCheck() {
+	if p.lastPacketAt.IsZero() || time.Since(p.lastPacketAt) < idleSaveAfter {
+		return
+	}
+	// Only save when something new arrived since the last successful checkpoint.
+	if !p.lastCheckpointAt.Before(p.lastPacketAt) {
+		return
+	}
+
+	p.raceSummaryMu.Lock()
+	uid := p.raceSummarySession
+	saved := p.raceSummarySaved
+	pending := p.finalSavePending
+	p.raceSummaryMu.Unlock()
+	if uid == 0 || saved || !p.pitwallManager.PlayerHasCompletedLap() {
+		return
+	}
+
+	ok := false
+	if pending != "" {
+		// A final-class save failed earlier — retry as final, not as a checkpoint,
+		// so the summary keeps its final trigger and upload eligibility.
+		ok = p.saveRaceSummary(uid, pending, true)
+	} else {
+		ok = p.saveRaceSummary(uid, "idle-timeout", false)
+	}
+	if ok {
+		p.lastCheckpointAt = time.Now()
+	}
+}
+
+// flushOnShutdown checkpoint-saves the active unsaved session on the way out of
+// Start (processor goroutine — single-owner access to all state). A pending
+// failed final keeps its final trigger.
+func (p *Processor) flushOnShutdown() {
+	p.raceSummaryMu.Lock()
+	uid := p.raceSummarySession
+	saved := p.raceSummarySaved
+	pending := p.finalSavePending
+	p.raceSummaryMu.Unlock()
+	if uid == 0 || saved || !p.pitwallManager.PlayerHasCompletedLap() {
+		return
+	}
+	if pending != "" {
+		p.saveRaceSummary(uid, pending, true)
+		return
+	}
+	p.saveRaceSummary(uid, "shutdown", false)
 }
 
 // processPacket parses and processes a single UDP packet
@@ -294,6 +401,18 @@ func (p *Processor) processPacket(data []byte) {
 		return
 	}
 
+	if parsed.Header.SessionUID != 0 {
+		// Idle-save clock (Start-goroutine-owned). Only UID-bearing packets count —
+		// stray/unset-UID artifacts must not suppress the idle checkpoint.
+		p.lastPacketAt = time.Now()
+	}
+	if p.checkpointSaves {
+		// Finalize the previous session BEFORE observeSessionUID resets the summary
+		// state and before this packet feeds pitwallManager (which still holds the
+		// previous session's data here) — a session that was switched away from can
+		// never resume, so its last observed state is final.
+		p.maybeFinalizePreviousSession(parsed.Header.SessionUID)
+	}
 	p.observeSessionUID(parsed.Header.SessionUID)
 	p.observeReplaySession(parsed.Header.SessionUID)
 	p.incidents.observeSession(parsed.Header.SessionUID)
@@ -620,14 +739,14 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 
 	default:
 		if shouldFinalize {
-			p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
+			p.saveRaceSummaryForEvent(parsed.Header.SessionUID, event.EventStringCode)
 		}
 		return
 	}
 
 	if notification == nil {
 		if shouldFinalize {
-			p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
+			p.saveRaceSummaryForEvent(parsed.Header.SessionUID, event.EventStringCode)
 		}
 		return
 	}
@@ -651,7 +770,7 @@ func (p *Processor) handleEventPacket(parsed *udp.ParsedData) {
 	p.recordReplayRaceControl(notification)
 	p.recordRaceSummaryNotification(notification)
 	if shouldFinalize {
-		p.trySaveRaceSummary(parsed.Header.SessionUID, event.EventStringCode)
+		p.saveRaceSummaryForEvent(parsed.Header.SessionUID, event.EventStringCode)
 	}
 }
 
@@ -662,6 +781,15 @@ func isRaceEndEvent(eventCode string) bool {
 	default:
 		return false
 	}
+}
+
+// saveRaceSummaryForEvent maps a race-end event to a save. Under checkpoint mode
+// only SEND is final — CHQF/RCWN fire when the LEADER finishes, so treating them
+// as final would freeze the summary before the player's remaining laps land in
+// the session history. Legacy mode (cmd/server) keeps all three final.
+func (p *Processor) saveRaceSummaryForEvent(sessionUID uint64, eventCode string) {
+	final := !p.checkpointSaves || eventCode == packets.EventSessionEnded
+	p.saveRaceSummary(sessionUID, eventCode, final)
 }
 
 func (p *Processor) observeSessionUID(sessionUID uint64) {
@@ -677,6 +805,7 @@ func (p *Processor) observeSessionUID(sessionUID uint64) {
 		p.raceSummaryCounters = RaceSummaryCounts{}
 		p.raceSummaryTimeline = nil
 		p.raceSummaryRichTimeline = nil
+		p.finalSavePending = ""
 	}
 	p.raceSummaryMu.Unlock()
 	// 랩 다이내믹스 누적치의 세션 전환 리셋은 pitwallManager.noteSessionLocked이
@@ -795,19 +924,52 @@ func (p *Processor) recordRaceSummaryNotification(notification *dto.RaceControlN
 	}
 }
 
-func (p *Processor) trySaveRaceSummary(sessionUID uint64, trigger string) {
+// maybeFinalizePreviousSession runs on the processor goroutine right before
+// observeSessionUID would reset the summary state for a new UID: an unsaved
+// previous session with at least one completed lap gets a final save (it can
+// never resume). Must be called BEFORE this packet feeds pitwallManager — its
+// caches still hold the previous session's data at that point.
+func (p *Processor) maybeFinalizePreviousSession(newUID uint64) {
+	if newUID == 0 {
+		return
+	}
+	p.raceSummaryMu.Lock()
+	prev := p.raceSummarySession
+	saved := p.raceSummarySaved
+	p.raceSummaryMu.Unlock()
+	if prev == 0 || prev == newUID || saved {
+		return
+	}
+	if !p.pitwallManager.PlayerHasCompletedLap() {
+		return
+	}
+	if !p.saveRaceSummary(prev, "session-switch", true) {
+		// 직후 상태 리셋으로 이 세션 데이터가 사라지므로 1회 즉시 재시도 —
+		// 그래도 실패하면 유실 (수용된 한계: 로컬 디스크 오류 한정).
+		p.saveRaceSummary(prev, "session-switch", true)
+	}
+}
+
+// saveRaceSummary persists the session's summary via the save callback.
+// markSaved=true is a final save: it locks the session (raceSummarySaved) and on
+// failure rolls the lock back AND records the trigger in finalSavePending so the
+// idle tick retries as final. markSaved=false is a checkpoint: the session stays
+// open for the real end-of-session save. Returns whether the save succeeded.
+func (p *Processor) saveRaceSummary(sessionUID uint64, trigger string, markSaved bool) bool {
 	p.observeSessionUID(sessionUID)
 
 	p.raceSummaryMu.Lock()
 	if !p.raceSummaryEnabled || p.raceSummarySave == nil || p.raceSummarySaved || p.raceSummarySession != sessionUID {
 		p.raceSummaryMu.Unlock()
-		return
+		return false
 	}
 	save := p.raceSummarySave
 	counts := p.raceSummaryCounters
 	timeline := append([]dto.RaceControlNotification(nil), p.raceSummaryTimeline...)
 	richEvents := append([]dto.RaceControlNotification(nil), p.raceSummaryRichTimeline...)
-	p.raceSummarySaved = true
+	if markSaved {
+		p.raceSummarySaved = true
+	}
 	p.raceSummaryMu.Unlock()
 
 	// Gather rich, player-centric inputs after BuildState releases the lock (this
@@ -815,21 +977,34 @@ func (p *Processor) trySaveRaceSummary(sessionUID uint64, trigger string) {
 	state := p.pitwallManager.BuildState()
 	playerIdx := state.PlayerIndex
 	detail := &dto.RaceDetailInput{
-		PlayerLaps:  p.pitwallManager.PlayerLapTimings(playerIdx),
-		PlayerSetup: p.pitwallManager.PlayerSetup(playerIdx),
-		RichEvents:  richEvents,
+		PlayerLaps:      p.pitwallManager.PlayerLapTimings(playerIdx),
+		PlayerSetup:     p.pitwallManager.PlayerSetup(playerIdx),
+		RichEvents:      richEvents,
+		CaptureStartLap: p.pitwallManager.CaptureStartLap(),
+		FinalizeTrigger: trigger,
 	}
 	if err := save(sessionUID, counts, timeline, state, detail); err != nil {
 		p.logger.Error("failed to save race summary", "sessionUID", sessionUID, "trigger", trigger, "error", err)
-		p.raceSummaryMu.Lock()
-		if p.raceSummarySession == sessionUID {
-			p.raceSummarySaved = false
+		if markSaved {
+			p.raceSummaryMu.Lock()
+			if p.raceSummarySession == sessionUID {
+				p.raceSummarySaved = false
+				p.finalSavePending = trigger
+			}
+			p.raceSummaryMu.Unlock()
 		}
-		p.raceSummaryMu.Unlock()
-		return
+		return false
 	}
 
-	p.logger.Info("race summary saved", "sessionUID", sessionUID, "trigger", trigger)
+	if markSaved {
+		p.raceSummaryMu.Lock()
+		if p.raceSummarySession == sessionUID {
+			p.finalSavePending = ""
+		}
+		p.raceSummaryMu.Unlock()
+	}
+	p.logger.Info("race summary saved", "sessionUID", sessionUID, "trigger", trigger, "final", markSaved)
+	return true
 }
 
 func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {

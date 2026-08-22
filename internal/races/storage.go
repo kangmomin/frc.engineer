@@ -61,6 +61,18 @@ func NewFileStorage(baseDir string, logger *slog.Logger) (*FileStorage, error) {
 	}, nil
 }
 
+// DefaultSummaryID returns the ID Save would generate for summary at time t:
+// "<stamp>_<trackSlug>_<sessionUID>". Exposed so callers that must avoid an ID
+// collision (e.g. minting a fresh ID next to a sealed sibling in the same
+// second) can probe candidates before saving.
+func DefaultSummaryID(summary *RaceSummary, t time.Time) string {
+	trackSlug := slugTrackName(summary.Track.TrackName)
+	if trackSlug == "" {
+		trackSlug = "unknown_track"
+	}
+	return fmt.Sprintf("%s_%s_%d", t.Format("20060102_150405"), trackSlug, summary.SessionUID)
+}
+
 // Save persists one race summary using an atomic temp-file rename.
 func (s *FileStorage) Save(summary *RaceSummary) (string, error) {
 	if summary == nil {
@@ -72,12 +84,7 @@ func (s *FileStorage) Save(summary *RaceSummary) (string, error) {
 
 	id := summary.ID
 	if id == "" {
-		timestamp := time.Now().Format("20060102_150405")
-		trackSlug := slugTrackName(summary.Track.TrackName)
-		if trackSlug == "" {
-			trackSlug = "unknown_track"
-		}
-		id = fmt.Sprintf("%s_%s_%d", timestamp, trackSlug, summary.SessionUID)
+		id = DefaultSummaryID(summary, time.Now())
 	}
 	if !isSafeID(id) {
 		return "", ErrUnsafeID

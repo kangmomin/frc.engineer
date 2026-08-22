@@ -52,6 +52,9 @@ const (
 	maxDetailDynamics = 500
 	maxDetailEvents   = 200
 	maxSchemaVersion  = 32767 // SMALLINT ceiling (race_detail.schema_version)
+	// finalizeTrigger is a short enum-ish label ("SEND", "session-switch", ...);
+	// bound generously without trusting the contents (payload stays opaque).
+	maxFinalizeTriggerLen = 32
 
 	// Incident-clip caps. The sender enforces the same bounds at the source
 	// (incident recorder + races.TrimIncidentsForUpload); these mirror them so a
@@ -136,6 +139,10 @@ func validateUpload(req *UploadRequest) error {
 			len(req.Detail.Dynamics) > maxDetailDynamics ||
 			len(req.Detail.Events) > maxDetailEvents ||
 			len(req.Detail.Incidents) > maxDetailIncidents {
+			return ErrBadUpload
+		}
+		if req.Detail.CaptureStartLap < 0 || req.Detail.CaptureStartLap > maxLapNumber ||
+			utf8.RuneCountInString(req.Detail.FinalizeTrigger) > maxFinalizeTriggerLen {
 			return ErrBadUpload
 		}
 		for i := range req.Detail.Incidents {
@@ -319,6 +326,14 @@ type UploadDetail struct {
 	Dynamics  []UploadDynamic  `json:"dynamics,omitempty"`
 	Events    []UploadEvent    `json:"events,omitempty"`
 	Incidents []UploadIncident `json:"incidents,omitempty"`
+	// CaptureStartLap: uploader's lap when its capture began (1 = full session
+	// observed, >1 = late attach — dynamics before that lap were never measured).
+	// FinalizeTrigger: what closed the summary client-side (race-end event code,
+	// "session-switch", "idle-timeout", "shutdown"); checkpoint-class values mean
+	// the session may not have been over at save time. Both omitempty so legacy
+	// uploads keep their payload key set unchanged.
+	CaptureStartLap int    `json:"captureStartLap,omitempty"`
+	FinalizeTrigger string `json:"finalizeTrigger,omitempty"`
 }
 
 // UploadIncident mirrors the sender's uploadIncident (dto.IncidentClip): a

@@ -466,6 +466,8 @@ func main() {
 		}
 		raceStorage = rs
 	}
+	// Sealed-ID 업로드 상태: 세션당 단일 로컬 ID + 업로드 사이드카 + 부팅 sweep.
+	upState := newUploadState(resolveSenderStoragePath("data", "races"), logger)
 	var raceSummaryMu sync.RWMutex
 	var latestRaceSummary *races.RaceSummary
 	var sessionAnalysisCacheMu sync.RWMutex
@@ -473,6 +475,8 @@ func main() {
 	// 요약 파이프라인은 디브리프 브로드캐스트·플랫폼 업로드의 원천이라 항상 활성 —
 	// saveFiles는 로컬 파일(요약/리플레이/패킷) 저장 여부만 정한다(콜백에서 분기).
 	processor.SetRaceSummaryRecording(true)
+	// 체크포인트 저장(idle/session-switch/shutdown flush) + CHQF/RCWN 강등 — sender 전용.
+	processor.SetCheckpointSaves(true)
 	processor.SetReplayRecording(saveFiles && (dataStorageMode == rtconfig.DataStorageModeSummary || dataStorageMode == rtconfig.DataStorageModeAdvanced))
 	const maxRaceArchiveListChunkBytes = 48 * 1024
 	const maxRaceReplayChunkBytes = 48 * 1024
@@ -532,6 +536,12 @@ func main() {
 			return nil, err
 		}
 		return cloneRaceSummaryWithoutReplay(summary), nil
+	}
+
+	// 부팅 sweep: 업로드 안 된 요약(오프라인/크래시/체크포인트 저장분)을 재시도한다.
+	// 페어링돼 있을 때만 — sweep 내부에서 요청별 deadline과 중단 조건을 관리한다.
+	if cfgUploadToken != "" {
+		go upState.sweep(ctx, cfgPlatformBaseURL, cfgUploadToken, loadRaceSummaryWithoutReplay)
 	}
 
 	streamRaceReplay := func(peerID, requestID, raceID string) {
@@ -1100,27 +1110,53 @@ func main() {
 		latestRaceSummary = summary
 		raceSummaryMu.Unlock()
 
+		var savedID string
+		var saveErr error
 		if saveEnabled && rs != nil {
-			if _, err := rs.Save(summary); err != nil {
-				logger.Error("failed to save race summary", "error", err)
+			// 세션당 단일 ID 재사용(sealed면 새 ID) + 재시작 병합은 upState가 처리한다.
+			savedID, saveErr = upState.saveWithStableID(rs, sessionUID, summary)
+			if saveErr != nil {
+				logger.Error("failed to save race summary", "error", saveErr)
 			}
 		}
 
-		// Strip the (potentially large) replay frames before the DataChannel push —
-		// the rich Detail (~50-60KB player-centric) stays within the SCTP budget,
-		// but the full replay would not. Mirrors cmd/server's broadcast strip.
-		broadcastSummary := *summary
-		broadcastSummary.Replay = nil
-		broadcastSummary.Incidents = nil // 미트리밍 클립 블록도 SCTP 예산 밖 — 전송 제외
-		broadcaster.BroadcastRaceResult(&broadcastSummary)
+		trigger := ""
+		if detail != nil {
+			trigger = detail.FinalizeTrigger
+		}
+
+		// idle-timeout(일시정지 3분)·shutdown 체크포인트는 백그라운드 보존 저장일 뿐,
+		// 세션 종료 신호가 아니다 — 진행 중 레이스의 뷰어에 디브리프를 쏘면 오동작.
+		// 게임 이벤트 유래 저장(SEND/CHQF/RCWN)만 기존 타이밍대로 방송한다.
+		if trigger != "idle-timeout" && trigger != "shutdown" {
+			// Strip the (potentially large) replay frames before the DataChannel push —
+			// the rich Detail (~50-60KB player-centric) stays within the SCTP budget,
+			// but the full replay would not. Mirrors cmd/server's broadcast strip.
+			broadcastSummary := *summary
+			broadcastSummary.Replay = nil
+			broadcastSummary.Incidents = nil // 미트리밍 클립 블록도 SCTP 예산 밖 — 전송 제외
+			broadcaster.BroadcastRaceResult(&broadcastSummary)
+		}
 
 		// Auto-upload: fire-and-forget so a slow/failed network never blocks the
 		// save path. Always on when paired — pairing is the upload consent gate.
-		if token != "" {
+		// final-class 저장만 즉시 업로드한다 — 체크포인트(idle/shutdown/CHQF/RCWN)는
+		// 세션이 끝났다는 보장이 없어, 종료가 확정되는 경로(sweep/후속 final)에 맡긴다.
+		if token != "" && isFinalClassTrigger(trigger) {
 			if req, ok := buildUploadRequest(summary, logger); ok {
+				uploadID := savedID
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), uploadHTTPTimeout)
 					defer cancel()
+					if uploadID != "" {
+						if _, status, err := upState.uploadSealed(ctx, base, token, uploadID, trigger, req); err != nil {
+							logger.Warn("auto-upload failed", "id", uploadID, "status", status, "error", err)
+						} else {
+							logger.Info("race auto-uploaded", "id", uploadID)
+						}
+						return
+					}
+					// 로컬 저장 없음(저장 꺼짐/실패) — 기존 경로 그대로 직접 업로드.
 					if _, status, err := uploadRace(ctx, base, token, req); err != nil {
 						logger.Warn("auto-upload failed", "id", summary.ID, "status", status, "error", err)
 					} else {
@@ -1129,7 +1165,8 @@ func main() {
 				}()
 			}
 		}
-		return nil
+		// 저장 실패를 processor에 알린다 — final-class면 finalSavePending으로 idle 재시도.
+		return saveErr
 	})
 
 	// Start components
@@ -1565,6 +1602,9 @@ func main() {
 			go connectWithRetry()
 		}
 		go refreshPermissions()
+		// 페어링 직후 미업로드 요약 sweep — 부팅 시 미페어링이었던 경우의 백스톱.
+		// (요청 ctx와 무관하게 돌도록 Background; sweep이 요청별 deadline을 관리한다.)
+		go upState.sweep(context.Background(), base, token, loadRaceSummaryWithoutReplay)
 		json.NewEncoder(w).Encode(map[string]bool{"paired": true})
 	})
 
@@ -1618,7 +1658,11 @@ func main() {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), uploadHTTPTimeout)
 		defer cancel()
-		result, status, err := uploadRace(ctx, base, token, req)
+		manualTrigger := ""
+		if summary.Detail != nil {
+			manualTrigger = summary.Detail.FinalizeTrigger
+		}
+		result, status, err := upState.uploadSealed(ctx, base, token, id, manualTrigger, req)
 		if err != nil {
 			code := http.StatusBadGateway
 			if status == http.StatusUnauthorized || status == http.StatusForbidden {
@@ -2097,6 +2141,13 @@ func main() {
 
 	// Block until user clicks Quit in the system tray
 	<-ctx.Done()
+	// processor의 shutdown flush(진행 중 세션 체크포인트 저장)가 Start 고루틴 안에서
+	// 끝나기를 기다린다 — 로컬 디스크 I/O만이라 2s면 충분하고, 초과 시 정리로 진행.
+	select {
+	case <-processor.Done():
+	case <-time.After(2 * time.Second):
+		logger.Warn("processor shutdown flush timed out")
+	}
 	forwarder.Close()
 	peerManager.Close()
 	compareMonitor.Close()

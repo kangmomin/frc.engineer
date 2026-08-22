@@ -92,6 +92,10 @@ type uploadDetail struct {
 	Dynamics  []uploadDynamic  `json:"dynamics,omitempty"`
 	Events    []uploadEvent    `json:"events,omitempty"`
 	Incidents []uploadIncident `json:"incidents,omitempty"`
+	// Capture provenance (mirrors platformsvc.UploadDetail): captureStartLap >1
+	// flags a late attach; finalizeTrigger records what closed the summary.
+	CaptureStartLap int    `json:"captureStartLap,omitempty"`
+	FinalizeTrigger string `json:"finalizeTrigger,omitempty"`
 }
 
 // uploadIncident (+participant/frame) mirrors dto.IncidentClip and the platform's
@@ -269,6 +273,12 @@ func uploadRace(ctx context.Context, baseURL, token string, req *uploadRequest) 
 // set can never take the lap upload down with it.
 const uploadRequestSafetyBytes = 480 << 10
 
+// uploadMaxDetailEvents mirrors the platform's maxDetailEvents cap. A merged
+// summary (pre-restart file + this run, each holding up to the 150-event ring)
+// can exceed it, and the server rejects the WHOLE upload past the cap — so the
+// mapper keeps only the newest events. Local files stay complete.
+const uploadMaxDetailEvents = 200
+
 // buildUploadRequest maps a stored race summary to the platform upload contract.
 // Returns (nil, false) when the summary has no rich per-lap detail — the platform
 // requires at least one lap, and only rich (Detail-bearing) summaries carry it.
@@ -308,7 +318,10 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 			Ballast: s.Ballast, FuelLoad: s.FuelLoad,
 		}
 	}
-	detail := &uploadDetail{}
+	detail := &uploadDetail{
+		CaptureStartLap: summary.Detail.CaptureStartLap,
+		FinalizeTrigger: summary.Detail.FinalizeTrigger,
+	}
 	for _, st := range summary.Player.Stints {
 		detail.Stints = append(detail.Stints, uploadStint{
 			Compound: st.Compound, Laps: st.Laps, StartLap: st.StartLap, EndLap: st.EndLap, TireWearPct: st.TireWearPct,
@@ -320,7 +333,13 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 			LockupCount: d.LockupCount, SpinCount: d.SpinCount,
 		})
 	}
-	for _, e := range summary.Detail.Events {
+	events := summary.Detail.Events
+	if len(events) > uploadMaxDetailEvents {
+		logger.Warn("detail events trimmed for upload cap", "id", summary.ID,
+			"dropped", len(events)-uploadMaxDetailEvents, "kept", uploadMaxDetailEvents)
+		events = events[len(events)-uploadMaxDetailEvents:]
+	}
+	for _, e := range events {
 		detail.Events = append(detail.Events, uploadEvent{
 			Lap: e.Lap, Timestamp: e.Timestamp, Category: e.Category, Message: e.Message,
 			Severity: e.Severity, DriverName: e.DriverName,
@@ -348,7 +367,8 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 		}
 		detail.Incidents = append(detail.Incidents, inc)
 	}
-	if len(detail.Stints) > 0 || len(detail.Dynamics) > 0 || len(detail.Events) > 0 || len(detail.Incidents) > 0 {
+	if len(detail.Stints) > 0 || len(detail.Dynamics) > 0 || len(detail.Events) > 0 || len(detail.Incidents) > 0 ||
+		detail.CaptureStartLap > 0 || detail.FinalizeTrigger != "" {
 		req.Detail = detail
 	}
 	// 실측 피트로스만 업로드(PitLaneTimeMS>0). 추정치(stops*22000)는 평균을 오염시키므로 제외.
@@ -364,7 +384,8 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 		if raw, err := json.Marshal(req); err != nil || len(raw) > uploadRequestSafetyBytes {
 			logger.Warn("incidents dropped from upload (request over safety cap)", "id", summary.ID, "clips", len(req.Detail.Incidents))
 			req.Detail.Incidents = nil
-			if len(req.Detail.Stints) == 0 && len(req.Detail.Dynamics) == 0 && len(req.Detail.Events) == 0 {
+			if len(req.Detail.Stints) == 0 && len(req.Detail.Dynamics) == 0 && len(req.Detail.Events) == 0 &&
+				req.Detail.CaptureStartLap == 0 && req.Detail.FinalizeTrigger == "" {
 				req.Detail = nil
 			}
 		}

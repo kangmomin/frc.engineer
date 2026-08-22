@@ -253,6 +253,32 @@ func TestValidateUploadDetail(t *testing.T) {
 	if err := validateUpload(fatStints); !errors.Is(err, ErrBadUpload) {
 		t.Fatalf("over-cap stints err = %v, want ErrBadUpload", err)
 	}
+
+	// Capture-provenance 필드: 정상 범위 통과, 범위 밖/과장 문자열은 400.
+	capOK := base()
+	capOK.SchemaVersion = 1
+	capOK.Detail = &UploadDetail{CaptureStartLap: 3, FinalizeTrigger: "session-switch"}
+	if err := validateUpload(capOK); err != nil {
+		t.Fatalf("valid capture fields rejected: %v", err)
+	}
+	capNeg := base()
+	capNeg.SchemaVersion = 1
+	capNeg.Detail = &UploadDetail{CaptureStartLap: -1}
+	if err := validateUpload(capNeg); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("negative captureStartLap err = %v, want ErrBadUpload", err)
+	}
+	capOver := base()
+	capOver.SchemaVersion = 1
+	capOver.Detail = &UploadDetail{CaptureStartLap: maxLapNumber + 1}
+	if err := validateUpload(capOver); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("over-range captureStartLap err = %v, want ErrBadUpload", err)
+	}
+	trigLong := base()
+	trigLong.SchemaVersion = 1
+	trigLong.Detail = &UploadDetail{FinalizeTrigger: strings.Repeat("x", maxFinalizeTriggerLen+1)}
+	if err := validateUpload(trigLong); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("over-length finalizeTrigger err = %v, want ErrBadUpload", err)
+	}
 }
 
 // validIncidentClip builds a minimal clip that passes every validIncident bound:

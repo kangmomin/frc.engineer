@@ -54,4 +54,13 @@ type RaceDetailInput struct {
 	PlayerLaps  []LapTimingDTO            `json:"playerLaps,omitempty"`
 	PlayerSetup *CarSetupDTO              `json:"playerSetup,omitempty"`
 	RichEvents  []RaceControlNotification `json:"richEvents,omitempty"`
+	// CaptureStartLap is the player's current lap when the sender first observed
+	// this session (1 = full capture; >1 = late attach, dynamics before this lap
+	// were never measured). 0 = unknown (no lap data seen).
+	CaptureStartLap int `json:"captureStartLap,omitempty"`
+	// FinalizeTrigger records what caused this summary save: a race-end event code
+	// (SEND/CHQF/RCWN), "session-switch", "idle-timeout", or "shutdown". Empty on
+	// legacy summaries. Checkpoint-class triggers (idle-timeout/shutdown/CHQF/RCWN
+	// under checkpoint mode) mean the session may not have been over at save time.
+	FinalizeTrigger string `json:"finalizeTrigger,omitempty"`
 }

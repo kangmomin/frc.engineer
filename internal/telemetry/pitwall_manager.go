@@ -51,6 +51,7 @@ type PitwallManager struct {
 	lastTrackID       int8   // last track ID for change detection
 	peakActiveCars    int    // high-water mark for NumActiveCars
 	lastSessionUID    uint64 // last session UID for per-session cache reset
+	captureStartLap   int    // player's lap at first LapData of this session (0=unseen)
 
 	// Per-car penalty/warning log for the leaderboard hover detail. Reset on
 	// SessionUID change alongside the other per-session caches (noteSessionLocked).
@@ -245,6 +246,7 @@ func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
 		pm.dynamicsAnalyzer.Reset()
 		pm.penaltyLog = [packets.MaxCars][]dto.PenaltyLogEntry{}
 		pm.pitMeasure = [packets.MaxCars]pitMeasureState{}
+		pm.captureStartLap = 0
 	}
 	pm.lastSessionUID = uid
 }
@@ -344,6 +346,15 @@ func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
 	pm.mu.Lock()
 	pm.noteSessionLocked(&ld.Header)
 	pm.lapData = ld
+	// 세션 첫 LapData에서 캡처 시작 랩을 고정. 헤더의 PlayerCarIndex를 쓴다 —
+	// pm.playerIndex는 Motion 미수신 시 0 (EventCollision 경로와 동일 근거).
+	if pm.captureStartLap == 0 {
+		if idx := int(ld.Header.PlayerCarIndex); idx < packets.MaxCars {
+			if lap := int(ld.LapData[idx].CurrentLapNum); lap > 0 {
+				pm.captureStartLap = lap
+			}
+		}
+	}
 	carStatus := pm.carStatus
 	pm.mu.Unlock()
 	pm.strategyMgr.Update(carStatus, ld)
@@ -1019,6 +1030,42 @@ func (pm *PitwallManager) GetPlayerCurrentLap() int {
 		return 0
 	}
 	return int(pm.lapData.LapData[idx].CurrentLapNum)
+}
+
+// CaptureStartLap returns the player's lap number when this session was first
+// observed (0 = no lap data seen yet). >1 means a late attach: dynamics before
+// that lap were never measured (laps themselves are retroactive via history).
+func (pm *PitwallManager) CaptureStartLap() int {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.captureStartLap
+}
+
+// PlayerHasCompletedLap reports whether the player's session history holds at
+// least one completed lap (LapTimeInMS>0 — numLaps alone counts the in-progress
+// lap). Uses pm.playerIndex, the same source BuildState/PlayerLapTimings resolve
+// to, so the gate and the saved content always agree.
+func (pm *PitwallManager) PlayerHasCompletedLap() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	idx := int(pm.playerIndex)
+	if idx < 0 || idx >= packets.MaxCars {
+		return false
+	}
+	sh := pm.sessionHistory[idx]
+	if sh == nil {
+		return false
+	}
+	numLaps := int(sh.NumLaps)
+	if numLaps > packets.MaxNumLapsInHistory {
+		numLaps = packets.MaxNumLapsInHistory
+	}
+	for i := 0; i < numLaps; i++ {
+		if sh.LapHistoryData[i].LapTimeInMS > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // PlayerLapTimings returns completed-lap timings for the given car from the game's

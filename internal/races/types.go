@@ -57,6 +57,13 @@ type RaceDetail struct {
 	Dynamics []dto.DynamicsLapDTO          `json:"dynamics,omitempty"`
 	Events   []dto.RaceControlNotification `json:"events,omitempty"`
 	Setup    *dto.CarSetupDTO              `json:"setup,omitempty"`
+	// CaptureStartLap: player's lap when capture began (1 = full session observed,
+	// >1 = late attach — dynamics before this lap were never measured, 0 = unknown).
+	CaptureStartLap int `json:"captureStartLap,omitempty"`
+	// FinalizeTrigger: what caused this save — race-end event code, "session-switch",
+	// "idle-timeout", or "shutdown". Empty on legacy summaries (pre-feature, always
+	// event-final). Checkpoint-class values mean the session may not have been over.
+	FinalizeTrigger string `json:"finalizeTrigger,omitempty"`
 }
 
 // TrackInfo describes the track for a stored race summary.
@@ -355,10 +362,12 @@ func buildDetail(in *dto.RaceDetailInput, p dto.DriverInfo, stints []RaceStint) 
 		}
 	}
 	detail := &RaceDetail{
-		Laps:     laps,
-		Dynamics: p.Dynamics,
-		Events:   in.RichEvents,
-		Setup:    in.PlayerSetup,
+		Laps:            laps,
+		Dynamics:        p.Dynamics,
+		Events:          in.RichEvents,
+		Setup:           in.PlayerSetup,
+		CaptureStartLap: in.CaptureStartLap,
+		FinalizeTrigger: in.FinalizeTrigger,
 	}
 	if len(detail.Laps) == 0 && len(detail.Dynamics) == 0 && len(detail.Events) == 0 && detail.Setup == nil {
 		return nil
