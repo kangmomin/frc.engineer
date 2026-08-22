@@ -68,6 +68,20 @@ SELECT stops, pit_lane_time_ms, stationary_ms FROM platform.race_pit_loss WHERE 
   셋업 연결 분석은 로컬 요약의 `detail.setup`이 있을 때만.
 - 라이벌 비교(선례: Monza의 2인 비교): 같은 `source_race_id`의 타 계정 행, 또는 같은
   `track_id`·인접 `uploaded_at`의 레이스를 찾아 랩·섹터를 나란히 놓는다.
+- **멀티계정 세션 → 플레이어별 리포트** (선례: `docs/race-drivers-20260814-united-kingdom.html`):
+  같은 `source_race_id`를 여러 계정이 올렸으면 계정별 랩·다이내믹스·이벤트·클립을 전부 수집해
+  종합과 별도로 `race-drivers-*.html`을 만든다. 순위/갭은 누적 랩타임 재구성(스탠딩 스타트 공통
+  기점) — 비업로더가 끼어들 수 있으니 순위는 `[추정]` 표기. 계정 간 데이터 규칙:
+  - **이벤트 dedupe**: 이벤트는 클라이언트마다 중복 기록된다. (드라이버명 정규화 `\xa0`→공백 ·
+    메시지 코어 · ts±15s) 클러스터로 실제 건수를 복원한다. **단순 ÷계정수 금지** (계정별 로그
+    커버리지가 균일하지 않아 반증됨).
+  - **이벤트 lap 태그 = 업로더의 현재 랩**이다. 드라이버 본인 페널티의 랩은 본인 업로드의
+    events에서만 확정하고, 비업로더의 랩은 `?` 근사 표기.
+  - **클립 dedupe**: incidents의 `sessionTimeMs`(t0)는 세션 게임시간이라 계정 간 동일 —
+    t0 5초 그룹핑으로 국면 병합. 양측 시점이 있는 국면은 상호 dLong/dLat가 부호 반전으로
+    일치하는지 교차 검증(UK 세션에서 0.1~0.5m 이내 확인).
+  - `race_pit_loss.pit_lane_time_ms`는 레인 **1회 통과 시간**(마지막 계측, uint16)이다 —
+    스톱 수와 무관 (UK: 1스톱 3계정과 2스톱 1계정이 모두 ~33s).
 
 ### 소스 B — 로컬 RaceSummary JSON (풀그리드·하이라이트·리플레이 포함)
 
@@ -92,6 +106,10 @@ SELECT stops, pit_lane_time_ms, stationary_ms FROM platform.race_pit_loss WHERE 
 8. **사고 클립** — incidents별: t0·랩·상대(참가자·minDistM)·병합 여부. 프레임을 읽었다면
    충돌 직전/직후의 속도·스로틀·브레이크·조향 변화로 접촉 상황을 서술
    (car 배열 순서: x,y,z,vx,vy,vz,yaw,gLat,gLong,speedKmh,throttle,brake,steer,gear — `internal/dto/incident.go`)
+   - **과실 판정(FIA)**: 사고 클립이 있으면 `.claude/skills/race-analysis/references/fia-driving-standards.md`를 Read하고
+     그 §3 절차대로 사고별 과실을 판정한다(척도: wholly/predominantly to blame, racing incident).
+     게임 판정(events의 페널티 매핑; 없으면 "게임 판정 없음")과 **병기**하고, 판정 문장에는
+     근거 규칙 ID·산출 수치·확신도를 붙인다. 게임 판정을 FIA 판정의 근거로 쓰지 않는다.
 9. **국면 동등 비교** — 라이벌 비교 시 같은 타이어·연료 국면끼리만 비교
 10. **셋업 연결** — (로컬 요약 한정) 셋업 값과 관측된 주행 특성의 연결
 
