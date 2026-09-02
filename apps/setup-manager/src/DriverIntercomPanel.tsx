@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { IntercomRuntime, IntercomRuntimeState } from '../../../shared/intercom';
+import type { IntercomRuntime, IntercomRuntimeState } from '../../../web/src/intercom/core';
 
 interface Props {
   runtime: IntercomRuntime;

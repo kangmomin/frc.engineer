@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:remote": "tsc -b && vite build --mode remote",
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "build:remote": "tsc -p tsconfig.build.json && vite build --mode remote",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run"

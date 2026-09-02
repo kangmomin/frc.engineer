@@ -5,7 +5,7 @@ import {
   isSnapshotNewer,
   shouldMuteRemoteRoute,
   type IntercomSnapshot,
-} from '../../../shared/intercom';
+} from './core';
 
 const snapshot: IntercomSnapshot = {
   revision: 8,

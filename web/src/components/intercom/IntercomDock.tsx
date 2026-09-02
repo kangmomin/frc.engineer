@@ -1,5 +1,5 @@
 import { useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import type { IntercomRole, IntercomSignalingAdapter } from '../../../../shared/intercom';
+import type { IntercomRole, IntercomSignalingAdapter } from '../../intercom/core';
 import { useEngineerIntercom } from '../../hooks/useEngineerIntercom';
 import styles from './IntercomDock.module.css';
 

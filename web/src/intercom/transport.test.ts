@@ -5,7 +5,7 @@ import {
   type IntercomEnvelope,
   type IntercomSignalingAdapter,
   type ServerIntercomEnvelope,
-} from '../../../shared/intercom';
+} from './core';
 
 function harness() {
   const sent: IntercomEnvelope[] = [];
@@ -64,7 +64,7 @@ describe('generation-aware intercom RPC', () => {
 
   it('rate-limits an activity lease to four updates per second', async () => {
     vi.useFakeTimers();
-    const { ActivityLease } = await import('../../../shared/intercom');
+    const { ActivityLease } = await import('./core');
     const send = vi.fn();
     const lease = new ActivityLease(send);
     lease.update({ speaking: true });

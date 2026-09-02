@@ -6,7 +6,7 @@ import {
   type IntercomRuntimeState,
   type IntercomSignalingAdapter,
   type IntercomSnapshot,
-} from '../../../shared/intercom';
+} from './core';
 
 const preparingSnapshot: IntercomSnapshot = {
   revision: 1,

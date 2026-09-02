@@ -4,7 +4,7 @@ import {
   SERVER_INTERCOM_TYPES,
   isClientIntercomEnvelope,
   parseServerIntercomEnvelope,
-} from '../../../shared/intercom';
+} from './core';
 
 const rawFixtures = import.meta.glob('../../../internal/signaling/testdata/intercom/*.json', {
   query: '?raw',

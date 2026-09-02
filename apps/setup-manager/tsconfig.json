@@ -15,5 +15,5 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["src", "../../shared/**/*.ts"]
+  "include": ["src", "../../web/src/intercom/core/**/*.ts"]
 }

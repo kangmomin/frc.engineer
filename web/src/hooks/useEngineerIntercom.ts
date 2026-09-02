@@ -5,7 +5,7 @@ import {
   isPTTKeyDown,
   type IntercomRuntimeState,
   type IntercomSignalingAdapter,
-} from '../../../shared/intercom';
+} from '../intercom/core';
 
 export function useEngineerIntercom(transport: IntercomSignalingAdapter) {
   const runtimeRef = useRef<IntercomRuntime>();

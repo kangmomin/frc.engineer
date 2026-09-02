@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RemoteAudioRegistry, type IntercomSnapshot, type RemoteTrackRoute } from '../../../shared/intercom';
+import { RemoteAudioRegistry, type IntercomSnapshot, type RemoteTrackRoute } from './core';
 
 interface FakeAudioElement {
   autoplay: boolean;
