@@ -36,6 +36,7 @@ declare global {
       getSenderStorageInfo?: () => Promise<SenderStorageInfo>;
       selectDirectory?: (defaultPath?: string) => Promise<string | null>;
       restartSender?: () => Promise<void>;
+      getIntercomBridgeToken?: () => Promise<string>;
     };
   }
 }

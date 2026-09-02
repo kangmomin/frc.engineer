@@ -1,8 +1,40 @@
 import { decode } from '@msgpack/msgpack';
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import type { ConnectionState, PitwallState, WSRequest, WSResponse } from '../types/telemetry';
 import { useTelemetryStore } from '../store/telemetryStore';
 import { routeMessage } from './useMessageRouter';
+import { enqueueBoundedCandidate, parseSignalingNegotiationId, takeCandidatesForGeneration, type CandidateGeneration, type QueuedCandidate } from './webrtcCandidates';
+import {
+  parseReliableDataPing,
+  reconnectKindForSignalingClose,
+  shouldInvalidateIntercomCleanup,
+  shouldInvalidateIntercomTransport,
+  shouldRunSignalingCleanup,
+  shouldRetrySignalingError,
+  type SignalingCleanupOwner,
+} from './webrtcConnection';
+import {
+  getTurnRefreshDelayMs,
+  isLegacyTurnUnsupportedError,
+  isRuntimeIceCurrent,
+  isRuntimeIceLifetimeAllowed,
+  parseTurnCredentialsPayload,
+  selectIceServers,
+  type IceServerSource,
+  type RuntimeIceConfiguration,
+} from './webrtcTurn';
+import {
+  INTERCOM_VERSION,
+  MAX_INTERCOM_ENVELOPE_BYTES,
+  isClientIntercomEnvelope,
+  jsonEnvelopeBytes,
+  malformedIntercomAuthorityError,
+  parseServerIntercomEnvelope,
+  SERVER_INTERCOM_TYPES,
+  type IntercomEnvelope,
+  type IntercomSignalingAdapter,
+  type ServerIntercomEnvelope,
+} from '../../../shared/intercom';
 
 interface UseWebRTCOptions {
   signalingUrl: string;
@@ -24,6 +56,7 @@ interface UseWebRTCReturn {
   }) => Promise<void>;
   connectionState: RTCPeerConnectionState | 'new';
   lastError: string;
+  intercom: IntercomSignalingAdapter;
 }
 
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
@@ -53,6 +86,8 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 const KEEPALIVE_TIMEOUT_MS = 15_000;
 const KEEPALIVE_CHECK_INTERVAL_MS = 5_000;
 const PENDING_CANDIDATE_LIMIT = 32;
+const TURN_INITIAL_OFFER_GATE_MS = 3_500;
+const TURN_RETRY_COOLDOWN_MS = 30_000;
 
 type PendingRequest =
   | {
@@ -79,6 +114,11 @@ type PendingRequest =
   };
 
 type P2PDebugLevel = 'info' | 'warn' | 'error';
+
+interface PendingLocalSignalingCandidate {
+  candidate: RTCIceCandidateInit;
+  negotiationId: number;
+}
 
 interface P2PDebugEntry {
   ts: string;
@@ -172,9 +212,9 @@ function normalizeIceServer(server: RTCIceServer): RTCIceServer | null {
   return normalized;
 }
 
-function getConfiguredIceServers(): RTCIceServer[] {
+function getConfiguredIceServers(): { iceServers: RTCIceServer[]; source: Extract<IceServerSource, 'static' | 'default'> } {
   const raw = import.meta.env.VITE_WEBRTC_ICE_SERVERS;
-  if (!raw) return DEFAULT_ICE_SERVERS;
+  if (!raw) return { iceServers: DEFAULT_ICE_SERVERS, source: 'default' };
 
   try {
     const parsed = JSON.parse(raw);
@@ -190,14 +230,16 @@ function getConfiguredIceServers(): RTCIceServer[] {
       throw new Error('no valid ice servers');
     }
 
-    return servers;
+    return { iceServers: servers, source: 'static' };
   } catch (error) {
     console.warn('Invalid VITE_WEBRTC_ICE_SERVERS config, falling back to default STUN servers.', error);
-    return DEFAULT_ICE_SERVERS;
+    return { iceServers: DEFAULT_ICE_SERVERS, source: 'default' };
   }
 }
 
-const CONFIGURED_ICE_SERVERS = getConfiguredIceServers();
+const configuredIceServers = getConfiguredIceServers();
+const CONFIGURED_ICE_SERVERS = configuredIceServers.iceServers;
+const CONFIGURED_ICE_SOURCE = configuredIceServers.source;
 
 export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRTCReturn {
   const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
@@ -209,6 +251,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const [rtcState, setRtcState] = useState<RTCPeerConnectionState | 'new'>('new');
   const [lastError, setLastError] = useState('');
   const [reconnectNonce, setReconnectNonce] = useState(0);
+  const [intercomTransportState, setIntercomTransportState] = useState<{
+    generation: number;
+    joined: boolean;
+    intercomVersion?: number;
+  }>({
+    generation: 0,
+    joined: false,
+    intercomVersion: undefined as number | undefined,
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -220,16 +271,30 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastTargetRef = useRef('');
+  const sessionGenerationRef = useRef(0);
+  const intercomGenerationRef = useRef(0);
+  const intercomTransportRef = useRef(intercomTransportState);
+  const intercomListenersRef = useRef(new Set<(message: ServerIntercomEnvelope) => void>());
+  const intercomInvalidationListenersRef = useRef(new Set<() => void>());
   const pendingRequestsRef = useRef(new Map<string, PendingRequest>());
   // 한 번이라도 P2P connected에 도달했는지 — 재연결 정책(무한 vs 5회)을 가른다
   const hadConnectedRef = useRef(false);
   // 서버가 발급한 engineer peerId — 시그널링 재바인딩(room_join + peerId)에 사용
   const lastPeerIdRef = useRef('');
   // 시그널링 WS가 닫혀 있는 동안 모아 두는 ICE candidate (재연결 후 flush)
-  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingCandidatesRef = useRef<PendingLocalSignalingCandidate[]>([]);
+  // TURN credentials live in memory only and are never added to debug output.
+  const runtimeIceRef = useRef<RuntimeIceConfiguration | null>(null);
+  const runtimeIceReceivedAtRef = useRef(0);
+  const turnRefreshTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const turnExpiryTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const offerGateTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const restartGraceTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   // sender keepalive ping 수신 여부 (구버전 sender에서는 워치독 비활성)
   const pingSeenRef = useRef(false);
-  const lastTrafficAtRef = useRef(0);
+  const lastReliablePingAtRef = useRef(0);
+  const restartGraceRef = useRef(false);
+  const restartProbeRef = useRef(false);
 
   // Refs for routeMessage batching
   const pendingPitwallRef = useRef<PitwallState | null>(null);
@@ -241,6 +306,63 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   // Store actions in a ref so callbacks never go stale
   const actionsRef = useRef({ setPitwallState, updatePositions, addRaceControlNotification, setRaceResult });
   actionsRef.current = { setPitwallState, updatePositions, addRaceControlNotification, setRaceResult };
+  intercomTransportRef.current = intercomTransportState;
+
+  const updateIntercomTransport = useCallback((next: {
+    generation: number;
+    joined: boolean;
+    intercomVersion?: number;
+  }) => {
+    const previous = intercomTransportRef.current;
+    intercomTransportRef.current = next;
+    if (shouldInvalidateIntercomTransport(previous, next, INTERCOM_VERSION)) {
+      for (const listener of intercomInvalidationListenersRef.current) listener();
+    }
+    setIntercomTransportState(next);
+  }, []);
+
+  const sendIntercom = useCallback((message: IntercomEnvelope): boolean => {
+    const state = intercomTransportRef.current;
+    const socket = wsRef.current;
+    if (!state.joined
+      || state.intercomVersion !== INTERCOM_VERSION
+      || !socket
+      || socket.readyState !== WebSocket.OPEN
+      || !isClientIntercomEnvelope(message)
+      || jsonEnvelopeBytes(message) > MAX_INTERCOM_ENVELOPE_BYTES) {
+      return false;
+    }
+    try {
+      socket.send(JSON.stringify(message));
+      return true;
+    } catch {
+      updateIntercomTransport({
+        generation: intercomGenerationRef.current,
+        joined: false,
+      });
+      return false;
+    }
+  }, [updateIntercomTransport]);
+
+  const subscribeIntercom = useCallback((listener: (message: ServerIntercomEnvelope) => void) => {
+    intercomListenersRef.current.add(listener);
+    return () => intercomListenersRef.current.delete(listener);
+  }, []);
+
+  const subscribeIntercomInvalidation = useCallback((listener: () => void) => {
+    intercomInvalidationListenersRef.current.add(listener);
+    return () => intercomInvalidationListenersRef.current.delete(listener);
+  }, []);
+
+  const invalidateIntercomTransport = useCallback((expectedGeneration?: number): boolean => {
+    const current = intercomTransportRef.current;
+    if (!shouldInvalidateIntercomCleanup(current, expectedGeneration)) return false;
+    updateIntercomTransport({
+      generation: current.generation,
+      joined: false,
+    });
+    return true;
+  }, [updateIntercomTransport]);
 
   const emitP2PDebug = useCallback((
     level: P2PDebugLevel,
@@ -306,6 +428,27 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     }
   }, []);
 
+  const clearWebRTCTimers = useCallback(() => {
+    if (turnRefreshTimeoutRef.current) {
+      clearTimeout(turnRefreshTimeoutRef.current);
+      turnRefreshTimeoutRef.current = null;
+    }
+    if (turnExpiryTimeoutRef.current) {
+      clearTimeout(turnExpiryTimeoutRef.current);
+      turnExpiryTimeoutRef.current = null;
+    }
+    if (offerGateTimeoutRef.current) {
+      clearTimeout(offerGateTimeoutRef.current);
+      offerGateTimeoutRef.current = null;
+    }
+    if (restartGraceTimeoutRef.current) {
+      clearTimeout(restartGraceTimeoutRef.current);
+      restartGraceTimeoutRef.current = null;
+    }
+    restartGraceRef.current = false;
+    restartProbeRef.current = false;
+  }, []);
+
   const clearPendingRequest = useCallback((requestId: string) => {
     const pending = pendingRequestsRef.current.get(requestId);
     if (!pending) {
@@ -356,8 +499,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     }, pending.timeoutMs);
   }, [clearPendingRequest, emitP2PDebug]);
 
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback((owner?: SignalingCleanupOwner): boolean => {
+    if (!shouldRunSignalingCleanup(
+      wsRef.current,
+      intercomTransportRef.current.generation,
+      owner,
+    )) return false;
+    invalidateIntercomTransport(owner?.intercomGeneration);
     clearStageTimeout();
+    clearWebRTCTimers();
     if (disconnectGraceRef.current) {
       clearTimeout(disconnectGraceRef.current);
       disconnectGraceRef.current = null;
@@ -397,13 +547,16 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       cancelAnimationFrame(positionsRafRef.current);
       positionsRafRef.current = 0;
     }
-  }, [clearStageTimeout, clearReconnectTimer, rejectAllPendingRequests]);
+    return true;
+  }, [clearStageTimeout, clearReconnectTimer, clearWebRTCTimers, invalidateIntercomTransport, rejectAllPendingRequests]);
 
   const failConnection = useCallback((
     state: Extract<ConnectionState, 'timeout' | 'ice-failed' | 'error'>,
     message: string,
   ) => {
     if (!isMountedRef.current) return;
+    lastPeerIdRef.current = '';
+    pendingCandidatesRef.current = [];
     terminalFailureRef.current = state;
     clearStageTimeout();
     setLastError(message);
@@ -422,6 +575,14 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     // Already a reconnect pending — don't stack timers.
     if (reconnectTimeoutRef.current) return;
 
+    // A full PC rebuild must obtain a fresh signaling peer/offer. Only the
+    // signaling-only reconnect path below is allowed to reuse this peer ID.
+    lastPeerIdRef.current = '';
+    pendingCandidatesRef.current = [];
+    runtimeIceRef.current = null;
+    runtimeIceReceivedAtRef.current = 0;
+    clearWebRTCTimers();
+
     const attempt = reconnectAttemptsRef.current;
     // 초기 연결(성공 이력 없음)만 횟수 제한 — 라이브 세션 끊김은 무한 재시도.
     if (!hadConnectedRef.current && attempt >= MAX_RECONNECT_ATTEMPTS) {
@@ -432,6 +593,11 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       failConnection('error', `${message} Reconnection failed after ${MAX_RECONNECT_ATTEMPTS} attempts.`);
       return;
     }
+
+    // Invalidate the current effect immediately, not when the delayed nonce
+    // update eventually re-runs it. Late room/TURN messages from the old socket
+    // must not repopulate state that was cleared for a full rebuild.
+    sessionGenerationRef.current += 1;
 
     // 백오프 cap 30s + ±30% jitter (방당 최대 8명의 동시 복구 분산)
     const base = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, Math.min(attempt, 5)), RECONNECT_MAX_DELAY_MS);
@@ -455,7 +621,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       if (!isMountedRef.current || terminalFailureRef.current) return;
       setReconnectNonce((n) => n + 1);
     }, delay);
-  }, [emitP2PDebug, failConnection, clearStageTimeout, setConnectionState]);
+  }, [emitP2PDebug, failConnection, clearStageTimeout, clearWebRTCTimers, setConnectionState]);
 
   const armStageTimeout = useCallback((message: string, ms: number) => {
     clearStageTimeout();
@@ -465,12 +631,16 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   }, [clearStageTimeout, scheduleReconnect]);
 
   const disconnect = useCallback(() => {
+    sessionGenerationRef.current += 1;
     terminalFailureRef.current = null;
     reconnectAttemptsRef.current = 0;
     hadConnectedRef.current = false;
     lastPeerIdRef.current = '';
     pendingCandidatesRef.current = [];
+    runtimeIceRef.current = null;
+    runtimeIceReceivedAtRef.current = 0;
     pingSeenRef.current = false;
+    lastReliablePingAtRef.current = 0;
     clearStageTimeout();
     clearReconnectTimer();
     setLastError('');
@@ -483,10 +653,17 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
   // effect re-runs even when the connection target is unchanged (e.g. the user
   // hits Connect on the same room after auto-retries were exhausted).
   const forceReconnect = useCallback(() => {
+    sessionGenerationRef.current += 1;
     terminalFailureRef.current = null;
     reconnectAttemptsRef.current = 0;
+    lastPeerIdRef.current = '';
+    pendingCandidatesRef.current = [];
+    runtimeIceRef.current = null;
+    runtimeIceReceivedAtRef.current = 0;
+    clearWebRTCTimers();
+    cleanup();
     setReconnectNonce((n) => n + 1);
-  }, []);
+  }, [cleanup, clearWebRTCTimers]);
 
   const sendView = useCallback((view: string) => {
     if (dcRef.current?.readyState === 'open') {
@@ -630,7 +807,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
   // Main connection effect — runs when signalingUrl or room selection changes.
   useEffect(() => {
-    if (!options) return;
+    if (!options) {
+      invalidateIntercomTransport();
+      return;
+    }
 
     const { signalingUrl, roomId, roomCode, password } = options;
     if (!signalingUrl || (!roomId && !roomCode)) return;
@@ -644,11 +824,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       hadConnectedRef.current = false;
       lastPeerIdRef.current = '';
       pendingCandidatesRef.current = [];
+      runtimeIceRef.current = null;
+      runtimeIceReceivedAtRef.current = 0;
       pingSeenRef.current = false;
+      lastReliablePingAtRef.current = 0;
     }
 
     isMountedRef.current = true;
     terminalFailureRef.current = null;
+    const sessionGeneration = ++sessionGenerationRef.current;
 
     // Clean previous connections
     cleanup();
@@ -662,6 +846,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     let wsReconnectDelay = RECONNECT_BASE_DELAY_MS;
     let heartbeatTimer: number | null = null;
     let disposed = false;
+    let ownedIntercomGeneration = intercomTransportRef.current.generation;
+    const isCurrentSession = () => !disposed && isMountedRef.current && sessionGenerationRef.current === sessionGeneration;
 
     const stopHeartbeat = () => {
       if (heartbeatTimer) {
@@ -672,8 +858,12 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     const sendViaWs = (payload: Record<string, unknown>): boolean => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
-        return true;
+        try {
+          ws.send(JSON.stringify(payload));
+          return true;
+        } catch {
+          return false;
+        }
       }
       return false;
     };
@@ -683,9 +873,16 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       const queued = pendingCandidatesRef.current;
       pendingCandidatesRef.current = [];
       emitP2PDebug('info', 'signaling', 'Flushing queued ICE candidates.', { count: queued.length }, false);
-      for (const candidate of queued) {
-        if (!sendViaWs({ type: 'ice_candidate', payload: candidate })) {
-          pendingCandidatesRef.current.push(candidate);
+      for (let index = 0; index < queued.length; index += 1) {
+        const candidate = queued[index];
+        if (!sendViaWs({
+          type: 'ice_candidate',
+          negotiationId: candidate.negotiationId,
+          payload: candidate.candidate,
+        })) {
+          // Preserve signaling order if the socket fails partway through a flush.
+          pendingCandidatesRef.current = queued.slice(index).concat(pendingCandidatesRef.current);
+          return;
         }
       }
     };
@@ -702,36 +899,518 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       }, delay);
     };
 
-    const handleICECandidate = (candidatePayload: unknown) => {
-      const pc = pcRef.current;
-      if (!pc) return;
-      const candidate = candidatePayload as RTCIceCandidateInit;
-      pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => {
-        console.error('Failed to add ICE candidate:', err);
+    type BufferedOffer = { payload: unknown; isRestart: boolean; generation: CandidateGeneration };
+    type ActiveTurnRequest = { requestId: string; generation: number; socket: WebSocket };
+
+    let roomJoined = false;
+    let initialOfferGateActive = false;
+    let pendingOffer: BufferedOffer | null = null;
+    let activePcGeneration = 0;
+    let activeNegotiationGeneration = 0;
+    let activeSignalingNegotiation = 0;
+    let remoteDescriptionReady = false;
+    let remoteCandidateFlushGeneration: CandidateGeneration | null = null;
+    let pendingRemoteCandidates: QueuedCandidate<RTCIceCandidateInit>[] = [];
+    let localDescriptionSignaled = false;
+    let pendingLocalDescriptionCandidates: QueuedCandidate<RTCIceCandidateInit>[] = [];
+    let turnUnsupported = false;
+    let turnRequestGeneration = 0;
+    let activeTurnRequest: ActiveTurnRequest | null = null;
+    let candidateQueueFailed = false;
+    let activeIceSource: IceServerSource = selectIceServers(
+      runtimeIceRef.current,
+      CONFIGURED_ICE_SERVERS,
+      CONFIGURED_ICE_SOURCE,
+      Date.now(),
+    ).source;
+    let selectedCandidateDiagnosticGeneration = 0;
+
+    const clearTurnRefreshTimers = () => {
+      if (turnRefreshTimeoutRef.current) {
+        clearTimeout(turnRefreshTimeoutRef.current);
+        turnRefreshTimeoutRef.current = null;
+      }
+      if (turnExpiryTimeoutRef.current) {
+        clearTimeout(turnExpiryTimeoutRef.current);
+        turnExpiryTimeoutRef.current = null;
+      }
+    };
+
+    const clearRestartGrace = () => {
+      restartGraceRef.current = false;
+      restartProbeRef.current = false;
+      if (restartGraceTimeoutRef.current) {
+        clearTimeout(restartGraceTimeoutRef.current);
+        restartGraceTimeoutRef.current = null;
+      }
+    };
+
+    const enterRestartGrace = (timeoutMs = PEER_CONNECTION_TIMEOUT_MS, probe = false) => {
+      clearRestartGrace();
+      restartGraceRef.current = true;
+      restartProbeRef.current = probe;
+      restartGraceTimeoutRef.current = window.setTimeout(() => {
+        restartGraceTimeoutRef.current = null;
+        if (isCurrentSession()) {
+          restartGraceRef.current = false;
+          restartProbeRef.current = false;
+        }
+      }, timeoutMs);
+    };
+
+    const completeRecoveryGrace = () => {
+      if (!restartGraceRef.current || restartProbeRef.current) return;
+      if (!pingSeenRef.current) {
+        clearRestartGrace();
+        return;
+      }
+      // Do not forge the last-ping timestamp. Give the restored path enough
+      // time to prove itself with the next real 5s sender ping.
+      enterRestartGrace(KEEPALIVE_CHECK_INTERVAL_MS * 2, true);
+    };
+
+    const resetReliableHealth = () => {
+      pingSeenRef.current = false;
+      lastReliablePingAtRef.current = 0;
+      clearRestartGrace();
+    };
+
+    const isCurrentPeerGeneration = (pc: RTCPeerConnection, generation: CandidateGeneration) => (
+      isCurrentSession()
+      && pcRef.current === pc
+      && activePcGeneration === generation.pc
+      && activeNegotiationGeneration === generation.negotiation
+      && activeSignalingNegotiation === generation.signaling
+    );
+
+    const sameCandidateGeneration = (left: CandidateGeneration | null, right: CandidateGeneration) => (
+      left !== null
+      && left.pc === right.pc
+      && left.negotiation === right.negotiation
+      && left.signaling === right.signaling
+    );
+
+    const nextOfferGeneration = (isRestart: boolean, signaling: number): CandidateGeneration => {
+      const canRestartInPlace = isRestart
+        && pcRef.current !== null
+        && dcRef.current !== null
+        && pcRef.current.signalingState === 'stable';
+      return canRestartInPlace
+        ? { pc: activePcGeneration, negotiation: activeNegotiationGeneration + 1, signaling }
+        : { pc: activePcGeneration + 1, negotiation: activeNegotiationGeneration + 1, signaling };
+    };
+
+    const createAndSetAnswer = (pc: RTCPeerConnection, generation: CandidateGeneration): Promise<RTCSessionDescriptionInit> => {
+      if (!isCurrentPeerGeneration(pc, generation)) {
+        return Promise.reject(new Error('stale peer connection'));
+      }
+      return pc.createAnswer().then((answer) => {
+        if (!isCurrentPeerGeneration(pc, generation)) throw new Error('stale peer connection');
+        return pc.setLocalDescription(answer).then(() => answer);
       });
     };
 
-    const handleOffer = (offerPayload: unknown, isRestart: boolean) => {
+    const closeCurrentPeer = () => {
+      const current = pcRef.current;
+      if (current) {
+        current.onconnectionstatechange = null;
+        current.oniceconnectionstatechange = null;
+        current.onicecandidate = null;
+        current.ondatachannel = null;
+        current.close();
+        pcRef.current = null;
+      }
+      if (dcRef.current) {
+        dcRef.current.onopen = null;
+        dcRef.current.onclose = null;
+        dcRef.current.onmessage = null;
+        dcRef.current = null;
+      }
+      activeSignalingNegotiation = 0;
+      rejectAllPendingRequests('P2P peer connection was replaced.');
+    };
+
+    const addRemoteCandidate = async (pc: RTCPeerConnection, candidate: RTCIceCandidateInit): Promise<void> => {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch {
+        if (isCurrentSession() && pcRef.current === pc) {
+          emitP2PDebug('warn', 'signaling', 'Failed to apply a remote ICE candidate.', undefined, false);
+        }
+      }
+    };
+
+    const flushRemoteCandidates = async (pc: RTCPeerConnection, generation: CandidateGeneration): Promise<void> => {
+      remoteCandidateFlushGeneration = generation;
+      try {
+        while (isCurrentPeerGeneration(pc, generation) && remoteDescriptionReady) {
+          const drained = takeCandidatesForGeneration(pendingRemoteCandidates, generation);
+          pendingRemoteCandidates = drained.remaining;
+          if (drained.candidates.length === 0) return;
+          for (const candidate of drained.candidates) {
+            if (!isCurrentPeerGeneration(pc, generation) || !remoteDescriptionReady) return;
+            await addRemoteCandidate(pc, candidate);
+          }
+        }
+      } finally {
+        if (sameCandidateGeneration(remoteCandidateFlushGeneration, generation)) {
+          remoteCandidateFlushGeneration = null;
+        }
+      }
+    };
+
+    const beginLocalCandidateQueue = (generation: CandidateGeneration) => {
+      localDescriptionSignaled = false;
+      pendingLocalDescriptionCandidates = pendingLocalDescriptionCandidates.filter((entry) => (
+        sameCandidateGeneration(entry.generation, generation)
+      ));
+    };
+
+    const flushLocalDescriptionCandidates = (pc: RTCPeerConnection, generation: CandidateGeneration) => {
+      if (!isCurrentPeerGeneration(pc, generation)) return;
+      localDescriptionSignaled = true;
+      const drained = takeCandidatesForGeneration(pendingLocalDescriptionCandidates, generation);
+      pendingLocalDescriptionCandidates = drained.remaining;
+      for (const candidate of drained.candidates) {
+        if (!isCurrentPeerGeneration(pc, generation)) return;
+        if (!sendViaWs({ type: 'ice_candidate', negotiationId: generation.signaling, payload: candidate })) {
+          if (pendingCandidatesRef.current.length >= PENDING_CANDIDATE_LIMIT) {
+            candidateQueueFailed = true;
+            scheduleReconnect('Too many local ICE candidates were queued.');
+            return;
+          }
+          pendingCandidatesRef.current.push({ candidate, negotiationId: generation.signaling });
+        }
+      }
+    };
+
+    const applyStaticIceFallback = (reason: string) => {
+      const currentRuntime = runtimeIceRef.current;
+      if (isRuntimeIceCurrent(currentRuntime, Date.now())) {
+        activeIceSource = 'cloudflare';
+        emitP2PDebug('warn', 'turn', 'Keeping the current runtime ICE configuration until it expires.', {
+          source: 'cloudflare',
+          expiresAt: currentRuntime.expiresAt,
+          reason,
+        }, false);
+        armTurnRetry();
+        return;
+      }
+
+      runtimeIceRef.current = null;
+      runtimeIceReceivedAtRef.current = 0;
+      clearTurnRefreshTimers();
+      const fallback = selectIceServers(null, CONFIGURED_ICE_SERVERS, CONFIGURED_ICE_SOURCE, Date.now());
+      activeIceSource = fallback.source;
+      const pc = pcRef.current;
+      if (pc && pc.connectionState !== 'closed') {
+        try {
+          pc.setConfiguration({ iceServers: fallback.iceServers });
+        } catch {
+          // This is diagnostic-only: ICE URL and credential values must not be logged.
+        }
+      }
+      emitP2PDebug('warn', 'turn', 'Using configured ICE fallback.', { source: fallback.source, reason }, false);
+      armTurnRetry();
+    };
+
+    const scheduleTurnLifecycle = (configuration: RuntimeIceConfiguration, receivedAtMs: number) => {
+      clearTurnRefreshTimers();
+      const refreshDelayMs = getTurnRefreshDelayMs(configuration, receivedAtMs, Date.now());
+      const expiryDelayMs = Math.max(0, configuration.expiresAtMs - Date.now());
+
+      turnRefreshTimeoutRef.current = window.setTimeout(() => {
+        turnRefreshTimeoutRef.current = null;
+        if (!isCurrentSession() || runtimeIceRef.current !== configuration) return;
+        requestTurnCredentials();
+      }, refreshDelayMs);
+      turnExpiryTimeoutRef.current = window.setTimeout(() => {
+        turnExpiryTimeoutRef.current = null;
+        if (!isCurrentSession() || runtimeIceRef.current !== configuration) return;
+        if (configuration.expiresAtMs > Date.now()) {
+          scheduleTurnLifecycle(configuration, receivedAtMs);
+          return;
+        }
+        runtimeIceRef.current = null;
+        runtimeIceReceivedAtRef.current = 0;
+        applyStaticIceFallback('expired');
+      }, expiryDelayMs);
+    };
+
+    const applyRuntimeIceConfiguration = (configuration: RuntimeIceConfiguration) => {
+      if (!isCurrentSession()) return;
+      const pc = pcRef.current;
+      if (pc && pc.connectionState !== 'closed') {
+        try {
+          pc.setConfiguration({ iceServers: configuration.iceServers });
+        } catch {
+          emitP2PDebug('warn', 'turn', 'Runtime ICE configuration could not be applied.', {
+            source: 'cloudflare',
+            expiresAt: configuration.expiresAt,
+          }, false);
+          applyStaticIceFallback('configuration_failed');
+          return;
+        }
+      }
+      const receivedAtMs = Date.now();
+      runtimeIceRef.current = configuration;
+      runtimeIceReceivedAtRef.current = receivedAtMs;
+      activeIceSource = 'cloudflare';
+      scheduleTurnLifecycle(configuration, receivedAtMs);
+      emitP2PDebug('info', 'turn', 'Applied runtime ICE configuration.', {
+        source: 'cloudflare',
+        expiresAt: configuration.expiresAt,
+      }, false);
+    };
+
+    function releaseInitialOfferGate() {
+      if (!initialOfferGateActive) return;
+      initialOfferGateActive = false;
+      if (offerGateTimeoutRef.current) {
+        clearTimeout(offerGateTimeoutRef.current);
+        offerGateTimeoutRef.current = null;
+      }
+      const offer = pendingOffer;
+      pendingOffer = null;
+      if (offer && isCurrentSession()) {
+        handleOffer(offer.payload, offer.isRestart, offer.generation.signaling, offer.generation);
+      }
+    }
+
+    function requestTurnCredentials(): boolean {
+      if (!roomJoined || turnUnsupported || !isCurrentSession() || !ws || ws.readyState !== WebSocket.OPEN) return false;
+      if (activeTurnRequest?.socket === ws) return true;
+
+      const requestId = makeRequestId();
+      const generation = ++turnRequestGeneration;
+      activeTurnRequest = { requestId, generation, socket: ws };
+      try {
+        ws.send(JSON.stringify({ type: 'turn_credentials_request', requestId }));
+        armTurnRetry(activeTurnRequest);
+        return true;
+      } catch {
+        activeTurnRequest = null;
+        armTurnRetry();
+        try {
+          ws.close();
+        } catch {
+          // The cooldown retry remains armed if the broken socket cannot close.
+        }
+        return false;
+      }
+    }
+
+    function armTurnRetry(timedRequest: ActiveTurnRequest | null = null) {
+      if (turnUnsupported || !isCurrentSession()) return;
+      if (turnRefreshTimeoutRef.current) {
+        clearTimeout(turnRefreshTimeoutRef.current);
+      }
+      turnRefreshTimeoutRef.current = window.setTimeout(() => {
+        turnRefreshTimeoutRef.current = null;
+        if (!isCurrentSession() || turnUnsupported) return;
+        if (timedRequest) {
+          if (activeTurnRequest !== timedRequest) return;
+          activeTurnRequest = null;
+        }
+        requestTurnCredentials();
+      }, TURN_RETRY_COOLDOWN_MS);
+    }
+
+    function handleTurnCredentials(payload: unknown, requestId: unknown, socket: WebSocket) {
+      const active = activeTurnRequest;
+      if (!isCurrentSession()
+        || !active
+        || active.socket !== socket
+        || active.generation !== turnRequestGeneration
+        || typeof requestId !== 'string'
+        || requestId !== active.requestId) {
+        return;
+      }
+      activeTurnRequest = null;
+      if (turnRefreshTimeoutRef.current) {
+        clearTimeout(turnRefreshTimeoutRef.current);
+        turnRefreshTimeoutRef.current = null;
+      }
+
+      const parsed = parseTurnCredentialsPayload(payload);
+      if (!parsed) {
+        emitP2PDebug('warn', 'turn', 'Ignored malformed runtime ICE response.', undefined, false);
+        applyStaticIceFallback('malformed_response');
+        releaseInitialOfferGate();
+        return;
+      }
+      if (parsed.source === 'fallback') {
+        if (parsed.reason === 'disabled') {
+          turnUnsupported = true;
+        }
+        applyStaticIceFallback(parsed.reason);
+        releaseInitialOfferGate();
+        return;
+      }
+      const receivedAtMs = Date.now();
+      if (!isRuntimeIceLifetimeAllowed(parsed, receivedAtMs)) {
+        emitP2PDebug('warn', 'turn', 'Ignored runtime ICE response with an invalid lifetime.', {
+          source: 'cloudflare',
+          expiresAt: parsed.expiresAt,
+        }, false);
+        applyStaticIceFallback('expired_response');
+        releaseInitialOfferGate();
+        return;
+      }
+
+      applyRuntimeIceConfiguration(parsed);
+      releaseInitialOfferGate();
+    }
+
+    function handleLegacyTurnFallback(error: string, socket: WebSocket): boolean {
+      const active = activeTurnRequest;
+      if (!isCurrentSession()
+        || !active
+        || active.socket !== socket
+        || active.generation !== turnRequestGeneration
+        || !isLegacyTurnUnsupportedError(error)) {
+        return false;
+      }
+      turnUnsupported = true;
+      activeTurnRequest = null;
+      applyStaticIceFallback('unsupported');
+      releaseInitialOfferGate();
+      return true;
+    }
+
+    const emitSelectedCandidateDiagnostics = (pc: RTCPeerConnection, negotiationGeneration: number) => {
+      if (selectedCandidateDiagnosticGeneration === negotiationGeneration) return;
+      selectedCandidateDiagnosticGeneration = negotiationGeneration;
+      void pc.getStats().then((stats) => {
+        if (!isCurrentSession() || pcRef.current !== pc) return;
+        let selectedPair: RTCStats | null = null;
+        stats.forEach((report) => {
+          const pair = report as RTCStats & { selected?: boolean; nominated?: boolean; state?: string };
+          if (pair.type === 'candidate-pair' && (pair.selected === true || (pair.nominated === true && pair.state === 'succeeded'))) {
+            selectedPair = pair;
+          }
+        });
+        const pair = selectedPair as (RTCStats & { localCandidateId?: string; remoteCandidateId?: string }) | null;
+        const candidateDetails = (id: string | undefined) => {
+          const candidate = id ? stats.get(id) as (RTCStats & { candidateType?: unknown; protocol?: unknown }) | undefined : undefined;
+          return {
+            type: typeof candidate?.candidateType === 'string' ? candidate.candidateType : 'unknown',
+            protocol: typeof candidate?.protocol === 'string' ? candidate.protocol : 'unknown',
+          };
+        };
+        const runtime = runtimeIceRef.current;
+        emitP2PDebug('info', 'ice-path', 'Selected ICE candidate path.', {
+          local: candidateDetails(pair?.localCandidateId),
+          remote: candidateDetails(pair?.remoteCandidateId),
+          source: activeIceSource,
+          ...(isRuntimeIceCurrent(runtime, Date.now()) ? { expiresAt: runtime.expiresAt } : {}),
+        }, false);
+      }).catch(() => { /* stats are optional diagnostics */ });
+    };
+
+    const handleICECandidate = (candidatePayload: unknown, rawNegotiationId?: unknown) => {
+      if (candidateQueueFailed) return;
+      const signaling = parseSignalingNegotiationId(rawNegotiationId);
+      if (signaling === null) return;
+      if (!candidatePayload || typeof candidatePayload !== 'object' || Array.isArray(candidatePayload)) return;
+      const candidate = candidatePayload as RTCIceCandidateInit;
+      if (typeof candidate.candidate !== 'string') return;
+
+      const pc = pcRef.current;
+      if (pendingOffer && pendingOffer.generation.signaling !== signaling) return;
+      if (!pendingOffer && pc && activeSignalingNegotiation !== signaling) return;
+      const generation = pendingOffer?.generation ?? (pc
+        ? { pc: activePcGeneration, negotiation: activeNegotiationGeneration, signaling }
+        : nextOfferGeneration(false, signaling));
+      const queued = enqueueBoundedCandidate(pendingRemoteCandidates, { generation, candidate }, PENDING_CANDIDATE_LIMIT);
+      if (!queued) {
+        candidateQueueFailed = true;
+        pendingRemoteCandidates = [];
+        emitP2PDebug('error', 'signaling', 'Remote ICE candidate queue overflowed.', {
+          limit: PENDING_CANDIDATE_LIMIT,
+        }, false);
+        scheduleReconnect('Too many remote ICE candidates were queued.');
+        return;
+      }
+      pendingRemoteCandidates = queued;
+
+      // Route even post-description candidates through the same async flush so
+      // addIceCandidate promises cannot overtake one another.
+      if (roomJoined
+        && !initialOfferGateActive
+        && pc
+        && remoteDescriptionReady
+        && remoteCandidateFlushGeneration === null
+        && isCurrentPeerGeneration(pc, generation)) {
+        void flushRemoteCandidates(pc, generation);
+      }
+    };
+
+    function handleOffer(
+      offerPayload: unknown,
+      isRestart: boolean,
+      rawNegotiationId?: unknown,
+      bufferedGeneration?: CandidateGeneration,
+    ) {
+      const signaling = parseSignalingNegotiationId(rawNegotiationId);
+      if (signaling === null || (bufferedGeneration && bufferedGeneration.signaling !== signaling)) {
+        scheduleReconnect('Received an invalid WebRTC negotiation identity.');
+        return;
+      }
+      if (!roomJoined || initialOfferGateActive) {
+        pendingOffer = {
+          payload: offerPayload,
+          isRestart,
+          generation: bufferedGeneration ?? nextOfferGeneration(isRestart, signaling),
+        };
+        return;
+      }
+      if (!offerPayload || typeof offerPayload !== 'object' || Array.isArray(offerPayload)) {
+        scheduleReconnect('Received a malformed WebRTC offer.');
+        return;
+      }
       const offer = offerPayload as RTCSessionDescriptionInit;
+      if (offer.type !== 'offer' || typeof offer.sdp !== 'string' || offer.sdp.length === 0) {
+        scheduleReconnect('Received a malformed WebRTC offer.');
+        return;
+      }
 
       // sender 주도 ICE restart: 살아있는 PC에 재협상만 적용한다 (DC 유지 —
       // 화면 끊김 없이 네트워크 경로만 복구). 조건이 안 맞으면 full rebuild.
       if (isRestart && pcRef.current && dcRef.current && pcRef.current.signalingState === 'stable') {
         const pc = pcRef.current;
+        const generation = bufferedGeneration?.pc === activePcGeneration
+          ? bufferedGeneration
+          : nextOfferGeneration(true, signaling);
+        activeNegotiationGeneration = generation.negotiation;
+        activeSignalingNegotiation = generation.signaling;
+        pendingRemoteCandidates = pendingRemoteCandidates.filter((entry) => (
+          sameCandidateGeneration(entry.generation, generation)
+        ));
+        remoteDescriptionReady = false;
+        beginLocalCandidateQueue(generation);
+        enterRestartGrace();
         emitP2PDebug('info', 'signaling', 'Received ICE restart offer, renegotiating in place.', undefined, false);
-        // restart 중에는 DC 트래픽이 멈춘다 — keepalive 워치독이 진행 중인
-        // in-place 복구를 full reconnect로 선점하지 않도록 타이머를 리셋한다.
-        lastTrafficAtRef.current = Date.now();
         clearStageTimeout();
         setConnectionState('reconnecting');
         armStageTimeout('ICE restart did not complete in time.', PEER_CONNECTION_TIMEOUT_MS);
         pc.setRemoteDescription(new RTCSessionDescription(offer))
-          .then(() => pc.createAnswer())
-          .then((answer) => pc.setLocalDescription(answer).then(() => answer))
+          .then(() => {
+            if (!isCurrentPeerGeneration(pc, generation)) throw new Error('stale peer connection');
+            remoteDescriptionReady = true;
+            return flushRemoteCandidates(pc, generation).then(() => createAndSetAnswer(pc, generation));
+          })
           .then((answer) => {
-            sendViaWs({ type: 'answer', payload: answer });
+            if (isCurrentPeerGeneration(pc, generation)) {
+              if (!sendViaWs({ type: 'answer', negotiationId: generation.signaling, payload: answer })) {
+                scheduleReconnect('Failed to send the ICE restart answer.');
+                return;
+              }
+              flushLocalDescriptionCandidates(pc, generation);
+            }
           })
           .catch((err) => {
+            if (!isCurrentPeerGeneration(pc, generation)) return;
             emitP2PDebug('error', 'connection', 'ICE restart renegotiation failed.', {
               error: err instanceof Error ? err.message : String(err),
             }, false);
@@ -745,40 +1424,57 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       setConnectionState('negotiating');
       armStageTimeout('Timed out while establishing the peer connection.', PEER_CONNECTION_TIMEOUT_MS);
 
-      // Close previous PeerConnection if it exists
-      if (pcRef.current) {
-        pcRef.current.close();
-        pcRef.current = null;
+      let generation = bufferedGeneration ?? nextOfferGeneration(false, signaling);
+      if (generation.pc <= activePcGeneration) {
+        const previousGeneration = generation;
+        generation = {
+          pc: activePcGeneration + 1,
+          negotiation: Math.max(activeNegotiationGeneration + 1, generation.negotiation),
+          signaling,
+        };
+        pendingRemoteCandidates = pendingRemoteCandidates.map((entry) => (
+          sameCandidateGeneration(entry.generation, previousGeneration)
+            ? { ...entry, generation }
+            : entry
+        ));
       }
-      if (dcRef.current) {
-        dcRef.current = null;
-      }
+      closeCurrentPeer();
+      activePcGeneration = generation.pc;
+      activeNegotiationGeneration = generation.negotiation;
+      activeSignalingNegotiation = generation.signaling;
+      pendingRemoteCandidates = pendingRemoteCandidates.filter((entry) => sameCandidateGeneration(entry.generation, generation));
+      remoteDescriptionReady = false;
+      beginLocalCandidateQueue(generation);
+      resetReliableHealth();
 
-      const pc = new RTCPeerConnection({
-        iceServers: CONFIGURED_ICE_SERVERS,
-      });
+      const selection = selectIceServers(runtimeIceRef.current, CONFIGURED_ICE_SERVERS, CONFIGURED_ICE_SOURCE, Date.now());
+      activeIceSource = selection.source;
+      const pc = new RTCPeerConnection({ iceServers: selection.iceServers });
       pcRef.current = pc;
 
+      const markConnected = () => {
+        hadConnectedRef.current = true;
+        completeRecoveryGrace();
+        setRtcState('connected');
+        clearStageTimeout();
+        if (disconnectGraceRef.current) {
+          clearTimeout(disconnectGraceRef.current);
+          disconnectGraceRef.current = null;
+        }
+        clearReconnectTimer();
+        // A clean connected state resets the backoff counter by design: each fresh
+        // drop earns a full retry budget (rapid connect/drop ping-pong is rare).
+        reconnectAttemptsRef.current = 0;
+        setConnectionState('connected');
+        setLastError('');
+      };
+
       pc.onconnectionstatechange = () => {
-        if (!isMountedRef.current) return;
-        if (terminalFailureRef.current) return;
+        if (!isCurrentSession() || terminalFailureRef.current || pcRef.current !== pc) return;
         const state = pc.connectionState;
 
         if (state === 'connected') {
-          hadConnectedRef.current = true;
-          lastTrafficAtRef.current = Date.now();
-          setRtcState('connected');
-          clearStageTimeout();
-          if (disconnectGraceRef.current) {
-            clearTimeout(disconnectGraceRef.current);
-            disconnectGraceRef.current = null;
-          }
-          clearReconnectTimer();
-          // A clean connected state resets the backoff counter by design: each fresh
-          // drop earns a full retry budget (rapid connect/drop ping-pong is rare).
-          reconnectAttemptsRef.current = 0;
-          setConnectionState('connected');
-          setLastError('');
+          markConnected();
         } else if (state === 'failed' || state === 'closed') {
           // Leave rtcState to scheduleReconnect (it sets 'connecting') so Layout's
           // `rtcConnectionState === 'failed'` gate isn't tripped mid-retry.
@@ -792,11 +1488,12 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           if (disconnectGraceRef.current == null) {
             disconnectGraceRef.current = window.setTimeout(() => {
               disconnectGraceRef.current = null;
-              if (!isMountedRef.current || terminalFailureRef.current) return;
+              if (!isCurrentSession() || terminalFailureRef.current) return;
               if (pcRef.current?.connectionState === 'connected') return;
               setConnectionState('reconnecting');
             }, DISCONNECTED_UI_GRACE_MS);
           }
+          enterRestartGrace(DISCONNECTED_RECOVERY_TIMEOUT_MS);
           armStageTimeout('Peer connection stalled in disconnected state.', DISCONNECTED_RECOVERY_TIMEOUT_MS);
         } else {
           setRtcState(state);
@@ -804,11 +1501,18 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       };
 
       pc.oniceconnectionstatechange = () => {
-        if (!isMountedRef.current) return;
-        if (terminalFailureRef.current) return;
+        if (!isCurrentSession() || terminalFailureRef.current || pcRef.current !== pc) return;
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          completeRecoveryGrace();
+          if (pc.connectionState === 'connected') {
+            markConnected();
+          }
+          emitSelectedCandidateDiagnostics(pc, activeNegotiationGeneration);
+        }
         if (pc.iceConnectionState === 'failed') {
           // 실패 원인 진단용 candidate-pair 통계 1회 기록 (방화벽/NAT 의심 판별)
-          pc.getStats().then((stats) => {
+          void pc.getStats().then((stats) => {
+            if (!isCurrentSession() || pcRef.current !== pc) return;
             let pairCount = 0;
             let succeededPairs = 0;
             const candidateTypes: string[] = [];
@@ -828,6 +1532,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
               pairCount,
               succeededPairs,
               candidateTypes,
+              source: activeIceSource,
+              ...(isRuntimeIceCurrent(runtimeIceRef.current, Date.now()) ? { expiresAt: runtimeIceRef.current.expiresAt } : {}),
             }, false);
           }).catch(() => { /* stats 미지원 환경 무시 */ });
           scheduleReconnect('ICE negotiation failed. A TURN relay may be required for this network path.');
@@ -835,14 +1541,49 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       };
 
       pc.onicecandidate = (event) => {
-        if (!event.candidate) return;
+        if (!event.candidate || !isCurrentSession() || pcRef.current !== pc) return;
         const candidate = event.candidate.toJSON();
-        if (sendViaWs({ type: 'ice_candidate', payload: candidate })) return;
+        const generation = {
+          pc: activePcGeneration,
+          negotiation: activeNegotiationGeneration,
+          signaling: activeSignalingNegotiation,
+        };
+        if (!localDescriptionSignaled) {
+          const queued = enqueueBoundedCandidate(
+            pendingLocalDescriptionCandidates,
+            { generation, candidate },
+            PENDING_CANDIDATE_LIMIT,
+          );
+          if (!queued) {
+            if (!candidateQueueFailed) {
+              candidateQueueFailed = true;
+              emitP2PDebug('error', 'signaling', 'Local ICE candidate queue overflowed before SDP answer.', {
+                limit: PENDING_CANDIDATE_LIMIT,
+              }, false);
+              scheduleReconnect('Too many local ICE candidates were queued.');
+            }
+            return;
+          }
+          pendingLocalDescriptionCandidates = queued;
+          return;
+        }
+        if (roomJoined && sendViaWs({
+          type: 'ice_candidate',
+          negotiationId: generation.signaling,
+          payload: candidate,
+        })) return;
         // 시그널링이 잠시 끊겨 있으면 큐에 모아 재연결 후 flush한다.
         if (pendingCandidatesRef.current.length >= PENDING_CANDIDATE_LIMIT) {
-          pendingCandidatesRef.current.shift();
+          if (!candidateQueueFailed) {
+            candidateQueueFailed = true;
+            emitP2PDebug('error', 'signaling', 'Local ICE candidate queue overflowed.', {
+              limit: PENDING_CANDIDATE_LIMIT,
+            }, false);
+            scheduleReconnect('Too many local ICE candidates were queued.');
+          }
+          return;
         }
-        pendingCandidatesRef.current.push(candidate);
+        pendingCandidatesRef.current.push({ candidate, negotiationId: generation.signaling });
       };
 
       pc.ondatachannel = (event) => {
@@ -850,23 +1591,21 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
         dc.binaryType = 'arraybuffer';
         dc.onmessage = (e) => {
-          if (!isMountedRef.current) return;
-          lastTrafficAtRef.current = Date.now();
+          if (!isCurrentSession() || pcRef.current !== pc) return;
 
-          // sender keepalive ping → 즉시 pong 응답 (requestId가 없는 제어 메시지)
-          if (typeof e.data === 'string' && e.data.length < 100 && e.data.includes('"ping"')) {
-            try {
-              const ctrl = JSON.parse(e.data) as { type?: string; ts?: number };
-              if (ctrl?.type === 'ping') {
-                pingSeenRef.current = true;
-                if (dc.readyState === 'open') {
-                  dc.send(JSON.stringify({ type: 'pong', ts: ctrl.ts ?? 0 }));
-                }
-                return;
-              }
-            } catch {
-              // JSON이 아니면 일반 메시지로 계속 처리
+          // sender keepalive ping → 즉시 pong 응답 (requestId가 없는 제어 메시지).
+          // Fast telemetry and ordinary reliable payloads intentionally do not touch health.
+          const ping = parseReliableDataPing(dc.label, e.data);
+          if (ping) {
+            pingSeenRef.current = true;
+            lastReliablePingAtRef.current = Date.now();
+            if (restartProbeRef.current) {
+              clearRestartGrace();
             }
+            if (dc.readyState === 'open') {
+              dc.send(JSON.stringify({ type: 'pong', ts: ping.ts }));
+            }
+            return;
           }
 
           const response = pendingRequestsRef.current.size > 0
@@ -941,13 +1680,12 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           );
         };
 
-        // Only the reliable "data" channel governs connection state
+        // Only the reliable "data" channel governs connection state.
         if (dc.label === 'data') {
           dcRef.current = dc;
           emitP2PDebug('info', 'connection', 'P2P data channel opened.', { label: dc.label });
           dc.onclose = () => {
-            if (!isMountedRef.current) return;
-            if (terminalFailureRef.current) return;
+            if (!isCurrentSession() || terminalFailureRef.current || pcRef.current !== pc) return;
             emitP2PDebug('warn', 'connection', 'P2P data channel closed.', {
               label: dc.label,
               pendingRequests: pendingRequestsRef.current.size,
@@ -958,24 +1696,31 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       };
 
       pc.setRemoteDescription(new RTCSessionDescription(offer))
-        .then(() => pc.createAnswer())
-        .then((answer) => {
-          return pc.setLocalDescription(answer).then(() => answer);
+        .then(() => {
+          if (!isCurrentPeerGeneration(pc, generation)) throw new Error('stale peer connection');
+          remoteDescriptionReady = true;
+          return flushRemoteCandidates(pc, generation).then(() => createAndSetAnswer(pc, generation));
         })
         .then((answer) => {
-          sendViaWs({ type: 'answer', payload: answer });
+          if (isCurrentPeerGeneration(pc, generation)) {
+            if (!sendViaWs({ type: 'answer', negotiationId: generation.signaling, payload: answer })) {
+              scheduleReconnect('Failed to send the WebRTC answer.');
+              return;
+            }
+            flushLocalDescriptionCandidates(pc, generation);
+          }
         })
         .catch((err) => {
-          console.error('WebRTC offer/answer failed:', err);
+          if (!isCurrentPeerGeneration(pc, generation)) return;
           emitP2PDebug('error', 'connection', 'WebRTC offer/answer negotiation failed.', {
             error: err instanceof Error ? err.message : String(err),
           }, false);
           scheduleReconnect('WebRTC offer/answer negotiation failed.');
         });
-    };
+    }
 
     function connectSignaling() {
-      if (disposed || terminalFailureRef.current || !isMountedRef.current) return;
+      if (!isCurrentSession() || terminalFailureRef.current) return;
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
       // PC가 살아있거나(connected) 자가 복구 대기 중(disconnected 워치독,
@@ -1001,9 +1746,11 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       }
       ws = socket;
       wsRef.current = socket;
+      roomJoined = false;
+      activeTurnRequest = null;
 
       socket.onopen = () => {
-        if (!isMountedRef.current || disposed) {
+        if (!isCurrentSession() || socket !== ws) {
           socket.close();
           return;
         }
@@ -1029,11 +1776,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       };
 
       socket.onclose = () => {
-        if (!isMountedRef.current || disposed) return;
+        if (!isCurrentSession() || socket !== ws) return;
         stopHeartbeat();
+        updateIntercomTransport({
+          generation: intercomGenerationRef.current,
+          joined: false,
+        });
         if (terminalFailureRef.current) return;
         emitP2PDebug('warn', 'signaling', 'Signaling connection closed.', undefined, false);
-        if (pcRef.current?.connectionState === 'connected') {
+        if (reconnectKindForSignalingClose(pcRef.current?.connectionState) === 'signaling-rebind') {
           // P2P는 독립적으로 유지 — 시그널링만 백그라운드에서 복구한다.
           scheduleWsReconnect();
           return;
@@ -1042,31 +1793,129 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       };
 
       socket.onerror = () => {
-        if (!isMountedRef.current || disposed) return;
+        if (!isCurrentSession() || socket !== ws) return;
+        updateIntercomTransport({
+          generation: intercomGenerationRef.current,
+          joined: false,
+        });
         if (terminalFailureRef.current) return;
         emitP2PDebug('error', 'signaling', 'Signaling server connection failed.', undefined, false);
         // The reconnect decision is made in socket.onclose, which fires right after onerror.
       };
 
       socket.onmessage = (event) => {
-        if (!isMountedRef.current || disposed) return;
+        if (!isCurrentSession() || socket !== ws) return;
 
-        let msg: { type: string; payload?: unknown; error?: string; peerId?: string; restart?: boolean };
+        let msg: {
+          type: string;
+          payload?: unknown;
+          error?: string;
+          peerId?: string;
+          requestId?: unknown;
+          restart?: boolean;
+          negotiationId?: unknown;
+          features?: { intercomVersion?: unknown };
+        };
         try {
           msg = JSON.parse(event.data);
         } catch {
           return;
         }
 
+        const intercomMessage = parseServerIntercomEnvelope(msg);
+        if (intercomMessage) {
+          for (const listener of intercomListenersRef.current) listener(intercomMessage);
+          return;
+        }
+        if (SERVER_INTERCOM_TYPES.has(msg.type)) {
+          const malformed = malformedIntercomAuthorityError();
+          for (const listener of intercomListenersRef.current) listener(malformed);
+          return;
+        }
+
         switch (msg.type) {
           case 'room_joined': {
             wsReconnectDelay = RECONNECT_BASE_DELAY_MS;
-            const rebound = lastPeerIdRef.current !== '' && msg.peerId === lastPeerIdRef.current;
-            if (typeof msg.peerId === 'string' && msg.peerId) {
-              lastPeerIdRef.current = msg.peerId;
+            if (typeof msg.peerId !== 'string' || msg.peerId === '') {
+              scheduleReconnect('Signaling server returned an invalid peer identity.');
+              break;
             }
-            flushPendingCandidates();
-            if (rebound && pcRef.current?.connectionState === 'connected') {
+            const previousPeerId = lastPeerIdRef.current;
+            const rebound = previousPeerId !== '' && msg.peerId === previousPeerId;
+            const freshMembership = previousPeerId !== '' && msg.peerId !== previousPeerId;
+            const liveRebind = rebound
+              && pcRef.current?.connectionState === 'connected'
+              && dcRef.current?.readyState === 'open';
+            if (rebound && !liveRebind) {
+              emitP2PDebug('warn', 'signaling', 'Peer identity rebound after the P2P link stopped being live; requesting a fresh membership.', {
+                peerId: msg.peerId,
+              }, false);
+              closeCurrentPeer();
+              scheduleReconnect('The previous peer session was no longer live after signaling rebind.');
+              socket.close();
+              break;
+            }
+            roomJoined = true;
+            lastPeerIdRef.current = msg.peerId;
+            const nextIntercomGeneration = ++intercomGenerationRef.current;
+            ownedIntercomGeneration = nextIntercomGeneration;
+            updateIntercomTransport({
+              generation: nextIntercomGeneration,
+              joined: true,
+              intercomVersion: msg.features?.intercomVersion === INTERCOM_VERSION
+                ? INTERCOM_VERSION
+                : undefined,
+            });
+            if (rebound) {
+              flushPendingCandidates();
+            } else {
+              pendingCandidatesRef.current = [];
+            }
+            if (freshMembership) {
+              closeCurrentPeer();
+              remoteDescriptionReady = false;
+              resetReliableHealth();
+              runtimeIceRef.current = null;
+              runtimeIceReceivedAtRef.current = 0;
+              clearTurnRefreshTimers();
+              activeIceSource = CONFIGURED_ICE_SOURCE;
+            } else {
+              const runtime = runtimeIceRef.current;
+              if (isRuntimeIceCurrent(runtime, Date.now())
+                && !turnRefreshTimeoutRef.current
+                && !turnExpiryTimeoutRef.current) {
+                scheduleTurnLifecycle(runtime, runtimeIceReceivedAtRef.current || Date.now());
+              }
+            }
+            if (!liveRebind) {
+              initialOfferGateActive = true;
+              if (offerGateTimeoutRef.current) clearTimeout(offerGateTimeoutRef.current);
+              offerGateTimeoutRef.current = window.setTimeout(() => {
+                offerGateTimeoutRef.current = null;
+                if (isCurrentSession()) {
+                  releaseInitialOfferGate();
+                }
+              }, TURN_INITIAL_OFFER_GATE_MS);
+            }
+            requestTurnCredentials();
+            if (liveRebind) {
+              const bufferedOffer = pendingOffer;
+              pendingOffer = null;
+              if (bufferedOffer) {
+                handleOffer(
+                  bufferedOffer.payload,
+                  bufferedOffer.isRestart,
+                  bufferedOffer.generation.signaling,
+                  bufferedOffer.generation,
+                );
+              } else if (pcRef.current && remoteDescriptionReady && remoteCandidateFlushGeneration === null) {
+                const generation = {
+                  pc: activePcGeneration,
+                  negotiation: activeNegotiationGeneration,
+                  signaling: activeSignalingNegotiation,
+                };
+                void flushRemoteCandidates(pcRef.current, generation);
+              }
               emitP2PDebug('info', 'signaling', 'Signaling rebound to live peer session.', {
                 peerId: msg.peerId,
               }, false);
@@ -1081,11 +1930,14 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
             armStageTimeout('Timed out waiting for the sender to publish a WebRTC offer.', OFFER_TIMEOUT_MS);
             break;
           }
+          case 'turn_credentials':
+            handleTurnCredentials(msg.payload, msg.requestId, socket);
+            break;
           case 'offer':
-            handleOffer(msg.payload, msg.restart === true);
+            handleOffer(msg.payload, msg.restart === true, msg.negotiationId);
             break;
           case 'ice_candidate':
-            handleICECandidate(msg.payload);
+            handleICECandidate(msg.payload, msg.negotiationId);
             break;
           case 'heartbeat':
             // 서버의 heartbeat echo — 무시
@@ -1103,17 +1955,22 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
             break;
           case 'error': {
             const errMsg = msg.error ?? 'Unknown signaling error.';
+            if (handleLegacyTurnFallback(errMsg, socket)) {
+              break;
+            }
             emitP2PDebug('error', 'signaling', 'Received signaling error.', { error: errMsg }, false);
-            const lowered = errMsg.toLowerCase();
-            const retryable = hadConnectedRef.current
-              && !lowered.includes('password')
-              && !lowered.includes('full');
+            const retryable = shouldRetrySignalingError(
+              errMsg,
+              hadConnectedRef.current,
+              reconnectAttemptsRef.current,
+            );
             if (retryable) {
-              lastPeerIdRef.current = '';
               if (pcRef.current?.connectionState === 'connected') {
                 // P2P는 살아있고 join만 거절됨(예: 서버 재시작 직후 방 미생성) —
-                // 시그널링만 백오프 재시도하고 화면은 유지한다.
-                scheduleWsReconnect();
+                // 현재 소켓을 닫아 onclose의 시그널링 전용 백오프 경로로 보낸다.
+                // 열린 소켓을 둔 채 타이머만 걸면 connectSignaling()의 OPEN 가드에
+                // 막혀 재시도가 영구히 진행되지 않는다.
+                socket.close();
               } else {
                 scheduleReconnect(errMsg);
               }
@@ -1130,10 +1987,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     // 죽은 P2P 조기 감지: sender ping(5s)이 15초간 끊기면 재연결.
     // 구버전 sender(ping 미전송)에서는 pingSeen이 false라 비활성.
     const keepaliveWatchdog = window.setInterval(() => {
-      if (!pingSeenRef.current) return;
+      if (!isCurrentSession() || !pingSeenRef.current || restartGraceRef.current) return;
       const dc = dcRef.current;
       if (!dc || dc.readyState !== 'open') return;
-      const silentFor = Date.now() - lastTrafficAtRef.current;
+      const silentFor = Date.now() - lastReliablePingAtRef.current;
       if (silentFor > KEEPALIVE_TIMEOUT_MS) {
         pingSeenRef.current = false;
         emitP2PDebug('warn', 'connection', 'No keepalive traffic from sender, reconnecting.', {
@@ -1164,7 +2021,6 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
 
     return () => {
       disposed = true;
-      isMountedRef.current = false;
       stopHeartbeat();
       if (wsReconnectTimer) {
         clearTimeout(wsReconnectTimer);
@@ -1172,11 +2028,35 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       }
       clearInterval(keepaliveWatchdog);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      cleanup();
+      if (cleanup({ socket: ws, intercomGeneration: ownedIntercomGeneration })) {
+        isMountedRef.current = false;
+      }
     };
     // Re-run when connection params change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options?.signalingUrl, options?.roomId, options?.roomCode, options?.password, reconnectNonce]);
 
-  return { disconnect, forceReconnect, sendView, request, stream, connectionState: rtcState, lastError };
+  const intercomAdapterRevision = `${intercomTransportState.generation}:${intercomTransportState.joined}:${intercomTransportState.intercomVersion ?? 0}`;
+  const intercomAdapter = useMemo<IntercomSignalingAdapter>(() => {
+    void intercomAdapterRevision;
+    return {
+      get generation() { return intercomTransportRef.current.generation; },
+      get joined() { return intercomTransportRef.current.joined; },
+      get intercomVersion() { return intercomTransportRef.current.intercomVersion; },
+      sendIntercom,
+      subscribeIntercom,
+      subscribeInvalidation: subscribeIntercomInvalidation,
+    };
+  }, [intercomAdapterRevision, sendIntercom, subscribeIntercom, subscribeIntercomInvalidation]);
+
+  return {
+    disconnect,
+    forceReconnect,
+    sendView,
+    request,
+    stream,
+    connectionState: rtcState,
+    lastError,
+    intercom: intercomAdapter,
+  };
 }

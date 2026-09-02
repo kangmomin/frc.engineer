@@ -17,4 +17,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSenderStorageInfo: () => ipcRenderer.invoke('get-sender-storage-info'),
   selectDirectory: (defaultPath) => ipcRenderer.invoke('select-directory', defaultPath),
   restartSender: () => ipcRenderer.invoke('restart-sender'),
+  getIntercomBridgeToken: () => ipcRenderer.invoke('get-intercom-bridge-token'),
 });

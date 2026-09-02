@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { IntercomSignalingAdapter } from '../../../shared/intercom';
 import { PostRaceDebrief } from '../components/debrief/PostRaceDebrief';
 import { RaceArchiveDrawer } from '../components/races/RaceArchiveDrawer';
 import type { RaceArchiveDataSource } from '../components/races/replayArchive';
 import { RemoteConnect } from '../components/remote/RemoteConnect';
+import { IntercomDock } from '../components/intercom/IntercomDock';
 import { F1SetupManager } from '../components/setup/F1SetupManager';
 import { useMockTelemetry } from '../hooks/useMockTelemetry';
 import { useWebRTCDataChannel } from '../hooks/useWebRTCDataChannel';
@@ -83,6 +85,15 @@ interface AppShellProps {
   onExitToHub?: () => void;
 }
 
+function AppShellWithIntercom({ transport, children }: { transport: IntercomSignalingAdapter; children: ReactNode }) {
+  return (
+    <>
+      {children}
+      <IntercomDock transport={transport} />
+    </>
+  );
+}
+
 export function AppShell({ onExitToHub }: AppShellProps = {}) {
   const mock = isMockMode;
 
@@ -131,6 +142,7 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
     request,
     stream,
     forceReconnect,
+    intercom,
   } = useWebRTCDataChannel(webrtcOpts);
 
   // 재연결 후 'connected' 전이마다 현재 뷰 재전송 (peerView 는 재연결 시 cockpit 으로 리셋됨)
@@ -246,24 +258,30 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
 
   // 세팅 매니저는 전체 화면 대체 (overflow:hidden 독립 실행)
   if (setupOpen) {
-    return <F1SetupManager onBack={() => setSetupOpen(false)} />;
+    return (
+      <AppShellWithIntercom transport={intercom}>
+        <F1SetupManager onBack={() => setSetupOpen(false)} />
+      </AppShellWithIntercom>
+    );
   }
 
   // 라이브 모드 게이팅 (mock 모드는 건너뜀)
   if (!mock && !rtcOptions) {
     return (
-      <RemoteConnect
-        onConnect={handleRemoteConnect}
-        connectionState={connectionState}
-        onCancel={onExitToHub}
-        cancelLabel={onExitToHub ? '홈' : undefined}
-        title="P2P Telemetry Link"
-        subtitle="Pick an active sender room from the signaling server, then enter its password to join."
-        initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
-        initialRoomId={readRemoteQuery().roomId || ''}
-        initialRoomCode={readRemoteQuery().roomCode || ''}
-        initialPassword=""
-      />
+      <AppShellWithIntercom transport={intercom}>
+        <RemoteConnect
+          onConnect={handleRemoteConnect}
+          connectionState={connectionState}
+          onCancel={onExitToHub}
+          cancelLabel={onExitToHub ? '홈' : undefined}
+          title="P2P Telemetry Link"
+          subtitle="Pick an active sender room from the signaling server, then enter its password to join."
+          initialSignalingUrl={readRemoteQuery().signalingUrl || ''}
+          initialRoomId={readRemoteQuery().roomId || ''}
+          initialRoomCode={readRemoteQuery().roomCode || ''}
+          initialPassword=""
+        />
+      </AppShellWithIntercom>
     );
   }
 
@@ -276,29 +294,33 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
       (connectAttempted && connectionState === 'disconnected' && rtcConnectionState !== 'new'))
   ) {
     return (
-      <RemoteConnect
-        onConnect={handleRemoteConnect}
-        connectionState={connectionState}
-        onCancel={goToMainScreen}
-        cancelLabel="Main Screen"
-        title="P2P Telemetry Link"
-        subtitle={rtcLastError || getConnectionDetail(connectionState)}
-        initialSignalingUrl={rtcOptions.signalingUrl}
-        initialRoomId={rtcOptions.roomId}
-        initialRoomCode={rtcOptions.roomCode}
-        initialPassword={rtcOptions.password}
-      />
+      <AppShellWithIntercom transport={intercom}>
+        <RemoteConnect
+          onConnect={handleRemoteConnect}
+          connectionState={connectionState}
+          onCancel={goToMainScreen}
+          cancelLabel="Main Screen"
+          title="P2P Telemetry Link"
+          subtitle={rtcLastError || getConnectionDetail(connectionState)}
+          initialSignalingUrl={rtcOptions.signalingUrl}
+          initialRoomId={rtcOptions.roomId}
+          initialRoomCode={rtcOptions.roomCode}
+          initialPassword={rtcOptions.password}
+        />
+      </AppShellWithIntercom>
     );
   }
 
   return (
-    <>
-      <Stage>{renderView(controls, request)}</Stage>
-      {archiveOpen ? (
-        <RaceArchiveDrawer onClose={() => setArchiveOpen(false)} dataSource={raceArchiveDataSource} />
-      ) : null}
-      {raceResult ? <PostRaceDebrief result={raceResult} onClose={clearRaceResult} /> : null}
-    </>
+    <AppShellWithIntercom transport={intercom}>
+      <>
+        <Stage>{renderView(controls, request)}</Stage>
+        {archiveOpen ? (
+          <RaceArchiveDrawer onClose={() => setArchiveOpen(false)} dataSource={raceArchiveDataSource} />
+        ) : null}
+        {raceResult ? <PostRaceDebrief result={raceResult} onClose={clearRaceResult} /> : null}
+      </>
+    </AppShellWithIntercom>
   );
 }
 
