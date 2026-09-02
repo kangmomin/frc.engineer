@@ -1,0 +1,5 @@
+{
+  "type": "intercom_sfu_session_new",
+  "requestId": "req-session-1",
+  "payload": {}
+}

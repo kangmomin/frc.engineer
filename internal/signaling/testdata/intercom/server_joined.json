@@ -1,0 +1,58 @@
+{
+  "type": "intercom_joined",
+  "requestId": "req-join-1",
+  "payload": {
+    "membershipGeneration": 3,
+    "participantId": "participant-chief",
+    "resumeToken": "0123456789abcdef0123456789abcdef",
+    "groupCode": "482915",
+    "chiefCode": "7K9M2Q4TXC",
+    "snapshot": {
+      "revision": 7,
+      "topologyRevision": 3,
+      "groupCode": "482915",
+      "participants": [
+        {
+          "id": "participant-driver",
+          "role": "driver",
+          "displayName": "Driver 1",
+          "driverKey": "epoch-a:room-a",
+          "online": true,
+          "speaking": true,
+          "ptt": false,
+          "busEnabled": true,
+          "forcedMuted": false,
+          "talkingTo": ["participant-chief"]
+        },
+        {
+          "id": "participant-engineer",
+          "role": "engineer",
+          "displayName": "Engineer A",
+          "assignmentDriverKey": "epoch-a:room-a",
+          "online": true,
+          "speaking": false,
+          "ptt": false,
+          "busEnabled": true,
+          "forcedMuted": true,
+          "talkingTo": []
+        },
+        {
+          "id": "participant-chief",
+          "role": "chief",
+          "displayName": "Chief C",
+          "online": true,
+          "speaking": false,
+          "ptt": false,
+          "busEnabled": false,
+          "forcedMuted": false,
+          "talkingTo": []
+        }
+      ],
+      "privateSession": {
+        "phase": "active",
+        "driverKey": "epoch-a:room-a"
+      }
+    },
+    "sfuEnabled": true
+  }
+}

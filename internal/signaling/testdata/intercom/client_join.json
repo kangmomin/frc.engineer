@@ -1,0 +1,12 @@
+{
+  "type": "intercom_join",
+  "requestId": "req-join-1",
+  "payload": {
+    "groupCode": "482915",
+    "password": "team-password",
+    "chiefCode": "7K9M2Q4TXC",
+    "resumeToken": "0123456789abcdef0123456789abcdef",
+    "role": "chief",
+    "displayName": "Chief C"
+  }
+}

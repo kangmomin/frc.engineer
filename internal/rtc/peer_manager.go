@@ -33,6 +33,9 @@ const (
 	iceRestartTimeout      = 15 * time.Second
 	iceRestartMaxPerWindow = 2
 	iceRestartWindow       = 60 * time.Second
+
+	maxDataChannelMessageBytes = 256 * 1024
+	maxPendingICECandidates    = 64
 )
 
 var defaultICEServers = []webrtc.ICEServer{
@@ -47,6 +50,12 @@ var sigDialer = &websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 // The returned bytes are sent back as a unicast response.
 type RequestHandler func(peerID string, msg []byte) []byte
 
+type IntercomTransportState struct {
+	Generation      uint64
+	Joined          bool
+	IntercomVersion int
+}
+
 // peerMeta tracks per-peer keepalive and ICE-restart state. Guarded by pm.mu.
 type peerMeta struct {
 	lastPongAt   time.Time
@@ -55,28 +64,55 @@ type peerMeta struct {
 	windowStart  time.Time
 	restartingAt time.Time // zero = restart 진행 중 아님
 	restartTimer *time.Timer
+	// Each DataChannel gets a serial send section. Pion channels can be touched
+	// by telemetry, request responses, and keepalive goroutines concurrently.
+	reliableSendMu sync.Mutex
+	fastSendMu     sync.Mutex
+	negotiationMu  sync.Mutex
+	// Candidates are only passed to Pion after the current remote description,
+	// and locally gathered candidates only leave after their offer is sent.
+	remoteDescriptionSet     bool
+	pendingRemoteCandidates  []pendingRemoteCandidate
+	remoteCandidatesFlushing bool
+	offerSent                bool
+	pendingLocalCandidates   []json.RawMessage
+	localCandidatesFlushing  bool
+	candidateQueueFailed     bool
+	negotiationGeneration    uint64
+	generationAware          bool
+}
+
+type pendingRemoteCandidate struct {
+	negotiationID uint64
+	candidate     webrtc.ICECandidateInit
 }
 
 // PeerManager manages WebRTC peer connections for the sender (driver) side.
 // It connects to the signaling server, creates rooms, and handles
 // PeerConnection lifecycle for each engineer that joins.
 type PeerManager struct {
-	signalingURL string
-	sigConn      *websocket.Conn
-	sigMu        sync.Mutex
+	lifecycleMu    sync.Mutex // serializes short signaling lifecycle commit/cleanup sections
+	signalingURL   string
+	sigConn        *websocket.Conn
+	sigMu          sync.Mutex
+	signalingReady bool // current socket completed room_create/room_rejoin
 
-	peers        map[string]*webrtc.PeerConnection
-	channels     map[string]*webrtc.DataChannel
-	fastChannels map[string]*webrtc.DataChannel
-	peerViews    map[string]string // per-peer active view: "cockpit" or "qualifying"
-	peerMeta     map[string]*peerMeta
-	mu           sync.RWMutex
+	peers                   map[string]*webrtc.PeerConnection
+	channels                map[string]*webrtc.DataChannel
+	fastChannels            map[string]*webrtc.DataChannel
+	peerViews               map[string]string // per-peer active view: "cockpit" or "qualifying"
+	peerMeta                map[string]*peerMeta
+	pendingPeers            map[string]uint64 // peer join → TURN-gated offer generation
+	nextPeerOfferGeneration uint64
+	pendingRemoteCandidates map[string][]pendingRemoteCandidate
+	nextNegotiationID       uint64
+	mu                      sync.RWMutex
 
 	roomID        string
 	roomCode      string
 	roomName      string
 	roomPassword  string
-	iceServers    []webrtc.ICEServer
+	turn          turnState
 	onRequest     RequestHandler
 	onCountChange func(int)    // called when engineer count changes
 	onStatus      func(string) // signaling status text for tray tooltip 등
@@ -86,20 +122,30 @@ type PeerManager struct {
 	reconnecting  bool
 	playerName    string // current in-game player nickname (guarded by sigMu)
 	ownerToken    string // H6: room ownership proof from room_created (guarded by sigMu)
+
+	intercomGeneration  uint64
+	intercomVersion     int
+	intercomJoined      bool
+	intercomLatestJoin  *signaling.Message
+	intercomLatestState *signaling.Message
+	onIntercom          func(signaling.Message)
+	onIntercomState     func(IntercomTransportState)
 }
 
 // NewPeerManager creates a PeerManager. Call Connect() to start.
 func NewPeerManager(signalingURL string, logger *slog.Logger) *PeerManager {
 	return &PeerManager{
-		signalingURL: signalingURL,
-		peers:        make(map[string]*webrtc.PeerConnection),
-		channels:     make(map[string]*webrtc.DataChannel),
-		fastChannels: make(map[string]*webrtc.DataChannel),
-		peerViews:    make(map[string]string),
-		peerMeta:     make(map[string]*peerMeta),
-		iceServers:   cloneICEServers(defaultICEServers),
-		logger:       logger,
-		done:         make(chan struct{}),
+		signalingURL:            signalingURL,
+		peers:                   make(map[string]*webrtc.PeerConnection),
+		channels:                make(map[string]*webrtc.DataChannel),
+		fastChannels:            make(map[string]*webrtc.DataChannel),
+		peerViews:               make(map[string]string),
+		peerMeta:                make(map[string]*peerMeta),
+		pendingPeers:            make(map[string]uint64),
+		pendingRemoteCandidates: make(map[string][]pendingRemoteCandidate),
+		turn:                    newTurnState(defaultICEServers),
+		logger:                  logger,
+		done:                    make(chan struct{}),
 	}
 }
 
@@ -117,6 +163,56 @@ func (pm *PeerManager) SetCountChangeHandler(h func(int)) {
 // status transitions (rtc 패키지가 systray에 의존하지 않도록 콜백 주입).
 func (pm *PeerManager) SetStatusHandler(h func(string)) {
 	pm.onStatus = h
+}
+
+// SetIntercomHandler registers the sender bridge's central-message callback.
+// The latest joined/state authority can be replayed separately after a local
+// renderer replacement without exposing owner or provider credentials.
+func (pm *PeerManager) SetIntercomHandler(h func(signaling.Message)) {
+	pm.sigMu.Lock()
+	pm.onIntercom = h
+	pm.sigMu.Unlock()
+}
+
+func (pm *PeerManager) SetIntercomStateHandler(h func(IntercomTransportState)) {
+	pm.sigMu.Lock()
+	pm.onIntercomState = h
+	state := pm.intercomTransportStateLocked()
+	pm.sigMu.Unlock()
+	if h != nil {
+		h(state)
+	}
+}
+
+func (pm *PeerManager) IntercomReplay() (IntercomTransportState, []signaling.Message) {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	messages := make([]signaling.Message, 0, 2)
+	if pm.intercomLatestJoin != nil {
+		messages = append(messages, cloneSignalingMessage(*pm.intercomLatestJoin))
+	}
+	if pm.intercomLatestState != nil {
+		messages = append(messages, cloneSignalingMessage(*pm.intercomLatestState))
+	}
+	return pm.intercomTransportStateLocked(), messages
+}
+
+func (pm *PeerManager) SendIntercom(message signaling.Message) bool {
+	if !signaling.IsIntercomClientMessageType(message.Type) {
+		return false
+	}
+	encoded, err := json.Marshal(message)
+	if err != nil || len(encoded) > signaling.MaxIntercomEnvelopeBytes {
+		return false
+	}
+	pm.sigMu.Lock()
+	supported := pm.signalingReady && pm.intercomVersion == signaling.IntercomProtocolVersion
+	conn := pm.sigConn
+	pm.sigMu.Unlock()
+	if !supported || conn == nil {
+		return false
+	}
+	return pm.sendSignalingOn(conn, message)
 }
 
 func (pm *PeerManager) notifyStatus(status string) {
@@ -163,13 +259,7 @@ func (pm *PeerManager) setOwnerToken(token string) {
 
 // SetICEServers overrides the default STUN-only ICE server list.
 func (pm *PeerManager) SetICEServers(servers []webrtc.ICEServer) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	if len(servers) == 0 {
-		pm.iceServers = cloneICEServers(defaultICEServers)
-		return
-	}
-	pm.iceServers = cloneICEServers(servers)
+	pm.turn.setStaticICEServers(servers)
 }
 
 // UpdateRoomMetadata updates the active signaling room metadata if connected.
@@ -177,7 +267,7 @@ func (pm *PeerManager) UpdateRoomMetadata(name, password string) {
 	pm.sigMu.Lock()
 	pm.roomName = name
 	pm.roomPassword = password
-	connected := pm.sigConn != nil
+	connected := pm.sigConn != nil && pm.signalingReady
 	roomID := pm.roomID
 	pm.sigMu.Unlock()
 
@@ -192,95 +282,215 @@ func (pm *PeerManager) UpdateRoomMetadata(name, password string) {
 }
 
 // RoomID returns the stable room id assigned by the signaling server.
-func (pm *PeerManager) RoomID() string { return pm.roomID }
+func (pm *PeerManager) RoomID() string {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	return pm.roomID
+}
 
 // RoomCode returns the current room code assigned by the signaling server.
-func (pm *PeerManager) RoomCode() string { return pm.roomCode }
+func (pm *PeerManager) RoomCode() string {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	return pm.roomCode
+}
 
 // Connect establishes a WebSocket connection to the signaling server and sends room_create.
 // Safe to call again after Close(): the done channel is re-armed so the
 // read/write loops and reconnect logic work for the new session.
 func (pm *PeerManager) Connect() error {
+	pm.lifecycleMu.Lock()
 	pm.sigMu.Lock()
 	if pm.closed {
 		pm.done = make(chan struct{})
 		pm.closed = false
 		pm.reconnecting = false
 	}
+	sessionDone := pm.done
 	pm.sigMu.Unlock()
+	pm.lifecycleMu.Unlock()
 
-	if err := pm.dial(); err != nil {
+	if err := pm.dial(sessionDone); err != nil {
 		return err
+	}
+	pm.sigMu.Lock()
+	conn := pm.sigConn
+	pm.sigMu.Unlock()
+	if conn == nil {
+		return fmt.Errorf("signaling connection unavailable")
 	}
 
 	// Send room_create
-	create := signaling.Message{
-		Type:       signaling.TypeRoomCreate,
-		RoomID:     pm.roomID,
-		RoomName:   pm.roomName,
-		Password:   pm.roomPassword,
-		PlayerName: pm.getPlayerName(),
-		OwnerToken: pm.getOwnerToken(),
-	}
-	if err := pm.sigConn.WriteJSON(create); err != nil {
-		pm.sigConn.Close()
+	create := pm.roomHandshakeMessage(signaling.TypeRoomCreate)
+	if err := pm.writeSignalingHandshake(conn, sessionDone, create); err != nil {
+		conn.Close()
 		return fmt.Errorf("send room_create: %w", err)
 	}
 
-	// Read room_created response
-	var resp signaling.Message
-	if err := pm.sigConn.ReadJSON(&resp); err != nil {
-		pm.sigConn.Close()
+	// A fast engineer join can arrive before room_created on this connection.
+	// Buffer bounded peer events until the ACK establishes the room generation.
+	resp, pending, err := readRoomCreated(conn)
+	if err != nil {
+		conn.Close()
 		return fmt.Errorf("read room_created: %w", err)
 	}
+
+	pm.lifecycleMu.Lock()
+	if !pm.signalingLifecycleCurrent(conn, sessionDone) {
+		pm.lifecycleMu.Unlock()
+		_ = conn.Close()
+		return fmt.Errorf("signaling session changed before room creation completed")
+	}
 	if resp.Type == signaling.TypeError {
-		pm.sigConn.Close()
+		pm.lifecycleMu.Unlock()
+		conn.Close()
 		return fmt.Errorf("signaling error: %s", resp.Error)
 	}
 	if resp.Type != signaling.TypeRoomCreated {
-		pm.sigConn.Close()
+		pm.lifecycleMu.Unlock()
+		conn.Close()
 		return fmt.Errorf("unexpected message: %s", resp.Type)
 	}
 
-	pm.roomID = resp.RoomID
-	pm.roomCode = resp.RoomCode
-	if resp.OwnerToken != "" {
-		pm.setOwnerToken(resp.OwnerToken)
+	roomID, roomCode, _, applied := pm.applyRoomAcknowledgementLocked(conn, sessionDone, resp, true)
+	if !applied {
+		pm.lifecycleMu.Unlock()
+		conn.Close()
+		return fmt.Errorf("signaling connection replaced before room creation completed")
 	}
-	pm.logger.Info("room created on signaling server", "roomId", pm.roomID, "roomCode", pm.roomCode)
+	pm.logger.Info("room created on signaling server", "roomId", roomID, "roomCode", roomCode)
+	pm.requestTurnCredentials(false)
+	if pm.replayBufferedSignaling(pending) {
+		pm.clearSignalingConnection(conn)
+		pm.lifecycleMu.Unlock()
+		conn.Close()
+		return fmt.Errorf("room closed while establishing signaling")
+	}
 
-	pm.startLoops()
-	go pm.keepaliveLoop()
+	pm.startLoops(conn, sessionDone)
+	go pm.keepaliveLoop(sessionDone)
+	pm.lifecycleMu.Unlock()
 	return nil
 }
 
 // dial establishes a WebSocket connection and installs pong handler + read deadline.
-func (pm *PeerManager) dial() error {
+func (pm *PeerManager) dial(expectedDone chan struct{}) error {
 	conn, _, err := sigDialer.Dial(pm.signalingURL, nil)
 	if err != nil {
 		return fmt.Errorf("signaling connect: %w", err)
 	}
 
 	conn.SetReadDeadline(time.Now().Add(sigPongWait))
+	conn.SetReadLimit(signaling.MaxIntercomEnvelopeBytes)
 	conn.SetPongHandler(func(string) error {
 		conn.SetReadDeadline(time.Now().Add(sigPongWait))
 		return nil
 	})
 
+	pm.lifecycleMu.Lock()
 	pm.sigMu.Lock()
+	if pm.closed || pm.done != expectedDone {
+		pm.sigMu.Unlock()
+		pm.lifecycleMu.Unlock()
+		_ = conn.Close()
+		return fmt.Errorf("signaling session changed during connect")
+	}
 	pm.sigConn = conn
+	pm.signalingReady = false
 	pm.sigMu.Unlock()
+	pm.lifecycleMu.Unlock()
 
 	return nil
+}
+
+const maxPreRoomCreatedMessages = 64
+
+// readRoomCreated waits for the room ACK while retaining the small number of
+// peer events that can legitimately race it. This avoids silently losing the
+// first peer_joined when a just-created room is immediately joined.
+func readRoomCreated(conn *websocket.Conn) (signaling.Message, []signaling.Message, error) {
+	pending := make([]signaling.Message, 0, 4)
+	for {
+		var message signaling.Message
+		if err := conn.ReadJSON(&message); err != nil {
+			return signaling.Message{}, nil, err
+		}
+		switch message.Type {
+		case signaling.TypeRoomCreated, signaling.TypeError:
+			return message, pending, nil
+		default:
+			if len(pending) >= maxPreRoomCreatedMessages {
+				return signaling.Message{}, nil, fmt.Errorf("too many signaling events before room_created")
+			}
+			pending = append(pending, message)
+		}
+	}
+}
+
+func (pm *PeerManager) replayBufferedSignaling(messages []signaling.Message) (roomClosed bool) {
+	for _, message := range messages {
+		if pm.handleSignalingMessage(message) {
+			return true
+		}
+	}
+	return false
 }
 
 // startLoops launches the read and write (ping) goroutines.
 // writeDone은 세대-로컬 채널 — 재연결로 루프가 다시 뜰 때 이전 세대의
 // close가 새 write 루프를 종료시키는 레이스를 막는다.
-func (pm *PeerManager) startLoops() {
+func (pm *PeerManager) startLoops(conn *websocket.Conn, done chan struct{}) {
 	wd := make(chan struct{})
-	go pm.readSignalingLoop(wd)
-	go pm.writeSignalingLoop(wd)
+	go pm.readSignalingLoop(conn, done, wd)
+	go pm.writeSignalingLoop(conn, done, wd)
+}
+
+// canQueueDataChannelMessage is the shared SCTP safety rule. A message larger
+// than Chrome's 256KB receive-buffer ceiling is never sent. Within a channel's
+// serial section, existing queue pressure above 128KB or a combined queued +
+// outgoing size above 256KB is dropped (or waited on by buffered sends).
+func canQueueDataChannelMessage(buffered uint64, outgoing int) bool {
+	if outgoing < 0 || outgoing > maxDataChannelMessageBytes {
+		return false
+	}
+	return buffered <= maxBufferedAmount && buffered+uint64(outgoing) <= maxDataChannelMessageBytes
+}
+
+func sendDataChannel(ch *webrtc.DataChannel, sendMu *sync.Mutex, message []byte, wait time.Duration) error {
+	return sendDataChannelWith(ch, sendMu, len(message), wait, func() error {
+		return ch.Send(message)
+	})
+}
+
+func sendDataChannelText(ch *webrtc.DataChannel, sendMu *sync.Mutex, message string, wait time.Duration) error {
+	return sendDataChannelWith(ch, sendMu, len(message), wait, func() error {
+		return ch.SendText(message)
+	})
+}
+
+func sendDataChannelWith(ch *webrtc.DataChannel, sendMu *sync.Mutex, outgoing int, wait time.Duration, send func() error) error {
+	if outgoing > maxDataChannelMessageBytes {
+		return fmt.Errorf("data channel message exceeds 256KB")
+	}
+	if ch == nil || sendMu == nil || ch.ReadyState() != webrtc.DataChannelStateOpen {
+		return fmt.Errorf("peer data channel not open")
+	}
+
+	sendMu.Lock()
+	defer sendMu.Unlock()
+	deadline := time.Now().Add(wait)
+	for {
+		if ch.ReadyState() != webrtc.DataChannelStateOpen {
+			return fmt.Errorf("peer data channel closed")
+		}
+		if canQueueDataChannelMessage(ch.BufferedAmount(), outgoing) {
+			return send()
+		}
+		if wait <= 0 || !time.Now().Before(deadline) {
+			return fmt.Errorf("peer data channel congested")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // BroadcastAll sends a binary message to all connected DataChannels.
@@ -290,23 +500,20 @@ func (pm *PeerManager) BroadcastAll(message []byte) {
 	type target struct {
 		peerID  string
 		channel *webrtc.DataChannel
+		meta    *peerMeta
 	}
 	pm.mu.RLock()
 	snapshot := make([]target, 0, len(pm.channels))
 	for peerID, ch := range pm.channels {
-		snapshot = append(snapshot, target{peerID: peerID, channel: ch})
+		snapshot = append(snapshot, target{peerID: peerID, channel: ch, meta: pm.peerMeta[peerID]})
 	}
 	pm.mu.RUnlock()
 
 	for _, t := range snapshot {
-		if t.channel.ReadyState() != webrtc.DataChannelStateOpen {
+		if t.meta == nil {
 			continue
 		}
-		if t.channel.BufferedAmount() > maxBufferedAmount {
-			pm.logger.Debug("dropping message for slow peer", "peerId", t.peerID)
-			continue
-		}
-		if err := t.channel.Send(message); err != nil {
+		if err := sendDataChannel(t.channel, &t.meta.reliableSendMu, message, 0); err != nil {
 			pm.logger.Debug("send failed", "peerId", t.peerID, "error", err)
 		}
 	}
@@ -316,20 +523,21 @@ func (pm *PeerManager) BroadcastAll(message []byte) {
 // Messages are silently dropped for slow peers (no log spam at 60Hz).
 func (pm *PeerManager) BroadcastAllFast(message []byte) {
 	pm.mu.RLock()
-	snapshot := make([]*webrtc.DataChannel, 0, len(pm.fastChannels))
-	for _, ch := range pm.fastChannels {
-		snapshot = append(snapshot, ch)
+	type target struct {
+		channel *webrtc.DataChannel
+		meta    *peerMeta
+	}
+	snapshot := make([]target, 0, len(pm.fastChannels))
+	for peerID, ch := range pm.fastChannels {
+		snapshot = append(snapshot, target{channel: ch, meta: pm.peerMeta[peerID]})
 	}
 	pm.mu.RUnlock()
 
-	for _, ch := range snapshot {
-		if ch.ReadyState() != webrtc.DataChannelStateOpen {
+	for _, target := range snapshot {
+		if target.meta == nil {
 			continue
 		}
-		if ch.BufferedAmount() > maxBufferedAmount {
-			continue
-		}
-		_ = ch.Send(message)
+		_ = sendDataChannel(target.channel, &target.meta.fastSendMu, message, 0)
 	}
 }
 
@@ -341,6 +549,7 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, view string)
 		peerID  string
 		channel *webrtc.DataChannel
 		view    string
+		meta    *peerMeta
 	}
 	targets := make([]target, 0, len(pm.channels))
 	for peerID, ch := range pm.channels {
@@ -348,6 +557,7 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, view string)
 			peerID:  peerID,
 			channel: ch,
 			view:    pm.peerViews[peerID],
+			meta:    pm.peerMeta[peerID],
 		})
 	}
 	pm.mu.RUnlock()
@@ -355,20 +565,16 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, view string)
 	dropped := 0
 	total := len(targets)
 	for _, target := range targets {
-		if target.channel.ReadyState() != webrtc.DataChannelStateOpen {
+		if target.meta == nil || target.channel.ReadyState() != webrtc.DataChannelStateOpen {
 			total--
-			continue
-		}
-		if target.channel.BufferedAmount() > maxBufferedAmount {
-			pm.logger.Debug("dropping message for slow peer", "peerId", target.peerID)
-			dropped++
 			continue
 		}
 		message := resolve(target.peerID, target.view)
 		if len(message) == 0 {
 			continue
 		}
-		if err := target.channel.Send(message); err != nil {
+		if err := sendDataChannel(target.channel, &target.meta.reliableSendMu, message, 0); err != nil {
+			dropped++
 			pm.logger.Debug("send failed", "peerId", target.peerID, "error", err)
 		}
 	}
@@ -379,37 +585,40 @@ func (pm *PeerManager) BroadcastPerPeer(resolve func(peerID string, view string)
 func (pm *PeerManager) SendTo(peerID string, message []byte) {
 	pm.mu.RLock()
 	ch, ok := pm.channels[peerID]
+	meta := pm.peerMeta[peerID]
 	pm.mu.RUnlock()
-	if !ok || ch.ReadyState() != webrtc.DataChannelStateOpen {
+	if !ok || meta == nil {
 		return
 	}
-	_ = ch.Send(message)
+	_ = sendDataChannel(ch, &meta.reliableSendMu, message, 0)
+}
+
+func (pm *PeerManager) peerChannelCurrent(peerID string, pc *webrtc.PeerConnection, ch *webrtc.DataChannel) bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.peers[peerID] == pc && pm.channels[peerID] == ch
+}
+
+func (pm *PeerManager) sendToIfCurrent(peerID string, pc *webrtc.PeerConnection, ch *webrtc.DataChannel, message []byte) {
+	pm.mu.RLock()
+	meta := pm.peerMeta[peerID]
+	current := pm.peers[peerID] == pc && pm.channels[peerID] == ch && meta != nil
+	pm.mu.RUnlock()
+	if current {
+		_ = sendDataChannel(ch, &meta.reliableSendMu, message, 0)
+	}
 }
 
 // SendToBuffered sends a message to a specific peer while waiting for channel backpressure to drain.
 func (pm *PeerManager) SendToBuffered(peerID string, message []byte, wait time.Duration) error {
 	pm.mu.RLock()
 	ch, ok := pm.channels[peerID]
+	meta := pm.peerMeta[peerID]
 	pm.mu.RUnlock()
-	if !ok || ch.ReadyState() != webrtc.DataChannelStateOpen {
+	if !ok || meta == nil {
 		return fmt.Errorf("peer data channel not open")
 	}
-
-	deadline := time.Now().Add(wait)
-	for ch.BufferedAmount() > maxBufferedAmount {
-		if ch.ReadyState() != webrtc.DataChannelStateOpen {
-			return fmt.Errorf("peer data channel closed")
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("peer data channel congested")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	if err := ch.Send(message); err != nil {
-		return err
-	}
-	return nil
+	return sendDataChannel(ch, &meta.reliableSendMu, message, wait)
 }
 
 // ConnectedCount returns the number of peers with open DataChannels.
@@ -427,25 +636,34 @@ func (pm *PeerManager) ConnectedCount() int {
 
 // PeerDebugInfo returns debug information about connected peers.
 type PeerDebugInfo struct {
-	PeerID        string `json:"peerId"`
-	State         string `json:"state"`
-	ICEState      string `json:"iceState,omitempty"`
-	CandidatePair string `json:"candidatePair,omitempty"` // 예: "srflx -> host"
-	Restarts      int    `json:"restarts,omitempty"`
-	LastPongAgoMs int64  `json:"lastPongAgoMs,omitempty"`
-	View          string `json:"view,omitempty"`
+	PeerID            string `json:"peerId"`
+	State             string `json:"state"`
+	ICEState          string `json:"iceState,omitempty"`
+	ICESource         string `json:"iceSource,omitempty"`
+	ICEExpiresAt      string `json:"iceExpiresAt,omitempty"`
+	ICEFallbackReason string `json:"iceFallbackReason,omitempty"`
+	CandidatePair     string `json:"candidatePair,omitempty"` // 예: "srflx -> host"
+	Restarts          int    `json:"restarts,omitempty"`
+	LastPongAgoMs     int64  `json:"lastPongAgoMs,omitempty"`
+	View              string `json:"view,omitempty"`
 }
 
 // DebugPeers returns debug info for all tracked peers.
 func (pm *PeerManager) DebugPeers() []PeerDebugInfo {
+	iceSource, iceExpiresAt, iceFallbackReason := pm.turn.diagnostics()
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	var out []PeerDebugInfo
 	for peerID, ch := range pm.channels {
 		info := PeerDebugInfo{
-			PeerID: peerID,
-			State:  ch.ReadyState().String(),
-			View:   pm.peerViews[peerID],
+			PeerID:            peerID,
+			State:             ch.ReadyState().String(),
+			View:              pm.peerViews[peerID],
+			ICESource:         iceSource,
+			ICEFallbackReason: iceFallbackReason,
+		}
+		if !iceExpiresAt.IsZero() {
+			info.ICEExpiresAt = iceExpiresAt.Format(time.RFC3339)
 		}
 		if pc := pm.peers[peerID]; pc != nil {
 			info.ICEState = pc.ICEConnectionState().String()
@@ -487,30 +705,60 @@ func selectedCandidatePair(pc *webrtc.PeerConnection) string {
 // Close shuts down all peer connections and the signaling connection.
 // Idempotent; a later Connect() re-arms the manager.
 func (pm *PeerManager) Close() {
+	pm.lifecycleMu.Lock()
 	pm.sigMu.Lock()
 	if pm.closed {
 		pm.sigMu.Unlock()
+		pm.lifecycleMu.Unlock()
 		return
 	}
 	pm.closed = true
+	pm.signalingReady = false
+	pm.intercomGeneration++
+	pm.intercomJoined = false
+	pm.intercomLatestJoin = nil
+	pm.intercomLatestState = nil
 	done := pm.done
+	conn := pm.sigConn
+	pm.sigConn = nil
 	pm.sigMu.Unlock()
+	pm.notifyIntercomState()
 	close(done)
 
+	// Clear gated offers before closing their TURN gate. Otherwise a waiter can
+	// wake on the gate and race shutdown with peer creation.
 	pm.mu.Lock()
-	for id, pc := range pm.peers {
-		pc.Close()
-		delete(pm.peers, id)
-		delete(pm.channels, id)
-		delete(pm.fastChannels, id)
-	}
+	clear(pm.pendingPeers)
+	clear(pm.pendingRemoteCandidates)
 	pm.mu.Unlock()
+	pm.turn.close()
 
-	pm.sigMu.Lock()
-	if pm.sigConn != nil {
-		pm.sigConn.Close()
+	pm.mu.Lock()
+	peers := make([]*webrtc.PeerConnection, 0, len(pm.peers))
+	for id, pc := range pm.peers {
+		peers = append(peers, pc)
+		if meta := pm.peerMeta[id]; meta != nil && meta.restartTimer != nil {
+			meta.restartTimer.Stop()
+		}
 	}
-	pm.sigMu.Unlock()
+	clear(pm.peers)
+	clear(pm.channels)
+	clear(pm.fastChannels)
+	clear(pm.peerViews)
+	clear(pm.peerMeta)
+	clear(pm.pendingPeers)
+	clear(pm.pendingRemoteCandidates)
+	pm.mu.Unlock()
+	pm.lifecycleMu.Unlock()
+
+	// Pion may invoke callbacks synchronously from Close, so never close a peer
+	// while holding pm.mu.
+	for _, pc := range peers {
+		_ = pc.Close()
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
 }
 
 // doneChan returns the current generation's done channel under lock.
@@ -523,8 +771,7 @@ func (pm *PeerManager) doneChan() chan struct{} {
 }
 
 // writeSignalingLoop sends periodic pings and heartbeat messages to keep the signaling connection alive.
-func (pm *PeerManager) writeSignalingLoop(writeDone chan struct{}) {
-	done := pm.doneChan()
+func (pm *PeerManager) writeSignalingLoop(conn *websocket.Conn, done chan struct{}, writeDone chan struct{}) {
 	pingTicker := time.NewTicker(sigPingPeriod)
 	heartbeatTicker := time.NewTicker(sigHeartbeatPeriod)
 	defer pingTicker.Stop()
@@ -538,10 +785,14 @@ func (pm *PeerManager) writeSignalingLoop(writeDone chan struct{}) {
 			return
 		case <-pingTicker.C:
 			pm.sigMu.Lock()
-			if pm.sigConn != nil {
-				pm.sigConn.SetWriteDeadline(time.Now().Add(sigWriteWait))
-				if err := pm.sigConn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if pm.sigConn == conn && pm.signalingReady {
+				conn.SetWriteDeadline(time.Now().Add(sigWriteWait))
+				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					if pm.sigConn == conn {
+						pm.signalingReady = false
+					}
 					pm.sigMu.Unlock()
+					_ = conn.Close()
 					return
 				}
 			}
@@ -549,27 +800,19 @@ func (pm *PeerManager) writeSignalingLoop(writeDone chan struct{}) {
 		case <-heartbeatTicker.C:
 			// Application-level keepalive (also carries the latest player nickname
 			// for server-side IP auto-ban detection on nickname change).
-			pm.sendSignaling(signaling.Message{Type: signaling.TypeHeartbeat, PlayerName: pm.getPlayerName()})
+			pm.sendSignalingOn(conn, signaling.Message{Type: signaling.TypeHeartbeat, PlayerName: pm.getPlayerName()})
 		}
 	}
 }
 
-func (pm *PeerManager) readSignalingLoop(writeDone chan struct{}) {
-	done := pm.doneChan()
+func (pm *PeerManager) readSignalingLoop(conn *websocket.Conn, done chan struct{}, writeDone chan struct{}) {
 	roomClosed := false
-	pm.sigMu.Lock()
-	conn := pm.sigConn
-	pm.sigMu.Unlock()
 	defer func() {
 		close(writeDone)
-		pm.sigMu.Lock()
-		if pm.sigConn == conn {
-			pm.sigConn = nil
-		}
-		pm.sigMu.Unlock()
-		if !roomClosed {
+		if roomClosed {
+			pm.clearSignalingConnection(conn)
+		} else if pm.scheduleReconnect(conn, done) {
 			pm.notifyStatus("Signaling 재연결 중")
-			pm.scheduleReconnect()
 		}
 		pm.logger.Info("signaling read loop exited")
 	}()
@@ -596,54 +839,96 @@ func (pm *PeerManager) readSignalingLoop(writeDone chan struct{}) {
 			}
 		}
 
-		switch msg.Type {
-		case signaling.TypeHeartbeat:
-			// Ignore heartbeat echo from server.
-		case signaling.TypePeerJoined:
-			pm.onPeerJoined(msg.PeerID)
-		case signaling.TypePeerLeft:
-			pm.onPeerLeft(msg.PeerID)
-		case signaling.TypeAnswer:
-			pm.handleAnswer(msg.PeerID, msg.Payload)
-		case signaling.TypeICECandidate:
-			pm.handleICECandidate(msg.PeerID, msg.Payload)
-		case signaling.TypeRoomClosed:
-			pm.logger.Info("room closed by signaling server")
+		if pm.handleSignalingMessage(msg) {
 			roomClosed = true
 			return
-		case signaling.TypeRoomUpdated:
-			if msg.RoomID != "" {
-				pm.roomID = msg.RoomID
-			}
-			if msg.RoomCode != "" {
-				pm.roomCode = msg.RoomCode
-			}
-			pm.logger.Info("room metadata updated on signaling server", "roomId", pm.roomID, "roomCode", pm.roomCode)
-		case signaling.TypeError:
-			pm.logger.Warn("signaling error", "error", msg.Error)
 		}
 	}
 }
 
-// scheduleReconnect initiates a reconnection attempt if not already in progress.
-func (pm *PeerManager) scheduleReconnect() {
+// handleSignalingMessage is shared by the normal read loop and the bounded
+// pre-room_created replay path. It returns true only for terminal room closure.
+func (pm *PeerManager) handleSignalingMessage(msg signaling.Message) bool {
+	switch msg.Type {
+	case signaling.TypeHeartbeat:
+		// Ignore heartbeat echo from server.
+	case signaling.TypePeerJoined:
+		pm.onPeerJoined(msg.PeerID)
+	case signaling.TypePeerLeft:
+		pm.onPeerLeft(msg.PeerID)
+	case signaling.TypeAnswer:
+		pm.handleAnswer(msg.PeerID, msg.NegotiationID, msg.Payload)
+	case signaling.TypeICECandidate:
+		pm.handleICECandidate(msg.PeerID, msg.NegotiationID, msg.Payload)
+	case signaling.TypeTurnCredentials:
+		pm.handleTurnCredentials(msg)
+	case signaling.TypeIntercomJoined, signaling.TypeIntercomLeft, signaling.TypeIntercomState,
+		signaling.TypeIntercomError, signaling.TypeIntercomSFUSession,
+		signaling.TypeIntercomSFUPublished, signaling.TypeIntercomSFUSubscribed,
+		signaling.TypeIntercomSFURenegotiated, signaling.TypeIntercomSFUClosed:
+		pm.handleIntercomMessage(msg)
+	case signaling.TypeRoomClosed:
+		pm.logger.Info("room closed by signaling server")
+		return true
+	case signaling.TypeRoomUpdated:
+		pm.sigMu.Lock()
+		if msg.RoomID != "" {
+			pm.roomID = msg.RoomID
+		}
+		if msg.RoomCode != "" {
+			pm.roomCode = msg.RoomCode
+		}
+		roomID := pm.roomID
+		roomCode := pm.roomCode
+		pm.sigMu.Unlock()
+		pm.logger.Info("room metadata updated on signaling server", "roomId", roomID, "roomCode", roomCode)
+	case signaling.TypeError:
+		pm.handleTurnRequestError(msg.Error)
+		pm.logger.Warn("signaling error", "error", msg.Error)
+	}
+	return false
+}
+
+// scheduleReconnect claims reconnection only for the socket and lifecycle that
+// actually exited. A delayed loop from before Close+Connect cannot replace the
+// healthy socket of the new lifecycle.
+func (pm *PeerManager) scheduleReconnect(expectedConn *websocket.Conn, expectedDone chan struct{}) bool {
+	pm.lifecycleMu.Lock()
+	defer pm.lifecycleMu.Unlock()
 	pm.sigMu.Lock()
+	if pm.sigConn != expectedConn || pm.done != expectedDone {
+		pm.sigMu.Unlock()
+		return false
+	}
+	pm.sigConn = nil
+	pm.signalingReady = false
+	pm.intercomGeneration++
+	pm.intercomJoined = false
+	pm.intercomLatestJoin = nil
+	pm.intercomLatestState = nil
 	if pm.closed || pm.reconnecting {
 		pm.sigMu.Unlock()
-		return
+		return false
 	}
 	pm.reconnecting = true
 	pm.sigMu.Unlock()
+	pm.notifyIntercomState()
 
-	go pm.reconnectLoop()
+	go pm.reconnectLoop(expectedDone)
+	return true
 }
 
 // reconnectLoop attempts to re-establish the signaling connection with exponential backoff.
-func (pm *PeerManager) reconnectLoop() {
-	done := pm.doneChan()
+func (pm *PeerManager) reconnectLoop(done chan struct{}) {
+	reconnectClaimReleased := false
 	defer func() {
+		if reconnectClaimReleased {
+			return
+		}
 		pm.sigMu.Lock()
-		pm.reconnecting = false
+		if pm.done == done {
+			pm.reconnecting = false
+		}
 		pm.sigMu.Unlock()
 	}()
 
@@ -663,8 +948,18 @@ func (pm *PeerManager) reconnectLoop() {
 		case <-time.After(delay):
 		}
 
-		if err := pm.dial(); err != nil {
+		if err := pm.dial(done); err != nil {
 			pm.logger.Warn("signaling reconnect failed", "error", err)
+			delay *= 2
+			if delay > reconnectMaxDelay {
+				delay = reconnectMaxDelay
+			}
+			continue
+		}
+		pm.sigMu.Lock()
+		conn := pm.sigConn
+		pm.sigMu.Unlock()
+		if conn == nil {
 			delay *= 2
 			if delay > reconnectMaxDelay {
 				delay = reconnectMaxDelay
@@ -673,20 +968,11 @@ func (pm *PeerManager) reconnectLoop() {
 		}
 
 		// Try room_rejoin with the stable room id.
-		rejoin := signaling.Message{
-			Type:       signaling.TypeRoomRejoin,
-			RoomID:     pm.roomID,
-			RoomName:   pm.roomName,
-			Password:   pm.roomPassword,
-			PlayerName: pm.getPlayerName(),
-			OwnerToken: pm.getOwnerToken(),
-		}
-		pm.sigMu.Lock()
-		err := pm.sigConn.WriteJSON(rejoin)
-		pm.sigMu.Unlock()
+		rejoin := pm.roomHandshakeMessage(signaling.TypeRoomRejoin)
+		err := pm.writeSignalingHandshake(conn, done, rejoin)
 		if err != nil {
 			pm.logger.Warn("failed to send room_rejoin", "error", err)
-			pm.sigConn.Close()
+			conn.Close()
 			delay *= 2
 			if delay > reconnectMaxDelay {
 				delay = reconnectMaxDelay
@@ -694,15 +980,19 @@ func (pm *PeerManager) reconnectLoop() {
 			continue
 		}
 
-		var resp signaling.Message
-		if err := pm.sigConn.ReadJSON(&resp); err != nil {
+		resp, pending, err := readRoomCreated(conn)
+		if err != nil {
 			pm.logger.Warn("failed to read rejoin response", "error", err)
-			pm.sigConn.Close()
+			conn.Close()
 			delay *= 2
 			if delay > reconnectMaxDelay {
 				delay = reconnectMaxDelay
 			}
 			continue
+		}
+		if !pm.signalingLifecycleCurrent(conn, done) {
+			_ = conn.Close()
+			return
 		}
 
 		rejoinFailed := false
@@ -711,19 +1001,10 @@ func (pm *PeerManager) reconnectLoop() {
 			pm.logger.Warn("room_rejoin failed, creating new room", "error", resp.Error)
 			rejoinFailed = true
 
-			create := signaling.Message{
-				Type:       signaling.TypeRoomCreate,
-				RoomID:     pm.roomID,
-				RoomName:   pm.roomName,
-				Password:   pm.roomPassword,
-				PlayerName: pm.getPlayerName(),
-				OwnerToken: pm.getOwnerToken(),
-			}
-			pm.sigMu.Lock()
-			err = pm.sigConn.WriteJSON(create)
-			pm.sigMu.Unlock()
+			create := pm.roomHandshakeMessage(signaling.TypeRoomCreate)
+			err = pm.writeSignalingHandshake(conn, done, create)
 			if err != nil {
-				pm.sigConn.Close()
+				conn.Close()
 				delay *= 2
 				if delay > reconnectMaxDelay {
 					delay = reconnectMaxDelay
@@ -731,42 +1012,78 @@ func (pm *PeerManager) reconnectLoop() {
 				continue
 			}
 
-			if err := pm.sigConn.ReadJSON(&resp); err != nil {
-				pm.sigConn.Close()
+			createdResp, createdPending, err := readRoomCreated(conn)
+			if err != nil {
+				conn.Close()
 				delay *= 2
 				if delay > reconnectMaxDelay {
 					delay = reconnectMaxDelay
 				}
 				continue
 			}
+			if !pm.signalingLifecycleCurrent(conn, done) {
+				_ = conn.Close()
+				return
+			}
+			resp = createdResp
+			// Events observed before the failed rejoin belong to the old room.
+			// Only replay events buffered while creating its replacement.
+			pending = createdPending
 		}
 
 		if resp.Type == signaling.TypeRoomCreated {
-			if resp.RoomID != "" {
-				pm.roomID = resp.RoomID
+			pm.lifecycleMu.Lock()
+			if !pm.signalingLifecycleCurrent(conn, done) {
+				pm.lifecycleMu.Unlock()
+				_ = conn.Close()
+				return
 			}
-			pm.roomCode = resp.RoomCode
-			// rejoin 성공 응답은 토큰을 싣지 않아 기존 토큰을 유지하고, 폴백 create가
-			// 새 방을 만든 경우에만 새 토큰으로 갱신한다(H6).
-			if resp.OwnerToken != "" {
-				pm.setOwnerToken(resp.OwnerToken)
+			roomID, roomCode, turnGeneration, applied := pm.applyRoomAcknowledgementLocked(conn, done, resp, rejoinFailed)
+			if !applied {
+				pm.lifecycleMu.Unlock()
+				conn.Close()
+				continue
 			}
-			pm.logger.Info("signaling reconnected", "roomId", pm.roomID, "roomCode", pm.roomCode)
+			pm.logger.Info("signaling reconnected", "roomId", roomID, "roomCode", roomCode)
 			pm.notifyStatus("Running")
-			pm.startLoops()
+			turnGate := pm.requestTurnCredentials(false)
 			if rejoinFailed {
-				// 방이 만료되어 새로 생성됨 — 서버에 엔지니어 세션이 없으므로
-				// 기존 peer를 정리하고 viewer 재조인을 기다린다.
+				// The replacement room has no old server memberships. Clear only
+				// the previous room's peers before replaying any newly buffered
+				// peer_joined event for this room.
 				pm.closeAllPeers()
-			} else {
+			}
+			if pm.replayBufferedSignaling(pending) {
+				pm.clearSignalingConnection(conn)
+				pm.lifecycleMu.Unlock()
+				conn.Close()
+				delay *= 2
+				if delay > reconnectMaxDelay {
+					delay = reconnectMaxDelay
+				}
+				continue
+			}
+			pm.sigMu.Lock()
+			if pm.done != done || pm.closed || pm.sigConn != conn {
+				pm.sigMu.Unlock()
+				pm.lifecycleMu.Unlock()
+				_ = conn.Close()
+				continue
+			}
+			pm.reconnecting = false
+			reconnectClaimReleased = true
+			pm.sigMu.Unlock()
+			pm.startLoops(conn, done)
+			pm.lifecycleMu.Unlock()
+			if !rejoinFailed {
 				// rejoin 성공: 살아있는 peer는 유지하고, 끊긴 peer만 ICE restart.
-				pm.recoverStalePeers()
+				go pm.recoverStalePeersAfterTurnGate(turnGate, turnGeneration)
 			}
 			return
 		}
 
 		pm.logger.Warn("unexpected reconnect response", "type", resp.Type)
-		pm.sigConn.Close()
+		conn.Close()
 		delay *= 2
 		if delay > reconnectMaxDelay {
 			delay = reconnectMaxDelay
@@ -775,14 +1092,28 @@ func (pm *PeerManager) reconnectLoop() {
 }
 
 func (pm *PeerManager) onPeerJoined(peerID string) {
+	if peerID == "" {
+		return
+	}
+	pm.sigMu.Lock()
+	ready := !pm.closed && pm.signalingReady
+	pm.sigMu.Unlock()
+	if !ready {
+		return
+	}
 	pm.mu.RLock()
 	existingPC, existingPeer := pm.peers[peerID]
 	existingDC := pm.channels[peerID]
 	alreadyOpen := existingDC != nil && existingDC.ReadyState() == webrtc.DataChannelStateOpen
+	_, pending := pm.pendingPeers[peerID]
 	pm.mu.RUnlock()
 
 	if alreadyOpen {
 		pm.logger.Info("ignoring duplicate peer join for active connection", "peerId", peerID)
+		return
+	}
+	if pending {
+		pm.logger.Info("ignoring duplicate peer join while offer is gated", "peerId", peerID)
 		return
 	}
 	if existingPeer {
@@ -791,14 +1122,37 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 			pcState = existingPC.ConnectionState().String()
 		}
 		pm.logger.Warn("replacing stale peer state before creating new offer", "peerId", peerID, "pcState", pcState)
-		pm.removePeer(peerID)
+		pm.removePeerIf(peerID, existingPC)
 	}
 
-	pm.logger.Info("engineer joined, creating peer connection", "peerId", peerID)
+	pm.mu.Lock()
+	if _, exists := pm.pendingPeers[peerID]; exists {
+		pm.mu.Unlock()
+		return
+	}
+	pm.nextPeerOfferGeneration++
+	generation := pm.nextPeerOfferGeneration
+	pm.pendingPeers[peerID] = generation
+	pm.mu.Unlock()
+	turnGeneration := pm.turn.currentGeneration()
 
-	pm.mu.RLock()
-	iceServers := cloneICEServers(pm.iceServers)
-	pm.mu.RUnlock()
+	// Do not block the signaling read loop: it must receive the correlated
+	// TURN response that releases this offer gate.
+	gate := pm.requestTurnCredentials(false)
+	go pm.createPeerAfterTurnGate(peerID, generation, turnGeneration, gate)
+}
+
+func (pm *PeerManager) createPeerAfterTurnGate(peerID string, generation, turnGeneration uint64, gate <-chan struct{}) {
+	if !pm.waitForTurnGate(gate, turnGeneration) {
+		pm.clearPendingPeer(peerID, generation)
+		return
+	}
+	if !pm.pendingPeerCurrent(peerID, generation) {
+		return
+	}
+
+	iceServers, source, expiresAt, fallbackReason := pm.turn.activeConfiguration()
+	pm.logger.Info("engineer joined, creating peer connection", "peerId", peerID, "iceSource", source, "iceExpiresAt", expiresAt, "fallbackReason", fallbackReason)
 
 	config := webrtc.Configuration{
 		ICEServers: iceServers,
@@ -813,6 +1167,7 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 	pc, err := api.NewPeerConnection(config)
 	if err != nil {
 		pm.logger.Error("failed to create peer connection", "peerId", peerID, "error", err)
+		pm.clearPendingPeer(peerID, generation)
 		return
 	}
 
@@ -823,6 +1178,7 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 	if err != nil {
 		pm.logger.Error("failed to create data channel", "peerId", peerID, "error", err)
 		pc.Close()
+		pm.clearPendingPeer(peerID, generation)
 		return
 	}
 
@@ -839,6 +1195,14 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 	}
 
 	pm.mu.Lock()
+	if pm.pendingPeers[peerID] != generation || pm.peers[peerID] != nil {
+		pm.mu.Unlock()
+		_ = pc.Close()
+		return
+	}
+	delete(pm.pendingPeers, peerID)
+	preCandidates := append([]pendingRemoteCandidate(nil), pm.pendingRemoteCandidates[peerID]...)
+	delete(pm.pendingRemoteCandidates, peerID)
 	pm.peers[peerID] = pc
 	pm.channels[peerID] = dc
 	if fastDC != nil {
@@ -862,6 +1226,9 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		if !pm.peerChannelCurrent(peerID, pc, dc) {
+			return
+		}
 		// Small JSON control messages: keepalive pong / view change
 		if len(msg.Data) < 100 {
 			var ctrlMsg struct {
@@ -871,15 +1238,20 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 			if json.Unmarshal(msg.Data, &ctrlMsg) == nil {
 				switch ctrlMsg.Type {
 				case "pong":
-					pm.notePong(peerID)
+					pm.notePong(peerID, pc)
 					return
 				case "setView":
 					switch ctrlMsg.View {
 					case "cockpit", "qualifying":
 						pm.mu.Lock()
-						pm.peerViews[peerID] = ctrlMsg.View
+						current := pm.peers[peerID] == pc && pm.channels[peerID] == dc
+						if current {
+							pm.peerViews[peerID] = ctrlMsg.View
+						}
 						pm.mu.Unlock()
-						pm.logger.Info("peer view changed", "peerId", peerID, "view", ctrlMsg.View)
+						if current {
+							pm.logger.Info("peer view changed", "peerId", peerID, "view", ctrlMsg.View)
+						}
 					}
 					return
 				}
@@ -891,7 +1263,7 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 		}
 		response := pm.onRequest(peerID, msg.Data)
 		if response != nil {
-			pm.SendTo(peerID, response)
+			pm.sendToIfCurrent(peerID, pc, dc, response)
 		}
 	})
 
@@ -904,18 +1276,14 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 		if err != nil {
 			return
 		}
-		pm.sendSignaling(signaling.Message{
-			Type:    signaling.TypeICECandidate,
-			PeerID:  peerID,
-			Payload: candidateJSON,
-		})
+		pm.queueOrSendLocalCandidate(peerID, pc, candidateJSON)
 	})
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		pm.logger.Info("peer connection state changed", "peerId", peerID, "state", state.String())
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
-			pm.noteConnected(peerID)
+			pm.noteConnected(peerID, pc)
 		case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed:
 			// 끊김 감지 즉시 ICE restart 시도 (캡 초과/실패 시 removePeer로 수렴).
 			// 재접속 교체 후 도착한 stale 콜백이면 무시 (M12).
@@ -932,73 +1300,386 @@ func (pm *PeerManager) onPeerJoined(peerID string) {
 		}
 	})
 
-	// Create offer
-	offer, err := pc.CreateOffer(nil)
+	offerGeneration, err := pm.createAndSendOffer(peerID, pc, false)
 	if err != nil {
 		pm.logger.Error("failed to create offer", "peerId", peerID, "error", err)
-		pm.removePeer(peerID)
+		pm.removePeerIf(peerID, pc)
 		return
 	}
-
-	if err := pc.SetLocalDescription(offer); err != nil {
-		pm.logger.Error("failed to set local description", "peerId", peerID, "error", err)
-		pm.removePeer(peerID)
-		return
-	}
-
-	offerJSON, err := json.Marshal(offer)
-	if err != nil {
-		pm.logger.Error("failed to marshal offer", "peerId", peerID, "error", err)
-		return
-	}
-
-	pm.sendSignaling(signaling.Message{
-		Type:    signaling.TypeOffer,
-		PeerID:  peerID,
-		Payload: offerJSON,
-	})
+	pm.queuePrePeerCandidates(peerID, pc, offerGeneration, preCandidates)
 }
 
 func (pm *PeerManager) onPeerLeft(peerID string) {
 	pm.logger.Info("engineer left", "peerId", peerID)
+	pm.clearPendingPeer(peerID, 0)
 	pm.removePeer(peerID)
 }
 
-func (pm *PeerManager) handleAnswer(peerID string, payload json.RawMessage) {
+func (pm *PeerManager) clearPendingPeer(peerID string, generation uint64) {
+	pm.mu.Lock()
+	if current, ok := pm.pendingPeers[peerID]; ok && (generation == 0 || current == generation) {
+		delete(pm.pendingPeers, peerID)
+		delete(pm.pendingRemoteCandidates, peerID)
+	}
+	pm.mu.Unlock()
+}
+
+func (pm *PeerManager) pendingPeerCurrent(peerID string, generation uint64) bool {
 	pm.mu.RLock()
-	pc, ok := pm.peers[peerID]
+	defer pm.mu.RUnlock()
+	return pm.pendingPeers[peerID] == generation
+}
+
+func (pm *PeerManager) lockPeerNegotiation(peerID string, pc *webrtc.PeerConnection) (*peerMeta, bool) {
+	pm.mu.RLock()
+	meta := pm.peerMeta[peerID]
+	current := pm.peers[peerID] == pc && meta != nil
 	pm.mu.RUnlock()
+	if !current {
+		return nil, false
+	}
+	meta.negotiationMu.Lock()
+	pm.mu.RLock()
+	current = pm.peers[peerID] == pc && pm.peerMeta[peerID] == meta
+	pm.mu.RUnlock()
+	if !current {
+		meta.negotiationMu.Unlock()
+		return nil, false
+	}
+	return meta, true
+}
+
+func (pm *PeerManager) beginNegotiation(peerID string, pc *webrtc.PeerConnection) (uint64, bool) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if pm.peers[peerID] != pc {
+		return 0, false
+	}
+	meta := pm.peerMeta[peerID]
+	if meta == nil {
+		return 0, false
+	}
+	pm.nextNegotiationID++
+	if pm.nextNegotiationID == 0 {
+		pm.nextNegotiationID++
+	}
+	meta.negotiationGeneration = pm.nextNegotiationID
+	meta.remoteDescriptionSet = false
+	meta.pendingRemoteCandidates = nil
+	meta.remoteCandidatesFlushing = false
+	meta.offerSent = false
+	meta.pendingLocalCandidates = nil
+	meta.localCandidatesFlushing = false
+	meta.candidateQueueFailed = false
+	return meta.negotiationGeneration, true
+}
+
+// createAndSendOffer establishes the ordering boundary for candidate trickle:
+// an offer is written first, then locally gathered candidates are flushed.
+func (pm *PeerManager) createAndSendOffer(peerID string, pc *webrtc.PeerConnection, restart bool) (uint64, error) {
+	meta, current := pm.lockPeerNegotiation(peerID, pc)
+	if !current {
+		return 0, fmt.Errorf("peer connection replaced before offer")
+	}
+	defer meta.negotiationMu.Unlock()
+
+	generation, ok := pm.beginNegotiation(peerID, pc)
 	if !ok {
+		return 0, fmt.Errorf("peer connection replaced before offer")
+	}
+	offerOptions := (*webrtc.OfferOptions)(nil)
+	if restart {
+		offerOptions = &webrtc.OfferOptions{ICERestart: true}
+	}
+	offer, err := pc.CreateOffer(offerOptions)
+	if err != nil {
+		return 0, err
+	}
+	if err := pc.SetLocalDescription(offer); err != nil {
+		return 0, err
+	}
+	offerJSON, err := json.Marshal(offer)
+	if err != nil {
+		return 0, err
+	}
+	if !pm.sendSignaling(signaling.Message{
+		Type:          signaling.TypeOffer,
+		PeerID:        peerID,
+		Payload:       offerJSON,
+		Restart:       restart,
+		NegotiationID: generation,
+	}) {
+		return 0, fmt.Errorf("signaling connection unavailable for offer")
+	}
+	pm.markOfferSent(peerID, pc, generation)
+	return generation, nil
+}
+
+func (pm *PeerManager) markOfferSent(peerID string, pc *webrtc.PeerConnection, generation uint64) {
+	pm.mu.Lock()
+	if pm.peers[peerID] != pc || pm.peerMeta[peerID] == nil || pm.peerMeta[peerID].negotiationGeneration != generation {
+		pm.mu.Unlock()
 		return
 	}
+	meta := pm.peerMeta[peerID]
+	if meta.candidateQueueFailed {
+		pm.mu.Unlock()
+		return
+	}
+	meta.offerSent = true
+	meta.localCandidatesFlushing = true
+	pm.mu.Unlock()
+	pm.flushLocalCandidates(peerID, pc, generation)
+}
 
+func (pm *PeerManager) flushLocalCandidates(peerID string, pc *webrtc.PeerConnection, generation uint64) {
+	for {
+		pm.mu.Lock()
+		meta := pm.peerMeta[peerID]
+		if pm.peers[peerID] != pc || meta == nil || meta.negotiationGeneration != generation || meta.candidateQueueFailed {
+			pm.mu.Unlock()
+			return
+		}
+		candidates := append([]json.RawMessage(nil), meta.pendingLocalCandidates...)
+		meta.pendingLocalCandidates = nil
+		if len(candidates) == 0 {
+			meta.localCandidatesFlushing = false
+			pm.mu.Unlock()
+			return
+		}
+		pm.mu.Unlock()
+
+		for _, candidate := range candidates {
+			if !pm.sendSignaling(signaling.Message{Type: signaling.TypeICECandidate, PeerID: peerID, NegotiationID: generation, Payload: candidate}) {
+				pm.logger.Warn("failed to send queued ICE candidate, dropping peer", "peerId", peerID, "direction", "local")
+				go pm.removePeerIf(peerID, pc)
+				return
+			}
+		}
+	}
+}
+
+func (pm *PeerManager) queueOrSendLocalCandidate(peerID string, pc *webrtc.PeerConnection, candidate json.RawMessage) {
+	pm.mu.Lock()
+	if pm.peers[peerID] != pc || pm.peerMeta[peerID] == nil {
+		pm.mu.Unlock()
+		return
+	}
+	meta := pm.peerMeta[peerID]
+	if meta.candidateQueueFailed {
+		pm.mu.Unlock()
+		return
+	}
+	generation := meta.negotiationGeneration
+	if !meta.offerSent || meta.localCandidatesFlushing {
+		if len(meta.pendingLocalCandidates) >= maxPendingICECandidates {
+			meta.candidateQueueFailed = true
+			pm.mu.Unlock()
+			pm.logger.Warn("ICE candidate queue overflow, dropping peer", "peerId", peerID, "direction", "local")
+			go pm.removePeerIf(peerID, pc)
+			return
+		}
+		meta.pendingLocalCandidates = append(meta.pendingLocalCandidates, append(json.RawMessage(nil), candidate...))
+		pm.mu.Unlock()
+		return
+	}
+	pm.mu.Unlock()
+	if !pm.sendSignaling(signaling.Message{Type: signaling.TypeICECandidate, PeerID: peerID, NegotiationID: generation, Payload: candidate}) {
+		pm.logger.Warn("failed to send ICE candidate, dropping peer", "peerId", peerID, "direction", "local")
+		go pm.removePeerIf(peerID, pc)
+	}
+}
+
+func (pm *PeerManager) queuePrePeerCandidates(peerID string, pc *webrtc.PeerConnection, generation uint64, candidates []pendingRemoteCandidate) {
+	if len(candidates) == 0 {
+		return
+	}
+	pm.mu.Lock()
+	meta := pm.peerMeta[peerID]
+	if pm.peers[peerID] != pc || meta == nil || meta.negotiationGeneration != generation {
+		pm.mu.Unlock()
+		return
+	}
+	for _, candidate := range candidates {
+		// A compliant new client can identify the exact offer. Generation-less
+		// candidates received before any offer can only belong to an old PC, so
+		// they are intentionally discarded rather than applied to a replacement.
+		if candidate.negotiationID != generation {
+			continue
+		}
+		if len(meta.pendingRemoteCandidates) >= maxPendingICECandidates {
+			meta.candidateQueueFailed = true
+			pm.mu.Unlock()
+			pm.logger.Warn("pre-peer ICE candidate replay overflow, dropping peer", "peerId", peerID, "direction", "remote")
+			go pm.removePeerIf(peerID, pc)
+			return
+		}
+		meta.generationAware = true
+		meta.pendingRemoteCandidates = append(meta.pendingRemoteCandidates, candidate)
+	}
+	pm.mu.Unlock()
+}
+
+func negotiationMessageMatches(meta *peerMeta, negotiationID uint64) bool {
+	if meta == nil {
+		return false
+	}
+	if negotiationID == 0 {
+		return !meta.generationAware
+	}
+	return negotiationID == meta.negotiationGeneration
+}
+
+func (pm *PeerManager) handleAnswer(peerID string, negotiationID uint64, payload json.RawMessage) {
 	var answer webrtc.SessionDescription
 	if err := json.Unmarshal(payload, &answer); err != nil {
 		pm.logger.Error("failed to unmarshal answer", "peerId", peerID, "error", err)
 		return
 	}
+	pm.mu.RLock()
+	pc, ok := pm.peers[peerID]
+	meta := pm.peerMeta[peerID]
+	pm.mu.RUnlock()
+	if !ok || meta == nil {
+		return
+	}
+	meta.negotiationMu.Lock()
+	defer meta.negotiationMu.Unlock()
+
+	pm.mu.Lock()
+	if pm.peers[peerID] != pc || pm.peerMeta[peerID] != meta || !negotiationMessageMatches(meta, negotiationID) {
+		pm.mu.Unlock()
+		pm.logger.Warn("ignored stale SDP answer", "peerId", peerID, "negotiationId", negotiationID)
+		return
+	}
+	generation := meta.negotiationGeneration
+	pm.mu.Unlock()
 
 	if err := pc.SetRemoteDescription(answer); err != nil {
 		pm.logger.Error("failed to set remote description", "peerId", peerID, "error", err)
-	}
-}
-
-func (pm *PeerManager) handleICECandidate(peerID string, payload json.RawMessage) {
-	pm.mu.RLock()
-	pc, ok := pm.peers[peerID]
-	pm.mu.RUnlock()
-	if !ok {
 		return
 	}
 
+	pm.mu.Lock()
+	if pm.peers[peerID] != pc || pm.peerMeta[peerID] != meta || meta.negotiationGeneration != generation {
+		pm.mu.Unlock()
+		return
+	}
+	if meta.candidateQueueFailed {
+		pm.mu.Unlock()
+		return
+	}
+	if negotiationID != 0 {
+		meta.generationAware = true
+	}
+	meta.remoteDescriptionSet = true
+	meta.remoteCandidatesFlushing = true
+	pm.mu.Unlock()
+	pm.flushRemoteCandidates(peerID, pc, generation)
+}
+
+func (pm *PeerManager) handleICECandidate(peerID string, negotiationID uint64, payload json.RawMessage) {
 	var candidate webrtc.ICECandidateInit
 	if err := json.Unmarshal(payload, &candidate); err != nil {
 		pm.logger.Error("failed to unmarshal ICE candidate", "peerId", peerID, "error", err)
 		return
 	}
 
+	pm.mu.Lock()
+	pc, ok := pm.peers[peerID]
+	meta := pm.peerMeta[peerID]
+	if !ok || meta == nil {
+		if _, pending := pm.pendingPeers[peerID]; pending {
+			queued := pm.pendingRemoteCandidates[peerID]
+			if len(queued) >= maxPendingICECandidates {
+				delete(pm.pendingPeers, peerID)
+				delete(pm.pendingRemoteCandidates, peerID)
+				pm.mu.Unlock()
+				pm.logger.Warn("pre-peer ICE candidate queue overflow, cancelling offer", "peerId", peerID, "direction", "remote")
+				return
+			}
+			pm.pendingRemoteCandidates[peerID] = append(queued, pendingRemoteCandidate{
+				negotiationID: negotiationID,
+				candidate:     candidate,
+			})
+		}
+		pm.mu.Unlock()
+		return
+	}
+	if !negotiationMessageMatches(meta, negotiationID) {
+		pm.mu.Unlock()
+		pm.logger.Warn("ignored stale ICE candidate", "peerId", peerID, "negotiationId", negotiationID)
+		return
+	}
+	if negotiationID != 0 {
+		meta.generationAware = true
+	}
+	if meta.candidateQueueFailed {
+		pm.mu.Unlock()
+		return
+	}
+	if !meta.remoteDescriptionSet || meta.remoteCandidatesFlushing {
+		if len(meta.pendingRemoteCandidates) >= maxPendingICECandidates {
+			meta.candidateQueueFailed = true
+			pm.mu.Unlock()
+			pm.logger.Warn("ICE candidate queue overflow, dropping peer", "peerId", peerID, "direction", "remote")
+			go pm.removePeerIf(peerID, pc)
+			return
+		}
+		meta.pendingRemoteCandidates = append(meta.pendingRemoteCandidates, pendingRemoteCandidate{
+			negotiationID: negotiationID,
+			candidate:     candidate,
+		})
+		pm.mu.Unlock()
+		return
+	}
+	generation := meta.negotiationGeneration
+	pm.mu.Unlock()
+	pm.addRemoteCandidate(peerID, pc, generation, candidate)
+}
+
+func (pm *PeerManager) flushRemoteCandidates(peerID string, pc *webrtc.PeerConnection, generation uint64) {
+	for {
+		pm.mu.Lock()
+		meta := pm.peerMeta[peerID]
+		if pm.peers[peerID] != pc || meta == nil || meta.negotiationGeneration != generation || meta.candidateQueueFailed || !meta.remoteDescriptionSet {
+			pm.mu.Unlock()
+			return
+		}
+		queued := append([]pendingRemoteCandidate(nil), meta.pendingRemoteCandidates...)
+		meta.pendingRemoteCandidates = nil
+		if len(queued) == 0 {
+			meta.remoteCandidatesFlushing = false
+			pm.mu.Unlock()
+			return
+		}
+		pm.mu.Unlock()
+
+		for _, queuedCandidate := range queued {
+			pm.mu.RLock()
+			currentMeta := pm.peerMeta[peerID]
+			valid := pm.peers[peerID] == pc &&
+				currentMeta == meta &&
+				currentMeta.negotiationGeneration == generation &&
+				negotiationMessageMatches(currentMeta, queuedCandidate.negotiationID)
+			pm.mu.RUnlock()
+			if valid {
+				pm.addRemoteCandidate(peerID, pc, generation, queuedCandidate.candidate)
+			}
+		}
+	}
+}
+
+func (pm *PeerManager) addRemoteCandidate(peerID string, pc *webrtc.PeerConnection, generation uint64, candidate webrtc.ICECandidateInit) {
+	pm.mu.RLock()
+	meta := pm.peerMeta[peerID]
+	current := pm.peers[peerID] == pc && meta != nil && meta.negotiationGeneration == generation
+	pm.mu.RUnlock()
+	if !current {
+		return
+	}
 	if err := pc.AddICECandidate(candidate); err != nil {
-		pm.logger.Error("failed to add ICE candidate", "peerId", peerID, "error", err)
+		pm.logger.Warn("failed to add ICE candidate", "peerId", peerID)
 	}
 }
 
@@ -1012,20 +1693,39 @@ func (pm *PeerManager) removePeer(peerID string) {
 func (pm *PeerManager) removePeerIf(peerID string, expected *webrtc.PeerConnection) {
 	pm.mu.Lock()
 	pc, ok := pm.peers[peerID]
-	if !ok || (expected != nil && pc != expected) {
+	if !ok {
+		if expected == nil {
+			delete(pm.pendingPeers, peerID)
+			delete(pm.pendingRemoteCandidates, peerID)
+		}
 		pm.mu.Unlock()
 		return
 	}
+	if expected != nil && pc != expected {
+		pm.mu.Unlock()
+		return
+	}
+	pm.detachPeerLocked(peerID)
+	pm.mu.Unlock()
+	pm.closeRemovedPeer(peerID, pc)
+}
+
+// detachPeerLocked removes only map/timer state. The caller holds pm.mu and
+// closes Pion objects afterward so synchronous callbacks cannot deadlock.
+func (pm *PeerManager) detachPeerLocked(peerID string) {
 	delete(pm.peers, peerID)
 	delete(pm.channels, peerID)
 	delete(pm.fastChannels, peerID)
 	delete(pm.peerViews, peerID)
+	delete(pm.pendingPeers, peerID)
+	delete(pm.pendingRemoteCandidates, peerID)
 	if meta := pm.peerMeta[peerID]; meta != nil && meta.restartTimer != nil {
 		meta.restartTimer.Stop()
 	}
 	delete(pm.peerMeta, peerID)
-	pm.mu.Unlock()
+}
 
+func (pm *PeerManager) closeRemovedPeer(peerID string, pc *webrtc.PeerConnection) {
 	// pc.Close()는 락 밖에서 — SCTP teardown이 느려도 60Hz 브로드캐스트를
 	// 정지시키지 않는다 (L5).
 	if err := pc.Close(); err != nil {
@@ -1038,9 +1738,9 @@ func (pm *PeerManager) removePeerIf(peerID string, expected *webrtc.PeerConnecti
 }
 
 // notePong records a keepalive pong from the peer.
-func (pm *PeerManager) notePong(peerID string) {
+func (pm *PeerManager) notePong(peerID string, expected *webrtc.PeerConnection) {
 	pm.mu.Lock()
-	if meta := pm.peerMeta[peerID]; meta != nil {
+	if meta := pm.peerMeta[peerID]; meta != nil && pm.peers[peerID] == expected {
 		meta.lastPongAt = time.Now()
 		meta.pongSeen = true
 	}
@@ -1048,9 +1748,9 @@ func (pm *PeerManager) notePong(peerID string) {
 }
 
 // noteConnected clears any in-flight ICE restart state for the peer.
-func (pm *PeerManager) noteConnected(peerID string) {
+func (pm *PeerManager) noteConnected(peerID string, expected *webrtc.PeerConnection) {
 	pm.mu.Lock()
-	if meta := pm.peerMeta[peerID]; meta != nil {
+	if meta := pm.peerMeta[peerID]; meta != nil && pm.peers[peerID] == expected {
 		meta.restartingAt = time.Time{}
 		if meta.restartTimer != nil {
 			meta.restartTimer.Stop()
@@ -1102,65 +1802,59 @@ func (pm *PeerManager) restartICE(peerID string, expected *webrtc.PeerConnection
 	meta.restartingAt = now
 	pm.mu.Unlock()
 
-	// 실패 정리는 removePeerIf(pc) — 이 사이 교체된 새 연결을 파괴하지 않는다.
-	offer, err := pc.CreateOffer(&webrtc.OfferOptions{ICERestart: true})
-	if err != nil {
+	// Apply the newest runtime/static configuration before gathering restart
+	// candidates. A late TURN response therefore takes effect on the next
+	// restart without forcing a disruptive full rebuild.
+	pm.applyCurrentICEConfiguration(pc, peerID)
+	pm.logger.Info("sending ICE restart offer", "peerId", peerID)
+	if _, err := pm.createAndSendOffer(peerID, pc, true); err != nil {
 		pm.logger.Error("failed to create ICE restart offer", "peerId", peerID, "error", err)
 		pm.removePeerIf(peerID, pc)
 		return
 	}
-	if err := pc.SetLocalDescription(offer); err != nil {
-		pm.logger.Error("failed to set ICE restart local description", "peerId", peerID, "error", err)
-		pm.removePeerIf(peerID, pc)
-		return
-	}
-	offerJSON, err := json.Marshal(offer)
-	if err != nil {
-		pm.logger.Error("failed to marshal ICE restart offer", "peerId", peerID, "error", err)
-		pm.removePeerIf(peerID, pc)
-		return
-	}
-
-	pm.logger.Info("sending ICE restart offer", "peerId", peerID)
-	pm.sendSignaling(signaling.Message{
-		Type:    signaling.TypeOffer,
-		PeerID:  peerID,
-		Payload: offerJSON,
-		Restart: true,
-	})
 
 	// restart 포기 타이머: 기한 내 Connected로 복귀하지 못하면 정리하고
 	// viewer의 full rejoin에 맡긴다.
 	timer := time.AfterFunc(iceRestartTimeout, func() {
-		pm.mu.RLock()
-		current, exists := pm.peers[peerID]
-		pm.mu.RUnlock()
-		if !exists || current != pc {
-			return
-		}
-		if pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
-			pm.logger.Warn("ICE restart did not recover in time, dropping peer", "peerId", peerID)
-			pm.removePeer(peerID)
-		}
+		pm.removePeerAfterRestartTimeout(peerID, pc, meta, now)
 	})
 
+	pm.installRestartTimer(peerID, pc, meta, now, timer)
+}
+
+func (pm *PeerManager) installRestartTimer(peerID string, pc *webrtc.PeerConnection, meta *peerMeta, startedAt time.Time, timer *time.Timer) {
 	pm.mu.Lock()
-	// 락을 푼 사이 noteConnected가 restart 상태를 정리했을 수 있다(ICE 자가 복구).
-	// restartingAt이 비워졌으면 이 restart는 이미 끝난 것 — 새 타이머를 버린다.
-	if m := pm.peerMeta[peerID]; m != nil && !m.restartingAt.IsZero() {
-		if m.restartTimer != nil {
-			m.restartTimer.Stop()
-		}
-		m.restartTimer = timer
-	} else {
+	defer pm.mu.Unlock()
+	// 락을 푼 사이 peer 교체, noteConnected, 또는 후속 restart가 시작될 수 있다.
+	// 이 restart 시도와 정확히 같은 상태일 때만 타이머를 설치한다.
+	currentMeta := pm.peerMeta[peerID]
+	if pm.peers[peerID] != pc || currentMeta != meta || currentMeta == nil || !currentMeta.restartingAt.Equal(startedAt) {
 		timer.Stop()
+		return
 	}
+	if currentMeta.restartTimer != nil {
+		currentMeta.restartTimer.Stop()
+	}
+	currentMeta.restartTimer = timer
+}
+
+func (pm *PeerManager) removePeerAfterRestartTimeout(peerID string, pc *webrtc.PeerConnection, meta *peerMeta, startedAt time.Time) {
+	pm.mu.Lock()
+	currentMeta := pm.peerMeta[peerID]
+	if pm.peers[peerID] != pc || currentMeta == nil || currentMeta != meta ||
+		!currentMeta.restartingAt.Equal(startedAt) || pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
+		pm.mu.Unlock()
+		return
+	}
+	pm.detachPeerLocked(peerID)
 	pm.mu.Unlock()
+
+	pm.logger.Warn("ICE restart did not recover in time, dropping peer", "peerId", peerID)
+	pm.closeRemovedPeer(peerID, pc)
 }
 
 // keepaliveLoop pings every peer's data channel and reacts to missing pongs.
-func (pm *PeerManager) keepaliveLoop() {
-	done := pm.doneChan()
+func (pm *PeerManager) keepaliveLoop(done chan struct{}) {
 	ticker := time.NewTicker(dcPingPeriod)
 	defer ticker.Stop()
 
@@ -1177,7 +1871,9 @@ func (pm *PeerManager) keepaliveLoop() {
 func (pm *PeerManager) pingPeers() {
 	type target struct {
 		peerID     string
+		pc         *webrtc.PeerConnection
 		channel    *webrtc.DataChannel
+		meta       *peerMeta
 		pongSeen   bool
 		lastPongAt time.Time
 		restarting bool
@@ -1187,7 +1883,7 @@ func (pm *PeerManager) pingPeers() {
 	targets := make([]target, 0, len(pm.channels))
 	for peerID, ch := range pm.channels {
 		meta := pm.peerMeta[peerID]
-		t := target{peerID: peerID, channel: ch}
+		t := target{peerID: peerID, pc: pm.peers[peerID], channel: ch, meta: meta}
 		if meta != nil {
 			t.pongSeen = meta.pongSeen
 			t.lastPongAt = meta.lastPongAt
@@ -1201,8 +1897,11 @@ func (pm *PeerManager) pingPeers() {
 	ping := fmt.Sprintf(`{"type":"ping","ts":%d}`, now.UnixMilli())
 
 	for _, t := range targets {
-		if t.channel.ReadyState() == webrtc.DataChannelStateOpen {
-			_ = t.channel.SendText(ping)
+		if t.pc == nil || !pm.peerChannelCurrent(t.peerID, t.pc, t.channel) {
+			continue
+		}
+		if t.meta != nil {
+			_ = sendDataChannelText(t.channel, &t.meta.reliableSendMu, ping, 0)
 		}
 		if !t.pongSeen {
 			continue // 구버전 viewer: pong을 보내지 않으므로 워치독 비활성
@@ -1211,10 +1910,10 @@ func (pm *PeerManager) pingPeers() {
 		switch {
 		case silent > dcPongDropAfter:
 			pm.logger.Warn("peer keepalive lost, dropping peer", "peerId", t.peerID, "silentFor", silent)
-			pm.removePeer(t.peerID)
+			pm.removePeerIf(t.peerID, t.pc)
 		case silent > dcPongRestartAfter && !t.restarting:
 			pm.logger.Warn("peer keepalive stalled, attempting ICE restart", "peerId", t.peerID, "silentFor", silent)
-			go pm.restartICE(t.peerID, nil)
+			go pm.restartICE(t.peerID, t.pc)
 		}
 	}
 }
@@ -1242,36 +1941,285 @@ func (pm *PeerManager) recoverStalePeers() {
 	}
 }
 
+func (pm *PeerManager) waitForTurnGate(gate <-chan struct{}, generation uint64) bool {
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-pm.doneChan():
+			return false
+		}
+	}
+	return pm.turn.generationCurrent(generation)
+}
+
+func (pm *PeerManager) recoverStalePeersAfterTurnGate(gate <-chan struct{}, generation uint64) {
+	if pm.waitForTurnGate(gate, generation) {
+		pm.recoverStalePeers()
+	}
+}
+
 // closeAllPeers tears down every peer connection but keeps the signaling link.
 // room_rejoin 실패로 방을 새로 만든 경우 서버에 엔지니어 엔트리가 없으므로
 // viewer의 재조인(새 협상)에 맡긴다.
 func (pm *PeerManager) closeAllPeers() {
 	pm.mu.Lock()
-	ids := make([]string, 0, len(pm.peers))
-	for peerID := range pm.peers {
-		ids = append(ids, peerID)
+	targets := make(map[string]*webrtc.PeerConnection, len(pm.peers))
+	for peerID, pc := range pm.peers {
+		targets[peerID] = pc
 	}
+	clear(pm.pendingPeers)
+	clear(pm.pendingRemoteCandidates)
 	pm.mu.Unlock()
 
-	for _, peerID := range ids {
-		pm.removePeer(peerID)
+	for peerID, pc := range targets {
+		pm.removePeerIf(peerID, pc)
 	}
 }
 
-func (pm *PeerManager) sendSignaling(msg signaling.Message) {
+func (pm *PeerManager) sendSignaling(msg signaling.Message) bool {
+	return pm.sendSignalingOn(nil, msg)
+}
+
+func (pm *PeerManager) roomHandshakeMessage(messageType string) signaling.Message {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	return signaling.Message{
+		Type:       messageType,
+		RoomID:     pm.roomID,
+		RoomName:   pm.roomName,
+		Password:   pm.roomPassword,
+		PlayerName: pm.playerName,
+		OwnerToken: pm.ownerToken,
+	}
+}
+
+func (pm *PeerManager) signalingLifecycleCurrent(conn *websocket.Conn, done chan struct{}) bool {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	return !pm.closed && pm.sigConn == conn && pm.done == done
+}
+
+// applyRoomAcknowledgementLocked commits a blocking handshake result only to
+// the lifecycle that issued it. The caller holds lifecycleMu through buffered
+// event replay so Close+Connect cannot interleave a newer room/TURN generation.
+func (pm *PeerManager) applyRoomAcknowledgementLocked(
+	conn *websocket.Conn,
+	done chan struct{},
+	msg signaling.Message,
+	freshRoom bool,
+) (roomID, roomCode string, turnGeneration uint64, ok bool) {
+	if !pm.signalingLifecycleCurrent(conn, done) {
+		return "", "", 0, false
+	}
+	pm.sigMu.Lock()
+	if msg.RoomID != "" {
+		pm.roomID = msg.RoomID
+	}
+	pm.roomCode = msg.RoomCode
+	pm.intercomGeneration++
+	pm.intercomVersion = 0
+	if msg.Features != nil {
+		pm.intercomVersion = msg.Features.IntercomVersion
+	}
+	pm.intercomJoined = false
+	pm.intercomLatestJoin = nil
+	pm.intercomLatestState = nil
+	// A successful rejoin omits the token; a fallback room_create replaces it.
+	if msg.OwnerToken != "" {
+		pm.ownerToken = msg.OwnerToken
+	}
+	roomID = pm.roomID
+	roomCode = pm.roomCode
+	pm.sigMu.Unlock()
+
+	if freshRoom {
+		turnGeneration = pm.activateFreshTurnRoom(roomID)
+	} else {
+		turnGeneration = pm.activateTurnRoom(roomID)
+	}
+	if !pm.markSignalingReady(conn) {
+		return "", "", 0, false
+	}
+	pm.notifyIntercomState()
+	return roomID, roomCode, turnGeneration, true
+}
+
+func (pm *PeerManager) writeSignalingHandshake(conn *websocket.Conn, done chan struct{}, msg signaling.Message) error {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	if pm.closed || pm.sigConn != conn || pm.done != done {
+		return fmt.Errorf("signaling session changed")
+	}
+	conn.SetWriteDeadline(time.Now().Add(sigWriteWait))
+	return conn.WriteJSON(msg)
+}
+
+func (pm *PeerManager) currentReadySignalingConnection() *websocket.Conn {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	if !pm.signalingReady {
+		return nil
+	}
+	return pm.sigConn
+}
+
+// sendSignalingOn writes only to the expected authenticated socket. TURN
+// requests use this identity guard so an old request cannot cross a reconnect
+// and land on a newly installed room session.
+func (pm *PeerManager) sendSignalingOn(expected *websocket.Conn, msg signaling.Message) bool {
 	pm.sigMu.Lock()
 	conn := pm.sigConn
-	if conn == nil {
+	if conn == nil || !pm.signalingReady || (expected != nil && conn != expected) {
 		pm.sigMu.Unlock()
-		return
+		return false
 	}
 	conn.SetWriteDeadline(time.Now().Add(sigWriteWait))
 	err := conn.WriteJSON(msg)
+	if err != nil && pm.sigConn == conn {
+		pm.signalingReady = false
+		pm.intercomGeneration++
+		pm.intercomJoined = false
+		pm.intercomLatestJoin = nil
+		pm.intercomLatestState = nil
+	}
 	pm.sigMu.Unlock()
 	if err != nil {
+		pm.notifyIntercomState()
 		pm.logger.Error("failed to send signaling message", "type", msg.Type, "error", err)
 		_ = conn.Close()
+		return false
 	}
+	return true
+}
+
+func (pm *PeerManager) markSignalingReady(conn *websocket.Conn) bool {
+	pm.sigMu.Lock()
+	defer pm.sigMu.Unlock()
+	if conn == nil || pm.sigConn != conn {
+		return false
+	}
+	pm.signalingReady = true
+	return true
+}
+
+func (pm *PeerManager) clearSignalingConnection(conn *websocket.Conn) {
+	pm.sigMu.Lock()
+	if pm.sigConn == conn {
+		pm.sigConn = nil
+		pm.signalingReady = false
+		pm.intercomGeneration++
+		pm.intercomJoined = false
+		pm.intercomLatestJoin = nil
+		pm.intercomLatestState = nil
+	}
+	pm.sigMu.Unlock()
+	pm.notifyIntercomState()
+}
+
+func (pm *PeerManager) handleIntercomMessage(message signaling.Message) {
+	pm.sigMu.Lock()
+	switch message.Type {
+	case signaling.TypeIntercomJoined:
+		generation, revision, valid := intercomJoinedAuthority(message)
+		currentGeneration, currentRevision, currentValid := intercomJoinedAuthorityPointer(pm.intercomLatestJoin)
+		if valid && (!pm.intercomJoined || !currentValid || generation > currentGeneration) {
+			copyMessage := cloneSignalingMessage(message)
+			pm.intercomLatestJoin = &copyMessage
+			pm.intercomLatestState = nil
+			pm.intercomJoined = true
+		} else if valid && generation == currentGeneration {
+			if revision >= currentRevision {
+				copyMessage := cloneSignalingMessage(message)
+				pm.intercomLatestJoin = &copyMessage
+			}
+			if stateRevision, stateValid := intercomStateAuthorityPointer(pm.intercomLatestState); stateValid && stateRevision <= revision {
+				pm.intercomLatestState = nil
+			}
+			pm.intercomJoined = true
+		}
+	case signaling.TypeIntercomState:
+		revision, valid := intercomStateAuthority(message)
+		_, joinedRevision, joinedValid := intercomJoinedAuthorityPointer(pm.intercomLatestJoin)
+		currentRevision, currentValid := intercomStateAuthorityPointer(pm.intercomLatestState)
+		if pm.intercomJoined && valid && (!joinedValid || revision >= joinedRevision) && (!currentValid || revision > currentRevision) {
+			copyMessage := cloneSignalingMessage(message)
+			pm.intercomLatestState = &copyMessage
+		}
+	case signaling.TypeIntercomLeft:
+		pm.intercomJoined = false
+		pm.intercomLatestJoin = nil
+		pm.intercomLatestState = nil
+	}
+	handler := pm.onIntercom
+	stateHandler := pm.onIntercomState
+	state := pm.intercomTransportStateLocked()
+	pm.sigMu.Unlock()
+	if handler != nil {
+		handler(cloneSignalingMessage(message))
+	}
+	if stateHandler != nil && (message.Type == signaling.TypeIntercomJoined || message.Type == signaling.TypeIntercomLeft) {
+		stateHandler(state)
+	}
+}
+
+func intercomJoinedAuthorityPointer(message *signaling.Message) (uint64, uint64, bool) {
+	if message == nil {
+		return 0, 0, false
+	}
+	return intercomJoinedAuthority(*message)
+}
+
+func intercomJoinedAuthority(message signaling.Message) (uint64, uint64, bool) {
+	var payload signaling.IntercomJoinedPayload
+	if message.Type != signaling.TypeIntercomJoined || json.Unmarshal(message.Payload, &payload) != nil || payload.MembershipGeneration == 0 || payload.MembershipGeneration > signaling.MaxIntercomSafeInteger || payload.Snapshot.Revision > signaling.MaxIntercomSafeInteger {
+		return 0, 0, false
+	}
+	return payload.MembershipGeneration, payload.Snapshot.Revision, true
+}
+
+func intercomStateAuthorityPointer(message *signaling.Message) (uint64, bool) {
+	if message == nil {
+		return 0, false
+	}
+	return intercomStateAuthority(*message)
+}
+
+func intercomStateAuthority(message signaling.Message) (uint64, bool) {
+	var payload signaling.IntercomSnapshot
+	if message.Type != signaling.TypeIntercomState || json.Unmarshal(message.Payload, &payload) != nil || payload.Revision > signaling.MaxIntercomSafeInteger {
+		return 0, false
+	}
+	return payload.Revision, true
+}
+
+func (pm *PeerManager) intercomTransportStateLocked() IntercomTransportState {
+	version := 0
+	if pm.signalingReady {
+		version = pm.intercomVersion
+	}
+	// Joined describes the authenticated central room transport, not intercom
+	// membership. A fresh renderer must be able to send its first group_create or
+	// join before an intercom_joined response exists.
+	return IntercomTransportState{Generation: pm.intercomGeneration, Joined: pm.signalingReady, IntercomVersion: version}
+}
+
+func (pm *PeerManager) notifyIntercomState() {
+	pm.sigMu.Lock()
+	handler := pm.onIntercomState
+	state := pm.intercomTransportStateLocked()
+	pm.sigMu.Unlock()
+	if handler != nil {
+		handler(state)
+	}
+}
+
+func cloneSignalingMessage(message signaling.Message) signaling.Message {
+	message.Payload = append(json.RawMessage(nil), message.Payload...)
+	if message.Features != nil {
+		features := *message.Features
+		message.Features = &features
+	}
+	return message
 }
 
 func boolPtr(b bool) *bool { return &b }

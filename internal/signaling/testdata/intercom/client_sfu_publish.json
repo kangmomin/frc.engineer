@@ -1,0 +1,18 @@
+{
+  "type": "intercom_sfu_publish",
+  "requestId": "req-publish-1",
+  "payload": {
+    "sessionHandle": "session-handle-1",
+    "sessionDescription": {
+      "type": "offer",
+      "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+    },
+    "tracks": [
+      {
+        "mid": "0",
+        "class": "chief_private",
+        "targetDriverKey": "epoch-a:room-a"
+      }
+    ]
+  }
+}

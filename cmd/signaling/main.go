@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"frc.engineer/internal/bandb"
+	"frc.engineer/internal/realtimesfu"
 	"frc.engineer/internal/signaling"
+	"frc.engineer/internal/turncredentials"
 	"github.com/gorilla/websocket"
 )
 
@@ -79,6 +81,40 @@ func main() {
 
 	roomManager := signaling.NewRoomManager(logger, banCache, banStore, len(trustedProxies) > 0)
 	defer roomManager.Stop()
+	turnConfig, turnConfigErr := turncredentials.LoadConfigFromEnv()
+	switch {
+	case turnConfigErr != nil:
+		// Fail open. Do not include configuration errors in logs: this process
+		// owns the long-lived token and logs must never become a secret channel.
+		logger.Warn("TURN credential provider disabled; using static/default ICE fallback")
+	case !turnConfig.Enabled:
+		logger.Info("TURN credential provider not configured; using static/default ICE fallback")
+	default:
+		provider, err := turncredentials.NewCloudflareProvider(turnConfig)
+		if err != nil {
+			logger.Warn("TURN credential provider disabled; using static/default ICE fallback")
+		} else {
+			roomManager.SetTurnCredentialsProvider(provider)
+			logger.Info("TURN credential provider enabled")
+		}
+	}
+	sfuConfig, sfuConfigErr := realtimesfu.LoadConfigFromEnv()
+	switch {
+	case sfuConfigErr != nil:
+		// Never log configuration values or detailed errors: this process owns
+		// the long-lived Realtime App Secret.
+		logger.Warn("Realtime SFU provider disabled; intercom presence remains available")
+	case !sfuConfig.Enabled:
+		logger.Info("Realtime SFU provider not configured; intercom media disabled")
+	default:
+		provider, err := realtimesfu.NewCloudflareProvider(sfuConfig)
+		if err != nil {
+			logger.Warn("Realtime SFU provider disabled; intercom presence remains available")
+		} else {
+			roomManager.SetRealtimeSFUProvider(provider)
+			logger.Info("Realtime SFU provider enabled")
+		}
+	}
 
 	// Periodically refresh the ban cache from the DB (also reflects manual edits
 	// such as DELETE). Hot paths read only the cache, never the DB.
@@ -167,8 +203,9 @@ func main() {
 		}
 		defer conn.Close()
 
-		// 정상 페이로드 최대치(SDP ~8KB)의 8배 마진. 대형 프레임으로 인한 메모리 폭주 차단.
-		conn.SetReadLimit(64 * 1024)
+		// Intercom SDP 포함 frozen signaling envelope 상한. Telemetry payload는
+		// 별도 DataChannel을 사용하며 이 WebSocket 상한과 섞이지 않는다.
+		conn.SetReadLimit(96 * 1024)
 
 		// Set up read deadline and pong handler for keepalive.
 		conn.SetReadDeadline(time.Now().Add(pongWait))

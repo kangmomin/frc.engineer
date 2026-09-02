@@ -1,0 +1,11 @@
+{
+  "type": "intercom_sfu_renegotiate",
+  "requestId": "req-renegotiate-1",
+  "payload": {
+    "sessionHandle": "session-handle-1",
+    "sessionDescription": {
+      "type": "answer",
+      "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+    }
+  }
+}

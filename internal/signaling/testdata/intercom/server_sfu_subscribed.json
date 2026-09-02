@@ -1,0 +1,21 @@
+{
+  "type": "intercom_sfu_subscribed",
+  "requestId": "req-subscribe-1",
+  "payload": {
+    "sessionDescription": {
+      "type": "offer",
+      "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+    },
+    "requiresImmediateRenegotiation": true,
+    "tracks": [
+      {
+        "mid": "1",
+        "trackKey": "track-remote-1",
+        "participantId": "participant-chief",
+        "class": "chief_private",
+        "targetDriverKey": "epoch-a:room-a"
+      }
+    ],
+    "removedTrackKeys": ["track-remote-old"]
+  }
+}

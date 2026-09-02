@@ -1,0 +1,7 @@
+{
+  "type": "intercom_sfu_close",
+  "requestId": "req-close-1",
+  "payload": {
+    "sessionHandle": "session-handle-1"
+  }
+}

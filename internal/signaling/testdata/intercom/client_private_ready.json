@@ -1,0 +1,6 @@
+{
+  "type": "intercom_private_ready",
+  "payload": {
+    "revision": 8
+  }
+}

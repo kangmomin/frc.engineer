@@ -1,0 +1,9 @@
+{
+  "type": "intercom_error",
+  "requestId": "req-publish-1",
+  "payload": {
+    "code": "negotiation_in_progress",
+    "message": "intercom media negotiation is already in progress",
+    "retryable": true
+  }
+}
