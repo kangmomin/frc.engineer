@@ -2,6 +2,12 @@ const { app, BrowserWindow, Menu, dialog, globalShortcut, ipcMain } = require('e
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const {
+  isTrustedMicrophoneCheck,
+  isTrustedMicrophoneRequest,
+  isTrustedRendererURL,
+} = require('./intercom-policy.cjs');
 
 let autoUpdater = null;
 try {
@@ -16,6 +22,9 @@ const isWin = process.platform === 'win32';
 const SENDER_STORAGE_ROOT_KEY = 'frc_sender_storage_root';
 const OVERLAY_HOTKEYS_KEY = 'overlay_hotkeys';
 const DEFAULT_SENDER_API_BASE = 'http://localhost:8099';
+const INTERCOM_BRIDGE_TOKEN = crypto.randomBytes(32).toString('hex');
+const rendererPolicyOptions = { isDev, distIndex };
+let trustedRendererWebContentsId = null;
 
 // ─── Persistent settings (survives app updates) ───
 const settingsPath = path.join(app.getPath('userData'), 'user-settings.json');
@@ -64,6 +73,14 @@ ipcMain.handle('set-setting', (_event, key, value) => {
 
 ipcMain.handle('get-all-settings', () => {
   return readSettings();
+});
+
+ipcMain.handle('get-intercom-bridge-token', (event) => {
+  const frameURL = event.senderFrame?.url;
+  if (event.sender.id !== trustedRendererWebContentsId || !isTrustedRendererURL(frameURL, rendererPolicyOptions)) {
+    throw new Error('Intercom bridge capability is unavailable to this renderer.');
+  }
+  return INTERCOM_BRIDGE_TOKEN;
 });
 
 ipcMain.handle('set-overlay-hotkeys', (_event, hotkeys) => {
@@ -403,6 +420,7 @@ function startSender() {
     FRC_NO_BROWSER: '1',
     DRIVER_PACK_EMBEDDED: '1',
     SAVE_FILES: 'true',
+    FRC_INTERCOM_BRIDGE_TOKEN: INTERCOM_BRIDGE_TOKEN,
   };
   env.FRC_STORAGE_DIR = senderStorageRoot;
   console.log('[sender] Using storage root:', senderStorageRoot);
@@ -716,7 +734,30 @@ function createWindow() {
   }
 
   const win = new BrowserWindow(winOpts);
+  trustedRendererWebContentsId = win.webContents.id;
   Menu.setApplicationMenu(null);
+
+  const permissionSession = win.webContents.session;
+  permissionSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    callback(isTrustedMicrophoneRequest({
+      permission,
+      details,
+      requestingURL: details.requestingUrl,
+      webContentsId: webContents.id,
+      trustedWebContentsId: trustedRendererWebContentsId,
+      options: rendererPolicyOptions,
+    }));
+  });
+  permissionSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => (
+    isTrustedMicrophoneCheck({
+      permission,
+      details,
+      requestingURL: webContents?.getURL() || requestingOrigin,
+      webContentsId: webContents?.id,
+      trustedWebContentsId: trustedRendererWebContentsId,
+      options: rendererPolicyOptions,
+    })
+  ));
 
   win.once('ready-to-show', () => win.show());
 
@@ -730,7 +771,10 @@ function createWindow() {
   const fallbackShowTimer = setTimeout(() => {
     if (!win.isDestroyed() && !win.isVisible()) win.show();
   }, 3000);
-  win.once('closed', () => clearTimeout(fallbackShowTimer));
+  win.once('closed', () => {
+    clearTimeout(fallbackShowTimer);
+    if (trustedRendererWebContentsId === win.webContents.id) trustedRendererWebContentsId = null;
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     // 외부 링크는 기본 브라우저로 — http/https 스킴만 허용해 임의 스킴 실행을 차단

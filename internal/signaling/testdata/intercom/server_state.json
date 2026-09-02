@@ -1,0 +1,22 @@
+{
+  "type": "intercom_state",
+  "payload": {
+    "revision": 9,
+    "topologyRevision": 4,
+    "groupCode": "482915",
+    "participants": [
+      {
+        "id": "participant-engineer",
+        "role": "engineer",
+        "displayName": "Engineer A",
+        "assignmentDriverKey": "epoch-a:room-a",
+        "online": true,
+        "speaking": true,
+        "ptt": true,
+        "busEnabled": true,
+        "forcedMuted": false,
+        "talkingTo": ["participant-driver", "participant-chief"]
+      }
+    ]
+  }
+}

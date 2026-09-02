@@ -1,0 +1,8 @@
+{
+  "type": "intercom_group_create",
+  "requestId": "req-create-1",
+  "payload": {
+    "displayName": "Driver 1",
+    "password": "team-password"
+  }
+}

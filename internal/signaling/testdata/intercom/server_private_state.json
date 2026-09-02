@@ -1,0 +1,14 @@
+{
+  "type": "intercom_state",
+  "requestId": "req-private-1",
+  "payload": {
+    "revision": 8,
+    "topologyRevision": 3,
+    "groupCode": "482915",
+    "participants": [],
+    "privateSession": {
+      "phase": "preparing",
+      "driverKey": "epoch-a:room-a"
+    }
+  }
+}

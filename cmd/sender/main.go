@@ -1222,6 +1222,8 @@ func main() {
 
 	// Settings HTTP server
 	mux := http.NewServeMux()
+	intercomBridge := rtc.NewIntercomBridge(peerManager, os.Getenv(rtc.IntercomBridgeTokenEnv), logger)
+	mux.Handle("GET /api/intercom/ws", intercomBridge)
 	buildSenderConfigSnapshot := func() senderConfig {
 		forwardTargets := append([]rtconfig.ForwardTarget(nil), cfgForwardTargets...)
 		presets := append([]overlayPreset(nil), cfgOverlayPresets...)

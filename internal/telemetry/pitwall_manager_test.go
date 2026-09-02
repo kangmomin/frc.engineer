@@ -170,7 +170,7 @@ func TestRecordPenaltyNewSessionEventBeforeSessionPacket(t *testing.T) {
 	}
 }
 
-// TestBuildState24CarPayloadSize: 2026 모드(24대) 풀 데이터 PitwallState의 페이로드 크기 회귀 검증.
+// TestBuildState24CarPayloadSize: 2026 모드(24대) 풀 데이터 WSResponse envelope의 페이로드 크기 회귀 검증.
 // (1) 트랙맵(다운샘플 2000pt)이 포함된 worst-case 메시지가 Chrome SCTP 수신 버퍼 하드 상한(256KB)을
 // 넘지 않고, (2) 트랙맵 전송분 소진 후 정상 상태가 백프레셔 임계(maxBufferedAmount 128KB)를 넘지 않는지 확인.
 // (CLAUDE.md: SCTP 256KB / maxBufferedAmount 128KB 제약)
@@ -275,8 +275,11 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 		t.Fatalf("driver 23 penaltyLog dropped by BuildState/applySourceVisibility: got %d, want %d", got, maxPenaltyLogPerCar)
 	}
 
-	// (1) 트랙맵 포함 메시지가 SCTP 수신 버퍼 하드 상한(256KB)을 넘지 않아야 한다.
-	withMap, err := dto.MsgpackMarshal(state)
+	// (1) 실제 WSResponse envelope의 트랙맵 포함 메시지가 SCTP 수신 버퍼 하드 상한(256KB)을 넘지 않아야 한다.
+	withMap, err := dto.MsgpackMarshal(dto.WSResponse{
+		Type: dto.MessageTypePitwallState,
+		Data: state,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +299,10 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 	if steady.TrackMap != nil {
 		t.Fatal("expected trackmap sends to drain to steady state")
 	}
-	payload, err := dto.MsgpackMarshal(steady)
+	payload, err := dto.MsgpackMarshal(dto.WSResponse{
+		Type: dto.MessageTypePitwallState,
+		Data: steady,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +401,7 @@ func TestPitMeasureReadOnlyDoesNotMutate(t *testing.T) {
 	pushLap(pm, h, 1, 12000, 3000, 0)
 	pm.BuildState() // mutate: entry edge arms obs
 	pushLap(pm, h, 1, 20000, 3000, 0)
-	pm.BuildState() // mutate: accumulate obs=20000
+	pm.BuildState()            // mutate: accumulate obs=20000
 	pushLap(pm, h, 0, 0, 0, 1) // exit down-edge frame
 
 	// Read-only build must NOT confirm the stop (no state write under RLock).

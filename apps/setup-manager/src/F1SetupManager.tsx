@@ -40,8 +40,10 @@ import {
   normalizeAnalysisServerUrl,
 } from "./sessionAnalysis";
 import { fetchJsonWithSenderDebug } from "./senderDebug";
+import { DriverIntercomPanel } from "./DriverIntercomPanel";
+import { useDriverIntercom } from "./useDriverIntercom";
 
-type SectionId = "setup-manager" | "sender" | "overlay";
+type SectionId = "setup-manager" | "sender" | "overlay" | "intercom";
 type SetupWorkspaceId = "builder" | "analysis";
 type Severity = "high" | "med" | "low";
 type SenderStorageMode = "resultOnly" | "summary" | "advanced";
@@ -261,6 +263,10 @@ const SECTION_COPY: Record<SectionId, { title: string; detail: string }> = {
   overlay: {
     title: "Overlay",
     detail: "Radar, weather, and strategy overlay state, presets, and hotkey management.",
+  },
+  intercom: {
+    title: "Intercom",
+    detail: "Hands-free driver radio, team membership, microphone, and live route state.",
   },
 };
 
@@ -1127,6 +1133,7 @@ function getComparisonDelta(
 }
 
 export function F1SetupManager() {
+  const driverIntercom = useDriverIntercom();
   const [section, setSection] = useState<SectionId>("setup-manager");
   const [setupWorkspace, setSetupWorkspace] = useState<SetupWorkspaceId>("builder");
   const senderUrl = DEFAULT_SENDER_URL;
@@ -1934,9 +1941,14 @@ export function F1SetupManager() {
               ? `Sender online / room ${senderStatus?.roomCode || "----"}${autoContext?.source === "live-session" ? " / live context synced" : autoContext?.source === "race-result" ? " / result context ready" : ""}`
               : "Sender offline / local workspaces available"}
           </div>
+          <div style={{ marginTop: 4, fontSize: 10, color: driverIntercom.state.status === "joined" ? P.accent2 : P.muted }}>
+            ● Intercom {driverIntercom.state.status === "joined"
+              ? driverIntercom.state.locallyMuted ? "MUTED" : "HANDS-FREE LIVE"
+              : driverIntercom.state.status.toUpperCase()}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {(["setup-manager", "sender", "overlay"] as const).map((item) => (
+          {(["setup-manager", "sender", "overlay", "intercom"] as const).map((item) => (
             <button
               key={item}
               onClick={() => setSection(item)}
@@ -2840,6 +2852,17 @@ export function F1SetupManager() {
               </div>
             </Panel>
           </>
+          ) : null}
+
+          {section === "intercom" ? (
+            <Panel title="PITWALL INTERCOM">
+              <DriverIntercomPanel
+                runtime={driverIntercom.runtime}
+                state={driverIntercom.state}
+                devices={driverIntercom.devices}
+                theme={P}
+              />
+            </Panel>
           ) : null}
         </main>
       </div>

@@ -1,0 +1,5 @@
+{
+  "type": "intercom_leave",
+  "requestId": "req-leave-1",
+  "payload": {}
+}

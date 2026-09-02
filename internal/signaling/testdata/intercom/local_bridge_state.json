@@ -1,0 +1,8 @@
+{
+  "type": "intercom_bridge_state",
+  "payload": {
+    "generation": 4,
+    "joined": true,
+    "intercomVersion": 1
+  }
+}

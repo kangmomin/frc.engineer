@@ -1,0 +1,18 @@
+{
+  "type": "intercom_sfu_published",
+  "requestId": "req-publish-1",
+  "payload": {
+    "sessionDescription": {
+      "type": "answer",
+      "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+    },
+    "requiresImmediateRenegotiation": false,
+    "tracks": [
+      {
+        "mid": "0",
+        "trackKey": "track-local-1",
+        "class": "chief_private"
+      }
+    ]
+  }
+}

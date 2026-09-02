@@ -1,0 +1,7 @@
+{
+  "type": "intercom_sfu_subscribe",
+  "requestId": "req-subscribe-1",
+  "payload": {
+    "sessionHandle": "session-handle-1"
+  }
+}

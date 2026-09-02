@@ -1,0 +1,8 @@
+{
+  "type": "intercom_activity",
+  "payload": {
+    "speaking": true,
+    "ptt": true,
+    "busEnabled": true
+  }
+}

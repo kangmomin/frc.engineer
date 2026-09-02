@@ -1,0 +1,8 @@
+{
+  "type": "intercom_private_set",
+  "requestId": "req-private-1",
+  "payload": {
+    "driverKey": "epoch-a:room-a",
+    "active": true
+  }
+}

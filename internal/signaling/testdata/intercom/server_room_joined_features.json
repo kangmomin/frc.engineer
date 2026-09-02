@@ -1,0 +1,9 @@
+{
+  "type": "room_joined",
+  "roomId": "room-a",
+  "roomCode": "1234",
+  "peerId": "engineer-a",
+  "features": {
+    "intercomVersion": 1
+  }
+}
