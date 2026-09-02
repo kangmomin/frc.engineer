@@ -6,7 +6,7 @@ import {
   isPTTKeyDown,
   publicationSpecsForRole,
   waitForIceGatheringComplete,
-} from '../../../shared/intercom';
+} from './core';
 
 function remoteTrack(): MediaStreamTrack {
   return {

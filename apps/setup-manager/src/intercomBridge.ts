@@ -10,7 +10,7 @@ import {
   type IntercomEnvelope,
   type IntercomSignalingAdapter,
   type ServerIntercomEnvelope,
-} from '../../../shared/intercom';
+} from '../../../web/src/intercom/core';
 
 const BRIDGE_URL = 'ws://127.0.0.1:8099/api/intercom/ws';
 const BRIDGE_PROTOCOL = 'frc-intercom-v1';

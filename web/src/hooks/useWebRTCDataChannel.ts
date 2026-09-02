@@ -34,7 +34,7 @@ import {
   type IntercomEnvelope,
   type IntercomSignalingAdapter,
   type ServerIntercomEnvelope,
-} from '../../../shared/intercom';
+} from '../intercom/core';
 
 interface UseWebRTCOptions {
   signalingUrl: string;

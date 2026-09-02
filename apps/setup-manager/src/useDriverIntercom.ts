@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { IntercomRuntime, type IntercomRuntimeState } from '../../../shared/intercom';
+import { IntercomRuntime, type IntercomRuntimeState } from '../../../web/src/intercom/core';
 import { DriverIntercomBridge } from './intercomBridge';
 
 export function useDriverIntercom() {
