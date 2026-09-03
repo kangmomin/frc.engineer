@@ -138,6 +138,7 @@ func main() {
 	mux.HandleFunc("/leaderboards/tt", srv.handleLeaderboardTT)
 	mux.HandleFunc("/leaderboards/pace", srv.handleLeaderboardPace)
 	mux.HandleFunc("/search", srv.handleSearch)
+	mux.HandleFunc("GET /profiles/{id}", srv.handleProfile)
 	mux.HandleFunc("GET /tracks/{id}/pit-loss", srv.handlePitLoss)
 	mux.HandleFunc("GET /me/races", srv.handleMyRaces)
 	mux.HandleFunc("GET /me/listings", srv.handleMyListings)
@@ -260,6 +261,34 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", marketCacheControl)
 	writeJSON(w, http.StatusOK, result)
+}
+
+// handleProfile serves an authenticated, privacy-safe driver profile.
+func (s *server) handleProfile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if _, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true}); !ok {
+		return
+	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	profile, err := s.store.DriverProfile(ctx, id)
+	if errors.Is(err, platformsvc.ErrNotFound) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("driver profile", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, profile)
 }
 
 func parseSearchQuery(raw string) (string, bool) {
