@@ -2,11 +2,23 @@ package tracks
 
 import "strings"
 
+const (
+	FormatF125 = "F1 25"
+	FormatF126 = "F1 26"
+)
+
 type trackDescriptor struct {
 	id          int8
 	displayName string
 	storageKey  string
 	aliases     []string
+}
+
+// TrackFormatPair is one public, canonical track/format combination.
+type TrackFormatPair struct {
+	TrackID    int
+	Format     string
+	SearchText string
 }
 
 var trackDescriptors = []trackDescriptor{
@@ -43,8 +55,8 @@ var trackDescriptors = []trackDescriptor{
 }
 
 var (
-	trackDescriptorsByID  = make(map[int8]trackDescriptor, len(trackDescriptors))
-	trackDescriptorByKey  = make(map[string]trackDescriptor, len(trackDescriptors)*4)
+	trackDescriptorsByID = make(map[int8]trackDescriptor, len(trackDescriptors))
+	trackDescriptorByKey = make(map[string]trackDescriptor, len(trackDescriptors)*4)
 )
 
 func init() {
@@ -91,6 +103,67 @@ func TrackStorageKey(trackID int8) string {
 		return desc.storageKey
 	}
 	return "unknown"
+}
+
+// TrackSearchNames returns the canonical display name, storage key, and known
+// aliases for a track. Callers can use it to match user-facing search text
+// without maintaining a second track catalog.
+func TrackSearchNames(trackID int) []string {
+	desc, ok := trackDescriptorsByID[int8(trackID)]
+	if !ok || int(desc.id) != trackID {
+		return nil
+	}
+	return append([]string{desc.displayName, desc.storageKey}, desc.aliases...)
+}
+
+// IsSupportedTrackFormat reports whether a canonical track belongs to a public
+// Hub format. The reverse layouts (39..42) only exist in the F1 26 pack.
+func IsSupportedTrackFormat(trackID int, format string) bool {
+	desc, ok := trackDescriptorsByID[int8(trackID)]
+	if !ok || int(desc.id) != trackID {
+		return false
+	}
+	return format == FormatF126 || (format == FormatF125 && desc.id < 39)
+}
+
+// SupportedTrackFormatPairs returns every public track/format pair in registry
+// order. It is intentionally derived from trackDescriptors so consumers do not
+// copy the catalog when adding a season-pack track.
+func SupportedTrackFormatPairs() []TrackFormatPair {
+	pairs := make([]TrackFormatPair, 0, len(trackDescriptors)*2)
+	for _, desc := range trackDescriptors {
+		if desc.id < 39 {
+			pairs = append(pairs, TrackFormatPair{TrackID: int(desc.id), Format: FormatF125, SearchText: SearchText(int(desc.id))})
+		}
+		pairs = append(pairs, TrackFormatPair{TrackID: int(desc.id), Format: FormatF126, SearchText: SearchText(int(desc.id))})
+	}
+	return pairs
+}
+
+// SearchText returns a space-separated, canonical search corpus for a track.
+// Keep both stored spellings and whitespace spellings so aliases such as
+// "great_britain" also match a human query for "great britain".
+func SearchText(trackID int) string {
+	values := TrackSearchNames(trackID)
+	if len(values) == 0 {
+		return ""
+	}
+	seen := make(map[string]struct{}, len(values)*2)
+	parts := make([]string, 0, len(values)*2)
+	for _, value := range values {
+		for _, candidate := range []string{value, strings.ReplaceAll(value, "_", " ")} {
+			candidate = strings.ToLower(candidate)
+			if candidate == "" {
+				continue
+			}
+			if _, ok := seen[candidate]; ok {
+				continue
+			}
+			seen[candidate] = struct{}{}
+			parts = append(parts, candidate)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // TrackDisplayName resolves arbitrary track labels or file basenames into the canonical display name.
@@ -177,4 +250,3 @@ func humanizeTrackKey(key string) string {
 	}
 	return strings.Join(parts, " ")
 }
-

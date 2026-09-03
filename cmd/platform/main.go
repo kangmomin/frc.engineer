@@ -22,6 +22,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -135,6 +137,7 @@ func main() {
 	mux.HandleFunc("/races", srv.handleUpload)
 	mux.HandleFunc("/leaderboards/tt", srv.handleLeaderboardTT)
 	mux.HandleFunc("/leaderboards/pace", srv.handleLeaderboardPace)
+	mux.HandleFunc("/search", srv.handleSearch)
 	mux.HandleFunc("GET /tracks/{id}/pit-loss", srv.handlePitLoss)
 	mux.HandleFunc("GET /me/races", srv.handleMyRaces)
 	mux.HandleFunc("GET /me/listings", srv.handleMyListings)
@@ -223,6 +226,57 @@ const (
 	uploadMaxBytes   = 512 << 10 // 512 KiB; laps dominate (≤500 × ~90B)
 	uploadRatePerMin = 20
 )
+
+// handleSearch returns public setup cards and verified driver contexts. It is
+// deliberately anonymous: the response carries only public listing metadata
+// and the compact, latest leaderboard context for matching drivers.
+func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	queries, ok := values["q"]
+	if !ok || len(queries) != 1 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	query, ok := parseSearchQuery(queries[0])
+	if !ok {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	result, err := s.store.Search(ctx, query)
+	if err != nil {
+		s.log.Error("search", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", marketCacheControl)
+	writeJSON(w, http.StatusOK, result)
+}
+
+func parseSearchQuery(raw string) (string, bool) {
+	if !utf8.ValidString(raw) {
+		return "", false
+	}
+	for _, r := range raw {
+		if unicode.IsControl(r) {
+			return "", false
+		}
+	}
+	query := strings.TrimSpace(raw)
+	if n := utf8.RuneCountInString(query); n < 2 || n > 64 {
+		return "", false
+	}
+	return query, true
+}
 
 // handleLogin starts Steam OpenID login: it mints an anti-CSRF state, binds it
 // to the browser via an httpOnly cookie, and redirects to Steam.
