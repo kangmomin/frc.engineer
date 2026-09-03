@@ -33,3 +33,17 @@
   border-color: var(--accBorder, rgba(224, 168, 61, 0.42));
   transform: translateY(-1px);
 }
+
+.hubMobileNavLabel { display: none; }
+
+@media (max-width: 720px) {
+  .hubSidebar { width: 64px !important; }
+  .hubSidebar > div:first-child { justify-content: center; padding: 0 !important; }
+  .hubSidebarBrandCopy, .hubNavLabel, .hubAccountCopy { display: none !important; }
+  .hubNavButton { justify-content: center !important; padding: 11px 0 !important; gap: 0 !important; }
+  .hubNavIndex { display: none !important; }
+  .hubMobileNavLabel { display: inline !important; font-size: 7px; letter-spacing: .03em; }
+  .hubAccountButton { justify-content: center !important; padding: 12px 0 !important; }
+  .hubTopBar { padding: 0 14px !important; }
+  .hubSearch { display: none !important; }
+}

@@ -21,6 +21,7 @@ import { Profile } from './screens/Profile';
 import { Feedback } from './screens/Feedback';
 import { Analysis } from './screens/Analysis';
 import { Access } from './screens/Access';
+import { Guide } from './screens/Guide';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket } from './data/platform';
 import type { PlatformLedgerEntry } from './data/platform';
@@ -44,7 +45,8 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const dataSource = useMemo(() => new OwnHubDataSource(), []);
   const rowPad = rowPadFor('comfortable');
 
-  const [active, setActive] = useState<HubScreen>('overview');
+  // "맨 처음 가이드 페이지"는 딥링크가 아닌 Hub 진입의 기본 화면을 뜻한다.
+  const [active, setActive] = useState<HubScreen>('guide');
   const [rankTab, setRankTab] = useState<'tt' | 'pace'>('tt');
   // Shared track+format context for the leaderboards and the marketplace browse.
   const [trackCtx, setTrackCtx] = useState<TrackContext>(DEFAULT_TRACK_CONTEXT);
@@ -155,6 +157,8 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
         <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} />
         <main style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
+          {active === 'guide' && <Guide t={t} onLaunchLive={onLaunchLive} onGoOverview={() => setActive('overview')} />}
+
           {active === 'overview' && (overview ? (
             <Overview t={t} data={overview} wallet={realWallet} persona={platformAccount?.persona} rankInfo={rankInfo} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
           ) : <Loading t={t} />)}
@@ -244,6 +248,7 @@ function toHubLedger(e: PlatformLedgerEntry): HubLedgerEntry {
 
 function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
   switch (active) {
+    case 'guide': return 'GUIDE · 시작하기';
     case 'overview': return 'OVERVIEW';
     case 'rankings': return `RANKINGS · ${trackName(trackCtx.trackId).toUpperCase()} · ${trackCtx.format}`;
     case 'market': return 'MARKETPLACE';

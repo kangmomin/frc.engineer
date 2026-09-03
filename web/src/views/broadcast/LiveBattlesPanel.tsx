@@ -61,7 +61,15 @@ export function LiveBattlesPanel({ cards, detail }: { cards: BattleCard[]; detai
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                   <span style={{ flex: 'none', fontSize: 9, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Predict</span>
                   <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: accent }}>{b.predict}</span>
-                  <div style={{ flex: 'none', width: 60, height: 5, background: 'rgba(132,147,150,.2)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div
+                    role="progressbar"
+                    aria-label={`${b.atkCode} battle confidence`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={b.confidence ?? undefined}
+                    aria-valuetext={b.confidence == null ? 'Unavailable' : `${b.confidence}% heuristic signal`}
+                    style={{ flex: 'none', width: 60, height: 5, background: 'rgba(132,147,150,.2)', borderRadius: 3, overflow: 'hidden' }}
+                  >
                     <div style={{ height: '100%', width: `${b.confidence ?? 0}%`, background: accent }} />
                   </div>
                 </div>

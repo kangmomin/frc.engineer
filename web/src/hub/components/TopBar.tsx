@@ -14,13 +14,14 @@ interface Props {
 export function TopBar({ t, ctx, credits }: Props) {
   return (
     <header
+      className="hubTopBar"
       style={{
         height: 60, flex: 'none', borderBottom: `1px solid ${t.line}`, display: 'flex',
         alignItems: 'center', gap: 18, padding: '0 24px', background: t.rail,
       }}
     >
       <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.13em', color: t.t2, fontWeight: 600, whiteSpace: 'nowrap' }}>{ctx}</div>
-      <div style={{ flex: 1, maxWidth: 400, display: 'flex', alignItems: 'center', gap: 9, background: t.panel2, border: `1px solid ${t.line}`, borderRadius: 8, padding: '8px 12px', color: t.t3, fontSize: 13 }}>
+      <div className="hubSearch" style={{ flex: 1, maxWidth: 400, display: 'flex', alignItems: 'center', gap: 9, background: t.panel2, border: `1px solid ${t.line}`, borderRadius: 8, padding: '8px 12px', color: t.t3, fontSize: 13 }}>
         <span style={{ fontSize: 15, lineHeight: 1 }}>⌕</span>
         <span>셋업 · 드라이버 · 트랙 검색</span>
       </div>
