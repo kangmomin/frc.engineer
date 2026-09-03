@@ -44,7 +44,7 @@ type Role struct {
 // ListPermissionNames returns the full seeded permission catalog, sorted.
 func (s *Store) ListPermissionNames(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT name FROM platform.permissions ORDER BY name`)
+		`SELECT name FROM platform.permissions ORDER BY name COLLATE "C"`)
 	if err != nil {
 		return nil, fmt.Errorf("platformsvc: list permissions: %w", err)
 	}

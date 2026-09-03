@@ -155,6 +155,7 @@ func main() {
 	mux.HandleFunc("POST /listings/{id}/reviews", srv.handleCreateReview)
 	mux.HandleFunc("POST /feedback", srv.handleCreateFeedback)
 	mux.HandleFunc("GET /me/feedback", srv.handleMyFeedback)
+	mux.HandleFunc("GET /feedback-inbox", srv.handleFeedbackInbox)
 	mux.HandleFunc("POST /analysis", srv.handleCreateAnalysis)
 	mux.HandleFunc("GET /analysis", srv.handleListAnalyses)
 	mux.HandleFunc("GET /analysis/{id}", srv.handleGetAnalysis)
@@ -1027,6 +1028,30 @@ func (s *server) handleMyFeedback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, entries)
+}
+
+// handleFeedbackInbox lists the newest feedback globally for authorized
+// operators. The response is uncacheable even when auth or storage fails.
+func (s *server) handleFeedbackInbox(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if _, ok := s.gate(ctx, w, r, gateSpec{
+		scope:       platformsvc.ScopeWeb,
+		blockBanned: true,
+		permission:  rbac.PermFeedbackInboxRead,
+	}); !ok {
+		return
+	}
+	entries, err := s.store.ListFeedback(ctx)
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("feedback inbox", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, entries)
 }
 

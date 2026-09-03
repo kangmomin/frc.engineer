@@ -32,26 +32,27 @@ const (
 // Seeded leaf permissions. Gate wiring must use these constants, not string
 // literals, so the compiler catches drift against the seeded catalog.
 const (
-	PermDeviceCreate    = "pithub.device.create"
-	PermRaceCreate      = "pithub.race.create"
-	PermRaceRead        = "pithub.race.read"
-	PermAnalyzeCreate   = "pithub.race-analyze.create"
-	PermAnalyzeRead     = "pithub.race-analyze.read"
-	PermAnalyzeDelete   = "pithub.race-analyze.delete"
-	PermMarketCreate    = "pithub.market.create"
-	PermMarketRead      = "pithub.market.read"
-	PermMarketUpdate    = "pithub.market.update"
-	PermWalletRead      = "pithub.wallet.read"
-	PermPurchaseCreate  = "pithub.purchase.create"
-	PermReviewCreate    = "pithub.review.create"
-	PermFeedbackCreate  = "pithub.feedback.create"
-	PermFeedbackRead    = "pithub.feedback.read"
-	PermRBACCreate      = "pithub.rbac.create"
-	PermRBACRead        = "pithub.rbac.read"
-	PermRBACUpdate      = "pithub.rbac.update"
-	PermRBACDelete      = "pithub.rbac.delete"
-	PermBroadcastCreate = "pitwall.broadcast.create"
-	PermSetupRead       = "sender.setup.read"
+	PermDeviceCreate      = "pithub.device.create"
+	PermRaceCreate        = "pithub.race.create"
+	PermRaceRead          = "pithub.race.read"
+	PermAnalyzeCreate     = "pithub.race-analyze.create"
+	PermAnalyzeRead       = "pithub.race-analyze.read"
+	PermAnalyzeDelete     = "pithub.race-analyze.delete"
+	PermMarketCreate      = "pithub.market.create"
+	PermMarketRead        = "pithub.market.read"
+	PermMarketUpdate      = "pithub.market.update"
+	PermWalletRead        = "pithub.wallet.read"
+	PermPurchaseCreate    = "pithub.purchase.create"
+	PermReviewCreate      = "pithub.review.create"
+	PermFeedbackCreate    = "pithub.feedback.create"
+	PermFeedbackRead      = "pithub.feedback.read"
+	PermFeedbackInboxRead = "pithub.feedback-inbox.read"
+	PermRBACCreate        = "pithub.rbac.create"
+	PermRBACRead          = "pithub.rbac.read"
+	PermRBACUpdate        = "pithub.rbac.update"
+	PermRBACDelete        = "pithub.rbac.delete"
+	PermBroadcastCreate   = "pitwall.broadcast.create"
+	PermSetupRead         = "sender.setup.read"
 )
 
 // maxNodeLen mirrors permissions_name_format_chk in 009_rbac.sql.
@@ -62,15 +63,15 @@ var crudActions = map[string]bool{
 	"create": true, "read": true, "update": true, "delete": true,
 }
 
-// seedRoots/seedMids/seedLeaves together are the full catalog seeded by
-// 009_rbac.sql. Three-way pinned: this list ↔ the migration INSERT ↔ the
+// seedRoots/seedMids/seedLeaves together are the full catalog seeded by the
+// RBAC migrations. Three-way pinned: this list ↔ the migration INSERTs ↔ the
 // testStore seed-grant restore; the integration test checks the DB side.
 var seedRoots = []string{"pithub", "pitwall", "sender"}
 
 var seedMids = []string{
 	"pithub.device", "pithub.race", "pithub.race-analyze", "pithub.market",
 	"pithub.wallet", "pithub.purchase", "pithub.review", "pithub.feedback",
-	"pithub.rbac", "pitwall.broadcast", "sender.setup",
+	"pithub.feedback-inbox", "pithub.rbac", "pitwall.broadcast", "sender.setup",
 }
 
 var seedLeaves = []string{
@@ -79,6 +80,7 @@ var seedLeaves = []string{
 	PermMarketCreate, PermMarketRead, PermMarketUpdate,
 	PermWalletRead, PermPurchaseCreate, PermReviewCreate,
 	PermFeedbackCreate, PermFeedbackRead,
+	PermFeedbackInboxRead,
 	PermRBACCreate, PermRBACRead, PermRBACUpdate, PermRBACDelete,
 	PermBroadcastCreate, PermSetupRead,
 }

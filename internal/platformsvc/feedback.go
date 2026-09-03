@@ -11,11 +11,13 @@ import (
 // feedback_body_len_chk (char_length(body) BETWEEN 1 AND 2000).
 const maxFeedbackLen = 2000
 
+const feedbackInboxLimit = 100
+
 // feedbackCategories whitelists the closed category set (mirrors the DDL's
 // feedback_category_chk).
 var feedbackCategories = map[string]bool{"bug": true, "suggestion": true, "other": true}
 
-// FeedbackEntry is one row returned to the submitting user (GET /me/feedback).
+// FeedbackEntry is a privacy-safe feedback row returned by feedback read APIs.
 type FeedbackEntry struct {
 	ID        string `json:"id"`
 	Category  string `json:"category"`
@@ -83,4 +85,34 @@ func (s *Store) ListMyFeedback(ctx context.Context, accountID string) ([]Feedbac
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// ListFeedback returns the newest feedback across all accounts without any
+// submitter identity fields. Equal timestamps are ordered by id for stability.
+func (s *Store) ListFeedback(ctx context.Context) ([]FeedbackEntry, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, category, body, status, created_at
+		FROM platform.feedback
+		ORDER BY created_at DESC, id DESC
+		LIMIT $1`,
+		feedbackInboxLimit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("platformsvc: list feedback: %w", err)
+	}
+	defer rows.Close()
+	out := []FeedbackEntry{}
+	for rows.Next() {
+		var e FeedbackEntry
+		var created time.Time
+		if err := rows.Scan(&e.ID, &e.Category, &e.Body, &e.Status, &created); err != nil {
+			return nil, fmt.Errorf("platformsvc: scan feedback inbox: %w", err)
+		}
+		e.CreatedAt = created.Format(time.RFC3339)
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("platformsvc: iterate feedback inbox: %w", err)
+	}
+	return out, nil
 }

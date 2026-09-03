@@ -48,19 +48,19 @@ func TestValidNode(t *testing.T) {
 	}
 	invalid := []string{
 		"",
-		"Pithub",                  // uppercase
-		"pithub..read",            // empty segment
-		"pithub.race.read.extra",  // depth 4
-		"pithub.race.list",        // non-CRUD action
-		"pithub.race.Read",        // uppercase action
-		"pit_hub",                 // underscore
-		"-pithub",                 // leading dash
-		"pithub-",                 // trailing dash
-		"pit--hub",                // consecutive dashes
-		".pithub",                 // leading dot
-		"pithub.",                 // trailing dot
-		strings.Repeat("a", 65),   // over max length
-		"pithub.race read",        // space
+		"Pithub",                 // uppercase
+		"pithub..read",           // empty segment
+		"pithub.race.read.extra", // depth 4
+		"pithub.race.list",       // non-CRUD action
+		"pithub.race.Read",       // uppercase action
+		"pit_hub",                // underscore
+		"-pithub",                // leading dash
+		"pithub-",                // trailing dash
+		"pit--hub",               // consecutive dashes
+		".pithub",                // leading dot
+		"pithub.",                // trailing dot
+		strings.Repeat("a", 65),  // over max length
+		"pithub.race read",       // space
 	}
 	for _, n := range invalid {
 		if ValidNode(n) {
@@ -92,8 +92,8 @@ func TestValidRoleName(t *testing.T) {
 // themselves in the catalog (grantable at any level).
 func TestSeedCatalogIntegrity(t *testing.T) {
 	nodes := AllSeededNodes()
-	if len(nodes) != 34 {
-		t.Fatalf("AllSeededNodes() has %d nodes, want 34", len(nodes))
+	if len(nodes) != 36 {
+		t.Fatalf("AllSeededNodes() has %d nodes, want 36", len(nodes))
 	}
 	seen := make(map[string]bool, len(nodes))
 	for _, n := range nodes {
@@ -122,5 +122,11 @@ func TestSeedCatalogIntegrity(t *testing.T) {
 	}
 	if len(SeedUserGrants()) != 13 {
 		t.Errorf("SeedUserGrants() has %d grants, want 13", len(SeedUserGrants()))
+	}
+	if HasPermission(SeedUserGrants(), PermFeedbackInboxRead) {
+		t.Error("default user grants must not include feedback inbox access")
+	}
+	if !HasPermission(SeedAdminGrants(), PermFeedbackInboxRead) {
+		t.Error("admin root grants must inherit feedback inbox access")
 	}
 }

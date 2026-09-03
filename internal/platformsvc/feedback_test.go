@@ -2,7 +2,9 @@ package platformsvc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -113,5 +115,86 @@ func TestFeedbackSubmitAndList(t *testing.T) {
 
 	if _, err := store.SubmitFeedback(ctx, accountA, CreateFeedbackRequest{Category: "spam", Body: "x"}); !errors.Is(err, ErrBadUpload) {
 		t.Fatalf("invalid submit err = %v, want ErrBadUpload", err)
+	}
+}
+
+func TestListFeedbackGlobalDeterministicLimitAndPrivacy(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	accountA, err := store.UpsertSteamAccount(ctx, "76561197960288901", "Inbox Alice", "https://avatar.invalid/alice")
+	if err != nil {
+		t.Fatalf("upsert account A: %v", err)
+	}
+	accountB, err := store.UpsertSteamAccount(ctx, "76561197960288902", "Inbox Bob", "https://avatar.invalid/bob")
+	if err != nil {
+		t.Fatalf("upsert account B: %v", err)
+	}
+
+	// Give every row the same timestamp so id DESC is the observable tie-breaker.
+	created := time.Date(2026, time.September, 3, 12, 34, 56, 0, time.UTC)
+	statuses := []string{"open", "in_progress", "resolved", "dismissed"}
+	for i := 1; i <= feedbackInboxLimit+2; i++ {
+		accountID := accountA
+		if i%2 == 0 {
+			accountID = accountB
+		}
+		id := fmt.Sprintf("00000000-0000-0000-0000-%012x", i)
+		if _, err := store.pool.Exec(ctx, `
+			INSERT INTO platform.feedback (id, account_id, category, body, status, created_at)
+			VALUES ($1, $2, 'bug', $3, $4, $5)`,
+			id, accountID, fmt.Sprintf("inbox entry %03d", i), statuses[i%len(statuses)], created,
+		); err != nil {
+			t.Fatalf("insert feedback %d: %v", i, err)
+		}
+	}
+
+	entries, err := store.ListFeedback(ctx)
+	if err != nil {
+		t.Fatalf("ListFeedback: %v", err)
+	}
+	if len(entries) != feedbackInboxLimit {
+		t.Fatalf("entries has %d rows, want %d", len(entries), feedbackInboxLimit)
+	}
+	seenOdd, seenEven := false, false
+	for i, entry := range entries {
+		wantN := feedbackInboxLimit + 2 - i
+		wantID := fmt.Sprintf("00000000-0000-0000-0000-%012x", wantN)
+		if entry.ID != wantID {
+			t.Fatalf("entry %d id = %q, want %q", i, entry.ID, wantID)
+		}
+		gotCreated, err := time.Parse(time.RFC3339, entry.CreatedAt)
+		if err != nil || !gotCreated.Equal(created) {
+			t.Fatalf("entry %d createdAt = %q (%v), want instant %s", i, entry.CreatedAt, err, created.Format(time.RFC3339))
+		}
+		seenOdd = seenOdd || wantN%2 == 1
+		seenEven = seenEven || wantN%2 == 0
+	}
+	if !seenOdd || !seenEven {
+		t.Fatalf("global result did not include feedback from both accounts: odd=%v even=%v", seenOdd, seenEven)
+	}
+
+	payload, err := json.Marshal(entries)
+	if err != nil {
+		t.Fatalf("marshal entries: %v", err)
+	}
+	for _, privateValue := range []string{accountA, accountB, "Inbox Alice", "Inbox Bob", "76561197960288901", "76561197960288902", "avatar.invalid"} {
+		if strings.Contains(string(payload), privateValue) {
+			t.Errorf("response contains submitter identity %q", privateValue)
+		}
+	}
+	var wire []map[string]any
+	if err := json.Unmarshal(payload, &wire); err != nil {
+		t.Fatalf("unmarshal response shape: %v", err)
+	}
+	wantKeys := map[string]bool{"id": true, "category": true, "body": true, "status": true, "createdAt": true}
+	for i, item := range wire {
+		if len(item) != len(wantKeys) {
+			t.Fatalf("entry %d keys = %v, want exactly %v", i, item, wantKeys)
+		}
+		for key := range item {
+			if !wantKeys[key] {
+				t.Fatalf("entry %d contains unexpected field %q", i, key)
+			}
+		}
 	}
 }
