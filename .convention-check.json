@@ -1,0 +1,14 @@
+{
+  "conventions": [
+    {
+      "name": "default-conventions",
+      "source": "plugin",
+      "skill": "codex-be-harness:default-conventions"
+    },
+    {
+      "name": "project",
+      "source": "project",
+      "path": "AGENTS.md"
+    }
+  ]
+}
