@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { IntercomSignalingAdapter } from '../intercom/core';
+import { isIntercomTransportReady, type IntercomSignalingAdapter } from '../intercom/core';
 import { PostRaceDebrief } from '../components/debrief/PostRaceDebrief';
 import { RaceArchiveDrawer } from '../components/races/RaceArchiveDrawer';
 import type { RaceArchiveDataSource } from '../components/races/replayArchive';
@@ -89,7 +89,9 @@ function AppShellWithIntercom({ transport, children }: { transport: IntercomSign
   return (
     <>
       {children}
-      <IntercomDock transport={transport} />
+      <div hidden={!isIntercomTransportReady(transport)}>
+        <IntercomDock transport={transport} />
+      </div>
     </>
   );
 }
