@@ -43,6 +43,12 @@ func TestCloudflareProviderOfficialEndpoints(t *testing.T) {
 		requests <- r.Method + " " + r.URL.Path + " " + string(body)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/sessions/new"):
+			if len(body) != 0 {
+				t.Errorf("new session body = %q, want empty", body)
+			}
+			if contentType := r.Header.Get("Content-Type"); contentType != "" {
+				t.Errorf("new session content type = %q, want empty", contentType)
+			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"sessionId":"provider-session-1"}`))
 		case strings.HasSuffix(r.URL.Path, "/tracks/new"):

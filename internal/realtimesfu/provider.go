@@ -142,7 +142,7 @@ func newCloudflareProvider(config Config, endpoint string, client *http.Client, 
 
 func (p *CloudflareProvider) NewSession(ctx context.Context) (Session, error) {
 	var response Session
-	if err := p.do(ctx, http.MethodPost, "sessions/new", struct{}{}, http.StatusCreated, &response); err != nil {
+	if err := p.do(ctx, http.MethodPost, "sessions/new", nil, http.StatusCreated, &response); err != nil {
 		return Session{}, err
 	}
 	if response.ErrorCode != "" || response.ErrorDescription != "" || !validIdentifier(response.SessionID, maxSessionIDBytes) {
@@ -232,16 +232,22 @@ func (p *CloudflareProvider) CloseTracks(ctx context.Context, sessionID string, 
 }
 
 func (p *CloudflareProvider) do(ctx context.Context, method, path string, body any, expectedStatus int, destination any) error {
-	encoded, err := json.Marshal(body)
-	if err != nil {
-		return ErrUpstream
+	var requestBody io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return ErrUpstream
+		}
+		requestBody = bytes.NewReader(encoded)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, p.baseURL+"/apps/"+url.PathEscape(p.appID)+"/"+path, bytes.NewReader(encoded))
+	request, err := http.NewRequestWithContext(ctx, method, p.baseURL+"/apps/"+url.PathEscape(p.appID)+"/"+path, requestBody)
 	if err != nil {
 		return ErrUpstream
 	}
 	request.Header.Set("Authorization", "Bearer "+p.appSecret)
-	request.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
 	response, err := p.client.Do(request)
 	if err != nil {
 		return ErrUpstream
