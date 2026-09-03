@@ -27,3 +27,11 @@ export function canManageRBAC(account: PlatformAccount | null): boolean {
   if (!account?.permissions) return false;
   return hasPermission(account.permissions, 'pithub.rbac.read');
 }
+
+// canViewFeedbackInbox deliberately fails closed. This is an operator-only
+// surface backed by a new API, so neither the legacy admin flag nor the older
+// self-feedback permission can safely stand in for its explicit grant.
+export function canViewFeedbackInbox(account: PlatformAccount | null): boolean {
+  if (!account?.permissions || account.banned) return false;
+  return hasPermission(account.permissions, 'pithub.feedback-inbox.read');
+}

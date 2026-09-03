@@ -3,7 +3,6 @@
 // form conventions as MarketManage.tsx's ReviewForm (busy/msg + textarea).
 import { useCallback, useEffect, useState } from 'react';
 import type { HubTheme } from '../theme';
-import { relativeTime } from '../format';
 import {
   PlatformMarket, ListingError,
   type FeedbackCategory, type PlatformFeedbackEntry,
@@ -11,6 +10,7 @@ import {
 import type { PlatformAccount } from '../data/session';
 import { SelectChip } from '../components/SelectChip';
 import type { SelectOption } from '../components/SelectChip';
+import { FeedbackEntryRow } from '../components/FeedbackEntryRow';
 
 const MONO = "'JetBrains Mono',monospace";
 
@@ -19,12 +19,6 @@ const CATEGORY_OPTIONS: SelectOption[] = [
   { value: 'suggestion', label: '제안' },
   { value: 'other', label: '기타' },
 ];
-
-const CATEGORY_LABEL: Record<FeedbackCategory, string> = {
-  bug: '버그',
-  suggestion: '제안',
-  other: '기타',
-};
 
 interface Props {
   t: HubTheme;
@@ -79,9 +73,9 @@ export function Feedback({ t, configured, account, market }: Props) {
             ) : entries.length === 0 ? (
               <div style={{ fontFamily: MONO, fontSize: 11, color: t.t3 }}>아직 보낸 의견이 없습니다.</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div role="list" aria-label="내 피드백" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {entries.map((e) => (
-                  <FeedbackRow key={e.id} t={t} entry={e} />
+                  <FeedbackEntryRow key={e.id} t={t} entry={e} />
                 ))}
               </div>
             )}
@@ -127,57 +121,6 @@ function FeedbackForm({ t, market, onSubmitted }: { t: HubTheme; market: Platfor
       </button>
     </Card>
   );
-}
-
-function FeedbackRow({ t, entry }: { t: HubTheme; entry: PlatformFeedbackEntry }) {
-  return (
-    <div style={{ padding: '10px 12px', background: t.inset, border: `1px solid ${t.line}`, borderRadius: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.05em', color: t.accInk, background: t.accSoft, border: `1px solid ${t.accBorder}`, borderRadius: 4, padding: '2px 6px' }}>
-          {CATEGORY_LABEL[entry.category] ?? entry.category}
-        </span>
-        <StatusBadge t={t} status={entry.status} />
-        <span style={{ flex: 1 }} />
-        <span style={{ fontFamily: MONO, fontSize: 10, color: t.t3 }}>{relativeTime(Date.parse(entry.createdAt), Date.now())}</span>
-      </div>
-      <div style={{ fontSize: 12.5, color: t.t2, whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{entry.body}</div>
-    </div>
-  );
-}
-
-function StatusBadge({ t, status }: { t: HubTheme; status: string }) {
-  const style = statusStyle(t, status);
-  const label = STATUS_LABEL[status] ?? status;
-  return (
-    <span style={{
-      fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: '.05em',
-      color: style.fg, background: style.bg, border: `1px solid ${style.border}`,
-      borderRadius: 4, padding: '2px 6px',
-    }}>
-      {label}
-    </span>
-  );
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  open: '접수됨',
-  in_progress: '처리 중',
-  resolved: '해결됨',
-  dismissed: '반려됨',
-};
-
-function statusStyle(t: HubTheme, status: string): { fg: string; bg: string; border: string } {
-  switch (status) {
-    case 'in_progress':
-      return { fg: t.accInk, bg: t.accSoft, border: t.accSoft };
-    case 'resolved':
-      return { fg: t.onAcc, bg: t.ok, border: t.ok };
-    case 'dismissed':
-      return { fg: t.t3, bg: t.panel2, border: t.line2 };
-    case 'open':
-    default:
-      return { fg: t.t2, bg: t.panel2, border: t.line2 };
-  }
 }
 
 function Card({ t, children, style }: { t: HubTheme; children: React.ReactNode; style?: React.CSSProperties }) {

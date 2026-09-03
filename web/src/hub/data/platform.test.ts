@@ -252,6 +252,28 @@ describe('feedback', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(401)));
     await expect(mkt.listMyFeedback()).rejects.toMatchObject({ reason: 'unauthorized' });
   });
+
+  it('listFeedbackInbox uses no-store and returns the identity-free response rows', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const rows = [{ id: 'F-1', category: 'suggestion', body: 'x', status: 'in_progress', createdAt: '2026-07-20T00:00:00Z' }];
+    const fetchMock = vi.fn().mockResolvedValue(res(200, rows));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(mkt.listFeedbackInbox()).resolves.toEqual(rows);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/feedback-inbox');
+    expect(init.cache).toBe('no-store');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+  });
+
+  it.each([
+    [401, 'unauthorized'],
+    [403, 'forbidden'],
+    [500, 'network'],
+  ] as const)('listFeedbackInbox maps %i explicitly to %s', async (status, reason) => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(status)));
+    await expect(mkt.listFeedbackInbox()).rejects.toMatchObject({ reason });
+  });
 });
 
 describe('analysis reports', () => {

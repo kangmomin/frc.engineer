@@ -190,13 +190,14 @@ export interface PlatformPitLossRow {
 }
 
 export type FeedbackCategory = 'bug' | 'suggestion' | 'other';
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'dismissed';
 
 // One of the caller's own feedback rows (GET /me/feedback).
 export interface PlatformFeedbackEntry {
   id: string;
   category: FeedbackCategory;
   body: string;
-  status: string; // 'open' | 'in_progress' | 'resolved' | 'dismissed'
+  status: FeedbackStatus;
   createdAt: string;
 }
 
@@ -521,6 +522,22 @@ export class PlatformMarket {
 
   async listMyFeedback(): Promise<PlatformFeedbackEntry[]> {
     return okJson(await pfetch('/me/feedback'), '내 의견');
+  }
+
+  // Inbox rows intentionally carry no submitter identity. Keep the status
+  // mapping explicit: callers need distinct login, authorization, and retry UI.
+  async listFeedbackInbox(): Promise<PlatformFeedbackEntry[]> {
+    const res = await pfetch('/feedback-inbox', { cache: 'no-store' });
+    switch (res.status) {
+      case 200:
+        return (await res.json()) as PlatformFeedbackEntry[];
+      case 401:
+        throw new ListingError('unauthorized', '로그인이 필요합니다');
+      case 403:
+        throw new ListingError('forbidden', '피드백 인박스를 볼 권한이 없습니다');
+      default:
+        throw new ListingError('network', `피드백 인박스 조회 실패 (${res.status})`);
+    }
   }
 
   // --- Analysis reports (admin 전용 — 서버가 env 허용목록으로 게이트) ---

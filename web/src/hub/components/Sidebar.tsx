@@ -1,15 +1,15 @@
 // Hub sidebar — logo, nav, user footer (hub.dc.html:29-48).
 import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
-import { canManageRBAC } from '../data/permissions';
+import { canManageRBAC, canViewFeedbackInbox } from '../data/permissions';
 
-export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'access' | 'driver-profile';
+export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'feedback-inbox' | 'access' | 'driver-profile';
 
 const MONO = "'JetBrains Mono',monospace";
 
 // ACCESS는 rbac 권한이 있을 때만 노출되므로 목록 끝에 두어 앞 항목의 번호가
 // 노출 여부에 따라 흔들리지 않게 한다. 노출은 편의일 뿐 — 경계는 서버 게이트다.
-const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean }[] = [
+const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean; needsFeedbackInbox?: boolean }[] = [
   { id: 'guide', label: 'GUIDE', idx: '00' },
   { id: 'overview', label: 'OVERVIEW', idx: '01' },
   { id: 'rankings', label: 'RANKINGS', idx: '02' },
@@ -18,7 +18,8 @@ const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean }[] 
   { id: 'analysis', label: 'ANALYSIS', idx: '05' },
   { id: 'profile', label: 'PROFILE', idx: '06' },
   { id: 'feedback', label: 'FEEDBACK', idx: '07' },
-  { id: 'access', label: 'ACCESS', idx: '08', needsRBAC: true },
+  { id: 'feedback-inbox', label: 'FEEDBACK INBOX', idx: '08', needsFeedbackInbox: true },
+  { id: 'access', label: 'ACCESS', idx: '09', needsRBAC: true },
 ];
 
 interface Props {
@@ -52,7 +53,10 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account }: Props) {
       </div>
 
       <nav style={{ padding: '14px 0', flex: 1, overflowY: 'auto' }}>
-        {NAV.filter((item) => !item.needsRBAC || canManageRBAC(account)).map((item) => {
+        {NAV.filter((item) =>
+          (!item.needsRBAC || canManageRBAC(account))
+          && (!item.needsFeedbackInbox || canViewFeedbackInbox(account)),
+        ).map((item) => {
           const on = active === item.id;
           return (
             <button

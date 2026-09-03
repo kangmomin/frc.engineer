@@ -19,6 +19,7 @@ import { Rankings } from './screens/Rankings';
 import { MarketManage } from './screens/MarketManage';
 import { Profile } from './screens/Profile';
 import { Feedback } from './screens/Feedback';
+import { FeedbackInbox } from './screens/FeedbackInbox';
 import { Analysis } from './screens/Analysis';
 import { Access } from './screens/Access';
 import { Guide } from './screens/Guide';
@@ -31,7 +32,7 @@ import {
   captureTokenFromFragment, fetchMe, beginSteamLogin, platformLogout, createPairingCode, getSessionToken,
 } from './data/session';
 import type { PlatformAccount } from './data/session';
-import { canViewAnalysis, canManageRBAC } from './data/permissions';
+import { canViewAnalysis, canManageRBAC, canViewFeedbackInbox } from './data/permissions';
 
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
 
@@ -257,6 +258,19 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             <Feedback t={t} configured={platformConfigured} account={platformAccount} market={platformMkt} />
           )}
 
+          {/* FEEDBACK INBOX: Sidebar visibility is only a convenience. Recheck
+              the explicit, banned-aware grant before mounting the data screen. */}
+          {active === 'feedback-inbox' && (
+            platformAccount && canViewFeedbackInbox(platformAccount) ? (
+              <FeedbackInbox
+                key={`${platformAccount.id}:${platformAccount.permissions?.join('\u0001') ?? ''}`}
+                t={t} market={platformMkt} account={platformAccount}
+              />
+            ) : (
+              <Placeholder t={t} title="FEEDBACK INBOX" note="피드백 인박스는 별도 열람 권한이 있는 계정에서만 열립니다." />
+            )
+          )}
+
           {active === 'setups' && (
             <Placeholder t={t} title={PLACEHOLDER.setups.title} note={PLACEHOLDER.setups.note} />
           )}
@@ -316,6 +330,7 @@ function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
     case 'analysis': return 'ANALYSIS';
     case 'profile': return 'PROFILE';
     case 'feedback': return 'FEEDBACK';
+    case 'feedback-inbox': return 'FEEDBACK INBOX';
     case 'access': return 'ACCESS · 권한 관리';
     case 'driver-profile': return 'DRIVER PROFILE';
   }

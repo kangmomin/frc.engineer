@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canManageRBAC, canViewAnalysis, hasPermission } from './permissions';
+import { canManageRBAC, canViewAnalysis, canViewFeedbackInbox, hasPermission } from './permissions';
 import type { PlatformAccount } from './session';
 
 // internal/rbac/rbac_test.go의 테이블과 동형 — Go/TS 매칭 규칙이 갈라지면 여기서 잡힌다.
@@ -77,5 +77,28 @@ describe('canManageRBAC', () => {
   // admin 불리언만 보고 화면을 열면 전부 404가 되는 빈 화면이 된다.
   it('permissions 부재(구서버) → admin이어도 false', () => {
     expect(canManageRBAC({ ...base, admin: true })).toBe(false);
+  });
+});
+
+describe('canViewFeedbackInbox', () => {
+  const base: PlatformAccount = {
+    id: 'a', steamId64: '7', persona: 'P', avatarUrl: '', kind: 'user',
+    verified: false, banned: false, createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  it('requires the explicit feedback-inbox permission', () => {
+    expect(canViewFeedbackInbox({ ...base, permissions: ['pithub.feedback-inbox.read'] })).toBe(true);
+    expect(canViewFeedbackInbox({ ...base, permissions: ['pithub.feedback-inbox'] })).toBe(true);
+    expect(canViewFeedbackInbox({ ...base, permissions: ['pithub'] })).toBe(true);
+  });
+
+  it('fails closed for missing permissions, legacy admin, and self-feedback permission', () => {
+    expect(canViewFeedbackInbox(base)).toBe(false);
+    expect(canViewFeedbackInbox({ ...base, admin: true })).toBe(false);
+    expect(canViewFeedbackInbox({ ...base, admin: true, permissions: ['pithub.feedback.read'] })).toBe(false);
+  });
+
+  it('denies banned accounts even when an ancestor grant covers the inbox', () => {
+    expect(canViewFeedbackInbox({ ...base, banned: true, permissions: ['pithub'] })).toBe(false);
   });
 });
