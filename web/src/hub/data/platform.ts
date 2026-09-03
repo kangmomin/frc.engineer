@@ -53,6 +53,45 @@ export interface PlatformSearchResponse {
   drivers: PlatformDriverSearchHit[];
 }
 
+export interface PlatformDriverProfileTimeTrial {
+  rank: number;
+  participants: number;
+  lapMs: number;
+  s1Ms: number;
+  s2Ms: number;
+  s3Ms: number;
+}
+
+export interface PlatformDriverProfileRacePace {
+  rank: number;
+  participants: number;
+  avgMs: number;
+  laps: number;
+  consistency: number;
+  tyre: string;
+}
+
+export interface PlatformDriverProfileTrack {
+  trackId: number;
+  trackName: string;
+  gameFormat: string;
+  timeTrial: PlatformDriverProfileTimeTrial;
+  racePace: PlatformDriverProfileRacePace | null;
+}
+
+export interface PlatformDriverProfile {
+  accountId: string;
+  persona: string;
+  avatarUrl: string;
+  verified: boolean;
+  summary: {
+    verifiedRaces: number;
+    validLaps: number;
+    trackFormats: number;
+  };
+  tracks: PlatformDriverProfileTrack[];
+}
+
 // Owner detail: a card plus the revealed product. payload is the setup params
 // object (setup) or the stint array (strategy); present only when owned.
 export interface PlatformSetupParam {
@@ -204,6 +243,7 @@ export interface PlatformAccountRoles {
 // Korean message without re-deriving it from a raw status code.
 export type ListingErrorReason =
   | 'unauthorized'
+  | 'forbidden'
   | 'conflict'
   | 'not-sellable'
   | 'not-found'
@@ -231,7 +271,10 @@ async function pfetch(path: string, init?: RequestInit): Promise<Response> {
       ...init,
       headers: { ...(init?.headers ?? {}), Authorization: `Bearer ${token}` },
     });
-  } catch {
+  } catch (error: unknown) {
+    if (typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError') {
+      throw error;
+    }
     throw new ListingError('network', '네트워크 오류');
   }
 }
@@ -279,6 +322,22 @@ async function okJson<T>(res: Response, what: string): Promise<T> {
 
 // PlatformMarket is a thin, stateless client. Callers own loading/error UI state.
 export class PlatformMarket {
+  async getDriverProfile(accountId: string, signal?: AbortSignal): Promise<PlatformDriverProfile> {
+    const res = await pfetch(`/profiles/${encodeURIComponent(accountId)}`, { cache: 'no-store', signal });
+    switch (res.status) {
+      case 200:
+        return (await res.json()) as PlatformDriverProfile;
+      case 401:
+        throw new ListingError('unauthorized', '로그인이 필요합니다');
+      case 403:
+        throw new ListingError('forbidden', '프로필을 볼 권한이 없습니다');
+      case 404:
+        throw new ListingError('not-found', '드라이버 프로필을 찾을 수 없습니다');
+      default:
+        throw new ListingError('network', `프로필 조회 실패 (${res.status})`);
+    }
+  }
+
   // --- Leaderboards (public; attach viewer token for the `you` highlight) ---
 
   async leaderboardTT(trackId: number, format: string): Promise<PlatformTTRow[]> {

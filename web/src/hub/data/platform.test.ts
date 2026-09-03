@@ -303,3 +303,46 @@ describe('analysis reports', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('driver profile', () => {
+  it('does not fetch without a session token', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(mkt.getDriverProfile('driver-1')).rejects.toMatchObject({ reason: 'unauthorized' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the encoded authenticated no-store endpoint and forwards cancellation', async () => {
+    vi.stubGlobal('window', fakeWindow('tok_1'));
+    const body = { accountId: 'driver/1', persona: 'Driver', avatarUrl: '', verified: true, summary: { verifiedRaces: 0, validLaps: 0, trackFormats: 0 }, tracks: [] };
+    const fetchMock = vi.fn().mockResolvedValue(res(200, body));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    await expect(mkt.getDriverProfile('driver/1', controller.signal)).resolves.toEqual(body);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/profiles/driver%2F1');
+    expect(init.headers).toEqual({ Authorization: 'Bearer tok_1' });
+    expect(init.cache).toBe('no-store');
+    expect(init.signal).toBe(controller.signal);
+  });
+
+  it('preserves AbortError from authenticated fetches', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
+
+    await expect(mkt.getDriverProfile('driver-1')).rejects.toBe(abort);
+  });
+
+  for (const [status, reason] of [[401, 'unauthorized'], [403, 'forbidden'], [404, 'not-found'], [500, 'network']] as const) {
+    it(`maps ${status} to ${reason}`, async () => {
+      vi.stubGlobal('window', fakeWindow('tok'));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(status)));
+
+      await expect(mkt.getDriverProfile('driver-1')).rejects.toMatchObject({ reason });
+    });
+  }
+});

@@ -22,6 +22,7 @@ import { Feedback } from './screens/Feedback';
 import { Analysis } from './screens/Analysis';
 import { Access } from './screens/Access';
 import { Guide } from './screens/Guide';
+import { DriverProfile } from './screens/DriverProfile';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket, PlatformSearch } from './data/platform';
 import type { PlatformLedgerEntry, PlatformListingCard } from './data/platform';
@@ -54,6 +55,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const platformMkt = useMemo(() => new PlatformMarket(), []);
   const platformSearch = useMemo(() => new PlatformSearch(), []);
   const [highlightedAccountId, setHighlightedAccountId] = useState<string | null>(null);
+  const [selectedDriverAccountId, setSelectedDriverAccountId] = useState<string | null>(null);
   const [searchBuyer, setSearchBuyer] = useState<PlatformListingCard | null>(null);
   // A late default-context response must not undo a track chosen by the user
   // (including a global-search handoff). The request generation also isolates
@@ -168,10 +170,9 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
       return;
     }
     if (result.type === 'driver') {
-      setUserTrackContext({ trackId: result.driver.trackId, format: result.driver.gameFormat });
-      setRankTab('tt');
-      setHighlightedAccountId(result.driver.accountId);
-      setActive('rankings');
+      setHighlightedAccountId(null);
+      setSelectedDriverAccountId(result.driver.accountId);
+      setActive('driver-profile');
       return;
     }
     setHighlightedAccountId(null);
@@ -244,6 +245,14 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             />
           )}
 
+          {active === 'driver-profile' && selectedDriverAccountId && (
+            <DriverProfile
+              t={t} configured={platformConfigured} account={platformAccount}
+              platformLoading={platformLoading} onLogin={beginSteamLogin}
+              client={platformMkt} accountId={selectedDriverAccountId}
+            />
+          )}
+
           {active === 'feedback' && (
             <Feedback t={t} configured={platformConfigured} account={platformAccount} market={platformMkt} />
           )}
@@ -308,6 +317,7 @@ function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
     case 'profile': return 'PROFILE';
     case 'feedback': return 'FEEDBACK';
     case 'access': return 'ACCESS · 권한 관리';
+    case 'driver-profile': return 'DRIVER PROFILE';
   }
 }
 

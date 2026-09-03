@@ -3,7 +3,7 @@ import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
 import { canManageRBAC } from '../data/permissions';
 
-export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'access';
+export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'access' | 'driver-profile';
 
 const MONO = "'JetBrains Mono',monospace";
 
