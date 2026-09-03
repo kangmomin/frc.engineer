@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canReceiveParticipantAudio,
   computeSourceGates,
   isPrivateReadyRequired,
   isSnapshotNewer,
@@ -49,5 +50,13 @@ describe('fail-closed intercom gates', () => {
   it('accepts revisions monotonically', () => {
     expect(isSnapshotNewer(snapshot, { ...snapshot, revision: 9 })).toBe(true);
     expect(isSnapshotNewer(snapshot, { ...snapshot, revision: 8 })).toBe(false);
+  });
+
+  it('exposes volume only for participants whose audio can be subscribed', () => {
+    expect(canReceiveParticipantAudio('driver', 'd', snapshot, 'e')).toBe(true);
+    expect(canReceiveParticipantAudio('driver', 'd', snapshot, 'c')).toBe(true);
+    expect(canReceiveParticipantAudio('driver', 'd', snapshot, 'd')).toBe(false);
+    expect(canReceiveParticipantAudio('engineer', 'e', snapshot, 'd')).toBe(true);
+    expect(canReceiveParticipantAudio('chief', 'c', snapshot, 'e')).toBe(true);
   });
 });

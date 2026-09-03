@@ -73,6 +73,29 @@ export interface RemoteTrackRoute {
   targetDriverKey?: string;
 }
 
+/** Whether the server topology can expose any remote audio track from `remoteId` to this member. */
+export function canReceiveParticipantAudio(
+  localRole: IntercomRole,
+  localParticipantId: string,
+  snapshot: IntercomSnapshot | null,
+  remoteId: string,
+): boolean {
+  if (!snapshot || localParticipantId === remoteId) return false;
+  const self = selfParticipant(snapshot, localParticipantId);
+  const remote = selfParticipant(snapshot, remoteId);
+  if (!self?.online || !remote?.online) return false;
+  if (localRole === 'driver') {
+    return remote.role === 'chief'
+      || (remote.role === 'engineer' && remote.assignmentDriverKey === self.driverKey);
+  }
+  if (localRole === 'engineer') {
+    return remote.role === 'chief'
+      || remote.role === 'engineer'
+      || (remote.role === 'driver' && remote.driverKey === self.assignmentDriverKey);
+  }
+  return remote.role === 'engineer' || remote.role === 'driver';
+}
+
 export function shouldMuteRemoteRoute(
   localRole: IntercomRole,
   localParticipantId: string,

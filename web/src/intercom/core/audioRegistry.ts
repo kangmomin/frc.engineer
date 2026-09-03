@@ -15,6 +15,7 @@ interface SinkGateContext {
 
 export class RemoteAudioRegistry {
   private entries = new Map<string, RemoteAudioEntry>();
+  private participantVolumes = new Map<string, number>();
   private gateContext: SinkGateContext | null = null;
   private unlocked = false;
   private automaticAudibleAttempted = false;
@@ -30,11 +31,27 @@ export class RemoteAudioRegistry {
     return this.blocked;
   }
 
+  getParticipantVolume(participantId: string): number {
+    return this.participantVolumes.get(participantId) ?? 1;
+  }
+
+  setParticipantVolume(participantId: string, volume: number): number {
+    const current = this.getParticipantVolume(participantId);
+    const normalized = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : current;
+    if (normalized === 1) this.participantVolumes.delete(participantId);
+    else this.participantVolumes.set(participantId, normalized);
+    for (const entry of this.entries.values()) {
+      if (entry.route.participantId === participantId) entry.element.volume = normalized;
+    }
+    return normalized;
+  }
+
   attach(route: RemoteTrackRoute, track: MediaStreamTrack): void {
     this.remove(route.trackKey);
     const element = document.createElement('audio');
     element.autoplay = true;
     element.muted = true;
+    element.volume = this.getParticipantVolume(route.participantId);
     element.setAttribute('playsinline', '');
     element.dataset.intercomTrackKey = route.trackKey;
     element.style.display = 'none';

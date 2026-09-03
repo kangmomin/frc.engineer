@@ -287,6 +287,14 @@ export class IntercomRuntime {
     return this.audio.enableAudio();
   }
 
+  getParticipantVolume(participantId: string): number {
+    return this.audio.remoteAudio.getParticipantVolume(participantId);
+  }
+
+  setParticipantVolume(participantId: string, volume: number): number {
+    return this.audio.remoteAudio.setParticipantVolume(participantId, volume);
+  }
+
   close(): void {
     ++this.mediaOperation;
     this.failClosed();

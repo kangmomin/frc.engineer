@@ -1,0 +1,77 @@
+.driverIntercomHelp {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  font-family: Inter, sans-serif;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.driverIntercomHelpButton {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(132, 147, 150, 0.48);
+  border-radius: 50%;
+  color: #aebabe;
+  background: #171a1d;
+  font: 700 10px/16px Inter, sans-serif;
+  cursor: help;
+}
+
+.driverIntercomHelpButton:focus-visible {
+  outline: 2px solid #00e5ff;
+  outline-offset: 2px;
+}
+
+.driverIntercomHelpText {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 7px);
+  z-index: 30;
+  width: min(280px, 70vw);
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 5px;
+  color: #dbe4e7;
+  background: #111417;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 10px;
+  line-height: 1.5;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.driverIntercomHelp:hover .driverIntercomHelpText,
+.driverIntercomHelp:focus-within .driverIntercomHelpText {
+  visibility: visible;
+  opacity: 1;
+}
+
+.driverIntercomVolume {
+  display: grid;
+  grid-template-columns: auto minmax(100px, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.driverIntercomVolumeLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.driverIntercomVolume input {
+  width: 100%;
+  accent-color: #00e5ff;
+}
+
+.driverIntercomVolume output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

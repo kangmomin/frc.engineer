@@ -1,5 +1,6 @@
-import { useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import type { IntercomRole, IntercomSignalingAdapter } from '../../intercom/core';
+import { useId, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { canReceiveParticipantAudio, type IntercomRole, type IntercomSignalingAdapter } from '../../intercom/core';
+import { INTERCOM_HELP } from '../../intercom/help';
 import { useEngineerIntercom } from '../../hooks/useEngineerIntercom';
 import styles from './IntercomDock.module.css';
 
@@ -16,6 +17,7 @@ export function IntercomDock({ transport }: Props) {
   const [chiefCode, setChiefCode] = useState('');
   const [role, setRole] = useState<Extract<IntercomRole, 'engineer' | 'chief'>>('engineer');
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('frc_intercom_device_id') || '');
+  const [, renderVolume] = useState(0);
   const drivers = useMemo(
     () => state.snapshot?.participants.filter((participant) => participant.role === 'driver' && participant.online) ?? [],
     [state.snapshot],
@@ -70,16 +72,18 @@ export function IntercomDock({ transport }: Props) {
                     <option value="chief">Chief engineer</option>
                   </select>
                 </label>
-                <label className={styles.field}>Group code
+                <div className={styles.field}>
+                  <span className={styles.labelRow}>Group code <HelpTag label="Group code" text={INTERCOM_HELP.groupCode} /></span>
                   <input maxLength={16} inputMode="numeric" value={groupCode} onChange={(event) => setGroupCode(event.target.value)} />
-                </label>
+                </div>
                 <label className={styles.field}>Password
                   <input type="password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} />
                 </label>
                 {role === 'chief' ? (
-                  <label className={styles.field}>Chief code
+                  <div className={styles.field}>
+                    <span className={styles.labelRow}>Chief code <HelpTag label="Chief code" text={INTERCOM_HELP.chiefCode} /></span>
                     <input type="password" maxLength={32} value={chiefCode} onChange={(event) => setChiefCode(event.target.value)} />
-                  </label>
+                  </div>
                 ) : null}
               </div>
               <button
@@ -94,26 +98,35 @@ export function IntercomDock({ transport }: Props) {
           ) : (
             <>
               <div className={styles.controls}>
-                <button className={`${styles.button} ${state.busEnabled ? styles.active : ''}`} onClick={() => runtime.setBusEnabled(!state.busEnabled)}>
-                  Engineer bus {state.busEnabled ? 'ON' : 'MUTED'}
-                </button>
-                <button className={`${styles.button} ${state.locallyMuted ? styles.danger : ''}`} onClick={() => runtime.setLocalMuted(!state.locallyMuted)}>
-                  Mic {state.locallyMuted ? 'MUTED' : 'LIVE'}
-                </button>
+                <span className={styles.controlWithHelp}>
+                  <button className={`${styles.button} ${state.busEnabled ? styles.active : ''}`} onClick={() => runtime.setBusEnabled(!state.busEnabled)}>
+                    Engineer bus {state.busEnabled ? 'ON' : 'MUTED'}
+                  </button>
+                  <HelpTag label="Engineer bus" text={state.role === 'chief' ? INTERCOM_HELP.chiefBus : INTERCOM_HELP.engineerBus} />
+                </span>
+                <span className={styles.controlWithHelp}>
+                  <button className={`${styles.button} ${state.locallyMuted ? styles.danger : ''}`} onClick={() => runtime.setLocalMuted(!state.locallyMuted)}>
+                    Mic {state.locallyMuted ? 'MUTED' : 'LIVE'}
+                  </button>
+                  <HelpTag label="Mic" text={INTERCOM_HELP.localMic} />
+                </span>
                 <button className={styles.button} onClick={() => void runtime.leave()}>Leave</button>
               </div>
 
               {state.role === 'engineer' ? (
-                <button
-                  className={`${styles.button} ${styles.ptt} ${state.ptt ? styles.pttDown : ''}`}
-                  disabled={state.locallyMuted || state.snapshot?.participants.find((p) => p.id === state.participantId)?.forcedMuted}
-                  onPointerDown={onPTTDown}
-                  onPointerUp={onPTTRelease}
-                  onPointerCancel={onPTTRelease}
-                  onLostPointerCapture={() => runtime.setPTT(false)}
-                >
-                  {state.ptt ? 'TRANSMITTING TO DRIVER' : 'HOLD TO TALK / SPACE'}
-                </button>
+                <div className={styles.pttRow}>
+                  <button
+                    className={`${styles.button} ${styles.ptt} ${state.ptt ? styles.pttDown : ''}`}
+                    disabled={state.locallyMuted || state.snapshot?.participants.find((p) => p.id === state.participantId)?.forcedMuted}
+                    onPointerDown={onPTTDown}
+                    onPointerUp={onPTTRelease}
+                    onPointerCancel={onPTTRelease}
+                    onLostPointerCapture={() => runtime.setPTT(false)}
+                  >
+                    {state.ptt ? 'TRANSMITTING TO DRIVER' : 'HOLD TO TALK / SPACE'}
+                  </button>
+                  <HelpTag label="Push to talk" text={INTERCOM_HELP.engineerPTT} />
+                </div>
               ) : null}
 
               {state.role === 'chief' ? (
@@ -129,11 +142,14 @@ export function IntercomDock({ transport }: Props) {
                   >
                     {privateSession ? `PRIVATE ${privateSession.phase.toUpperCase()}` : 'START PRIVATE'}
                   </button>
+                  <HelpTag label="Private call" text={INTERCOM_HELP.chiefPrivate} />
                 </div>
               ) : null}
 
-              <label className={styles.field}>Microphone
+              <div className={styles.field}>
+                <span className={styles.labelRow}>Microphone <HelpTag label="Microphone" text={INTERCOM_HELP.microphone} /></span>
                 <select
+                  aria-label="Microphone"
                   value={deviceId}
                   onChange={(event) => {
                     const next = event.target.value;
@@ -145,17 +161,21 @@ export function IntercomDock({ transport }: Props) {
                   <option value="">System default</option>
                   {devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || 'Microphone'}</option>)}
                 </select>
-              </label>
+              </div>
               <div className={styles.controls}>
                 {(state.microphoneStatus === 'denied' || state.mediaStatus === 'failed') ? (
                   <button className={styles.button} onClick={() => void runtime.retryMicrophone(deviceId)}>Retry microphone</button>
                 ) : null}
                 {state.autoplayBlocked ? (
-                  <button className={`${styles.button} ${styles.primary}`} onClick={() => void runtime.enableAudio()}>Enable audio</button>
+                  <span className={styles.controlWithHelp}>
+                    <button className={`${styles.button} ${styles.primary}`} onClick={() => void runtime.enableAudio()}>Enable audio</button>
+                    <HelpTag label="Enable audio" text={INTERCOM_HELP.enableAudio} />
+                  </span>
                 ) : null}
               </div>
 
               <div className={styles.participants}>
+                <div className={styles.participantsTitle}>Participants <HelpTag label="Participant routes" text={INTERCOM_HELP.participantRoutes} /></div>
                 {(state.snapshot?.participants ?? []).map((participant) => (
                   <div className={styles.participant} key={participant.id}>
                     <div className={styles.participantHead}>
@@ -172,6 +192,24 @@ export function IntercomDock({ transport }: Props) {
                         })}
                       </div>
                     ) : null}
+                    {state.role && canReceiveParticipantAudio(state.role, state.participantId, state.snapshot, participant.id) ? (
+                      <div className={styles.volumeControl}>
+                        <span className={styles.labelRow}>Volume <HelpTag label={`${participant.displayName} volume`} text={INTERCOM_HELP.receiveVolume} /></span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={Math.round(runtime.getParticipantVolume(participant.id) * 100)}
+                          aria-label={`${participant.displayName} receive volume`}
+                          onChange={(event) => {
+                            runtime.setParticipantVolume(participant.id, Number(event.target.value) / 100);
+                            renderVolume((revision) => revision + 1);
+                          }}
+                        />
+                        <output>{Math.round(runtime.getParticipantVolume(participant.id) * 100)}%</output>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -181,5 +219,15 @@ export function IntercomDock({ transport }: Props) {
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function HelpTag({ label, text }: { label: string; text: string }) {
+  const tooltipId = useId();
+  return (
+    <span className={styles.helpTag}>
+      <button type="button" className={styles.helpButton} aria-label={`${label} 도움말`} aria-describedby={tooltipId} title={text}>?</button>
+      <span id={tooltipId} role="tooltip" className={styles.helpText}>{text}</span>
+    </span>
   );
 }

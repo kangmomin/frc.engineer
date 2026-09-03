@@ -4,6 +4,7 @@ import { RemoteAudioRegistry, type IntercomSnapshot, type RemoteTrackRoute } fro
 interface FakeAudioElement {
   autoplay: boolean;
   muted: boolean;
+  volume: number;
   dataset: Record<string, string>;
   style: Record<string, string>;
   srcObject: unknown;
@@ -51,6 +52,7 @@ function installAudioHarness() {
       const element: FakeAudioElement = {
         autoplay: false,
         muted: false,
+        volume: 1,
         dataset: {},
         style: {},
         srcObject: null,
@@ -199,5 +201,59 @@ describe('authoritative remote audio playback', () => {
 
     registry.attach({ ...audibleRoute, trackKey: 'late:bus' }, track());
     expect(elements[1].muted).toBe(true);
+  });
+
+  it('applies participant volume to every matching track without changing authority mute', () => {
+    const { elements } = installAudioHarness();
+    const registry = new RemoteAudioRegistry();
+    registry.attach(audibleRoute, track());
+    registry.attach({ ...audibleRoute, trackKey: 'engineer:radio', class: 'driver_radio' }, track());
+    registry.attach({ ...audibleRoute, trackKey: 'chief:bus', participantId: 'chief' }, track());
+    const mutedBefore = elements.map((element) => element.muted);
+
+    expect(registry.setParticipantVolume('engineer', 0.35)).toBe(0.35);
+    expect(elements.map((element) => element.volume)).toEqual([0.35, 0.35, 1]);
+    expect(elements.map((element) => element.muted)).toEqual(mutedBefore);
+  });
+
+  it('clamps finite volume and ignores non-finite updates', () => {
+    const { elements } = installAudioHarness();
+    const registry = new RemoteAudioRegistry();
+    registry.attach(audibleRoute, track());
+
+    expect(registry.setParticipantVolume('engineer', 2)).toBe(1);
+    expect(elements[0].volume).toBe(1);
+    expect(registry.setParticipantVolume('engineer', -1)).toBe(0);
+    expect(elements[0].volume).toBe(0);
+    expect(registry.setParticipantVolume('engineer', Number.NaN)).toBe(0);
+    expect(elements[0].volume).toBe(0);
+  });
+
+  it('retains participant volume across replacement and SFU registry clear', () => {
+    const { elements } = installAudioHarness();
+    const registry = new RemoteAudioRegistry();
+    registry.setParticipantVolume('engineer', 0.42);
+    registry.attach(audibleRoute, track());
+    registry.attach(audibleRoute, track());
+    expect(elements[0].remove).toHaveBeenCalledTimes(1);
+    expect(elements[1].volume).toBe(0.42);
+
+    registry.clear();
+    registry.attach({ ...audibleRoute, trackKey: 'engineer:new-bus' }, track());
+    expect(elements[2].volume).toBe(0.42);
+  });
+
+  it('keeps volume independent from later sink gate changes', () => {
+    const { elements } = installAudioHarness();
+    const registry = new RemoteAudioRegistry();
+    registry.setParticipantVolume('engineer', 0);
+    registry.attach(audibleRoute, track());
+    registry.applySinkGates('driver', 'driver', snapshot);
+    expect(elements[0].volume).toBe(0);
+    expect(elements[0].muted).toBe(false);
+
+    registry.muteAll();
+    expect(elements[0].volume).toBe(0);
+    expect(elements[0].muted).toBe(true);
   });
 });

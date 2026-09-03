@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import type { IntercomRuntime, IntercomRuntimeState } from '../../../web/src/intercom/core';
+import { useId, useState } from 'react';
+import { canReceiveParticipantAudio, type IntercomRuntime, type IntercomRuntimeState } from '../../../web/src/intercom/core';
+import { INTERCOM_HELP } from '../../../web/src/intercom/help';
+import './DriverIntercomPanel.css';
 
 interface Props {
   runtime: IntercomRuntime;
@@ -23,6 +25,7 @@ export function DriverIntercomPanel({ runtime, state, devices, theme: P }: Props
   const [password, setPassword] = useState('');
   const [groupCode, setGroupCode] = useState('');
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('frc_intercom_device_id') || '');
+  const [, renderVolume] = useState(0);
   const joined = state.status === 'joined';
   const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: 'none' };
   const savePrefs = () => {
@@ -47,9 +50,10 @@ export function DriverIntercomPanel({ runtime, state, devices, theme: P }: Props
             <label style={{ display: 'grid', gap: 6, color: P.muted, fontSize: 10 }}>Team password
               <input type="password" value={password} maxLength={128} onChange={(event) => setPassword(event.target.value)} style={inputStyle} />
             </label>
-            <label style={{ display: 'grid', gap: 6, color: P.muted, fontSize: 10 }}>Existing group code
+            <div style={{ display: 'grid', gap: 6, color: P.muted, fontSize: 10 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>Existing group code <HelpTag label="Group code" text={INTERCOM_HELP.groupCode} /></span>
               <input value={groupCode} maxLength={16} onChange={(event) => setGroupCode(event.target.value)} style={inputStyle} placeholder="Leave blank to create" />
-            </label>
+            </div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <button
@@ -74,20 +78,30 @@ export function DriverIntercomPanel({ runtime, state, devices, theme: P }: Props
       ) : (
         <>
           <div style={{ padding: 12, borderRadius: 4, background: P.surface2, border: `1px solid ${P.border}`, display: 'grid', gap: 6 }}>
-            <div style={{ fontFamily: P.mono, color: P.accent, fontSize: 13 }}>GROUP {state.groupCode}</div>
-            {state.chiefCode ? <div style={{ fontFamily: P.mono, color: P.accent2, fontSize: 12 }}>CHIEF CODE {state.chiefCode}</div> : null}
+            <div style={{ fontFamily: P.mono, color: P.accent, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>GROUP {state.groupCode} <HelpTag label="Group code" text={INTERCOM_HELP.groupCode} /></div>
+            {state.chiefCode ? <div style={{ fontFamily: P.mono, color: P.accent2, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>CHIEF CODE {state.chiefCode} <HelpTag label="Chief code" text={INTERCOM_HELP.chiefCode} /></div> : null}
             <div style={{ color: P.muted, fontSize: 10 }}>Share these codes through your trusted team channel. The chief code is shown only to the group creator.</div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <button
-              onClick={() => runtime.setLocalMuted(!state.locallyMuted)}
-              style={{ padding: '10px 12px', borderRadius: 4, border: 0, background: state.locallyMuted ? P.danger : P.accent2, color: P.bg, fontFamily: P.mono, cursor: 'pointer' }}
-            >MIC {state.locallyMuted ? 'MUTED' : 'HANDS-FREE'}</button>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <button
+                onClick={() => runtime.setLocalMuted(!state.locallyMuted)}
+                style={{ padding: '10px 12px', borderRadius: 4, border: 0, background: state.locallyMuted ? P.danger : P.accent2, color: P.bg, fontFamily: P.mono, cursor: 'pointer' }}
+              >MIC {state.locallyMuted ? 'MUTED' : 'HANDS-FREE'}</button>
+              <HelpTag label="Hands-free mic" text={INTERCOM_HELP.driverHandsFree} />
+            </span>
             <button onClick={() => void runtime.leave()} style={{ padding: '10px 12px', borderRadius: 4, border: `1px solid ${P.border}`, background: 'transparent', color: P.text, fontFamily: P.mono, cursor: 'pointer' }}>LEAVE</button>
-            {state.autoplayBlocked ? <button onClick={() => void runtime.enableAudio()} style={{ padding: '10px 12px', borderRadius: 4, border: 0, background: P.accent, color: P.bg, fontFamily: P.mono }}>ENABLE AUDIO</button> : null}
+            {state.autoplayBlocked ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <button onClick={() => void runtime.enableAudio()} style={{ padding: '10px 12px', borderRadius: 4, border: 0, background: P.accent, color: P.bg, fontFamily: P.mono }}>ENABLE AUDIO</button>
+                <HelpTag label="Enable audio" text={INTERCOM_HELP.enableAudio} />
+              </span>
+            ) : null}
           </div>
-          <label style={{ display: 'grid', gap: 6, color: P.muted, fontSize: 10 }}>Microphone
+          <div style={{ display: 'grid', gap: 6, color: P.muted, fontSize: 10 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>Microphone <HelpTag label="Microphone" text={INTERCOM_HELP.microphone} /></span>
             <select
+              aria-label="Microphone"
               value={deviceId}
               onChange={(event) => {
                 const next = event.target.value;
@@ -100,17 +114,37 @@ export function DriverIntercomPanel({ runtime, state, devices, theme: P }: Props
               <option value="">System default</option>
               {devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || 'Microphone'}</option>)}
             </select>
-          </label>
+          </div>
           {(state.mediaStatus === 'failed' || state.microphoneStatus === 'denied') ? (
             <button onClick={() => void runtime.retryMicrophone(deviceId)} style={{ padding: '10px 12px', borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono }}>RETRY MICROPHONE</button>
           ) : null}
           <div style={{ display: 'grid', gap: 6 }}>
             {(state.snapshot?.participants ?? []).map((participant) => (
-              <div key={participant.id} style={{ padding: 10, borderRadius: 4, background: P.surface2, border: `1px solid ${P.border}`, display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                <span>{participant.displayName} · {participant.role}</span>
-                <span style={{ color: participant.speaking ? P.accent2 : participant.forcedMuted ? P.danger : P.muted, fontSize: 10 }}>
-                  {participant.forcedMuted ? 'FORCED MUTE' : participant.speaking ? 'SPEAKING' : participant.online ? 'ONLINE' : 'OFFLINE'}
-                </span>
+              <div key={participant.id} style={{ padding: 10, borderRadius: 4, background: P.surface2, border: `1px solid ${P.border}`, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <span>{participant.displayName} · {participant.role}</span>
+                  <span style={{ color: participant.speaking ? P.accent2 : participant.forcedMuted ? P.danger : P.muted, fontSize: 10 }}>
+                    {participant.forcedMuted ? 'FORCED MUTE' : participant.speaking ? 'SPEAKING' : participant.online ? 'ONLINE' : 'OFFLINE'}
+                  </span>
+                </div>
+                {state.role && canReceiveParticipantAudio(state.role, state.participantId, state.snapshot, participant.id) ? (
+                  <div className="driverIntercomVolume" style={{ color: P.muted }}>
+                    <span className="driverIntercomVolumeLabel">Volume <HelpTag label={`${participant.displayName} volume`} text={INTERCOM_HELP.receiveVolume} /></span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={Math.round(runtime.getParticipantVolume(participant.id) * 100)}
+                      aria-label={`${participant.displayName} receive volume`}
+                      onChange={(event) => {
+                        runtime.setParticipantVolume(participant.id, Number(event.target.value) / 100);
+                        renderVolume((revision) => revision + 1);
+                      }}
+                    />
+                    <output style={{ color: P.text }}>{Math.round(runtime.getParticipantVolume(participant.id) * 100)}%</output>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -123,4 +157,14 @@ export function DriverIntercomPanel({ runtime, state, devices, theme: P }: Props
 
 function StatusTile({ label, value, color, theme }: { label: string; value: string; color: string; theme: Props['theme'] }) {
   return <div style={{ padding: 10, borderRadius: 4, background: theme.surface2, border: `1px solid ${theme.border}` }}><div style={{ color: theme.muted, fontSize: 9 }}>{label}</div><div style={{ color, fontFamily: theme.mono, marginTop: 5 }}>{value}</div></div>;
+}
+
+function HelpTag({ label, text }: { label: string; text: string }) {
+  const tooltipId = useId();
+  return (
+    <span className="driverIntercomHelp">
+      <button type="button" className="driverIntercomHelpButton" aria-label={`${label} 도움말`} aria-describedby={tooltipId} title={text}>?</button>
+      <span id={tooltipId} role="tooltip" className="driverIntercomHelpText">{text}</span>
+    </span>
+  );
 }
