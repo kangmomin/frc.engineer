@@ -20,9 +20,12 @@ interface Props {
   tab: 'tt' | 'pace';
   onSetTab: (tab: 'tt' | 'pace') => void;
   rowPad: string;
+  highlightAccountId: string | null;
 }
 
-export function Rankings({ t, data, configured, trackId, format, onSetTrack, onSetFormat, tab, onSetTab, rowPad }: Props) {
+export function Rankings({ t, data, configured, trackId, format, onSetTrack, onSetFormat, tab, onSetTab, rowPad, highlightAccountId }: Props) {
+  const visibleRows = data ? (tab === 'tt' ? data.tt : data.pace) : [];
+  const highlightMissing = highlightAccountId != null && data != null && !visibleRows.some((row) => row.accountId === highlightAccountId);
   return (
     <section>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
@@ -46,15 +49,21 @@ export function Rankings({ t, data, configured, trackId, format, onSetTrack, onS
         <TabButton t={t} on={tab === 'pace'} label="RACE PACE" onClick={() => onSetTab('pace')} />
       </div>
 
+      {highlightMissing && (
+        <div role="status" style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, background: t.panel2, border: `1px solid ${t.line}`, fontSize: 12, color: t.t2 }}>
+          검색한 드라이버는 현재 상위 200위 표시 범위에서 찾을 수 없습니다.
+        </div>
+      )}
+
       {!configured ? (
         <EmptyState t={t} title="플랫폼 미연결" note="리더보드는 Pitwall Cloud 플랫폼에 연결됐을 때 표시됩니다." />
       ) : data === null ? (
         <EmptyState t={t} title="불러오는 중…" note="" />
       ) : tab === 'tt' ? (
-        data.tt.length > 0 ? <TTTable t={t} rows={data.tt} rowPad={rowPad} />
+        data.tt.length > 0 ? <TTTable t={t} rows={data.tt} rowPad={rowPad} highlightAccountId={highlightAccountId} />
           : <EmptyState t={t} title="기록 없음" note="이 트랙·포맷에 검증된 타임트라이얼 기록이 아직 없습니다." />
       ) : (
-        data.pace.length > 0 ? <PaceTable t={t} rows={data.pace} rowPad={rowPad} />
+        data.pace.length > 0 ? <PaceTable t={t} rows={data.pace} rowPad={rowPad} highlightAccountId={highlightAccountId} />
           : <EmptyState t={t} title="기록 없음" note="이 트랙·포맷에 집계된 레이스 페이스 기록이 아직 없습니다." />
       )}
     </section>
@@ -70,7 +79,7 @@ function EmptyState({ t, title, note }: { t: HubTheme; title: string; note: stri
   );
 }
 
-function TTTable({ t, rows, rowPad }: { t: HubTheme; rows: HubTTRow[]; rowPad: string }) {
+function TTTable({ t, rows, rowPad, highlightAccountId }: { t: HubTheme; rows: HubTTRow[]; rowPad: string; highlightAccountId?: string | null }) {
   const s1 = extent(rows.map((r) => r.s1Ms));
   const s2 = extent(rows.map((r) => r.s2Ms));
   const s3 = extent(rows.map((r) => r.s3Ms));
@@ -86,11 +95,12 @@ function TTTable({ t, rows, rowPad }: { t: HubTheme; rows: HubTTRow[]; rowPad: s
       {rows.map((r, i) => {
         const pos = i + 1;
         const posColor = r.you ? t.accInk : pos <= 3 ? t.topInk : t.t3;
+        const matched = r.accountId === highlightAccountId;
         return (
-          <div key={r.handle} style={{ borderLeft: `2px solid ${r.you ? t.acc : 'transparent'}`, background: r.you ? t.accSoft : 'transparent' }}>
+          <div key={r.accountId} style={{ borderLeft: `2px solid ${r.you || matched ? t.acc : 'transparent'}`, background: r.you || matched ? t.accSoft : 'transparent' }}>
             <div style={{ display: 'grid', gridTemplateColumns: TT_COLS, alignItems: 'center', gap: 10, padding: `${rowPad} 18px`, borderTop: `1px solid ${t.linesoft}` }}>
               <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: posColor }}>{pos}</div>
-              <DriverCell t={t} handle={r.handle} you={r.you} />
+              <DriverCell t={t} handle={r.handle} you={r.you} matched={matched} />
               <SectorCell t={t} ms={r.s1Ms} min={s1[0]} max={s1[1]} />
               <SectorCell t={t} ms={r.s2Ms} min={s2[0]} max={s2[1]} />
               <SectorCell t={t} ms={r.s3Ms} min={s3[0]} max={s3[1]} />
@@ -112,7 +122,7 @@ function TTTable({ t, rows, rowPad }: { t: HubTheme; rows: HubTTRow[]; rowPad: s
   );
 }
 
-function PaceTable({ t, rows, rowPad }: { t: HubTheme; rows: HubPaceRow[]; rowPad: string }) {
+function PaceTable({ t, rows, rowPad, highlightAccountId }: { t: HubTheme; rows: HubPaceRow[]; rowPad: string; highlightAccountId?: string | null }) {
   const lead = Math.min(...rows.map((r) => r.avgMs));
   return (
     <div style={{ background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12, overflow: 'hidden' }}>
@@ -125,11 +135,12 @@ function PaceTable({ t, rows, rowPad }: { t: HubTheme; rows: HubPaceRow[]; rowPa
         const pos = i + 1;
         const posColor = r.you ? t.accInk : pos <= 3 ? t.topInk : t.t3;
         const consPct = `${Math.round(r.consistency * 100)}%`;
+        const matched = r.accountId === highlightAccountId;
         return (
-          <div key={r.handle} style={{ borderLeft: `2px solid ${r.you ? t.acc : 'transparent'}`, background: r.you ? t.accSoft : 'transparent' }}>
+          <div key={r.accountId} style={{ borderLeft: `2px solid ${r.you || matched ? t.acc : 'transparent'}`, background: r.you || matched ? t.accSoft : 'transparent' }}>
             <div style={{ display: 'grid', gridTemplateColumns: PACE_COLS, alignItems: 'center', gap: 10, padding: `${rowPad} 18px`, borderTop: `1px solid ${t.linesoft}` }}>
               <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: posColor }}>{pos}</div>
-              <DriverCell t={t} handle={r.handle} you={r.you} />
+              <DriverCell t={t} handle={r.handle} you={r.you} matched={matched} />
               <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, textAlign: 'right', color: t.t1 }}>{msToTime(r.avgMs)}</div>
               <div style={{ textAlign: 'center' }}>
                 <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 700, color: tyreColor(r.tyre, t) }}>{r.tyre}</span>
@@ -151,13 +162,14 @@ function PaceTable({ t, rows, rowPad }: { t: HubTheme; rows: HubPaceRow[]; rowPa
   );
 }
 
-function DriverCell({ t, handle, you }: { t: HubTheme; handle: string; you: boolean }) {
+function DriverCell({ t, handle, you, matched = false }: { t: HubTheme; handle: string; you: boolean; matched?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
       <span style={{ fontFamily: MONO, fontSize: 12.5, fontWeight: 600, color: you ? t.accInk : t.t1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{handle}</span>
       {you && (
         <span style={{ fontFamily: MONO, fontSize: 8.5, fontWeight: 700, letterSpacing: '.08em', color: t.onAcc, background: t.acc, padding: '2px 5px', borderRadius: 4, flex: 'none' }}>YOU</span>
       )}
+      {matched && <span style={{ fontFamily: MONO, fontSize: 8.5, fontWeight: 700, letterSpacing: '.08em', color: t.accInk, border: `1px solid ${t.acc}`, padding: '2px 5px', borderRadius: 4, flex: 'none' }}>MATCH</span>}
     </div>
   );
 }

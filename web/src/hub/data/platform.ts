@@ -40,6 +40,19 @@ export interface PlatformListingCard {
   reviewCount: number;
 }
 
+// Public global-search response. Setup cards use the complete public listing
+// shape so selecting one can open the existing buyer modal without refetching.
+export interface PlatformDriverSearchHit {
+  accountId: string;
+  persona: string;
+  trackId: number;
+  gameFormat: string;
+}
+export interface PlatformSearchResponse {
+  setups: PlatformListingCard[];
+  drivers: PlatformDriverSearchHit[];
+}
+
 // Owner detail: a card plus the revealed product. payload is the setup params
 // object (setup) or the stint array (strategy); present only when owned.
 export interface PlatformSetupParam {
@@ -225,17 +238,32 @@ async function pfetch(path: string, init?: RequestInit): Promise<Response> {
 
 // pfetchOpen is for public GETs (browse, reviews list): it attaches the Bearer
 // token when present but does not require one.
-async function pfetchOpen(path: string): Promise<Response> {
+async function pfetchOpen(path: string, init?: RequestInit): Promise<Response> {
   if (!isPlatformConfigured()) {
     throw new ListingError('network', '플랫폼이 구성되지 않았습니다');
   }
   const token = getSessionToken();
   try {
     return await fetch(getPlatformUrl(path), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      ...init,
+      headers: { ...(init?.headers ?? {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
   } catch {
     throw new ListingError('network', '네트워크 오류');
+  }
+}
+
+// PlatformSearch mirrors GET /search. It is intentionally separate from the
+// authenticated market client: global search is public and can be used before
+// login, while still forwarding cancellation to fetch.
+export class PlatformSearch {
+  async search(query: string, signal?: AbortSignal): Promise<PlatformSearchResponse> {
+    const q = query.trim();
+    const res = await pfetchOpen(`/search?q=${encodeURIComponent(q)}`, { signal });
+    if (res.status === 400) {
+      throw new ListingError('bad-input', '검색어는 2자 이상이어야 합니다');
+    }
+    return okJson<PlatformSearchResponse>(res, '검색');
   }
 }
 

@@ -49,6 +49,7 @@ export const EMPTY_OVERVIEW: HubOverview = {
 };
 
 export interface HubTTRow {
+  accountId: string;
   handle: string;
   lapMs: number;
   s1Ms: number;
@@ -59,6 +60,7 @@ export interface HubTTRow {
 }
 
 export interface HubPaceRow {
+  accountId: string;
   handle: string;
   avgMs: number;
   tyre: string; // display label ('SOFT'|'MED'|'HARD'|'INT'|'WET'|'—')

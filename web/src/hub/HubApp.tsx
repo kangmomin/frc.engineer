@@ -7,7 +7,7 @@ import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
 import { tyreLabel, relativeTime } from './format';
 import { OwnHubDataSource } from './data/http';
-import { DEFAULT_TRACK_CONTEXT, trackName } from './data/tracks';
+import { DEFAULT_TRACK_CONTEXT, trackContextFor, trackName } from './data/tracks';
 import type { TrackContext } from './data/tracks';
 import type { HubOverview, HubRankings, HubLedgerEntry } from './data/types';
 import { Sidebar } from './components/Sidebar';
@@ -23,8 +23,9 @@ import { Analysis } from './screens/Analysis';
 import { Access } from './screens/Access';
 import { Guide } from './screens/Guide';
 import { isPlatformConfigured } from './data/platformBase';
-import { PlatformMarket } from './data/platform';
-import type { PlatformLedgerEntry } from './data/platform';
+import { PlatformMarket, PlatformSearch } from './data/platform';
+import type { PlatformLedgerEntry, PlatformListingCard } from './data/platform';
+import type { SearchResult } from './search';
 import {
   captureTokenFromFragment, fetchMe, beginSteamLogin, platformLogout, createPairingCode, getSessionToken,
 } from './data/session';
@@ -51,6 +52,14 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   // Shared track+format context for the leaderboards and the marketplace browse.
   const [trackCtx, setTrackCtx] = useState<TrackContext>(DEFAULT_TRACK_CONTEXT);
   const platformMkt = useMemo(() => new PlatformMarket(), []);
+  const platformSearch = useMemo(() => new PlatformSearch(), []);
+  const [highlightedAccountId, setHighlightedAccountId] = useState<string | null>(null);
+  const [searchBuyer, setSearchBuyer] = useState<PlatformListingCard | null>(null);
+  // A late default-context response must not undo a track chosen by the user
+  // (including a global-search handoff). The request generation also isolates
+  // a previous account's listMyRaces response after login changes.
+  const trackContextGeneration = useRef(0);
+  const raceContextRequestGeneration = useRef(0);
 
   const [overview, setOverview] = useState<HubOverview | null>(null);
   const [rankings, setRankings] = useState<HubRankings | null>(null);
@@ -101,8 +110,8 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     ]).then(([tt, pace]) => {
       if (!alive) return;
       setRankings({
-        tt: tt.map((r) => ({ handle: r.persona, lapMs: r.lapMs, s1Ms: r.s1Ms, s2Ms: r.s2Ms, s3Ms: r.s3Ms, fmt: trackCtx.format, you: r.you })),
-        pace: pace.map((r) => ({ handle: r.persona, avgMs: r.avgMs, tyre: tyreLabel(r.tyre), laps: r.laps, consistency: r.consistency, you: r.you })),
+        tt: tt.map((r) => ({ accountId: r.accountId, handle: r.persona, lapMs: r.lapMs, s1Ms: r.s1Ms, s2Ms: r.s2Ms, s3Ms: r.s3Ms, fmt: trackCtx.format, you: r.you })),
+        pace: pace.map((r) => ({ accountId: r.accountId, handle: r.persona, avgMs: r.avgMs, tyre: tyreLabel(r.tyre), laps: r.laps, consistency: r.consistency, you: r.you })),
       });
     }).catch(() => { if (alive) setRankings({ tt: [], pace: [] }); });
     return () => { alive = false; };
@@ -113,8 +122,11 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   useEffect(() => {
     if (!platformConfigured || !platformAccount) return;
     let alive = true;
+    const requestGeneration = ++raceContextRequestGeneration.current;
+    const contextGeneration = trackContextGeneration.current;
     void platformMkt.listMyRaces().then((races) => {
-      if (alive && races.length > 0) setTrackCtx({ trackId: races[0].trackId, format: races[0].gameFormat });
+      if (!alive || requestGeneration !== raceContextRequestGeneration.current || contextGeneration !== trackContextGeneration.current || races.length === 0) return;
+      setTrackCtx(trackContextFor(races[0].trackId, races[0].gameFormat));
     }).catch(() => { /* keep default context */ });
     return () => { alive = false; };
   }, [platformConfigured, platformAccount, platformMkt]);
@@ -131,6 +143,41 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const handleLogout = () => { void platformLogout().then(() => setPlatformAccount(null)); };
 
   const ctx = ctxLabel(active, trackCtx);
+  const setUserTrackContext = (context: TrackContext) => {
+    trackContextGeneration.current += 1;
+    setTrackCtx(trackContextFor(context.trackId, context.format));
+  };
+  const setManualTrack = (trackId: number) => {
+    setHighlightedAccountId(null);
+    setUserTrackContext({ trackId, format: trackCtx.format });
+  };
+  const setManualFormat = (format: string) => {
+    setHighlightedAccountId(null);
+    setUserTrackContext({ trackId: trackCtx.trackId, format });
+  };
+  const setManualTrackCtx = (context: TrackContext) => {
+    setHighlightedAccountId(null);
+    setUserTrackContext(context);
+  };
+  const selectSearchResult = (result: SearchResult) => {
+    if (result.type === 'setup') {
+      setHighlightedAccountId(null);
+      setUserTrackContext({ trackId: result.card.trackId, format: result.card.gameFormat });
+      setSearchBuyer(result.card);
+      setActive('market');
+      return;
+    }
+    if (result.type === 'driver') {
+      setUserTrackContext({ trackId: result.driver.trackId, format: result.driver.gameFormat });
+      setRankTab('tt');
+      setHighlightedAccountId(result.driver.accountId);
+      setActive('rankings');
+      return;
+    }
+    setHighlightedAccountId(null);
+    setUserTrackContext({ trackId: result.track.id, format: trackCtx.format });
+    setActive('rankings');
+  };
 
   // The viewer's standing on the current TT board, derived from the live
   // leaderboard (the `you` row). null when logged out or not yet ranked here.
@@ -146,6 +193,9 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   const rootStyle = {
     ...hubCssVars(t),
+    '--line': t.line, '--panel': t.panel, '--panel2': t.panel2,
+    '--t1': t.t1, '--t2': t.t2, '--t3': t.t3,
+    '--acc': t.acc, '--accInk': t.accInk,
     display: 'flex', height: '100vh', overflow: 'hidden',
     background: t.bg, color: t.t1, fontFamily: FONT,
   } as React.CSSProperties;
@@ -155,7 +205,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
       <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} account={platformAccount} />
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} />
+        <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} search={platformSearch} onSearchSelect={selectSearchResult} />
         <main style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
           {active === 'guide' && <Guide t={t} onLaunchLive={onLaunchLive} onGoOverview={() => setActive('overview')} />}
 
@@ -167,17 +217,18 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             <Rankings
               t={t} data={rankings} configured={platformConfigured}
               trackId={trackCtx.trackId} format={trackCtx.format}
-              onSetTrack={(id) => setTrackCtx((c) => ({ ...c, trackId: id }))}
-              onSetFormat={(f) => setTrackCtx((c) => ({ ...c, format: f }))}
+              onSetTrack={setManualTrack} onSetFormat={setManualFormat}
               tab={rankTab} onSetTab={setRankTab} rowPad={rowPad}
+              highlightAccountId={highlightedAccountId}
             />
           )}
 
           {active === 'market' && (
             <MarketManage
               t={t} configured={platformConfigured} account={platformAccount}
-              market={platformMkt} trackCtx={trackCtx} onSetTrackCtx={setTrackCtx}
+              market={platformMkt} trackCtx={trackCtx} onSetTrackCtx={setManualTrackCtx}
               onEconomyChange={refreshWallet}
+              searchBuyer={searchBuyer} onSearchBuyerOpened={() => setSearchBuyer(null)}
             />
           )}
 

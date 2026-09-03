@@ -55,6 +55,16 @@ export interface TrackContext {
 // Great Britain (Silverstone), current-season format.
 export const DEFAULT_TRACK_CONTEXT: TrackContext = { trackId: 7, format: 'F1 25' };
 
+export function isF126OnlyTrack(trackId: number): boolean {
+  return trackId >= 39 && trackId <= 42;
+}
+
+// The Season Pack tracks do not exist in F1 25. Keep this normalization at
+// every context handoff rather than allowing an invalid selector combination.
+export function trackContextFor(trackId: number, format: string): TrackContext {
+  return { trackId, format: isF126OnlyTrack(trackId) ? 'F1 26' : format };
+}
+
 export function trackName(id: number): string {
   return HUB_TRACKS.find((t) => t.id === id)?.name ?? `TRK ${id}`;
 }

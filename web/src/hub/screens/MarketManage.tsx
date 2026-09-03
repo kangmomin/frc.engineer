@@ -28,16 +28,27 @@ interface Props {
   trackCtx: TrackContext;
   onSetTrackCtx: (c: TrackContext) => void;
   onEconomyChange?: () => void; // called after a purchase so the wallet card refreshes
+  // A global-search setup selection is consumed once and opens the same public
+  // buyer modal as a card click. It deliberately does not require login.
+  searchBuyer?: PlatformListingCard | null;
+  onSearchBuyerOpened?: () => void;
 }
 
 export function MarketManage(p: Props) {
   const { t, configured, account, market } = p;
+  const { searchBuyer, onSearchBuyerOpened } = p;
   const [listings, setListings] = useState<PlatformListingCard[] | null>(null);
   const [detail, setDetail] = useState<{ card: PlatformListingDetail; similar: PlatformListingCard[] } | null>(null);
   const [buyer, setBuyer] = useState<PlatformListingCard | null>(null); // browsed listing being viewed
   const [purchased, setPurchased] = useState<Record<string, Payload>>({}); // listingId → unlocked payload (this session)
   const [note, setNote] = useState<string>('');
   const [sellOpen, setSellOpen] = useState(false);
+
+  useEffect(() => {
+    if (!searchBuyer) return;
+    setBuyer(searchBuyer);
+    onSearchBuyerOpened?.();
+  }, [searchBuyer, onSearchBuyerOpened]);
 
   const refresh = useCallback(() => {
     if (!account) return;
@@ -119,7 +130,7 @@ export function MarketManage(p: Props) {
       {detail && <OwnerDetailModal t={t} data={detail} onClose={() => setDetail(null)} />}
 
       {buyer && (
-        <BuyerDetailModal t={t} market={market} card={buyer} canBuy={!!account}
+        <BuyerDetailModal key={buyer.id} t={t} market={market} card={buyer} canBuy={!!account}
           unlocked={purchased[buyer.id]}
           onPurchased={(payload) => markPurchased(buyer.id, payload)}
           onClose={() => setBuyer(null)} />

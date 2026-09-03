@@ -14,6 +14,30 @@
   font-family: inherit;
 }
 
+.hubSearchInput {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px 9px 34px;
+  border: 1px solid var(--line, #e4e7eb);
+  border-radius: 8px;
+  background: var(--panel2, #f4f5f7);
+  color: var(--t1, #1a1d24);
+  font: inherit;
+  font-size: 13px;
+}
+.hubSearchInput::placeholder { color: var(--t3, #878d97); }
+.hubSearchIcon { position: absolute; z-index: 1; left: 12px; top: 12px; color: var(--t3, #878d97); font-size: 16px; line-height: 1; }
+.hubSearchPalette { position: absolute; z-index: 20; top: calc(100% + 6px); width: 100%; max-height: min(60vh, 480px); overflow-y: auto; overflow-x: hidden; border: 1px solid var(--line, #e4e7eb); border-radius: 9px; background: var(--panel, #fff); box-shadow: 0 10px 25px rgba(0, 0, 0, .14); }
+.hubSearchList { margin: 0; padding: 4px; list-style: none; }
+.hubSearchOption { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; min-height: 44px; padding: 7px 8px; border-radius: 6px; cursor: pointer; color: var(--t1, #1a1d24); font-size: 12.5px; }
+.hubSearchOption.is-active, .hubSearchOption:hover { background: var(--panel2, #f4f5f7); }
+.hubSearchKind { align-self: center; font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: .06em; color: var(--t3, #878d97); }
+.hubSearchOption small { display: block; margin-top: 2px; color: var(--t3, #878d97); font-family: 'JetBrains Mono', monospace; font-size: 9.5px; }
+.hubSearchOption mark { padding: 0; background: transparent; color: var(--accInk, #946f28); font-weight: 800; text-decoration: underline; }
+.hubSearchState { padding: 9px 12px; border-top: 1px solid var(--line, #e4e7eb); color: var(--t2, #565b66); font-size: 11.5px; line-height: 1.45; }
+.hubSearchLive { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.hubRoot :focus-visible { outline: 2px solid var(--acc, #e0a83d); outline-offset: 2px; }
+
 @keyframes escpulse {
   0%, 100% { opacity: 0.45; }
   50% { opacity: 1; }
@@ -44,6 +68,8 @@
   .hubNavIndex { display: none !important; }
   .hubMobileNavLabel { display: inline !important; font-size: 7px; letter-spacing: .03em; }
   .hubAccountButton { justify-content: center !important; padding: 12px 0 !important; }
-  .hubTopBar { padding: 0 14px !important; }
-  .hubSearch { display: none !important; }
+  .hubTopBar { height: auto !important; min-height: 60px; padding: 8px 14px !important; flex-wrap: wrap; gap: 8px !important; }
+  .hubTopContext { display: none; }
+  .hubSearch { order: 2; max-width: none !important; flex-basis: 100% !important; }
+  .hubCredits { margin-left: auto; }
 }

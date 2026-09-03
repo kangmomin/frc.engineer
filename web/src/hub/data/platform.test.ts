@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlatformMarket, ListingError, isStintPayload } from './platform';
+import { PlatformMarket, PlatformSearch, ListingError, isStintPayload } from './platform';
 
 function fakeWindow(token?: string) {
   const store = new Map<string, string>();
@@ -30,6 +30,35 @@ afterEach(() => {
 });
 
 const mkt = new PlatformMarket();
+const search = new PlatformSearch();
+
+describe('PlatformSearch', () => {
+  it('uses the public endpoint, forwards AbortSignal, and does not require a token', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    const fetchMock = vi.fn().mockResolvedValue(res(200, { setups: [], drivers: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    await expect(search.search('  apex  ', controller.signal)).resolves.toEqual({ setups: [], drivers: [] });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/search?q=apex');
+    expect(init.signal).toBe(controller.signal);
+    expect(init.headers).toEqual({});
+  });
+
+  it('optionally attaches a token to public search', async () => {
+    vi.stubGlobal('window', fakeWindow('tok_1'));
+    const fetchMock = vi.fn().mockResolvedValue(res(200, { setups: [], drivers: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    await search.search('apex');
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer tok_1' });
+  });
+
+  it('keeps a server 400 as an error instead of treating it as empty', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(400)));
+    await expect(search.search('a')).rejects.toMatchObject({ reason: 'bad-input' });
+  });
+});
 
 describe('PlatformMarket auth', () => {
   it('does not fetch and throws unauthorized when no token is stored', async () => {
