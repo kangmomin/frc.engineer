@@ -211,6 +211,7 @@ type AccountRoles struct {
 	Persona   string   `json:"persona"`
 	AvatarURL string   `json:"avatarUrl,omitempty"`
 	Kind      string   `json:"kind"`
+	Banned    bool     `json:"banned"`
 	Roles     []string `json:"roles"`
 }
 
@@ -233,12 +234,14 @@ func (s *Store) SearchAccounts(ctx context.Context, q string) ([]AccountRoles, e
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT a.id, a.persona, a.avatar_url, a.kind,
+		       (b.account_id IS NOT NULL),
 		       ARRAY(
 		           SELECT r.name FROM platform.account_roles ar
 		           JOIN platform.roles r ON r.id = ar.role_id
 		           WHERE ar.account_id = a.id ORDER BY r.name
 		       )
 		FROM platform.accounts a
+		LEFT JOIN platform.account_bans b ON b.account_id = a.id
 		WHERE $1 = '' OR a.persona ILIKE '%' || $2 || '%' ESCAPE '\'
 		ORDER BY a.persona, a.created_at
 		LIMIT $3`,
@@ -250,7 +253,7 @@ func (s *Store) SearchAccounts(ctx context.Context, q string) ([]AccountRoles, e
 	out := []AccountRoles{}
 	for rows.Next() {
 		var a AccountRoles
-		if err := rows.Scan(&a.ID, &a.Persona, &a.AvatarURL, &a.Kind, &a.Roles); err != nil {
+		if err := rows.Scan(&a.ID, &a.Persona, &a.AvatarURL, &a.Kind, &a.Banned, &a.Roles); err != nil {
 			return nil, fmt.Errorf("platformsvc: search accounts: %w", err)
 		}
 		if a.Roles == nil {

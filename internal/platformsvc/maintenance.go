@@ -24,6 +24,7 @@ func (s *Store) claimNonce(ctx context.Context, nonce string) (bool, error) {
 // hit a row rather than being re-inserted.
 func (s *Store) SweepExpired(ctx context.Context) error {
 	stmts := []string{
+		`DELETE FROM platform.view_as_sessions WHERE expires_at <= now()`,
 		`DELETE FROM platform.sessions WHERE expires_at <= now()`,
 		`DELETE FROM platform.device_pairings WHERE expires_at <= now() OR consumed_at IS NOT NULL`,
 		`DELETE FROM platform.openid_nonces WHERE created_at < now() - interval '1 hour'`,
