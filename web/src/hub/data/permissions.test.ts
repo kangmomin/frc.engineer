@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canEditMySetups, canManageRBAC, canReadMySetups, canViewAnalysis, canViewFeedbackInbox, hasPermission } from './permissions';
+import { canEditMySetups, canManageRBAC, canReadMySetups, canStartViewAs, canViewAnalysis, canViewFeedbackInbox, hasPermission } from './permissions';
 import type { PlatformAccount } from './session';
 
 // internal/rbac/rbac_test.go의 테이블과 동형 — Go/TS 매칭 규칙이 갈라지면 여기서 잡힌다.
@@ -77,6 +77,20 @@ describe('canManageRBAC', () => {
   // admin 불리언만 보고 화면을 열면 전부 404가 되는 빈 화면이 된다.
   it('permissions 부재(구서버) → admin이어도 false', () => {
     expect(canManageRBAC({ ...base, admin: true })).toBe(false);
+  });
+});
+
+describe('canStartViewAs', () => {
+  const base: PlatformAccount = {
+    id: 'a', steamId64: '7', persona: 'P', avatarUrl: '', kind: 'user',
+    verified: false, banned: false, createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  it('requires the create leaf (or an ancestor) and a non-banned actor', () => {
+    expect(canStartViewAs({ ...base, permissions: ['pithub.view-as.create'] })).toBe(true);
+    expect(canStartViewAs({ ...base, permissions: ['pithub'] })).toBe(true);
+    expect(canStartViewAs({ ...base, permissions: ['pithub.rbac.read'] })).toBe(false);
+    expect(canStartViewAs({ ...base, banned: true, permissions: ['pithub'] })).toBe(false);
   });
 });
 

@@ -6,6 +6,7 @@ interface Props {
   t: HubTheme;
   onLaunchLive: () => void;
   onGoOverview: () => void;
+  viewOnly?: boolean;
 }
 
 interface Term {
@@ -58,7 +59,7 @@ const SOURCE_TERMS: Term[] = [
   { name: '— / unavailable', meaning: '원본 데이터가 없거나 계산 근거가 부족함', reading: '0으로 간주하지 않습니다.' },
 ];
 
-export function Guide({ t, onLaunchLive, onGoOverview }: Props) {
+export function Guide({ t, onLaunchLive, onGoOverview, viewOnly = false }: Props) {
   const themeVars = {
     '--guide-panel': t.panel,
     '--guide-panel2': t.panel2,
@@ -82,8 +83,8 @@ export function Guide({ t, onLaunchLive, onGoOverview }: Props) {
           <p>연결부터 실시간 데이터 판독, 인터컴 운용까지 실제 화면에 표시되는 용어를 기준으로 정리했습니다.</p>
         </div>
         <div className={styles.actions}>
-          <button type="button" className={styles.primary} onClick={onLaunchLive}>LIVE 피트월 시작</button>
-          <button type="button" className={styles.secondary} onClick={onGoOverview}>Overview 보기</button>
+          <button type="button" className={styles.primary} onClick={onLaunchLive} disabled={viewOnly}>{viewOnly ? 'View As에서 LIVE 미지원' : 'LIVE 피트월 시작'}</button>
+          <button type="button" className={styles.secondary} onClick={onGoOverview}>Overview 안내</button>
         </div>
       </div>
 

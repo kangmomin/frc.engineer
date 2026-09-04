@@ -3,7 +3,7 @@
 // them (payload unlocks, 3D1), review what you bought, and — when logged in —
 // sell/manage your own listings (3C). No demo data: empty conditions render
 // explicit empty states.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HubTheme } from '../theme';
 import { msToTimeShort } from '../format';
 import {
@@ -15,6 +15,8 @@ import type { PlatformAccount } from '../data/session';
 import { HUB_TRACKS, HUB_FORMATS, trackName } from '../data/tracks';
 import type { TrackContext } from '../data/tracks';
 import { SelectChip } from '../components/SelectChip';
+import { refreshPrivateRows } from '../data/privateRows';
+import { loadOwnerListingDetail, type OwnerListingDetail } from '../data/ownerListingDetail';
 
 const MONO = "'JetBrains Mono',monospace";
 const MIN_STRATEGY_LAPS = 5; // mirrors the backend's minStrategyLaps gate
@@ -32,17 +34,20 @@ interface Props {
   // buyer modal as a card click. It deliberately does not require login.
   searchBuyer?: PlatformListingCard | null;
   onSearchBuyerOpened?: () => void;
+  viewOnly?: boolean;
 }
 
 export function MarketManage(p: Props) {
-  const { t, configured, account, market } = p;
+  const { t, configured, account, market, viewOnly = false } = p;
   const { searchBuyer, onSearchBuyerOpened } = p;
   const [listings, setListings] = useState<PlatformListingCard[] | null>(null);
-  const [detail, setDetail] = useState<{ card: PlatformListingDetail; similar: PlatformListingCard[] } | null>(null);
+  const [detail, setDetail] = useState<OwnerListingDetail | null>(null);
   const [buyer, setBuyer] = useState<PlatformListingCard | null>(null); // browsed listing being viewed
   const [purchased, setPurchased] = useState<Record<string, Payload>>({}); // listingId → unlocked payload (this session)
   const [note, setNote] = useState<string>('');
   const [sellOpen, setSellOpen] = useState(false);
+  const privateRowsGeneration = useRef(0);
+  const ownerDetailGeneration = useRef(0);
 
   useEffect(() => {
     if (!searchBuyer) return;
@@ -52,14 +57,16 @@ export function MarketManage(p: Props) {
 
   const refresh = useCallback(() => {
     if (!account) return;
-    market.listMyListings()
-      .then((rows) => setListings(rows))
-      .catch((e: unknown) => setNote(msgOf(e)));
+    const generation = ++privateRowsGeneration.current;
+    ownerDetailGeneration.current += 1;
+    setDetail(null);
+    void refreshPrivateRows(() => market.listMyListings(), setListings, setNote, msgOf, () => generation === privateRowsGeneration.current);
   }, [account, market]);
 
   useEffect(() => {
-    if (!configured || !account) { setListings(null); return; }
+    if (!configured || !account) { privateRowsGeneration.current += 1; setListings(null); return; }
     refresh();
+    return () => { privateRowsGeneration.current += 1; ownerDetailGeneration.current += 1; };
   }, [configured, account, refresh]);
 
   if (!configured) {
@@ -86,8 +93,10 @@ export function MarketManage(p: Props) {
             유저 제작 셋업·전략 · 불변 스냅샷 · <span style={{ color: t.ok, fontWeight: 600 }}>구매 후 공개</span>
           </div>
         </div>
-        {account ? (
+        {account && !viewOnly ? (
           <button onClick={() => setSellOpen(true)} style={{ background: t.acc, color: t.onAcc, border: 0, borderRadius: 8, padding: '10px 16px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>＋ 내 기록 판매</button>
+        ) : viewOnly ? (
+          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.04em', color: t.t3 }}>VIEW AS · 리스팅 읽기 전용</span>
         ) : (
           <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.04em', color: t.t3 }}>PROFILE에서 로그인하면 판매·구매 가능</span>
         )}
@@ -110,8 +119,18 @@ export function MarketManage(p: Props) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {listings.map((c) => (
                 <MyListingRow key={c.id} t={t} c={c}
-                  onOpen={() => openDetail(market, c.id, setDetail, setNote)}
-                  onDelist={() => doDelist(market, c.id, setNote, refresh)} />
+                  onOpen={() => {
+                    const generation = ++ownerDetailGeneration.current;
+                    void loadOwnerListingDetail(
+                      () => market.getListing(c.id),
+                      () => market.getSimilar(c.id),
+                      () => generation === ownerDetailGeneration.current,
+                      () => setDetail(null),
+                    ).then((value) => { if (value) setDetail(value); }).catch((e: unknown) => {
+                      if (generation === ownerDetailGeneration.current) setNote(msgOf(e));
+                    });
+                  }}
+                  onDelist={viewOnly ? undefined : () => doDelist(market, c.id, setNote, refresh)} />
               ))}
             </div>
           )}
@@ -121,16 +140,16 @@ export function MarketManage(p: Props) {
       <BuyerBrowse t={t} market={market} trackCtx={p.trackCtx} onSetTrackCtx={p.onSetTrackCtx}
         onOpen={setBuyer} onError={setNote} />
 
-      {sellOpen && (
+      {sellOpen && !viewOnly && (
         <SellModal t={t} market={market}
           onClose={() => setSellOpen(false)}
           onCreated={() => { setSellOpen(false); refresh(); }} />
       )}
 
-      {detail && <OwnerDetailModal t={t} data={detail} onClose={() => setDetail(null)} />}
+      {detail && <OwnerDetailModal t={t} data={detail} onClose={() => { ownerDetailGeneration.current += 1; setDetail(null); }} />}
 
       {buyer && (
-        <BuyerDetailModal key={buyer.id} t={t} market={market} card={buyer} canBuy={!!account}
+        <BuyerDetailModal key={buyer.id} t={t} market={market} card={buyer} canBuy={!!account && !viewOnly} readOnly={viewOnly} canReview={!viewOnly}
           unlocked={purchased[buyer.id]}
           onPurchased={(payload) => markPurchased(buyer.id, payload)}
           onClose={() => setBuyer(null)} />
@@ -204,8 +223,9 @@ function BuyerBrowse({ t, market, trackCtx, onSetTrackCtx, onOpen, onError }: {
   );
 }
 
-function BuyerDetailModal({ t, market, card, canBuy, unlocked, onPurchased, onClose }: {
+function BuyerDetailModal({ t, market, card, canBuy, readOnly, canReview, unlocked, onPurchased, onClose }: {
   t: HubTheme; market: PlatformMarket; card: PlatformListingCard; canBuy: boolean;
+  readOnly: boolean; canReview: boolean;
   unlocked: Payload | undefined; onPurchased: (payload: Payload) => void; onClose: () => void;
 }) {
   const [reviews, setReviews] = useState<PlatformReview[] | null>(null);
@@ -248,6 +268,8 @@ function BuyerDetailModal({ t, market, card, canBuy, unlocked, onPurchased, onCl
             style={{ ...primaryBtn(t), width: '100%', opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer', marginBottom: 4 }}>
             {busy ? '구매 중…' : `⬢ ${card.priceCredits} 구매 · 언락`}
           </button>
+        ) : readOnly ? (
+          <div style={{ fontFamily: MONO, fontSize: 11, color: t.t3, textAlign: 'center', padding: '8px 0', marginBottom: 4 }}>View As에서는 구매할 수 없습니다.</div>
         ) : (
           <div style={{ fontFamily: MONO, fontSize: 11, color: t.t3, textAlign: 'center', padding: '8px 0', marginBottom: 4 }}>PROFILE에서 로그인하면 구매할 수 있습니다.</div>
         ))}
@@ -274,7 +296,7 @@ function BuyerDetailModal({ t, market, card, canBuy, unlocked, onPurchased, onCl
           )}
         </div>
 
-        {owned && (
+        {owned && canReview && (
           <ReviewForm t={t} market={market} listingId={card.id}
             onDone={() => market.listReviews(card.id).then(setReviews).catch(() => { /* keep */ })} />
         )}
@@ -350,7 +372,7 @@ function PayloadView({ t, payload }: { t: HubTheme; payload: Payload }) {
 
 // --- owner side (3C) ---
 
-function MyListingRow({ t, c, onOpen, onDelist }: { t: HubTheme; c: PlatformListingCard; onOpen: () => void; onDelist: () => void }) {
+function MyListingRow({ t, c, onOpen, onDelist }: { t: HubTheme; c: PlatformListingCard; onOpen: () => void; onDelist?: () => void }) {
   const active = c.status === 'active';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', background: t.inset, border: `1px solid ${t.line}`, borderRadius: 8 }}>
@@ -362,7 +384,7 @@ function MyListingRow({ t, c, onOpen, onDelist }: { t: HubTheme; c: PlatformList
       <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: t.accInk }}>⬢ {c.priceCredits}</span>
       <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.05em', color: active ? t.ok : t.t3 }}>{active ? 'ACTIVE' : 'DELISTED'}</span>
       <button onClick={onOpen} style={ghostBtn(t)}>상세</button>
-      {active && <button onClick={onDelist} style={dangerBtn(t)}>내리기</button>}
+      {active && onDelist && <button onClick={onDelist} style={dangerBtn(t)}>내리기</button>}
     </div>
   );
 }
@@ -493,16 +515,6 @@ function OwnerDetailModal({ t, data, onClose }: { t: HubTheme; data: { card: Pla
 }
 
 // --- shared helpers ---
-
-function openDetail(
-  market: PlatformMarket, id: string,
-  setDetail: (d: { card: PlatformListingDetail; similar: PlatformListingCard[] } | null) => void,
-  setNote: (s: string) => void,
-) {
-  Promise.all([market.getListing(id), market.getSimilar(id)])
-    .then(([card, similar]) => setDetail({ card, similar }))
-    .catch((e: unknown) => setNote(msgOf(e)));
-}
 
 function doDelist(market: PlatformMarket, id: string, setNote: (s: string) => void, refresh: () => void) {
   market.delist(id).then(refresh).catch((e: unknown) => setNote(msgOf(e)));

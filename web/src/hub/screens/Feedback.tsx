@@ -1,7 +1,7 @@
 // Feedback screen — send bug reports / suggestions to the platform and track
 // their status. Same shell as Profile.tsx (title header + Card) and the same
 // form conventions as MarketManage.tsx's ReviewForm (busy/msg + textarea).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { HubTheme } from '../theme';
 import {
   PlatformMarket, ListingError,
@@ -11,6 +11,7 @@ import type { PlatformAccount } from '../data/session';
 import { SelectChip } from '../components/SelectChip';
 import type { SelectOption } from '../components/SelectChip';
 import { FeedbackEntryRow } from '../components/FeedbackEntryRow';
+import { refreshPrivateRows } from '../data/privateRows';
 
 const MONO = "'JetBrains Mono',monospace";
 
@@ -25,28 +26,30 @@ interface Props {
   configured: boolean;
   account: PlatformAccount | null;
   market: PlatformMarket;
+  viewOnly?: boolean;
 }
 
-export function Feedback({ t, configured, account, market }: Props) {
+export function Feedback({ t, configured, account, market, viewOnly = false }: Props) {
   const [entries, setEntries] = useState<PlatformFeedbackEntry[] | null>(null);
   const [listErr, setListErr] = useState('');
+  const privateRowsGeneration = useRef(0);
 
   const refresh = useCallback(() => {
-    market.listMyFeedback()
-      .then((rows) => setEntries(rows))
-      .catch((e: unknown) => setListErr(msgOf(e)));
+    const generation = ++privateRowsGeneration.current;
+    void refreshPrivateRows(() => market.listMyFeedback(), setEntries, setListErr, msgOf, () => generation === privateRowsGeneration.current);
   }, [market]);
 
   useEffect(() => {
-    if (!configured || !account) { setEntries(null); return; }
+    if (!configured || !account) { privateRowsGeneration.current += 1; setEntries(null); return; }
     refresh();
+    return () => { privateRowsGeneration.current += 1; };
   }, [configured, account, refresh]);
 
   return (
     <section style={{ maxWidth: 620 }}>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.01em', color: t.t1 }}>의견 보내기</div>
-        <div style={{ fontSize: 12.5, color: t.t2, marginTop: 4 }}>버그 제보 · 기능 제안 · 처리 상태 확인</div>
+        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.01em', color: t.t1 }}>{viewOnly ? '의견 내역' : '의견 보내기'}</div>
+        <div style={{ fontSize: 12.5, color: t.t2, marginTop: 4 }}>{viewOnly ? '대상 사용자의 제출 내역 · 처리 상태' : '버그 제보 · 기능 제안 · 처리 상태 확인'}</div>
       </div>
 
       {!configured ? (
@@ -64,7 +67,7 @@ export function Feedback({ t, configured, account, market }: Props) {
         </Card>
       ) : (
         <>
-          <FeedbackForm t={t} market={market} onSubmitted={refresh} />
+          {viewOnly ? <Card t={t}><div style={{ fontSize: 12.5, color: t.t2 }}>View As에서는 대상 사용자의 의견 처리 내역만 볼 수 있습니다.</div></Card> : <FeedbackForm t={t} market={market} onSubmitted={refresh} />}
           <Card t={t} style={{ marginTop: 14 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: t.t1, marginBottom: 10 }}>내 의견</div>
             {listErr && <div style={{ fontSize: 11.5, color: t.negRed, marginBottom: 8 }}>{listErr}</div>}

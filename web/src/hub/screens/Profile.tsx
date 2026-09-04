@@ -15,9 +15,10 @@ interface Props {
   onLogin: () => void;
   onLogout: () => void;
   onGeneratePairing: () => Promise<string>;
+  viewOnly?: boolean;
 }
 
-export function Profile({ t, configured, account, loading, onLogin, onLogout, onGeneratePairing }: Props) {
+export function Profile({ t, configured, account, loading, onLogin, onLogout, onGeneratePairing, viewOnly = false }: Props) {
   return (
     <section style={{ maxWidth: 620 }}>
       <div style={{ marginBottom: 20 }}>
@@ -42,8 +43,10 @@ export function Profile({ t, configured, account, loading, onLogin, onLogout, on
         <LoginCard t={t} onLogin={onLogin} />
       ) : (
         <>
-          <AccountCard t={t} account={account} onLogout={onLogout} />
-          <PairingCard t={t} onGeneratePairing={onGeneratePairing} />
+          <AccountCard t={t} account={account} onLogout={viewOnly ? undefined : onLogout} />
+          {viewOnly ? (
+            <Card t={t} style={{ marginTop: 14 }}><div style={{ fontSize: 12.5, color: t.t2 }}>View As에서는 계정 정보만 표시하며 로그아웃과 디바이스 페어링은 사용할 수 없습니다.</div></Card>
+          ) : <PairingCard t={t} onGeneratePairing={onGeneratePairing} />}
         </>
       )}
     </section>
@@ -72,7 +75,7 @@ function LoginCard({ t, onLogin }: { t: HubTheme; onLogin: () => void }) {
   );
 }
 
-function AccountCard({ t, account, onLogout }: { t: HubTheme; account: PlatformAccount; onLogout: () => void }) {
+function AccountCard({ t, account, onLogout }: { t: HubTheme; account: PlatformAccount; onLogout?: () => void }) {
   return (
     <Card t={t}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -92,7 +95,7 @@ function AccountCard({ t, account, onLogout }: { t: HubTheme; account: PlatformA
             )}
           </div>
         </div>
-        <button
+        {onLogout && <button
           onClick={onLogout}
           style={{
             cursor: 'pointer', fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: '.05em',
@@ -100,7 +103,7 @@ function AccountCard({ t, account, onLogout }: { t: HubTheme; account: PlatformA
           }}
         >
           로그아웃
-        </button>
+        </button>}
       </div>
       {!account.verified && !account.banned && (
         <div style={{ fontSize: 12, color: t.t3, marginTop: 14, lineHeight: 1.6, borderTop: `1px solid ${t.linesoft}`, paddingTop: 12 }}>

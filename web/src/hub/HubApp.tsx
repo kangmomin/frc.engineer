@@ -25,15 +25,20 @@ import { Access } from './screens/Access';
 import { Guide } from './screens/Guide';
 import { DriverProfile } from './screens/DriverProfile';
 import { MySetups } from './screens/MySetups';
+import { ViewAsBanner } from './components/ViewAsBanner';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket, PlatformSearch } from './data/platform';
 import type { PlatformLedgerEntry, PlatformListingCard } from './data/platform';
 import type { SearchResult } from './search';
 import {
-  captureTokenFromFragment, fetchMe, beginSteamLogin, platformLogout, createPairingCode, getSessionToken,
+  captureTokenFromFragment, fetchMeWithToken, beginSteamLogin, createPairingCode,
+  getParentSessionToken, getViewAsToken, storeViewAsSession, clearViewAsSession,
+  clearParentSessionToken, clearCurrentParentSession, startViewAs, exitViewAs, revokeSession,
+  subscribeSessionUnauthorized, SessionRequestError,
 } from './data/session';
 import type { PlatformAccount } from './data/session';
 import { canViewAnalysis, canManageRBAC, canViewFeedbackInbox } from './data/permissions';
+import { isCurrentSessionSnapshot, isParentStorageChange, parentRevalidationFailureAction, resolveBootstrapIdentity, sessionSubtreeKey, sessionUnauthorizedAction, viewAsEntryFailureAction } from './data/sessionState';
 
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
 
@@ -73,19 +78,44 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const [platformAccount, setPlatformAccount] = useState<PlatformAccount | null>(null);
   const [platformLoading, setPlatformLoading] = useState(platformConfigured);
   const [realWallet, setRealWallet] = useState<RealWallet | null>(null);
+  const [viewAs, setViewAs] = useState<{ actor: PlatformAccount; expiresAt: string } | null>(null);
+  const [sessionEpoch, setSessionEpoch] = useState(0);
+  const sessionEpochRef = useRef(0);
+  const [sessionBusy, setSessionBusy] = useState(false);
+  const viewOnly = viewAs !== null;
+  const walletGen = useRef(0);
+
+  const advanceSessionEpoch = useCallback(() => {
+    const next = ++sessionEpochRef.current;
+    setSessionEpoch(next);
+    return next;
+  }, []);
+
+  const clearOwnerState = useCallback(() => {
+    walletGen.current += 1;
+    raceContextRequestGeneration.current += 1;
+    setRealWallet(null);
+    setRankings(null);
+    setOverview(null);
+    setHighlightedAccountId(null);
+    setSelectedDriverAccountId(null);
+    setSearchBuyer(null);
+    setTrackCtx(DEFAULT_TRACK_CONTEXT);
+    trackContextGeneration.current += 1;
+  }, []);
 
   // Load the real wallet + ledger for a logged-in account (3D1). refreshWallet is
   // also handed to the market so a purchase updates the Overview wallet card.
   // walletGen: 로그아웃 직후 늦게 도착한 in-flight 응답이 지갑을 되살리지 못하도록
   // 세대 토큰으로 stale 응답을 무시한다.
-  const walletGen = useRef(0);
   const refreshWallet = useMemo(() => () => {
     const gen = ++walletGen.current;
+    const epoch = sessionEpochRef.current;
     if (!platformConfigured || !platformAccount) { setRealWallet(null); return; }
     void Promise.all([platformMkt.getWallet(), platformMkt.getLedger()])
-      .then(([balance, ledger]) => {
-        if (gen !== walletGen.current) return;
-        setRealWallet({ balance, ledger: ledger.map(toHubLedger) });
+      .then(([wallet, ledger]) => {
+        if (gen !== walletGen.current || epoch !== sessionEpochRef.current) return;
+        setRealWallet({ balance: wallet.balance, initialized: wallet.initialized, ledger: ledger.map(toHubLedger) });
       })
       .catch(() => { /* keep prior on transient error */ });
   }, [platformConfigured, platformAccount, platformMkt]);
@@ -93,10 +123,12 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   useEffect(() => { refreshWallet(); }, [refreshWallet]);
 
   useEffect(() => {
+    if (viewOnly) { setOverview(null); return; }
     let alive = true;
-    void dataSource.getOverview().then((d) => { if (alive) setOverview(d); });
+    const epoch = sessionEpochRef.current;
+    void dataSource.getOverview().then((d) => { if (alive && epoch === sessionEpochRef.current) setOverview(d); });
     return () => { alive = false; };
-  }, [dataSource]);
+  }, [dataSource, sessionEpoch, viewOnly]);
 
   // Leaderboards come straight from the platform for the selected track+format.
   // rankings === null renders as "loading"; a failed/empty fetch renders as the
@@ -106,51 +138,239 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   useEffect(() => {
     if (!platformConfigured) { setRankings(null); return; }
     let alive = true;
+    const epoch = sessionEpochRef.current;
     setRankings(null);
     void Promise.all([
       platformMkt.leaderboardTT(trackCtx.trackId, trackCtx.format),
       platformMkt.leaderboardPace(trackCtx.trackId, trackCtx.format),
     ]).then(([tt, pace]) => {
-      if (!alive) return;
+      if (!alive || epoch !== sessionEpochRef.current) return;
       setRankings({
         tt: tt.map((r) => ({ accountId: r.accountId, handle: r.persona, lapMs: r.lapMs, s1Ms: r.s1Ms, s2Ms: r.s2Ms, s3Ms: r.s3Ms, fmt: trackCtx.format, you: r.you })),
         pace: pace.map((r) => ({ accountId: r.accountId, handle: r.persona, avgMs: r.avgMs, tyre: tyreLabel(r.tyre), laps: r.laps, consistency: r.consistency, you: r.you })),
       });
-    }).catch(() => { if (alive) setRankings({ tt: [], pace: [] }); });
+    }).catch(() => { if (alive && epoch === sessionEpochRef.current) setRankings({ tt: [], pace: [] }); });
     return () => { alive = false; };
-  }, [platformConfigured, platformMkt, trackCtx, platformAccount]);
+  }, [platformConfigured, platformMkt, trackCtx, platformAccount, sessionEpoch]);
 
   // Once logged in, default the track context to the viewer's most recent race
   // so the board opens on a track they actually drive. Manual selection wins after.
   useEffect(() => {
     if (!platformConfigured || !platformAccount) return;
     let alive = true;
+    const epoch = sessionEpochRef.current;
     const requestGeneration = ++raceContextRequestGeneration.current;
     const contextGeneration = trackContextGeneration.current;
     void platformMkt.listMyRaces().then((races) => {
-      if (!alive || requestGeneration !== raceContextRequestGeneration.current || contextGeneration !== trackContextGeneration.current || races.length === 0) return;
+      if (!alive || epoch !== sessionEpochRef.current || requestGeneration !== raceContextRequestGeneration.current || contextGeneration !== trackContextGeneration.current || races.length === 0) return;
       setTrackCtx(trackContextFor(races[0].trackId, races[0].gameFormat));
     }).catch(() => { /* keep default context */ });
     return () => { alive = false; };
-  }, [platformConfigured, platformAccount, platformMkt]);
+  }, [platformConfigured, platformAccount, platformMkt, sessionEpoch]);
+
+  const bootstrapSession = useCallback(async () => {
+    const epoch = advanceSessionEpoch();
+    clearOwnerState();
+    setPlatformAccount(null);
+    setViewAs(null);
+    setPlatformLoading(true);
+    setSessionBusy(false);
+    const parentToken = getParentSessionToken();
+    const childToken = getViewAsToken();
+    if (!parentToken) {
+      if (sessionEpochRef.current === epoch) {
+        clearViewAsSession();
+        setPlatformAccount(null);
+        setViewAs(null);
+        setPlatformLoading(false);
+      }
+      return;
+    }
+    const [parentResult, childResult] = await Promise.allSettled([
+      fetchMeWithToken(parentToken),
+      childToken ? fetchMeWithToken(childToken) : Promise.resolve(null),
+    ]);
+    if (sessionEpochRef.current !== epoch || getParentSessionToken() !== parentToken || getViewAsToken() !== childToken) return;
+    if (parentResult.status === 'rejected') {
+      if (parentResult.reason instanceof SessionRequestError && parentResult.reason.status === 401) clearParentSessionToken();
+      clearViewAsSession();
+      setPlatformAccount(null);
+      setViewAs(null);
+      setPlatformLoading(false);
+      setActive('profile');
+      return;
+    }
+    const actor = parentResult.value;
+    const subject = childResult.status === 'fulfilled' ? childResult.value : null;
+    const identity = resolveBootstrapIdentity(actor, childToken ? subject : null);
+    if (identity.mode === 'view-as') {
+      setPlatformAccount(identity.account);
+      setViewAs({ actor: identity.actor, expiresAt: identity.expiresAt });
+      setActive('profile');
+    } else {
+      clearViewAsSession();
+      setPlatformAccount(identity.account);
+      setViewAs(null);
+    }
+    setPlatformLoading(false);
+  }, [advanceSessionEpoch, clearOwnerState]);
+
+  const recoverChildSession = useCallback(async (capturedChild: string, capturedEpoch: number, destination: 'profile' | 'access' = 'profile') => {
+    if (!isCurrentSessionSnapshot({ childToken: capturedChild, epoch: capturedEpoch }, getViewAsToken(), sessionEpochRef.current)) return;
+    const epoch = advanceSessionEpoch();
+    clearOwnerState();
+    clearViewAsSession();
+    setPlatformAccount(null);
+    setViewAs(null);
+    setPlatformLoading(true);
+    setSessionBusy(true);
+    const parentToken = getParentSessionToken();
+    if (!parentToken) {
+      setPlatformAccount(null);
+      setPlatformLoading(false);
+      setSessionBusy(false);
+      setActive('profile');
+      return;
+    }
+    try {
+      const actor = await fetchMeWithToken(parentToken);
+      if (sessionEpochRef.current !== epoch || getParentSessionToken() !== parentToken || getViewAsToken()) return;
+      setPlatformAccount(actor);
+      setActive(destination === 'access' && canManageRBAC(actor) ? 'access' : 'profile');
+    } catch (error: unknown) {
+      if (sessionEpochRef.current !== epoch || getParentSessionToken() !== parentToken || getViewAsToken()) return;
+      if (parentRevalidationFailureAction(error instanceof SessionRequestError ? error.status : null) === 'clear-parent') clearParentSessionToken();
+      setPlatformAccount(null);
+      setActive('profile');
+    } finally {
+      if (sessionEpochRef.current === epoch) {
+        setPlatformLoading(false);
+        setSessionBusy(false);
+      }
+    }
+  }, [advanceSessionEpoch, clearOwnerState]);
 
   useEffect(() => {
-    if (!platformConfigured) return;
-    captureTokenFromFragment(); // OpenID callback drops the token in the URL fragment.
-    if (!getSessionToken()) { setPlatformLoading(false); return; }
-    let alive = true;
-    void fetchMe().then((acc) => { if (alive) { setPlatformAccount(acc); setPlatformLoading(false); } });
-    return () => { alive = false; };
-  }, [platformConfigured]);
+    if (!platformConfigured) { setPlatformLoading(false); return; }
+    captureTokenFromFragment();
+    void bootstrapSession();
+  }, [bootstrapSession, platformConfigured]);
 
-  const handleLogout = () => { setPlatformAccount(null); void platformLogout(); };
-  // Owner API 401 is distinct from an ordinary screen error: remove the stale
-  // session best-effort and move to Profile so no prior account state survives.
-  const handleSessionExpired = useCallback(() => {
-    void platformLogout();
+  useEffect(() => subscribeSessionUnauthorized((token) => {
+    const epoch = sessionEpochRef.current;
+    const child = getViewAsToken();
+    const parent = getParentSessionToken();
+    const action = sessionUnauthorizedAction(token, parent, child);
+    if (action === 'recover-child' && child) {
+      void recoverChildSession(child, epoch);
+    } else if (action === 'clear-parent' && sessionEpochRef.current === epoch) {
+      advanceSessionEpoch();
+      clearOwnerState();
+      clearParentSessionToken();
+      setPlatformAccount(null);
+      setViewAs(null);
+      setPlatformLoading(false);
+      setActive('profile');
+    }
+  }), [advanceSessionEpoch, clearOwnerState, recoverChildSession]);
+
+  useEffect(() => {
+    const child = getViewAsToken();
+    if (!child || !viewAs) return;
+    const epoch = sessionEpochRef.current;
+    const delay = Math.max(0, Date.parse(viewAs.expiresAt) - Date.now());
+    const timer = window.setTimeout(() => void recoverChildSession(child, epoch), delay);
+    return () => window.clearTimeout(timer);
+  }, [recoverChildSession, viewAs]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (!isParentStorageChange(event.key)) return;
+      const child = getViewAsToken();
+      if (child) void recoverChildSession(child, sessionEpochRef.current);
+      else void bootstrapSession();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [bootstrapSession, recoverChildSession]);
+
+  const handleLogout = useCallback(() => {
+    const parentToken = getParentSessionToken();
+    advanceSessionEpoch();
+    clearOwnerState();
     setPlatformAccount(null);
+    setViewAs(null);
+    setPlatformLoading(false);
+    clearViewAsSession();
+    clearParentSessionToken();
     setActive('profile');
-  }, []);
+    if (parentToken) void revokeSession(parentToken);
+  }, [advanceSessionEpoch, clearOwnerState]);
+
+  const handleStartViewAs = useCallback(async (accountId: string) => {
+    const parentToken = getParentSessionToken();
+    const actor = platformAccount;
+    if (!parentToken || !actor || viewAs) throw new Error('View As를 시작할 수 없습니다');
+    const epoch = advanceSessionEpoch();
+    setSessionBusy(true);
+    try {
+      let started;
+      try {
+        started = await startViewAs(accountId, parentToken);
+      } catch (error: unknown) {
+        const status = error instanceof SessionRequestError ? error.status : null;
+        if (
+          viewAsEntryFailureAction('start-with-parent', status) === 'logout-parent'
+          && sessionEpochRef.current === epoch
+          && clearCurrentParentSession(parentToken, null)
+        ) {
+          advanceSessionEpoch();
+          clearOwnerState();
+          setPlatformAccount(null);
+          setViewAs(null);
+          setPlatformLoading(false);
+          setSessionBusy(false);
+          setActive('profile');
+          return;
+        }
+        throw error;
+      }
+      if (sessionEpochRef.current !== epoch || getParentSessionToken() !== parentToken || getViewAsToken()) return;
+      storeViewAsSession(started.token, started.expiresAt);
+      let subject;
+      try {
+        subject = await fetchMeWithToken(started.token);
+      } catch (error: unknown) {
+        const action = viewAsEntryFailureAction('validate-child', error instanceof SessionRequestError ? error.status : null);
+        if (action === 'recover-parent') {
+          await recoverChildSession(started.token, epoch);
+          return;
+        }
+        if (action === 'clear-child' && sessionEpochRef.current === epoch && getParentSessionToken() === parentToken && getViewAsToken() === started.token) clearViewAsSession();
+        throw error;
+      }
+      if (sessionEpochRef.current !== epoch || getParentSessionToken() !== parentToken || getViewAsToken() !== started.token) return;
+      if (!subject.viewAs || subject.viewAs.actor.id !== actor.id) throw new Error('View As identity mismatch');
+      clearOwnerState();
+      setPlatformAccount(subject);
+      setViewAs({ actor, expiresAt: subject.viewAs.expiresAt });
+      setPlatformLoading(false);
+      setActive('profile');
+    } catch (error) {
+      if (sessionEpochRef.current === epoch && getParentSessionToken() === parentToken) clearViewAsSession();
+      throw error;
+    } finally {
+      if (sessionEpochRef.current === epoch) setSessionBusy(false);
+    }
+  }, [advanceSessionEpoch, clearOwnerState, platformAccount, recoverChildSession, viewAs]);
+
+  const handleExitViewAs = useCallback(() => {
+    const child = getViewAsToken();
+    if (!child) return;
+    const epoch = sessionEpochRef.current;
+    void exitViewAs(child).catch(() => undefined);
+    void recoverChildSession(child, epoch, 'access');
+  }, [recoverChildSession]);
 
   const ctx = ctxLabel(active, trackCtx);
   const setUserTrackContext = (context: TrackContext) => {
@@ -211,14 +431,17 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   return (
     <div className="hubRoot" style={rootStyle}>
-      <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} account={platformAccount} />
+      <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} account={platformAccount} viewOnly={viewOnly} />
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} search={platformSearch} onSearchSelect={selectSearchResult} />
-        <main style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
-          {active === 'guide' && <Guide t={t} onLaunchLive={onLaunchLive} onGoOverview={() => setActive('overview')} />}
+        <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} walletInitialized={realWallet?.initialized} search={platformSearch} onSearchSelect={selectSearchResult} />
+        {viewAs && platformAccount && <ViewAsBanner t={t} subject={platformAccount} actorPersona={viewAs.actor.persona} expiresAt={viewAs.expiresAt} busy={sessionBusy} onExit={handleExitViewAs} />}
+        <main key={sessionSubtreeKey(viewOnly ? 'view-as' : 'normal', platformAccount?.id ?? null, sessionEpoch)} style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
+          {active === 'guide' && <Guide t={t} onLaunchLive={onLaunchLive} onGoOverview={() => setActive('overview')} viewOnly={viewOnly} />}
 
-          {active === 'overview' && (overview ? (
+          {active === 'overview' && (viewOnly ? (
+            <Placeholder t={t} title="OVERVIEW" note="View As에서는 이 PC의 로컬 텔레메트리·리플레이를 대상 사용자 데이터로 표시하지 않습니다." />
+          ) : overview ? (
             <Overview t={t} data={overview} wallet={realWallet} persona={platformAccount?.persona} rankInfo={rankInfo} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
           ) : <Loading t={t} />)}
 
@@ -238,6 +461,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
               market={platformMkt} trackCtx={trackCtx} onSetTrackCtx={setManualTrackCtx}
               onEconomyChange={refreshWallet}
               searchBuyer={searchBuyer} onSearchBuyerOpened={() => setSearchBuyer(null)}
+              viewOnly={viewOnly}
             />
           )}
 
@@ -250,6 +474,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
               onLogin={beginSteamLogin}
               onLogout={handleLogout}
               onGeneratePairing={createPairingCode}
+              viewOnly={viewOnly}
             />
           )}
 
@@ -262,13 +487,13 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
           )}
 
           {active === 'feedback' && (
-            <Feedback t={t} configured={platformConfigured} account={platformAccount} market={platformMkt} />
+            <Feedback t={t} configured={platformConfigured} account={platformAccount} market={platformMkt} viewOnly={viewOnly} />
           )}
 
           {/* FEEDBACK INBOX: Sidebar visibility is only a convenience. Recheck
               the explicit, banned-aware grant before mounting the data screen. */}
           {active === 'feedback-inbox' && (
-            platformAccount && canViewFeedbackInbox(platformAccount) ? (
+            !viewOnly && platformAccount && canViewFeedbackInbox(platformAccount) ? (
               <FeedbackInbox
                 key={`${platformAccount.id}:${platformAccount.permissions?.join('\u0001') ?? ''}`}
                 t={t} market={platformMkt} account={platformAccount}
@@ -282,14 +507,15 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             <MySetups
               t={t} configured={platformConfigured} loading={platformLoading}
               account={platformAccount} market={platformMkt}
-              onLogin={beginSteamLogin} onSessionExpired={handleSessionExpired}
+              onLogin={beginSteamLogin}
+              viewOnly={viewOnly}
             />
           )}
 
           {/* ANALYSIS: race-analyze 열람 권한이 있을 때만 실화면 — 아니면 기존
               플레이스홀더 그대로. 진짜 경계는 서버 게이트(RBAC)다. */}
           {active === 'analysis' && (
-            canViewAnalysis(platformAccount) ? (
+            !viewOnly && canViewAnalysis(platformAccount) ? (
               <Analysis t={t} market={platformMkt} />
             ) : (
               <Placeholder t={t} title={PLACEHOLDER.analysis.title} note={PLACEHOLDER.analysis.note} />
@@ -299,8 +525,8 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
           {/* ACCESS: rbac 권한이 있을 때만. Sidebar가 항목 자체를 감추지만, 권한을
               잃은 채 화면이 열려 있는 경우(회수 후 재조회)를 위해 여기서도 막는다. */}
           {active === 'access' && (
-            canManageRBAC(platformAccount) ? (
-              <Access t={t} market={platformMkt} selfAccountId={platformAccount?.id ?? null} />
+            !viewOnly && platformAccount && canManageRBAC(platformAccount) ? (
+              <Access t={t} market={platformMkt} selfAccountId={platformAccount.id} actor={platformAccount} onViewAs={handleStartViewAs} />
             ) : (
               <Placeholder t={t} title="ACCESS" note="권한 관리는 rbac 권한이 있는 계정에서만 열립니다." />
             )

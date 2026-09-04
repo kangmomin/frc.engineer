@@ -10,13 +10,14 @@ interface Props {
   t: HubTheme;
   ctx: string;
   credits: number | null;
+  walletInitialized?: boolean;
   search: PlatformSearch;
   onSearchSelect: (result: SearchResult) => void;
 }
 
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
-export function TopBar({ t, ctx, credits, search, onSearchSelect }: Props) {
+export function TopBar({ t, ctx, credits, walletInitialized, search, onSearchSelect }: Props) {
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -110,10 +111,10 @@ export function TopBar({ t, ctx, credits, search, onSearchSelect }: Props) {
           </div>
         )}
       </div>
-      {credits != null && (
+      {(credits != null || walletInitialized === false) && (
         <div className="hubCredits" style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '6px 13px', background: t.panel2, border: `1px solid ${t.line}`, borderRadius: 9 }}>
-          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 13, color: t.accInk, letterSpacing: '.01em' }}>⬢ {credits.toLocaleString('en-US')}</span>
-          <span style={{ fontFamily: MONO, fontSize: 10, color: t.t3, fontWeight: 500, letterSpacing: '.05em' }}>CREDITS</span>
+          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 13, color: t.accInk, letterSpacing: '.01em' }}>{walletInitialized === false ? '—' : `⬢ ${credits?.toLocaleString('en-US')}`}</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: t.t3, fontWeight: 500, letterSpacing: '.05em' }}>{walletInitialized === false ? '미개설' : 'CREDITS'}</span>
         </div>
       )}
     </header>

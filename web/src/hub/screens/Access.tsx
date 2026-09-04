@@ -9,7 +9,9 @@
 //    저장 전에 그 조건을 계산해 경고한다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { HubTheme } from '../theme';
-import { hasPermission } from '../data/permissions';
+import { canStartViewAs, hasPermission } from '../data/permissions';
+import type { PlatformAccount } from '../data/session';
+import { viewAsEligibility } from './accessState';
 import {
   PlatformMarket, ListingError,
   type PlatformRole, type PlatformAccountRoles,
@@ -28,9 +30,11 @@ interface Props {
   market: PlatformMarket;
   // 로그인한 본인 계정 id — 자기 락아웃 경고 판정에만 쓴다.
   selfAccountId: string | null;
+  actor: PlatformAccount;
+  onViewAs: (accountId: string) => Promise<void>;
 }
 
-export function Access({ t, market, selfAccountId }: Props) {
+export function Access({ t, market, selfAccountId, actor, onViewAs }: Props) {
   const [roles, setRoles] = useState<PlatformRole[] | null>(null);
   const [catalog, setCatalog] = useState<string[]>([]);
   const [err, setErr] = useState('');
@@ -54,9 +58,10 @@ export function Access({ t, market, selfAccountId }: Props) {
       </div>
 
       {err && <Banner t={t} tone="err">{err}</Banner>}
+      {!canStartViewAs(actor) && <Banner t={t} tone="warn">View As를 시작하려면 pithub.view-as.create 권한이 필요합니다.</Banner>}
 
       <RolePanel t={t} market={market} roles={roles} catalog={catalog} onChanged={refreshRoles} onErr={setErr} />
-      <AccountPanel t={t} market={market} roles={roles} selfAccountId={selfAccountId} onErr={setErr} />
+      <AccountPanel t={t} market={market} roles={roles} selfAccountId={selfAccountId} canCreateViewAs={canStartViewAs(actor)} onViewAs={onViewAs} onErr={setErr} />
     </section>
   );
 }
@@ -233,15 +238,16 @@ function GrantPicker({ t, catalog, draft, onToggle }: {
 
 /* -------------------------------- Accounts -------------------------------- */
 
-function AccountPanel({ t, market, roles, selfAccountId, onErr }: {
+function AccountPanel({ t, market, roles, selfAccountId, canCreateViewAs, onViewAs, onErr }: {
   t: HubTheme; market: PlatformMarket; roles: PlatformRole[] | null;
-  selfAccountId: string | null; onErr: (m: string) => void;
+  selfAccountId: string | null; canCreateViewAs: boolean; onViewAs: (accountId: string) => Promise<void>; onErr: (m: string) => void;
 }) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<PlatformAccountRoles[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [viewBusyId, setViewBusyId] = useState<string | null>(null);
 
   const search = useCallback((term: string) => {
     setRows(null);
@@ -296,6 +302,7 @@ function AccountPanel({ t, market, roles, selfAccountId, onErr }: {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {rows.map((row) => {
             const active = openId === row.id;
+            const viewAs = viewAsEligibility(row, selfAccountId, canCreateViewAs);
             return (
               <div key={row.id} style={{
                 padding: '10px 12px', borderRadius: 8,
@@ -314,7 +321,20 @@ function AccountPanel({ t, market, roles, selfAccountId, onErr }: {
                       {row.roles.length ? row.roles.join(' · ') : 'Role 없음'}
                     </span>
                   </button>
+                  <MiniButton
+                    t={t}
+                    disabled={!viewAs.eligible || viewBusyId !== null}
+                    primary={viewAs.eligible}
+                    onClick={() => {
+                      if (!viewAs.eligible) return;
+                      setViewBusyId(row.id);
+                      onViewAs(row.id).catch((e: unknown) => onErr(msgOf(e))).finally(() => setViewBusyId(null));
+                    }}
+                  >
+                    {viewBusyId === row.id ? '전환 중…' : 'View As'}
+                  </MiniButton>
                 </div>
+                {!viewAs.eligible && <div style={{ marginTop: 5, fontFamily: MONO, fontSize: 9.5, color: t.t3 }}>View As 불가 · {viewAs.reason}</div>}
 
                 {active && (
                   <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.line}` }}>
