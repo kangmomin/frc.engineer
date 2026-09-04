@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canManageRBAC, canViewAnalysis, canViewFeedbackInbox, hasPermission } from './permissions';
+import { canEditMySetups, canManageRBAC, canReadMySetups, canViewAnalysis, canViewFeedbackInbox, hasPermission } from './permissions';
 import type { PlatformAccount } from './session';
 
 // internal/rbac/rbac_test.go의 테이블과 동형 — Go/TS 매칭 규칙이 갈라지면 여기서 잡힌다.
@@ -100,5 +100,29 @@ describe('canViewFeedbackInbox', () => {
 
   it('denies banned accounts even when an ancestor grant covers the inbox', () => {
     expect(canViewFeedbackInbox({ ...base, banned: true, permissions: ['pithub'] })).toBe(false);
+  });
+});
+
+describe('My Setups permissions', () => {
+  const base: PlatformAccount = {
+    id: 'a', steamId64: '7', persona: 'P', avatarUrl: '', kind: 'user',
+    verified: false, banned: false, createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  it('fails closed when a legacy response omits permissions', () => {
+    expect(canReadMySetups(base)).toBe(false);
+    expect(canEditMySetups({ ...base, admin: true })).toBe(false);
+  });
+
+  it('allows read separately from update', () => {
+    expect(canReadMySetups({ ...base, permissions: ['pithub.race.read'] })).toBe(true);
+    expect(canEditMySetups({ ...base, permissions: ['pithub.race.read'] })).toBe(false);
+    expect(canEditMySetups({ ...base, permissions: ['pithub.race.update'] })).toBe(true);
+  });
+
+  it('keeps banned accounts read-only even under an ancestor grant', () => {
+    const banned = { ...base, banned: true, permissions: ['pithub'] };
+    expect(canReadMySetups(banned)).toBe(true);
+    expect(canEditMySetups(banned)).toBe(false);
   });
 });

@@ -80,6 +80,41 @@ describe('PlatformMarket auth', () => {
   });
 });
 
+describe('My Setups owner API', () => {
+  it('uses authenticated no-store list/detail endpoints', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const rows = [{ id: 's/1', name: '', rating: null, memo: '', params: {}, usageCount: 1, firstRecordedAt: null, lastRecordedAt: null, lastTrackId: 1, lastTrackName: 'Bahrain', lastGameFormat: 'F1 26' }];
+    const fetchMock = vi.fn().mockResolvedValue(res(200, rows));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(mkt.listMySetups()).resolves.toEqual(rows);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://platform.test/me/setups');
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: 'no-store', headers: { Authorization: 'Bearer tok' } });
+
+    fetchMock.mockResolvedValueOnce(res(200, { ...rows[0], races: [] }));
+    await mkt.getMySetup('s/1');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://platform.test/me/setups/s%2F1');
+  });
+
+  it('sends the complete metadata replacement body on POST', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const fetchMock = vi.fn().mockResolvedValue(res(200, { name: 'Dry', rating: null, memo: 'note', updatedAt: '2026-09-04T00:00:00Z' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.updateMySetup('s1', { name: 'Dry', rating: null, memo: 'note' });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://platform.test/me/setups/s1');
+    expect(init).toMatchObject({ method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer tok' } });
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'Dry', rating: null, memo: 'note' });
+  });
+
+  it.each([
+    [400, 'bad-input'], [401, 'unauthorized'], [403, 'forbidden'], [404, 'not-found'], [500, 'network'],
+  ] as const)('maps My Setups status %i explicitly to %s', async (status, reason) => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(status)));
+    await expect(mkt.getMySetup('s1')).rejects.toMatchObject({ reason });
+  });
+});
+
 describe('createListing status mapping', () => {
   const cases: Array<[number, string]> = [
     [400, 'bad-input'],
