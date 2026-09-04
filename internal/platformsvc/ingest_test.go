@@ -5,10 +5,27 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"frc.engineer/internal/dto"
 )
+
+func readRaceAnalysisV2Fixture(t *testing.T) ([]byte, UploadRequest) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "race_analysis_v2.json"))
+	if err != nil {
+		t.Fatalf("read v2 fixture: %v", err)
+	}
+	var request UploadRequest
+	if err := json.Unmarshal(raw, &request); err != nil {
+		t.Fatalf("decode v2 fixture: %v", err)
+	}
+	return raw, request
+}
 
 const (
 	steamA = "76561197960287930"
@@ -281,6 +298,401 @@ func TestValidateUploadDetail(t *testing.T) {
 	if err := validateUpload(trigLong); !errors.Is(err, ErrBadUpload) {
 		t.Fatalf("over-length finalizeTrigger err = %v, want ErrBadUpload", err)
 	}
+}
+
+func TestValidateUploadV2GoldenContract(t *testing.T) {
+	raw, request := readRaceAnalysisV2Fixture(t)
+	if err := validateUpload(&request); err != nil {
+		t.Fatalf("golden v2 request rejected: %v", err)
+	}
+	if request.Detail == nil || len(request.Detail.Incidents) != 1 {
+		t.Fatalf("golden detail = %+v, want one incident", request.Detail)
+	}
+	participants := request.Detail.Incidents[0].Participants
+	if len(participants) != 2 || participants[0].TeamID == nil || *participants[0].TeamID != 0 ||
+		participants[1].TeamID == nil || *participants[1].TeamID != 255 {
+		t.Fatalf("required nullable team ids lost 0/255: %+v", participants)
+	}
+	if got := request.Detail.Incidents[0].Frames[0].TelemetryUnavailable; got == nil || len(got) != 0 {
+		t.Fatalf("fresh v2 telemetry marker = %#v, want explicit []", got)
+	}
+
+	decode := func(t *testing.T, body []byte) UploadRequest {
+		t.Helper()
+		var got UploadRequest
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("decode mutation: %v", err)
+		}
+		return got
+	}
+	rejectJSON := func(name string, body []byte) {
+		t.Helper()
+		mutated := decode(t, body)
+		if err := validateUpload(&mutated); !errors.Is(err, ErrBadUpload) {
+			t.Fatalf("%s: validateUpload = %v, want ErrBadUpload", name, err)
+		}
+	}
+
+	// Omission is distinct from explicit null on the v2 wire. A source that did
+	// not have identity may send null, but it may not silently omit the field.
+	rejectJSON("missing teamId", []byte(strings.Replace(string(raw), `"teamId": 0, `, "", 1)))
+	nullTeam := decode(t, []byte(strings.Replace(string(raw), `"teamId": 255`, `"teamId": null`, 1)))
+	if err := validateUpload(&nullTeam); err != nil {
+		t.Fatalf("explicit null teamId rejected: %v", err)
+	}
+	rejectJSON("missing telemetryUnavailable", []byte(strings.Replace(string(raw), `"telemetryUnavailable"`, `"telemetryUnavailableOmitted"`, 1)))
+	rejectJSON("duplicate frame timestamp", []byte(strings.Replace(string(raw), `"tMs": 50`, `"tMs": 0`, 1)))
+	rejectJSON("missing aggregate count key", []byte(strings.Replace(string(raw), `"capturedCount": null`, `"capturedCountOmitted": null`, 1)))
+	rejectJSON("missing debrief tyre key", []byte(strings.Replace(string(raw), `"lifeSpan": null`, `"lifeSpanOmitted": null`, 1)))
+	rejectJSON("missing incident completeness key", []byte(strings.Replace(string(raw), `"storedFrameCount": 2`, `"storedFrameCountOmitted": 2`, 1)))
+	rejectJSON("missing outline bounds key", []byte(strings.Replace(string(raw), `"maxX": 10, `, `"maxXOmitted": 10, `, 1)))
+
+	badTuple := request
+	badTuple.Detail = cloneUploadDetailForTest(request.Detail)
+	badTuple.Detail.Incidents[0].Frames[0].Cars[0][10] = 1.01
+	if err := validateUpload(&badTuple); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("out-of-range throttle = %v, want ErrBadUpload", err)
+	}
+
+	badOutline := request
+	badOutline.Detail = cloneUploadDetailForTest(request.Detail)
+	badOutline.Detail.TrackOutline.Bounds.MaxX = 5
+	if err := validateUpload(&badOutline); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("outline bound excluding point = %v, want ErrBadUpload", err)
+	}
+
+	badCounts := request
+	badCounts.Detail = cloneUploadDetailForTest(request.Detail)
+	*badCounts.Detail.Completeness.Sections.Events.StoredCount = 2
+	if err := validateUpload(&badCounts); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("event count mismatch = %v, want ErrBadUpload", err)
+	}
+
+	badFreshness := request
+	badFreshness.Detail = cloneUploadDetailForTest(request.Detail)
+	badFreshness.Detail.Incidents[0].Frames[0].Cars[0] = nil
+	badFreshness.Detail.Incidents[0].Frames[0].TelemetryUnavailable = []int{0}
+	if err := validateUpload(&badFreshness); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("freshness marker without a car position = %v, want ErrBadUpload", err)
+	}
+
+	badAggregate := request
+	badAggregate.Detail = cloneUploadDetailForTest(request.Detail)
+	badAggregate.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	if err := validateUpload(&badAggregate); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("inconsistent aggregate status = %v, want ErrBadUpload", err)
+	}
+
+	badCompleteSection := request
+	badCompleteSection.Detail = cloneUploadDetailForTest(request.Detail)
+	*badCompleteSection.Detail.Completeness.Sections.Events.CapturedCount = 2
+	if err := validateUpload(&badCompleteSection); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("complete section with count loss = %v, want ErrBadUpload", err)
+	}
+
+	_, countedFixture := readRaceAnalysisV2Fixture(t)
+	countedFixture.Detail = cloneUploadDetailForTest(countedFixture.Detail)
+	*countedFixture.Detail.Incidents[0].Completeness.CapturedFrameCount = 3
+	if err := validateUpload(&countedFixture); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("complete incident with frame loss = %v, want ErrBadUpload", err)
+	}
+
+	_, reasonFixture := readRaceAnalysisV2Fixture(t)
+	reasonFixture.Detail = cloneUploadDetailForTest(reasonFixture.Detail)
+	reasonFixture.Detail.Incidents[0].Completeness.Reasons = []string{string(dto.ReasonSourceMissing)}
+	if err := validateUpload(&reasonFixture); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("complete incident with loss reason = %v, want ErrBadUpload", err)
+	}
+
+	_, partialFixture := readRaceAnalysisV2Fixture(t)
+	partialFixture.Detail = cloneUploadDetailForTest(partialFixture.Detail)
+	partialFixture.Detail.Incidents[0].Completeness.Status = string(dto.AvailabilityPartial)
+	partialFixture.Detail.Completeness.Sections.Incidents.Status = string(dto.AvailabilityPartial)
+	partialFixture.Detail.Completeness.Sections.Incidents.Reasons = []string{string(dto.ReasonSourceMissing)}
+	partialFixture.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	if err := validateUpload(&partialFixture); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("partial incident without loss evidence = %v, want ErrBadUpload", err)
+	}
+
+	_, unavailableFixture := readRaceAnalysisV2Fixture(t)
+	unavailableFixture.Detail = cloneUploadDetailForTest(unavailableFixture.Detail)
+	unavailableFixture.Detail.Incidents[0].Completeness.Status = string(dto.AvailabilityUnavailable)
+	unavailableFixture.Detail.Completeness.Sections.Incidents.Status = string(dto.AvailabilityPartial)
+	unavailableFixture.Detail.Completeness.Sections.Incidents.Reasons = []string{string(dto.ReasonSourceMissing)}
+	unavailableFixture.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	if err := validateUpload(&unavailableFixture); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("unavailable incident with stored frames = %v, want ErrBadUpload", err)
+	}
+
+	_, unknownFixture := readRaceAnalysisV2Fixture(t)
+	unknownFixture.Detail = cloneUploadDetailForTest(unknownFixture.Detail)
+	unknownFixture.Detail.Incidents[0].Completeness.Status = string(dto.AvailabilityUnknown)
+	unknownFixture.Detail.Completeness.Sections.Incidents.Status = string(dto.AvailabilityPartial)
+	unknownFixture.Detail.Completeness.Sections.Incidents.Reasons = []string{string(dto.ReasonSourceMissing)}
+	unknownFixture.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	if err := validateUpload(&unknownFixture); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("unknown incident with stored frames = %v, want ErrBadUpload", err)
+	}
+
+	_, unavailableEvent := readRaceAnalysisV2Fixture(t)
+	unavailableEvent.Detail = cloneUploadDetailForTest(unavailableEvent.Detail)
+	unavailableEvent.Detail.Completeness.Sections.Events.Status = string(dto.AvailabilityUnavailable)
+	unavailableEvent.Detail.Completeness.Sections.Events.Reasons = []string{string(dto.ReasonSourceMissing)}
+	unavailableEvent.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	if err := validateUpload(&unavailableEvent); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("unavailable events with stored facts = %v, want ErrBadUpload", err)
+	}
+
+	_, unavailableIncidents := readRaceAnalysisV2Fixture(t)
+	unavailableIncidents.Detail = cloneUploadDetailForTest(unavailableIncidents.Detail)
+	unavailableIncidents.Detail.Completeness.Sections.Incidents.Status = string(dto.AvailabilityUnavailable)
+	unavailableIncidents.Detail.Completeness.Sections.Incidents.Reasons = []string{string(dto.ReasonSourceMissing)}
+	unavailableIncidents.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	if err := validateUpload(&unavailableIncidents); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("unavailable incidents with stored facts = %v, want ErrBadUpload", err)
+	}
+
+	_, unavailablePlaceholder := readRaceAnalysisV2Fixture(t)
+	unavailablePlaceholder.Detail = cloneUploadDetailForTest(unavailablePlaceholder.Detail)
+	unavailablePlaceholder.Detail.Completeness.Sections.Penalties.Status = string(dto.AvailabilityUnavailable)
+	unavailablePlaceholder.Detail.Completeness.Sections.Penalties.Reasons = []string{string(dto.ReasonSourceMissing)}
+	unavailablePlaceholder.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	if err := validateUpload(&unavailablePlaceholder); err != nil {
+		t.Fatalf("intentional unavailable debrief placeholder rejected: %v", err)
+	}
+}
+
+func TestValidateUploadV2CompletenessRejectsUnknownAndUntruthfulOutline(t *testing.T) {
+	reject := func(t *testing.T, name string, mutate func(*UploadRequest)) {
+		t.Helper()
+		_, request := readRaceAnalysisV2Fixture(t)
+		request.Detail = cloneUploadDetailForTest(request.Detail)
+		mutate(&request)
+		if err := validateUpload(&request); !errors.Is(err, ErrBadUpload) {
+			t.Fatalf("%s: validateUpload = %v, want ErrBadUpload", name, err)
+		}
+	}
+
+	// Unknown is a read-normalization state only. A supported v2 producer must
+	// state a concrete availability for every completeness object.
+	for _, test := range []struct {
+		name              string
+		section           func(*UploadCompletenessSections) *UploadSectionCompleteness
+		aggregateExpected string
+	}{
+		{"laps", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Laps }, string(dto.AvailabilityPartial)},
+		{"sectors", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Sectors }, string(dto.AvailabilityPartial)},
+		{"stints", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Stints }, string(dto.AvailabilityPartial)},
+		{"tyres", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Tyres }, string(dto.AvailabilityPartial)},
+		{"dynamics", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Dynamics }, string(dto.AvailabilityPartial)},
+		{"penalties", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Penalties }, string(dto.AvailabilityPartial)},
+		{"events", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Events }, string(dto.AvailabilityPartial)},
+		{"pit", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Pit }, string(dto.AvailabilityPartial)},
+		{"track outline", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.TrackOutline }, string(dto.AvailabilityComplete)},
+		{"incidents", func(s *UploadCompletenessSections) *UploadSectionCompleteness { return &s.Incidents }, string(dto.AvailabilityPartial)},
+	} {
+		t.Run("unknown "+test.name, func(t *testing.T) {
+			reject(t, test.name, func(request *UploadRequest) {
+				section := test.section(&request.Detail.Completeness.Sections)
+				section.Status = string(dto.AvailabilityUnknown)
+				request.Detail.Completeness.Analysis.Status = test.aggregateExpected
+			})
+		})
+	}
+
+	// The aggregate itself can otherwise truthfully resolve to unknown when all
+	// core sections are unknown, so exercise that distinct v2 rejection path.
+	reject(t, "unknown aggregate", func(request *UploadRequest) {
+		for _, section := range []*UploadSectionCompleteness{
+			&request.Detail.Completeness.Sections.Laps,
+			&request.Detail.Completeness.Sections.Sectors,
+			&request.Detail.Completeness.Sections.Stints,
+			&request.Detail.Completeness.Sections.Tyres,
+			&request.Detail.Completeness.Sections.Dynamics,
+			&request.Detail.Completeness.Sections.Penalties,
+			&request.Detail.Completeness.Sections.Events,
+			&request.Detail.Completeness.Sections.Pit,
+			&request.Detail.Completeness.Sections.Incidents,
+		} {
+			section.Status = string(dto.AvailabilityUnknown)
+		}
+		request.Detail.Completeness.Analysis.Status = string(dto.AvailabilityUnknown)
+	})
+
+	// An omitted optional outline has one precise unavailable shape.
+	reject(t, "absent outline marked complete", func(request *UploadRequest) {
+		request.Detail.TrackOutline = nil
+	})
+	reject(t, "absent outline with nonzero captured count", func(request *UploadRequest) {
+		request.Detail.TrackOutline = nil
+		section := &request.Detail.Completeness.Sections.TrackOutline
+		section.Status = string(dto.AvailabilityUnavailable)
+		section.Reasons = []string{string(dto.ReasonTrackOutlineUnavailable)}
+		*section.CapturedCount = 1
+		*section.StoredCount = 0
+	})
+	reject(t, "absent outline without unavailable reason", func(request *UploadRequest) {
+		request.Detail.TrackOutline = nil
+		section := &request.Detail.Completeness.Sections.TrackOutline
+		section.Status = string(dto.AvailabilityUnavailable)
+		section.Reasons = []string{string(dto.ReasonSourceMissing)}
+		*section.CapturedCount = 0
+		*section.StoredCount = 0
+	})
+	reject(t, "present outline marked unknown", func(request *UploadRequest) {
+		request.Detail.Completeness.Sections.TrackOutline.Status = string(dto.AvailabilityUnknown)
+	})
+	reject(t, "partial outline without downsample evidence", func(request *UploadRequest) {
+		section := &request.Detail.Completeness.Sections.TrackOutline
+		section.Status = string(dto.AvailabilityPartial)
+		section.Reasons = []string{string(dto.ReasonSourceMissing)}
+		*section.CapturedCount = 3
+	})
+	reject(t, "partial outline without count loss", func(request *UploadRequest) {
+		section := &request.Detail.Completeness.Sections.TrackOutline
+		section.Status = string(dto.AvailabilityPartial)
+		section.Reasons = []string{string(dto.ReasonTrackOutlineDownsampled)}
+	})
+
+	// A no-data array must explain why it is unavailable; otherwise the producer
+	// has silently converted a potentially meaningful absence into a fact.
+	reject(t, "unavailable event array without reason", func(request *UploadRequest) {
+		request.Detail.Events = nil
+		section := &request.Detail.Completeness.Sections.Events
+		section.Status = string(dto.AvailabilityUnavailable)
+		section.Reasons = []string{}
+		*section.CapturedCount = 0
+		*section.StoredCount = 0
+		request.Detail.Completeness.Analysis.Status = string(dto.AvailabilityPartial)
+	})
+
+	// The positive boundary: source points lost to the <=256 cap are represented
+	// by captured>stored plus the frozen downsample reason.
+	_, downsampled := readRaceAnalysisV2Fixture(t)
+	downsampled.Detail = cloneUploadDetailForTest(downsampled.Detail)
+	section := &downsampled.Detail.Completeness.Sections.TrackOutline
+	section.Status = string(dto.AvailabilityPartial)
+	section.Reasons = []string{string(dto.ReasonTrackOutlineDownsampled)}
+	*section.CapturedCount = 3
+	if err := validateUpload(&downsampled); err != nil {
+		t.Fatalf("truthful downsampled outline rejected: %v", err)
+	}
+}
+
+func TestValidateUploadV2PitCoPresence(t *testing.T) {
+	_, request := readRaceAnalysisV2Fixture(t)
+	lane, stationary := uint32(12_000), uint32(2_000)
+	request.Detail.Debrief.Pit.Stops = 1
+	request.Detail.Debrief.Pit.PitLaneTimeMs = &lane
+	request.Detail.Debrief.Pit.StationaryTimeMs = &stationary
+	request.Pit = &UploadPit{Stops: 1, PitLaneTimeMs: lane, StationaryMs: stationary}
+	if err := validateUpload(&request); err != nil {
+		t.Fatalf("matching measured pit facts rejected: %v", err)
+	}
+	badMeasuredCompleteness := request
+	badMeasuredCompleteness.Detail = cloneUploadDetailForTest(request.Detail)
+	badMeasuredCompleteness.Detail.Completeness.Sections.Pit.Status = string(dto.AvailabilityUnavailable)
+	if err := validateUpload(&badMeasuredCompleteness); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("measured pit marked unavailable = %v, want ErrBadUpload", err)
+	}
+
+	request.Pit.StationaryMs++
+	if err := validateUpload(&request); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("mismatched top-level pit = %v, want ErrBadUpload", err)
+	}
+
+	request.Pit = nil
+	if err := validateUpload(&request); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("missing top-level measured pit = %v, want ErrBadUpload", err)
+	}
+
+	_, missingMeasurement := readRaceAnalysisV2Fixture(t)
+	missingMeasurement.Detail.Debrief.Pit.Stops = 1
+	if err := validateUpload(&missingMeasurement); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("known stop without partial pit completeness = %v, want ErrBadUpload", err)
+	}
+}
+
+func TestValidateUploadV2MeasuredPitRequiresAllWireFields(t *testing.T) {
+	raw, _ := readRaceAnalysisV2Fixture(t)
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	detail := body["detail"].(map[string]any)
+	debrief := detail["debrief"].(map[string]any)
+	debriefPit := debrief["pit"].(map[string]any)
+	debriefPit["stops"] = 1
+	debriefPit["pitLaneTimeMs"] = 12_000
+	debriefPit["stationaryTimeMs"] = 0
+	body["pit"] = map[string]any{"stops": 1, "pitLaneTimeMs": 12_000, "stationaryMs": 0}
+
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("encode measured pit: %v", err)
+	}
+	var matching UploadRequest
+	if err := json.Unmarshal(encoded, &matching); err != nil {
+		t.Fatalf("decode measured pit: %v", err)
+	}
+	if err := validateUpload(&matching); err != nil {
+		t.Fatalf("matching measured pit rejected: %v", err)
+	}
+
+	body["pit"].(map[string]any)["stationaryMs"] = nil
+	encoded, err = json.Marshal(body)
+	if err != nil {
+		t.Fatalf("encode null stationary: %v", err)
+	}
+	var nullStationary UploadRequest
+	if err := json.Unmarshal(encoded, &nullStationary); err != nil {
+		t.Fatalf("decode null stationary: %v", err)
+	}
+	if err := validateUpload(&nullStationary); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("null top-level stationary measurement = %v, want ErrBadUpload", err)
+	}
+
+	delete(body["pit"].(map[string]any), "stationaryMs")
+	encoded, err = json.Marshal(body)
+	if err != nil {
+		t.Fatalf("encode missing stationary: %v", err)
+	}
+	var missingStationary UploadRequest
+	if err := json.Unmarshal(encoded, &missingStationary); err != nil {
+		t.Fatalf("decode missing stationary: %v", err)
+	}
+	if err := validateUpload(&missingStationary); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("missing top-level stationary measurement = %v, want ErrBadUpload", err)
+	}
+}
+
+// cloneUploadDetailForTest copies the few nested fields mutators touch while
+// preserving the JSON presence bits established by the golden fixture decode.
+func cloneUploadDetailForTest(source *UploadDetail) *UploadDetail {
+	copyDetail := *source
+	copyDetail.Incidents = append([]UploadIncident(nil), source.Incidents...)
+	for i := range copyDetail.Incidents {
+		copyIncident := copyDetail.Incidents[i]
+		copyIncident.Participants = append([]UploadIncidentParticipant(nil), source.Incidents[i].Participants...)
+		copyIncident.Frames = append([]UploadIncidentFrame(nil), source.Incidents[i].Frames...)
+		for frameIndex := range copyIncident.Frames {
+			copyIncident.Frames[frameIndex].Cars = append([][]float64(nil), source.Incidents[i].Frames[frameIndex].Cars...)
+			for carIndex := range copyIncident.Frames[frameIndex].Cars {
+				copyIncident.Frames[frameIndex].Cars[carIndex] = append([]float64(nil), source.Incidents[i].Frames[frameIndex].Cars[carIndex]...)
+			}
+		}
+		copyDetail.Incidents[i] = copyIncident
+	}
+	if source.TrackOutline != nil {
+		outline := *source.TrackOutline
+		outline.Points = append([][2]float64(nil), source.TrackOutline.Points...)
+		copyDetail.TrackOutline = &outline
+	}
+	if source.Completeness != nil {
+		completeness := *source.Completeness
+		copyDetail.Completeness = &completeness
+	}
+	return &copyDetail
 }
 
 // validIncidentClip builds a minimal clip that passes every validIncident bound:

@@ -1,0 +1,114 @@
+.root {
+  --analysis-panel: #fff;
+  --analysis-panel2: #f4f5f7;
+  --analysis-inset: #f7f8fa;
+  --analysis-line: #e4e7eb;
+  --analysis-line2: #d3d7dd;
+  --analysis-text: #1a1d24;
+  --analysis-sub: #565b66;
+  --analysis-muted: #878d97;
+  --analysis-accent: #e0a83d;
+  --analysis-accent-ink: #946f28;
+  --analysis-accent-soft: rgba(224, 168, 61, .13);
+  --analysis-negative: #b5533f;
+  max-width: 1400px;
+  min-width: 0;
+  margin: 0 auto;
+  color: var(--analysis-text);
+}
+
+.gate, .card, .section, .replay {
+  border: 1px solid var(--analysis-line);
+  border-radius: 12px;
+  background: var(--analysis-panel);
+}
+
+.gate { padding: 24px; color: var(--analysis-sub); line-height: 1.65; }
+.gate h1 { margin: 0 0 6px; color: var(--analysis-text); font-size: 21px; }
+.gate p { margin: 0; }
+
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+.header h1 { margin: 5px 0 4px; font-size: clamp(24px, 3vw, 32px); }
+.eyebrow, .meta, .status, .badge, .telemetryLabel { font-family: 'JetBrains Mono', monospace; }
+.eyebrow { color: var(--analysis-accent-ink); font-size: 10px; font-weight: 700; letter-spacing: .18em; }
+.header p, .meta { margin: 0; color: var(--analysis-sub); font-size: 12px; }
+
+.layout { display: grid; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.list, .detail { min-width: 0; }
+.list { padding: 10px; }
+.list h2, .detail > h2 { margin: 6px 7px 12px; font-size: 14px; }
+.raceList { display: grid; gap: 7px; max-height: 66vh; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.raceButton { width: 100%; padding: 11px; border: 1px solid var(--analysis-line); border-radius: 9px; background: var(--analysis-inset); color: var(--analysis-text); text-align: left; cursor: pointer; }
+.raceButton:hover, .raceButton:focus-visible { border-color: var(--analysis-accent); outline: none; }
+.raceButtonSelected { border-color: var(--analysis-accent); background: var(--analysis-accent-soft); }
+.raceTitle { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; }
+.raceSub { display: block; margin-top: 5px; color: var(--analysis-sub); font-size: 11px; line-height: 1.45; }
+
+.detail { padding: 16px; }
+.detailHeader { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 9px; margin-bottom: 13px; }
+.detailHeader h2 { margin: 0; font-size: 19px; }
+.sectionGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.section { padding: 14px; min-width: 0; }
+.sectionWide { grid-column: 1 / -1; }
+.section h3 { margin: 0; font-size: 14px; }
+.sectionHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.section > p { margin: 0; color: var(--analysis-sub); font-size: 12px; line-height: 1.55; }
+.notice { margin: 0 0 10px; padding: 8px 9px; border: 1px solid var(--analysis-line); border-left: 3px solid var(--analysis-accent); border-radius: 6px; color: var(--analysis-sub); background: var(--analysis-inset); font-size: 11px; line-height: 1.45; }
+.notice[data-kind="partial"] { border-left-color: #b7791f; }
+.notice[data-kind="unavailable"] { border-left-color: var(--analysis-negative); }
+.notice[data-kind="unknown"] { border-left-color: var(--analysis-muted); }
+.badge { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 6px; border: 1px solid var(--analysis-line2); border-radius: 999px; color: var(--analysis-sub); font-size: 9px; text-transform: uppercase; letter-spacing: .05em; }
+
+.tableWrap { overflow-x: auto; border: 1px solid var(--analysis-line); border-radius: 8px; }
+.table { width: 100%; min-width: 570px; border-collapse: collapse; font-size: 11px; }
+.table th, .table td { padding: 8px 9px; border-bottom: 1px solid var(--analysis-line); text-align: left; white-space: nowrap; }
+.table th { color: var(--analysis-muted); background: var(--analysis-inset); font: 600 9px/1.2 'JetBrains Mono', monospace; letter-spacing: .08em; }
+.table tr:last-child td { border-bottom: 0; }
+.table td { color: var(--analysis-sub); }
+.keyValues { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 12px; margin: 0; }
+.keyValues div { display: grid; gap: 2px; }
+.keyValues dt { color: var(--analysis-muted); font: 600 9px/1.2 'JetBrains Mono', monospace; letter-spacing: .08em; }
+.keyValues dd { margin: 0; color: var(--analysis-text); font-size: 12px; }
+
+.incidentList { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.incidentButton { width: 100%; padding: 10px; border: 1px solid var(--analysis-line); border-radius: 8px; background: var(--analysis-inset); color: var(--analysis-text); text-align: left; cursor: pointer; }
+.incidentButton:hover, .incidentButton:focus-visible { border-color: var(--analysis-accent); outline: none; }
+.incidentSelected { background: var(--analysis-accent-soft); border-color: var(--analysis-accent); }
+.incidentPeople { display: block; margin-top: 4px; color: var(--analysis-sub); font-size: 11px; }
+
+.replay { grid-column: 1 / -1; padding: 14px; }
+.replay:focus-visible { outline: 3px solid var(--analysis-accent); outline-offset: 2px; }
+.replayHeader { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.replayHeader h3 { margin: 0; font-size: 15px; }
+.svgWrap { overflow: hidden; border: 1px solid var(--analysis-line); border-radius: 9px; background: var(--analysis-inset); }
+.trackSvg { display: block; width: 100%; height: auto; min-height: 260px; }
+.replayGrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, .7fr); gap: 12px; margin-top: 12px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.controls button, .retryButton, .loadMore { padding: 7px 9px; border: 1px solid var(--analysis-line2); border-radius: 7px; color: var(--analysis-text); background: var(--analysis-panel2); font: 600 11px/1.2 'JetBrains Mono', monospace; cursor: pointer; }
+.controls button[aria-pressed="true"], .raceButtonSelected, .incidentSelected { box-shadow: inset 0 0 0 1px var(--analysis-accent); }
+.controls button:hover, .controls button:focus-visible, .retryButton:hover, .retryButton:focus-visible, .loadMore:hover, .loadMore:focus-visible { border-color: var(--analysis-accent); outline: none; }
+.slider { width: min(100%, 360px); accent-color: var(--analysis-accent); }
+.telemetry { overflow: auto; border: 1px solid var(--analysis-line); border-radius: 8px; }
+.telemetry table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.telemetry th, .telemetry td { padding: 7px; border-bottom: 1px solid var(--analysis-line); text-align: left; white-space: nowrap; }
+.telemetry th { color: var(--analysis-muted); background: var(--analysis-inset); font: 600 9px/1.2 'JetBrains Mono', monospace; }
+.telemetry tr:last-child td { border-bottom: 0; }
+.player { font-weight: 800; }
+.status { margin: 8px 0 0; color: var(--analysis-muted); font-size: 10px; }
+.error { color: var(--analysis-negative); }
+.empty { color: var(--analysis-muted); font-size: 12px; line-height: 1.55; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; }
+  .raceList { max-height: 300px; }
+  .replayGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .header, .detailHeader { align-items: flex-start; flex-direction: column; }
+  .sectionGrid { grid-template-columns: 1fr; }
+  .sectionWide, .replay { grid-column: auto; }
+  .detail, .section, .replay { padding: 12px; }
+  .keyValues { grid-template-columns: 1fr; }
+  .trackSvg { min-height: 210px; }
+}

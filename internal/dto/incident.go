@@ -23,13 +23,21 @@ type IncidentClip struct {
 	Collisions      [][2]int              `json:"collisions"` // merged [vehicleIdx, otherVehicleIdx] pairs
 	Participants    []IncidentParticipant `json:"participants"`
 	Frames          []IncidentFrame       `json:"frames"`
+	// Completeness is emitted for schema-v2 captures. It deliberately stays on
+	// the clip (rather than being inferred by a reader) because an early
+	// finalization, participant cap, or frame cap is a producer-side fact.
+	Completeness IncidentCompleteness `json:"completeness,omitempty"`
 }
 
 // IncidentParticipant identifies one captured car. MinDistM is the minimum 3D
 // distance to the player over the window (0 for the player itself).
 type IncidentParticipant struct {
-	Idx      int     `json:"idx"`
-	Name     string  `json:"name,omitempty"`
+	Idx  int    `json:"idx"`
+	Name string `json:"name,omitempty"`
+	// TeamID is required-but-nullable in schema v2. A nil pointer means the
+	// participant source was absent; 0 is a valid team id and 255 is the game's
+	// real no-team sentinel, so neither may be normalized to nil.
+	TeamID   *int    `json:"teamId"`
 	IsPlayer bool    `json:"isPlayer,omitempty"`
 	MinDistM float64 `json:"minDistM"`
 }
@@ -39,4 +47,32 @@ type IncidentParticipant struct {
 type IncidentFrame struct {
 	TMS  int64       `json:"tMs"`
 	Cars [][]float64 `json:"cars"`
+	// TelemetryUnavailable is a list of participant vehicle indices, not frame
+	// columns. It is always a (possibly empty) array for v2 captures and nil for
+	// pre-v2 historical clips, preserving the distinction between a genuine zero
+	// input and unavailable telemetry.
+	TelemetryUnavailable []int `json:"telemetryUnavailable"`
+}
+
+// IncidentCompleteness carries capture facts for one stored incident clip.
+// Captured counts are nullable only for legacy data; schema-v2 always writes
+// explicit values. Stored counts are concrete because they describe this
+// serialized clip.
+type IncidentCompleteness struct {
+	Status                   Availability         `json:"status"`
+	Reasons                  []CompletenessReason `json:"reasons"`
+	CapturedParticipantCount *int                 `json:"capturedParticipantCount"`
+	StoredParticipantCount   int                  `json:"storedParticipantCount"`
+	CapturedFrameCount       *int                 `json:"capturedFrameCount"`
+	StoredFrameCount         int                  `json:"storedFrameCount"`
+}
+
+// IncidentCaptureKey is restart-safe private metadata. It intentionally holds
+// only collision identity, never frames or participant telemetry. RaceSummary
+// persists it locally so a restarted sender can correctly count eligible clips
+// that were refused after the visible clip cap; upload and public/archive paths
+// strip the surrounding private metadata.
+type IncidentCaptureKey struct {
+	SessionTimeMS int64    `json:"sessionTimeMs"`
+	Collisions    [][2]int `json:"collisions"`
 }

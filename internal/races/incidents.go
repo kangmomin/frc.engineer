@@ -15,7 +15,16 @@ import (
 const (
 	incidentUploadBudgetBytes   = 300 * 1024
 	incidentTrimmedParticipants = 6
+	incidentStoredCap           = 20
 )
+
+// IncidentTrimFacts reports transformations that affect v2 completeness. It
+// intentionally distinguishes participant projection from whole-clip drops:
+// both retain usable data, but mean different things to a replay reader.
+type IncidentTrimFacts struct {
+	DroppedClips        int
+	ParticipantsTrimmed bool
+}
 
 // TrimIncidentsForUpload fits clips to the upload budget without mutating the
 // input. Deterministic, no size sorting: when over budget it first re-projects
@@ -24,21 +33,32 @@ const (
 // (newest first) until the serialized block fits. droppedClips reports how many
 // whole clips were removed so callers can log.
 func TrimIncidentsForUpload(clips []dto.IncidentClip) (out []dto.IncidentClip, droppedClips int) {
+	out, facts := TrimIncidentsForUploadWithFacts(clips)
+	return out, facts.DroppedClips
+}
+
+// TrimIncidentsForUploadWithFacts is the v2-aware form of
+// TrimIncidentsForUpload. It preserves the public legacy signature above while
+// giving the uploader exact post-trim facts for completeness metadata.
+func TrimIncidentsForUploadWithFacts(clips []dto.IncidentClip) (out []dto.IncidentClip, facts IncidentTrimFacts) {
 	if len(clips) == 0 {
-		return nil, 0
+		return nil, facts
 	}
 	if serializedIncidentsSize(clips) <= incidentUploadBudgetBytes {
-		return clips, 0
+		return clips, facts
 	}
 	trimmed := make([]dto.IncidentClip, len(clips))
 	for i := range clips {
+		if len(clips[i].Participants) > incidentTrimmedParticipants {
+			facts.ParticipantsTrimmed = true
+		}
 		trimmed[i] = projectIncidentParticipants(clips[i], incidentTrimmedParticipants)
 	}
 	for len(trimmed) > 0 && serializedIncidentsSize(trimmed) > incidentUploadBudgetBytes {
 		trimmed = trimmed[:len(trimmed)-1]
-		droppedClips++
+		facts.DroppedClips++
 	}
-	return trimmed, droppedClips
+	return trimmed, facts
 }
 
 // serializedIncidentsSize measures the JSON size of the block. A marshal error
@@ -97,6 +117,22 @@ func projectIncidentParticipants(clip dto.IncidentClip, k int) dto.IncidentClip 
 	for newJ, oldJ := range kept {
 		out.Participants[newJ] = clip.Participants[oldJ]
 	}
+	keptIDs := make(map[int]struct{}, len(out.Participants))
+	for _, participant := range out.Participants {
+		keptIDs[participant.Idx] = struct{}{}
+	}
+	// v2 requires collision identities to remain valid participant ids. A
+	// recorder-originated collision always includes the player, which is ranked
+	// first, so this retains at least the nearest collision pair while honestly
+	// dropping pairs whose partner could not fit the upload projection.
+	out.Collisions = make([][2]int, 0, len(clip.Collisions))
+	for _, pair := range clip.Collisions {
+		_, left := keptIDs[pair[0]]
+		_, right := keptIDs[pair[1]]
+		if left && right {
+			out.Collisions = append(out.Collisions, pair)
+		}
+	}
 	out.Frames = make([]dto.IncidentFrame, len(clip.Frames))
 	for i, f := range clip.Frames {
 		cars := make([][]float64, len(kept))
@@ -105,7 +141,29 @@ func projectIncidentParticipants(clip dto.IncidentClip, k int) dto.IncidentClip 
 				cars[newJ] = f.Cars[oldJ]
 			}
 		}
-		out.Frames[i] = dto.IncidentFrame{TMS: f.TMS, Cars: cars}
+		unavailable := make([]int, 0, len(f.TelemetryUnavailable))
+		for _, idx := range f.TelemetryUnavailable {
+			if _, ok := keptIDs[idx]; ok {
+				unavailable = append(unavailable, idx)
+			}
+		}
+		out.Frames[i] = dto.IncidentFrame{TMS: f.TMS, Cars: cars, TelemetryUnavailable: unavailable}
+	}
+	if out.Completeness.CapturedParticipantCount != nil || out.Completeness.CapturedFrameCount != nil {
+		out.Completeness.Reasons = append([]dto.CompletenessReason(nil), out.Completeness.Reasons...)
+		out.Completeness.StoredParticipantCount = len(out.Participants)
+		out.Completeness.StoredFrameCount = len(out.Frames)
+		out.Completeness.Status = dto.AvailabilityPartial
+		out.Completeness.Reasons = appendReason(out.Completeness.Reasons, dto.ReasonUploadParticipantsTrimmed)
 	}
 	return out
+}
+
+func appendReason(reasons []dto.CompletenessReason, want dto.CompletenessReason) []dto.CompletenessReason {
+	for _, reason := range reasons {
+		if reason == want {
+			return reasons
+		}
+	}
+	return append(reasons, want)
 }

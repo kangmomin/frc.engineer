@@ -268,6 +268,15 @@ func TestRaceSummarySerializationSizeUnderBudget(t *testing.T) {
 			Severity: "warning", DriverName: strings.Repeat("D", 40), Lap: (i % 78) + 1, Timestamp: 1_700_000_000 + int64(i),
 		})
 	}
+	// The analysis outline is sent with rich detail, not as a separate live
+	// payload. Include the full 256-point bound in the same 24-car budget guard.
+	detail.TrackOutline = &dto.TrackOutlineDTO{
+		Points: make([][2]float64, 0, 256),
+		Bounds: dto.TrackOutlineBounds{MinX: 0, MaxX: 255, MinZ: -255, MaxZ: 0},
+	}
+	for i := range 256 {
+		detail.TrackOutline.Points = append(detail.TrackOutline.Points, [2]float64{float64(i), -float64(i)})
+	}
 	summary.Detail = detail
 
 	// 브로드캐스트(SCTP) 형태: Incidents nil — 세 strip 지점과 동일 조건.
@@ -303,4 +312,235 @@ func TestRaceSummarySerializationSizeUnderBudget(t *testing.T) {
 		t.Fatalf("summary + trimmed incidents = %d bytes, exceeds HTTP budget %d", len(withIncidents), httpBudget)
 	}
 	t.Logf("summary + trimmed incidents JSON = %d bytes (HTTP budget %d)", len(withIncidents), httpBudget)
+}
+
+func TestDeriveUploadCompletenessV2CountsAndCheckpoint(t *testing.T) {
+	trackOutline := &dto.TrackOutlineDTO{
+		Points: [][2]float64{{0, 0}, {10, 10}},
+		Bounds: dto.TrackOutlineBounds{MinX: 0, MaxX: 10, MinZ: 0, MaxZ: 10},
+	}
+	summary := &RaceSummary{
+		SchemaVersion: RaceSummarySchemaVersion,
+		Player:        PlayerSummary{Stints: []RaceStint{{Compound: "soft", Laps: 1, StartLap: 1, EndLap: 1}}},
+		Debrief:       &RaceDebrief{Pit: RacePitSummary{Stops: 0}},
+		Detail: &RaceDetail{
+			Laps:            []dto.LapTimingDTO{{LapNumber: 1, LapMs: 90_000, S1Ms: 30_000, S2Ms: 30_000, S3Ms: 30_000, Valid: true}},
+			Dynamics:        []dto.DynamicsLapDTO{{LapNum: 1}},
+			Events:          []dto.RaceControlNotification{{Timestamp: 1, Message: "start"}},
+			CaptureStartLap: 1,
+			TrackOutline:    trackOutline,
+		},
+		PrivateCapture: &dto.RacePrivateCapture{Provenance: dto.RaceCaptureProvenance{
+			LapDataObserved: true, SessionHistoryObserved: true, CarStatusObserved: true,
+			CarDamageObserved: true, TyreSetsObserved: true, EventsCaptureActive: true,
+			EventsSeen: 1, IncidentsCaptureActive: true, NormalFinalize: true,
+		}},
+	}
+	completeness := DeriveUploadCompleteness(summary, UploadCompletenessFacts{EventsStored: 1})
+	if completeness == nil || completeness.Analysis.Status != dto.AvailabilityComplete {
+		t.Fatalf("complete v2 analysis = %+v, want complete", completeness)
+	}
+	for _, section := range []dto.SectionCompleteness{
+		completeness.Sections.Laps, completeness.Sections.Sectors, completeness.Sections.Stints,
+		completeness.Sections.Tyres, completeness.Sections.Dynamics, completeness.Sections.Penalties,
+		completeness.Sections.Events, completeness.Sections.Pit, completeness.Sections.Incidents,
+	} {
+		if section.CapturedCount == nil || section.StoredCount == nil || *section.CapturedCount != *section.StoredCount {
+			t.Fatalf("section counts = %+v, want equal explicit values", section)
+		}
+	}
+	if got := *completeness.Sections.TrackOutline.StoredCount; got != 2 {
+		t.Fatalf("track outline stored count = %d, want 2", got)
+	}
+
+	summary.PrivateCapture.Provenance.CheckpointFinalize = true
+	checkpoint := DeriveUploadCompleteness(summary, UploadCompletenessFacts{EventsStored: 1})
+	if checkpoint.Analysis.Status != dto.AvailabilityPartial || checkpoint.Sections.Laps.Status != dto.AvailabilityPartial ||
+		!containsCompletenessReason(checkpoint.Sections.Laps.Reasons, dto.ReasonCheckpointFinalize) {
+		t.Fatalf("checkpoint completeness = %+v, want partial with checkpoint reason", checkpoint)
+	}
+
+	// The v2 debrief object is always present on the upload wire even when a
+	// local summary lacks a player debrief source. Its fixed object-unit counts
+	// must stay explicit rather than creating an invalid 0-count v2 request.
+	summary.Debrief = nil
+	summary.PrivateCapture.Provenance.CheckpointFinalize = false
+	withoutLocalDebrief := DeriveUploadCompleteness(summary, UploadCompletenessFacts{EventsStored: 1})
+	for _, section := range []dto.SectionCompleteness{
+		withoutLocalDebrief.Sections.Tyres, withoutLocalDebrief.Sections.Penalties, withoutLocalDebrief.Sections.Pit,
+	} {
+		if section.CapturedCount == nil || section.StoredCount == nil || *section.CapturedCount != 1 || *section.StoredCount != 1 {
+			t.Fatalf("v2 debrief section count = %+v, want 1/1", section)
+		}
+	}
+}
+
+func TestDeriveUploadCompletenessPreservesOriginalTrackOutlineCount(t *testing.T) {
+	points := make([][2]float64, 256)
+	for i := range points {
+		points[i] = [2]float64{float64(i), -float64(i)}
+	}
+	summary := &RaceSummary{
+		SchemaVersion: RaceSummarySchemaVersion,
+		Detail: &RaceDetail{TrackOutline: &dto.TrackOutlineDTO{
+			Points: points,
+			Bounds: dto.TrackOutlineBounds{MinX: 0, MaxX: 255, MinZ: -255, MaxZ: 0},
+		}},
+		PrivateCapture: &dto.RacePrivateCapture{Provenance: dto.RaceCaptureProvenance{TrackOutlineSourcePoints: 336}},
+	}
+
+	section := DeriveUploadCompleteness(summary, UploadCompletenessFacts{}).Sections.TrackOutline
+	if section.Status != dto.AvailabilityPartial || section.CapturedCount == nil || section.StoredCount == nil ||
+		*section.CapturedCount != 336 || *section.StoredCount != len(points) ||
+		!containsCompletenessReason(section.Reasons, dto.ReasonTrackOutlineDownsampled) {
+		t.Fatalf("downsampled outline completeness = %+v, want partial 336/%d with reason", section, len(points))
+	}
+}
+
+func TestDeriveUploadCompletenessDistinguishesMissingDebriefSourcesFromConfirmedZero(t *testing.T) {
+	summary := &RaceSummary{
+		SchemaVersion:  RaceSummarySchemaVersion,
+		Debrief:        &RaceDebrief{Pit: RacePitSummary{Stops: 0}},
+		Detail:         &RaceDetail{Laps: []dto.LapTimingDTO{{LapNumber: 1, LapMs: 90_000}}},
+		PrivateCapture: &dto.RacePrivateCapture{},
+	}
+
+	missing := DeriveUploadCompleteness(summary, UploadCompletenessFacts{})
+	for name, section := range map[string]dto.SectionCompleteness{
+		"tyres":     summarySection(missing, func(sections dto.DetailSections) dto.SectionCompleteness { return sections.Tyres }),
+		"penalties": summarySection(missing, func(sections dto.DetailSections) dto.SectionCompleteness { return sections.Penalties }),
+		"pit":       summarySection(missing, func(sections dto.DetailSections) dto.SectionCompleteness { return sections.Pit }),
+	} {
+		if section.Status != dto.AvailabilityUnavailable || section.StoredCount == nil || *section.StoredCount != 1 ||
+			!containsCompletenessReason(section.Reasons, dto.ReasonSourceMissing) {
+			t.Fatalf("missing %s source = %+v, want unavailable object fact with source-missing", name, section)
+		}
+	}
+
+	summary.PrivateCapture.Provenance = dto.RaceCaptureProvenance{
+		LapDataObserved: true, CarStatusObserved: true, CarDamageObserved: true, TyreSetsObserved: true,
+	}
+	confirmedZero := DeriveUploadCompleteness(summary, UploadCompletenessFacts{})
+	for name, section := range map[string]dto.SectionCompleteness{
+		"tyres":     summarySection(confirmedZero, func(sections dto.DetailSections) dto.SectionCompleteness { return sections.Tyres }),
+		"penalties": summarySection(confirmedZero, func(sections dto.DetailSections) dto.SectionCompleteness { return sections.Penalties }),
+		"pit":       summarySection(confirmedZero, func(sections dto.DetailSections) dto.SectionCompleteness { return sections.Pit }),
+	} {
+		if section.Status != dto.AvailabilityComplete {
+			t.Fatalf("confirmed-zero %s = %+v, want complete", name, section)
+		}
+	}
+
+	summary.PrivateCapture.Provenance.CarDamageObserved = false
+	partialTyres := DeriveUploadCompleteness(summary, UploadCompletenessFacts{}).Sections.Tyres
+	if partialTyres.Status != dto.AvailabilityPartial || !containsCompletenessReason(partialTyres.Reasons, dto.ReasonSourceMissing) {
+		t.Fatalf("partially observed tyre sources = %+v, want partial source-missing", partialTyres)
+	}
+}
+
+func TestDeriveUploadCompletenessUsesExplicitRecorderClipCapFact(t *testing.T) {
+	clips := make([]dto.IncidentClip, incidentStoredCap)
+	keys := make([]dto.IncidentCaptureKey, incidentStoredCap+1)
+	for i := range clips {
+		clips[i].SessionTimeMS = int64(i + 1)
+		clips[i].Collisions = [][2]int{{0, 1}}
+	}
+	for i := range keys {
+		keys[i].SessionTimeMS = int64(i + 1)
+		keys[i].Collisions = [][2]int{{0, 1}}
+	}
+	newSummary := func(limitReached bool) *RaceSummary {
+		return &RaceSummary{
+			SchemaVersion: RaceSummarySchemaVersion,
+			Detail:        &RaceDetail{},
+			PrivateCapture: &dto.RacePrivateCapture{EligibleIncidentKeys: keys, Provenance: dto.RaceCaptureProvenance{
+				IncidentsCaptureActive: true, IncidentClipLimitReached: limitReached,
+			}},
+		}
+	}
+
+	trimmed := DeriveUploadCompleteness(newSummary(false), UploadCompletenessFacts{Incidents: clips, DroppedClips: 1}).Sections.Incidents
+	if !hasOnlyCompletenessReasons(trimmed.Reasons, dto.ReasonUploadClipsDropped) {
+		t.Fatalf("300KiB trim reasons = %v, want only upload-clips-dropped", trimmed.Reasons)
+	}
+	budget := DeriveUploadCompleteness(newSummary(false), UploadCompletenessFacts{RequestBudgetDropped: true}).Sections.Incidents
+	if !hasOnlyCompletenessReasons(budget.Reasons, dto.ReasonRequestBudgetDropped) || budget.Status != dto.AvailabilityUnavailable {
+		t.Fatalf("480KiB budget reasons/status = %+v, want unavailable request-budget-dropped only", budget)
+	}
+	cap := DeriveUploadCompleteness(newSummary(true), UploadCompletenessFacts{Incidents: clips}).Sections.Incidents
+	if !hasOnlyCompletenessReasons(cap.Reasons, dto.ReasonIncidentClipLimit) {
+		t.Fatalf("recorder cap reasons = %v, want only incident-clip-limit", cap.Reasons)
+	}
+	localLoss := DeriveUploadCompleteness(newSummary(false), UploadCompletenessFacts{Incidents: clips}).Sections.Incidents
+	if !hasOnlyCompletenessReasons(localLoss.Reasons, dto.ReasonSourceMissing) || localLoss.Status != dto.AvailabilityPartial {
+		t.Fatalf("unexplained local clip loss = %+v, want partial source-missing", localLoss)
+	}
+	noStoredClip := DeriveUploadCompleteness(newSummary(false), UploadCompletenessFacts{}).Sections.Incidents
+	if !hasOnlyCompletenessReasons(noStoredClip.Reasons, dto.ReasonSourceMissing) || noStoredClip.Status != dto.AvailabilityUnavailable {
+		t.Fatalf("unexplained zero-stored clip loss = %+v, want unavailable source-missing", noStoredClip)
+	}
+}
+
+func TestDeriveUploadCompletenessDoesNotMarkUnexplainedEventCountLossComplete(t *testing.T) {
+	summary := &RaceSummary{
+		SchemaVersion: RaceSummarySchemaVersion,
+		Detail:        &RaceDetail{Events: []dto.RaceControlNotification{{Timestamp: 1, Message: "kept"}}},
+		PrivateCapture: &dto.RacePrivateCapture{Provenance: dto.RaceCaptureProvenance{
+			EventsCaptureActive: true, EventsSeen: 2,
+		}},
+	}
+	section := DeriveUploadCompleteness(summary, UploadCompletenessFacts{EventsStored: 1}).Sections.Events
+	if section.Status != dto.AvailabilityPartial || !hasOnlyCompletenessReasons(section.Reasons, dto.ReasonSourceMissing) {
+		t.Fatalf("unexplained event count loss = %+v, want partial source-missing", section)
+	}
+}
+
+func TestAggregateCompletenessTruthTable(t *testing.T) {
+	section := func(status dto.Availability) dto.SectionCompleteness { return dto.SectionCompleteness{Status: status} }
+	all := func(status dto.Availability) []dto.SectionCompleteness {
+		return []dto.SectionCompleteness{section(status), section(status), section(status)}
+	}
+	for name, testCase := range map[string]struct {
+		sections []dto.SectionCompleteness
+		want     dto.Availability
+	}{
+		"all complete":    {all(dto.AvailabilityComplete), dto.AvailabilityComplete},
+		"all unknown":     {all(dto.AvailabilityUnknown), dto.AvailabilityUnknown},
+		"all unavailable": {all(dto.AvailabilityUnavailable), dto.AvailabilityUnavailable},
+		"mixed":           {[]dto.SectionCompleteness{section(dto.AvailabilityComplete), section(dto.AvailabilityUnknown)}, dto.AvailabilityPartial},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := aggregateCompleteness(testCase.sections); got.Status != testCase.want {
+				t.Fatalf("aggregate status = %q, want %q", got.Status, testCase.want)
+			}
+		})
+	}
+}
+
+func summarySection(completeness *dto.RaceDetailCompleteness, selectSection func(dto.DetailSections) dto.SectionCompleteness) dto.SectionCompleteness {
+	if completeness == nil {
+		return dto.SectionCompleteness{}
+	}
+	return selectSection(completeness.Sections)
+}
+
+func containsCompletenessReason(reasons []dto.CompletenessReason, wanted dto.CompletenessReason) bool {
+	for _, reason := range reasons {
+		if reason == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOnlyCompletenessReasons(got []dto.CompletenessReason, want ...dto.CompletenessReason) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, reason := range want {
+		if !containsCompletenessReason(got, reason) {
+			return false
+		}
+	}
+	return true
 }

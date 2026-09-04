@@ -87,14 +87,16 @@ type Processor struct {
 	latestPlayerCT2 *packets.CarTelemetry2Data // 2026 Season Pack: 플레이어 Overtake/Active Aero 상태
 
 	// Race summary persistence state
-	raceSummaryMu           sync.Mutex
-	raceSummaryEnabled      bool
-	raceSummarySave         RaceSummarySaveCallback
-	raceSummarySession      uint64
-	raceSummarySaved        bool
-	raceSummaryCounters     RaceSummaryCounts
-	raceSummaryTimeline     []dto.RaceControlNotification
-	raceSummaryRichTimeline []dto.RaceControlNotification
+	raceSummaryMu                sync.Mutex
+	raceSummaryEnabled           bool
+	raceSummarySave              RaceSummarySaveCallback
+	raceSummarySession           uint64
+	raceSummarySaved             bool
+	raceSummaryCounters          RaceSummaryCounts
+	raceSummaryTimeline          []dto.RaceControlNotification
+	raceSummaryRichTimeline      []dto.RaceControlNotification
+	raceSummaryRichEventsSeen    int
+	raceSummaryRichEventsDropped int
 	// finalSavePending holds the trigger of a FAILED final-class save so the idle
 	// tick retries it as final (not mislabeled as a checkpoint). Guarded by
 	// raceSummaryMu; cleared on session change and on successful final save.
@@ -132,6 +134,16 @@ type Processor struct {
 
 	// Player-involved collision capture (own mutex inside; fed from processPacket)
 	incidents *incidentRecorder
+	// captureRunID is intentionally private restart metadata. Every save emitted
+	// by this processor carries the same ID so adopting an earlier checkpoint can
+	// distinguish a cumulative in-process snapshot from a real restart run.
+	captureRunID string
+}
+
+var captureRunSequence atomic.Uint64
+
+func newCaptureRunID() string {
+	return fmt.Sprintf("%x-%x", time.Now().UnixNano(), captureRunSequence.Add(1))
 }
 
 // NewProcessor creates a new telemetry processor
@@ -150,8 +162,10 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 		minInterval:     interval,
 		pitwallInterval: 250 * time.Millisecond,
 		done:            make(chan struct{}),
+		captureRunID:    newCaptureRunID(),
 	}
-	p.incidents = newIncidentRecorder(logger, p.pitwallManager.GetDriverName)
+	p.incidents = newIncidentRecorder(logger, p.pitwallManager.GetDriverName, p.pitwallManager.GetDriverTeamID)
+	p.incidents.setTelemetryResolver(p.pitwallManager.TelemetryAvailableForVehicle)
 	return p
 }
 
@@ -287,6 +301,16 @@ func (p *Processor) GetReplayTimeline(sessionUID uint64) *ReplayTimeline {
 // failure-retry path stays safe.
 func (p *Processor) GetIncidentClips(sessionUID uint64) []dto.IncidentClip {
 	return p.incidents.snapshot(sessionUID)
+}
+
+// GetIncidentCaptureMetadata returns private local restart bookkeeping after a
+// clip snapshot. The caller must attach it only to an on-disk RaceSummary and
+// strip it from every external/archive/DataChannel serialization path.
+func (p *Processor) GetIncidentCaptureMetadata(sessionUID uint64) *dto.RacePrivateCapture {
+	if p == nil || p.incidents == nil {
+		return nil
+	}
+	return p.incidents.captureMetadata(sessionUID)
 }
 
 // idleSaveAfter / idleSaveTick drive the idle checkpoint: with no telemetry for
@@ -805,6 +829,8 @@ func (p *Processor) observeSessionUID(sessionUID uint64) {
 		p.raceSummaryCounters = RaceSummaryCounts{}
 		p.raceSummaryTimeline = nil
 		p.raceSummaryRichTimeline = nil
+		p.raceSummaryRichEventsSeen = 0
+		p.raceSummaryRichEventsDropped = 0
 		p.finalSavePending = ""
 	}
 	p.raceSummaryMu.Unlock()
@@ -918,8 +944,10 @@ func (p *Processor) recordRaceSummaryNotification(notification *dto.RaceControlN
 	// Separate, larger buffer for the persisted rich summary's event timeline.
 	// Kept apart from the base timeline so raising its cap never grows the base
 	// Debrief.Timeline that rides the broadcast / DataChannel payload.
+	p.raceSummaryRichEventsSeen++
 	p.raceSummaryRichTimeline = append(p.raceSummaryRichTimeline, tagged)
 	if len(p.raceSummaryRichTimeline) > maxRaceSummaryRichTimeline {
+		p.raceSummaryRichEventsDropped++
 		p.raceSummaryRichTimeline = append([]dto.RaceControlNotification(nil), p.raceSummaryRichTimeline[len(p.raceSummaryRichTimeline)-maxRaceSummaryRichTimeline:]...)
 	}
 }
@@ -967,6 +995,8 @@ func (p *Processor) saveRaceSummary(sessionUID uint64, trigger string, markSaved
 	counts := p.raceSummaryCounters
 	timeline := append([]dto.RaceControlNotification(nil), p.raceSummaryTimeline...)
 	richEvents := append([]dto.RaceControlNotification(nil), p.raceSummaryRichTimeline...)
+	richEventsSeen := p.raceSummaryRichEventsSeen
+	richEventsDropped := p.raceSummaryRichEventsDropped
 	if markSaved {
 		p.raceSummarySaved = true
 	}
@@ -983,6 +1013,20 @@ func (p *Processor) saveRaceSummary(sessionUID uint64, trigger string, markSaved
 		CaptureStartLap: p.pitwallManager.CaptureStartLap(),
 		FinalizeTrigger: trigger,
 	}
+	outline, sourcePoints := p.pitwallManager.AnalysisTrackOutline()
+	provenance := p.pitwallManager.CaptureProvenance()
+	provenance.EventsCaptureActive = true
+	provenance.EventsSeen = richEventsSeen
+	provenance.EventsBufferDropped = richEventsDropped
+	provenance.NormalFinalize = markSaved && trigger == packets.EventSessionEnded
+	// A save can be terminal for local storage without proving that the player's
+	// session completed normally (for example session-switch or CHQF/RCWN). The
+	// v2 completeness contract calls every such path a checkpoint so sections do
+	// not get promoted to complete merely because the file was sealed.
+	provenance.CheckpointFinalize = !provenance.NormalFinalize
+	provenance.TrackOutlineSourcePoints = sourcePoints
+	detail.TrackOutline = outline
+	detail.PrivateCapture = &dto.RacePrivateCapture{RunID: p.captureRunID, Provenance: provenance}
 	if err := save(sessionUID, counts, timeline, state, detail); err != nil {
 		p.logger.Error("failed to save race summary", "sessionUID", sessionUID, "trigger", trigger, "error", err)
 		if markSaved {

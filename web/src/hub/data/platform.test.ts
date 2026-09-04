@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlatformMarket, PlatformSearch, ListingError, isStintPayload } from './platform';
+import { PlatformMarket, PlatformSearch, ListingError, RaceAnalysisError, isStintPayload } from './platform';
 import { subscribeSessionUnauthorized } from './session';
+import raceAnalysisV2Fixture from '../../../../internal/platformsvc/testdata/race_analysis_v2.json?raw';
 
 function fakeWindow(token?: string, child?: string) {
   const store = new Map<string, string>();
@@ -417,6 +418,78 @@ describe('analysis reports', () => {
     vi.stubGlobal('fetch', fetchMock);
     await expect(mkt.deleteAnalysis('A-1')).rejects.toMatchObject({ reason: 'unauthorized' });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('owner race analysis API', () => {
+  it('keeps the backend-owned v2 golden fixture aligned on tuple, nullable team, freshness and completeness facts', () => {
+    const fixture = JSON.parse(raceAnalysisV2Fixture) as {
+      schemaVersion: number;
+      detail: {
+        incidents: Array<{
+          participants: Array<{ idx: number; teamId: number | null; isPlayer: boolean }>;
+          frames: Array<{ cars: Array<number[] | null>; telemetryUnavailable: number[] }>;
+          completeness: { capturedParticipantCount: number | null; storedParticipantCount: number; capturedFrameCount: number | null; storedFrameCount: number };
+        }>;
+        trackOutline: { points: Array<[number, number]> };
+        completeness: { sections: { incidents: { capturedCount: number | null; storedCount: number | null } } };
+      };
+    };
+    const incident = fixture.detail.incidents[0];
+    expect(fixture.schemaVersion).toBe(2);
+    expect(incident.participants.map((participant) => participant.teamId)).toEqual([0, 255]);
+    expect(incident.participants.filter((participant) => participant.isPlayer)).toHaveLength(1);
+    expect(incident.frames.every((frame) => Array.isArray(frame.telemetryUnavailable))).toBe(true);
+    expect(incident.frames.flatMap((frame) => frame.cars).every((car) => car === null || car.length === 14)).toBe(true);
+    expect(incident.completeness.storedFrameCount).toBe(incident.frames.length);
+    expect(fixture.detail.completeness.sections.incidents.storedCount).toBe(fixture.detail.incidents.length);
+    expect(fixture.detail.trackOutline.points.length).toBeLessThanOrEqual(256);
+  });
+
+  it('uses root-relative, encoded no-store list/detail/incident routes and forwards cancellation', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(res(200, { items: [], nextOffset: 25 }))
+      .mockResolvedValueOnce(res(200, { id: 'race/1', laps: [], stints: [], dynamics: [], events: [], incidents: [] }))
+      .mockResolvedValueOnce(res(200, { raceId: 'race/1', index: 3, participants: [], frames: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    await mkt.listRaceAnalyses({ limit: 25, offset: 0, signal: controller.signal });
+    await mkt.getRaceAnalysis('race/1', controller.signal);
+    // Frames are selected explicitly; the list/detail calls do not prefetch this route.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await mkt.getRaceAnalysisIncident('race/1', 3, controller.signal);
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://platform.test/me/race-analyses?limit=25&offset=0');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://platform.test/me/race-analyses/race%2F1');
+    expect(fetchMock.mock.calls[2][0]).toBe('https://platform.test/me/race-analyses/race%2F1/incidents/3');
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init).toMatchObject({ cache: 'no-store', signal: controller.signal, headers: { Authorization: 'Bearer tok' } });
+    }
+  });
+
+  it.each([
+    [400, 'bad-input'], [401, 'unauthorized'], [403, 'forbidden'], [404, 'not-found'], [500, 'network'],
+  ] as const)('keeps owner analysis HTTP status %i on the typed error (%s)', async (status, reason) => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(status)));
+    await expect(mkt.getRaceAnalysis('race-a')).rejects.toMatchObject({
+      name: 'RaceAnalysisError', status, reason,
+    });
+  });
+
+  it('keeps AbortError intact for owner analysis cancellation', async () => {
+    vi.stubGlobal('window', fakeWindow('tok'));
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
+    await expect(mkt.listRaceAnalyses()).rejects.toBe(abort);
+  });
+
+  it('exports a status-preserving error class for scoped screen state', () => {
+    const error = new RaceAnalysisError(404, 'not-found', 'not found');
+    expect(error.status).toBe(404);
+    expect(error.reason).toBe('not-found');
   });
 });
 

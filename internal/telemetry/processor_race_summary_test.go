@@ -93,6 +93,33 @@ func TestCheckpointModeDemotesChequeredFlag(t *testing.T) {
 	}
 }
 
+func TestRaceSummaryFinalizeProvenanceDistinguishesCheckpoint(t *testing.T) {
+	logger := testLogger()
+	p := NewProcessor(udp.NewParser(logger), websocket.NewHub(8, logger), 0, logger, nil)
+	p.SetCheckpointSaves(true)
+	var provenance []dto.RaceCaptureProvenance
+	p.SetRaceSummarySaveCallback(func(_ uint64, _ RaceSummaryCounts, _ []dto.RaceControlNotification, _ *dto.PitwallState, detail *dto.RaceDetailInput) error {
+		if detail == nil || detail.PrivateCapture == nil {
+			t.Fatal("save detail must carry private capture provenance")
+		}
+		provenance = append(provenance, detail.PrivateCapture.Provenance)
+		return nil
+	})
+	p.SetRaceSummaryRecording(true)
+
+	p.saveRaceSummaryForEvent(4_101, "CHQF")
+	p.saveRaceSummaryForEvent(4_101, "SEND")
+	if len(provenance) != 2 {
+		t.Fatalf("provenance saves = %d, want 2", len(provenance))
+	}
+	if !provenance[0].CheckpointFinalize || provenance[0].NormalFinalize {
+		t.Fatalf("CHQF provenance = %+v, want checkpoint only", provenance[0])
+	}
+	if provenance[1].CheckpointFinalize || !provenance[1].NormalFinalize {
+		t.Fatalf("SEND provenance = %+v, want normal final only", provenance[1])
+	}
+}
+
 // TestFinalSaveFailureSetsPending: final 저장 실패는 finalSavePending에 트리거를
 // 보존하고(이후 idle 재시도가 final로 실행), 성공 시 정리된다.
 func TestFinalSaveFailureSetsPending(t *testing.T) {

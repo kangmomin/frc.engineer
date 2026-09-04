@@ -94,6 +94,31 @@ func TestFileStorageSchemaVersionStampAndPreserve(t *testing.T) {
 	}
 }
 
+func TestFileStoragePersistsPrivateCaptureOnlyForRestartAdoption(t *testing.T) {
+	store, err := NewFileStorage(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := &RaceSummary{
+		ID: "restart_capture_1", SessionUID: 1, Track: TrackInfo{TrackName: "Monza"},
+		PrivateCapture: &dto.RacePrivateCapture{
+			EligibleIncidentKeys: []dto.IncidentCaptureKey{{SessionTimeMS: 1000, Collisions: [][2]int{{0, 1}}}},
+			Provenance:           dto.RaceCaptureProvenance{IncidentsCaptureActive: true, TrackOutlineSourcePoints: 336},
+		},
+	}
+	if _, err := store.Save(summary); err != nil {
+		t.Fatalf("save restart metadata: %v", err)
+	}
+	loaded, err := store.Load(summary.ID)
+	if err != nil {
+		t.Fatalf("load restart metadata: %v", err)
+	}
+	if loaded.PrivateCapture == nil || len(loaded.PrivateCapture.EligibleIncidentKeys) != 1 ||
+		!loaded.PrivateCapture.Provenance.IncidentsCaptureActive || loaded.PrivateCapture.Provenance.TrackOutlineSourcePoints != 336 {
+		t.Fatalf("private restart metadata = %+v", loaded.PrivateCapture)
+	}
+}
+
 func TestFileStorageLoadRejectsUnsafeID(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewFileStorage(dir, nil)

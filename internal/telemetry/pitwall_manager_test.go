@@ -312,6 +312,105 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 	t.Logf("24-car steady payload: %d bytes", len(payload))
 }
 
+func TestAnalysisTrackOutlineUsesRecordedWorldCentrelineWithoutLiveMutation(t *testing.T) {
+	const trackID = 42
+	store := tracks.NewTrackStore(t.TempDir())
+	store.LoadSingle(trackID, writeTrackLineCSV(t, maxAnalysisTrackOutlinePoints+80))
+	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, SessionUID: 901, PlayerCarIndex: 0}
+	pm := NewPitwallManager(NewStrategyManager(), store, nil)
+	pm.UpdateSession(&packets.PacketSessionData{Header: header, TrackID: trackID})
+
+	before := pm.trackMapSendCount
+	outline, capturedPoints := pm.AnalysisTrackOutline()
+	if outline == nil || len(outline.Points) != maxAnalysisTrackOutlinePoints || capturedPoints != maxAnalysisTrackOutlinePoints+80 {
+		t.Fatalf("analysis outline = %+v captured=%d, want %d retained / %d source", outline, capturedPoints, maxAnalysisTrackOutlinePoints, maxAnalysisTrackOutlinePoints+80)
+	}
+	if pm.trackMapSendCount != before {
+		t.Fatalf("analysis snapshot mutated live track-map counter: %d -> %d", before, pm.trackMapSendCount)
+	}
+	for _, point := range outline.Points {
+		if point[0] < outline.Bounds.MinX || point[0] > outline.Bounds.MaxX || point[1] < outline.Bounds.MinZ || point[1] > outline.Bounds.MaxZ {
+			t.Fatalf("world point %v escapes bounds %+v", point, outline.Bounds)
+		}
+	}
+
+	pm.UpdateLapData(&packets.PacketLapData{Header: header})
+	pm.UpdateCarStatus(&packets.PacketCarStatusData{Header: header})
+	pm.UpdateCarDamage(&packets.PacketCarDamageData{Header: header})
+	pm.UpdateTyreSets(&packets.PacketTyreSetsData{Header: header, CarIdx: 0})
+	pm.UpdateSessionHistory(&packets.PacketSessionHistoryData{Header: header, CarIdx: 0})
+	provenance := pm.CaptureProvenance()
+	if !provenance.LapDataObserved || !provenance.CarStatusObserved || !provenance.CarDamageObserved ||
+		!provenance.TyreSetsObserved || !provenance.SessionHistoryObserved {
+		t.Fatalf("raw source provenance = %+v, want all observed flags", provenance)
+	}
+}
+
+func TestCaptureProvenanceUsesOnlyPlayerHistoryAndTyreSetPackets(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, SessionUID: 902, PlayerCarIndex: 0}
+	pm.UpdateParticipants(&packets.PacketParticipantsData{Header: header, NumActiveCars: 2})
+	pm.UpdateTyreSets(&packets.PacketTyreSetsData{Header: header, CarIdx: 1})
+	pm.UpdateSessionHistory(&packets.PacketSessionHistoryData{Header: header, CarIdx: 1})
+	if got := pm.CaptureProvenance(); got.TyreSetsObserved || got.SessionHistoryObserved {
+		t.Fatalf("rival-only source provenance = %+v, want player flags false", got)
+	}
+	pm.UpdateTyreSets(&packets.PacketTyreSetsData{Header: header, CarIdx: 0})
+	pm.UpdateSessionHistory(&packets.PacketSessionHistoryData{Header: header, CarIdx: 0})
+	if got := pm.CaptureProvenance(); !got.TyreSetsObserved || !got.SessionHistoryObserved {
+		t.Fatalf("player source provenance = %+v, want player flags true", got)
+	}
+}
+
+func TestDriverIdentityRespectsNumActiveCars(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	participants := &packets.PacketParticipantsData{NumActiveCars: 22}
+	participants.Participants[0].TeamID = 0
+	copy(participants.Participants[0].Name[:], "Player")
+	participants.Participants[22].TeamID = 7
+	copy(participants.Participants[22].Name[:], "phantom")
+	pm.UpdateParticipants(participants)
+	if name, team := pm.GetDriverName(22), pm.GetDriverTeamID(22); name != "" || team != nil {
+		t.Fatalf("inactive slot identity = %q/%v, want empty/nil", name, team)
+	}
+	team := pm.GetDriverTeamID(0)
+	if team == nil || *team != 0 || pm.GetDriverName(0) != "Player" {
+		t.Fatalf("active team zero identity lost: name=%q team=%v", pm.GetDriverName(0), team)
+	}
+}
+
+func TestSessionResetClearsParticipantPrivacyBeforeNewParticipants(t *testing.T) {
+	pm := NewPitwallManager(NewStrategyManager(), nil, nil)
+	first := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, SessionUID: 100, PlayerCarIndex: 0}
+	participants := &packets.PacketParticipantsData{Header: first, NumActiveCars: 2}
+	copy(participants.Participants[1].Name[:], "Old Public Rival")
+	participants.Participants[1].TeamID = 17
+	participants.Participants[1].YourTelemetry = 1
+	pm.UpdateParticipants(participants)
+	if !pm.TelemetryAvailableForVehicle(1) {
+		t.Fatal("pre-reset public rival should be available")
+	}
+
+	// A new session's telemetry and motion can arrive before its Participants
+	// packet. They must not inherit the previous session's name/team/privacy bit.
+	second := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, SessionUID: 200, PlayerCarIndex: 0}
+	pm.UpdateTelemetry(&packets.PacketCarTelemetryData{Header: second})
+	pm.UpdateMotion(&packets.PacketMotionData{Header: second}, 0)
+
+	if name := pm.GetDriverName(1); name != "" {
+		t.Fatalf("stale rival name after session reset = %q", name)
+	}
+	if team := pm.GetDriverTeamID(1); team != nil {
+		t.Fatalf("stale rival team after session reset = %v", team)
+	}
+	if pm.TelemetryAvailableForVehicle(1) {
+		t.Fatal("stale rival YourTelemetry leaked before new Participants packet")
+	}
+	if !pm.TelemetryAvailableForVehicle(0) {
+		t.Fatal("current motion header's player must remain telemetry-available")
+	}
+}
+
 // writeTrackLineCSV는 n포인트 레이싱라인 CSV(loadCSV 포맷: 메타/헤더 2줄 스킵 후
 // dist,pos_z,pos_x,pos_y,drs,sector)를 임시 파일에 쓰고 경로를 반환한다.
 func writeTrackLineCSV(t *testing.T, n int) string {

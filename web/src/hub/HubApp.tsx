@@ -37,14 +37,10 @@ import {
   subscribeSessionUnauthorized, SessionRequestError,
 } from './data/session';
 import type { PlatformAccount } from './data/session';
-import { canViewAnalysis, canManageRBAC, canViewFeedbackInbox } from './data/permissions';
+import { canDeleteAdminAnalysisReports, canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canViewFeedbackInbox } from './data/permissions';
 import { isCurrentSessionSnapshot, isParentStorageChange, parentRevalidationFailureAction, resolveBootstrapIdentity, sessionSubtreeKey, sessionUnauthorizedAction, viewAsEntryFailureAction } from './data/sessionState';
 
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
-
-const PLACEHOLDER: Record<string, { title: string; note: string }> = {
-  analysis: { title: 'ANALYSIS', note: '프리미엄 분석 리포트를 크레딧으로 unlock — 순소각 sink' },
-};
 
 export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const t = useMemo(() => buildTheme('#e0a83d', 'light'), []);
@@ -512,14 +508,16 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             />
           )}
 
-          {/* ANALYSIS: race-analyze 열람 권한이 있을 때만 실화면 — 아니면 기존
-              플레이스홀더 그대로. 진짜 경계는 서버 게이트(RBAC)다. */}
+          {/* ANALYSIS is an owner-race screen. Legacy administrator HTML reports,
+              if granted, are a separately-gated panel inside it. */}
           {active === 'analysis' && (
-            !viewOnly && canViewAnalysis(platformAccount) ? (
-              <Analysis t={t} market={platformMkt} />
-            ) : (
-              <Placeholder t={t} title={PLACEHOLDER.analysis.title} note={PLACEHOLDER.analysis.note} />
-            )
+            <Analysis
+              t={t} market={platformMkt} configured={platformConfigured} loading={platformLoading}
+              account={platformAccount} viewOnly={viewOnly}
+              canReadOwnerAnalysis={canReadRaceAnalysis(platformAccount)}
+              canAdminReports={canReadAdminAnalysisReports(platformAccount)}
+              canDeleteAdminReports={canDeleteAdminAnalysisReports(platformAccount)}
+            />
           )}
 
           {/* ACCESS: rbac 권한이 있을 때만. Sidebar가 항목 자체를 감추지만, 권한을

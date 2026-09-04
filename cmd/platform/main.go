@@ -145,6 +145,9 @@ func main() {
 	mux.HandleFunc("GET /profiles/{id}", srv.handleProfile)
 	mux.HandleFunc("GET /tracks/{id}/pit-loss", srv.handlePitLoss)
 	mux.HandleFunc("GET /me/races", srv.handleMyRaces)
+	mux.HandleFunc("GET /me/race-analyses", srv.handleMyRaceAnalyses)
+	mux.HandleFunc("GET /me/race-analyses/{id}", srv.handleMyRaceAnalysis)
+	mux.HandleFunc("GET /me/race-analyses/{id}/incidents/{index}", srv.handleMyRaceAnalysisIncident)
 	mux.HandleFunc("GET /me/setups", srv.handleMySetups)
 	mux.HandleFunc("GET /me/setups/{id}", srv.handleMySetup)
 	mux.HandleFunc("POST /me/setups/{id}", srv.handleUpdateMySetup)
@@ -207,6 +210,23 @@ type server struct {
 	log           *slog.Logger
 	frontendURL   string
 	secureCookies bool
+	// These narrow seams keep owner-analysis auth/404 behavior testable without
+	// a disposable database. Production leaves both nil and uses store directly.
+	raceAnalysisReader  raceAnalysisReader
+	authenticateForTest func(context.Context, *http.Request) (platformsvc.Principal, error)
+}
+
+type raceAnalysisReader interface {
+	ListMyRaceAnalyses(context.Context, string, int, int) (*platformsvc.RaceAnalysisListResponse, error)
+	GetMyRaceAnalysis(context.Context, string, string) (*platformsvc.RaceAnalysisDetail, error)
+	GetMyRaceAnalysisIncident(context.Context, string, string, int) (*platformsvc.RaceAnalysisIncidentReplay, error)
+}
+
+func (s *server) analysisReader() raceAnalysisReader {
+	if s.raceAnalysisReader != nil {
+		return s.raceAnalysisReader
+	}
+	return s.store
 }
 
 // parseAdminAccountIDs parses the comma-separated UUID list that seeds the
@@ -826,6 +846,139 @@ func (s *server) handleMyRaces(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, races)
+}
+
+// handleMyRaceAnalyses is the owner-only structured analysis list. It is
+// intentionally separate from /me/races: marketplace eligibility/plausibility
+// must never hide a caller's own uploaded history here.
+func (s *server) handleMyRaceAnalyses(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead})
+	if !ok {
+		return
+	}
+	limit, offset, ok := raceAnalysisPagination(r)
+	if !ok {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	response, err := s.analysisReader().ListMyRaceAnalyses(ctx, p.AccountID, limit, offset)
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("list race analyses", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *server) handleMyRaceAnalysis(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead})
+	if !ok {
+		return
+	}
+	raceID, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	detail, err := s.analysisReader().GetMyRaceAnalysis(ctx, p.AccountID, raceID)
+	if errors.Is(err, platformsvc.ErrNotFound) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("get race analysis", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *server) handleMyRaceAnalysisIncident(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead})
+	if !ok {
+		return
+	}
+	raceID, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	index, ok := raceAnalysisIncidentIndex(r.PathValue("index"))
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	incident, err := s.analysisReader().GetMyRaceAnalysisIncident(ctx, p.AccountID, raceID, index)
+	if errors.Is(err, platformsvc.ErrNotFound) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("get race analysis incident", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, incident)
+}
+
+func raceAnalysisPagination(r *http.Request) (limit, offset int, ok bool) {
+	query := r.URL.Query()
+	for key, values := range query {
+		if key != "limit" && key != "offset" {
+			return 0, 0, false
+		}
+		if len(values) != 1 {
+			return 0, 0, false
+		}
+	}
+	limit = 50
+	offset = 0
+	if values, exists := query["limit"]; exists {
+		parsed, err := strconv.Atoi(values[0])
+		if err != nil || parsed < 1 || parsed > 100 {
+			return 0, 0, false
+		}
+		limit = parsed
+	}
+	if values, exists := query["offset"]; exists {
+		parsed, err := strconv.Atoi(values[0])
+		if err != nil || parsed < 0 {
+			return 0, 0, false
+		}
+		offset = parsed
+	}
+	return limit, offset, true
+}
+
+func raceAnalysisIncidentIndex(raw string) (int, bool) {
+	if raw == "" {
+		return 0, false
+	}
+	for _, char := range raw {
+		if char < '0' || char > '9' {
+			return 0, false
+		}
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 || value > 19 {
+		return 0, false
+	}
+	return value, true
 }
 
 const mySetupMetadataMaxBytes = 4 << 10
@@ -1935,6 +2088,9 @@ func (s *server) optionalViewer(ctx context.Context, r *http.Request) (string, e
 
 // authenticate resolves the Bearer token to a Principal.
 func (s *server) authenticate(ctx context.Context, r *http.Request) (platformsvc.Principal, error) {
+	if s.authenticateForTest != nil {
+		return s.authenticateForTest(ctx, r)
+	}
 	token := bearerToken(r)
 	if token == "" {
 		return platformsvc.Principal{}, platformsvc.ErrNotFound

@@ -11,6 +11,26 @@ export function hasPermission(grants: readonly string[], node: string): boolean 
   return grants.some((g) => g === node || (g.length > 0 && node.startsWith(g + '.')));
 }
 
+// The structured owner analysis is a private-race read surface, not the
+// legacy administrator HTML report feature. It intentionally fails closed for
+// old /me responses because this owner endpoint did not exist on those servers.
+export function canReadRaceAnalysis(account: PlatformAccount | null): boolean {
+  if (!account?.permissions || account.banned) return false;
+  return hasPermission(account.permissions, 'pithub.race.read');
+}
+
+// Existing /analysis HTML remains an administrator-only surface. Keep read and
+// delete separate so a report reader never receives a destructive affordance.
+export function canReadAdminAnalysisReports(account: PlatformAccount | null): boolean {
+  if (!account?.permissions || account.banned) return false;
+  return hasPermission(account.permissions, 'pithub.race-analyze.read');
+}
+
+export function canDeleteAdminAnalysisReports(account: PlatformAccount | null): boolean {
+  if (!account?.permissions || account.banned) return false;
+  return hasPermission(account.permissions, 'pithub.race-analyze.delete');
+}
+
 // canViewAnalysis: 허브 ANALYSIS 스크린 게이트. permissions가 오면 그것이 진실
 // (RBAC 서버), 없으면 구서버의 admin 불리언 폴백. 진짜 경계는 서버 게이트다 —
 // 이 분기는 화면 노출 편의일 뿐이다.

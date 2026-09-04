@@ -62,6 +62,38 @@ func sessionAnalysisFingerprint(dir string) (string, error) {
 	return strings.Join(parts, "|"), nil
 }
 
+func mergeCaptureProvenance(base, incident dto.RaceCaptureProvenance) dto.RaceCaptureProvenance {
+	base.IncidentsCaptureActive = base.IncidentsCaptureActive || incident.IncidentsCaptureActive
+	base.LapDataObserved = base.LapDataObserved || incident.LapDataObserved
+	base.SessionHistoryObserved = base.SessionHistoryObserved || incident.SessionHistoryObserved
+	base.CarStatusObserved = base.CarStatusObserved || incident.CarStatusObserved
+	base.CarDamageObserved = base.CarDamageObserved || incident.CarDamageObserved
+	base.TyreSetsObserved = base.TyreSetsObserved || incident.TyreSetsObserved
+	base.PitMeasurementObserved = base.PitMeasurementObserved || incident.PitMeasurementObserved
+	base.EventsCaptureActive = base.EventsCaptureActive || incident.EventsCaptureActive
+	base.IncidentClipLimitReached = base.IncidentClipLimitReached || incident.IncidentClipLimitReached
+	if incident.CheckpointFinalize || incident.NormalFinalize {
+		base.CheckpointFinalize = incident.CheckpointFinalize
+		base.NormalFinalize = incident.NormalFinalize
+	}
+	base.IncidentMergeLimited = base.IncidentMergeLimited || incident.IncidentMergeLimited
+	base.EventsSeen += incident.EventsSeen
+	base.EventsBufferDropped += incident.EventsBufferDropped
+	return base
+}
+
+// stripPrivateCapture creates the external representation of a persisted race
+// summary. The restart-only eligible incident ledger/provenance stays on disk
+// but is never allowed into a local archive API or DataChannel payload.
+func stripPrivateCapture(summary *races.RaceSummary) *races.RaceSummary {
+	if summary == nil {
+		return nil
+	}
+	copySummary := *summary
+	copySummary.PrivateCapture = nil
+	return &copySummary
+}
+
 func main() {
 	// Setup structured logging
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
@@ -179,6 +211,14 @@ func main() {
 		}, timeline, detail, time.Now())
 		summary.DataStorageMode = mode
 		summary.Incidents = processor.GetIncidentClips(sessionUID)
+		if capture := processor.GetIncidentCaptureMetadata(sessionUID); capture != nil {
+			if summary.PrivateCapture != nil {
+				capture.RunID = summary.PrivateCapture.RunID
+				capture.Provenance = mergeCaptureProvenance(summary.PrivateCapture.Provenance, capture.Provenance)
+			}
+			summary.PrivateCapture = capture
+		}
+		races.RefreshLocalCompleteness(summary)
 		if mode == rtconfig.DataStorageModeSummary || mode == rtconfig.DataStorageModeAdvanced {
 			summary.Replay = convertReplayTimeline(processor.GetReplayTimeline(sessionUID))
 		}
@@ -188,7 +228,7 @@ func main() {
 		}
 
 		// Broadcast result (without replay/incident data) to connected clients
-		broadcast := *summary
+		broadcast := stripPrivateCapture(summary)
 		broadcast.Replay = nil
 		broadcast.Incidents = nil
 		if msg, err := json.Marshal(dto.WSResponse{Type: dto.MessageTypeRaceResult, Data: broadcast}); err == nil {
@@ -559,6 +599,7 @@ func main() {
 				http.Error(w, "failed to load race summary", http.StatusInternalServerError)
 				return
 			}
+			summary = stripPrivateCapture(summary)
 			summary.Replay = nil
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(summary)

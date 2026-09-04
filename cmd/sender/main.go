@@ -273,6 +273,41 @@ func readFileTail(path string, maxBytes int64) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
+func mergeCaptureProvenance(base, incident dto.RaceCaptureProvenance) dto.RaceCaptureProvenance {
+	base.IncidentsCaptureActive = base.IncidentsCaptureActive || incident.IncidentsCaptureActive
+	base.LapDataObserved = base.LapDataObserved || incident.LapDataObserved
+	base.SessionHistoryObserved = base.SessionHistoryObserved || incident.SessionHistoryObserved
+	base.CarStatusObserved = base.CarStatusObserved || incident.CarStatusObserved
+	base.CarDamageObserved = base.CarDamageObserved || incident.CarDamageObserved
+	base.TyreSetsObserved = base.TyreSetsObserved || incident.TyreSetsObserved
+	base.PitMeasurementObserved = base.PitMeasurementObserved || incident.PitMeasurementObserved
+	base.EventsCaptureActive = base.EventsCaptureActive || incident.EventsCaptureActive
+	base.IncidentClipLimitReached = base.IncidentClipLimitReached || incident.IncidentClipLimitReached
+	// Recorder metadata deliberately has no finalization state. Keep the save
+	// snapshot's latest state instead of resurrecting an older checkpoint.
+	if incident.CheckpointFinalize || incident.NormalFinalize {
+		base.CheckpointFinalize = incident.CheckpointFinalize
+		base.NormalFinalize = incident.NormalFinalize
+	}
+	base.IncidentMergeLimited = base.IncidentMergeLimited || incident.IncidentMergeLimited
+	base.EventsSeen += incident.EventsSeen
+	base.EventsBufferDropped += incident.EventsBufferDropped
+	return base
+}
+
+// stripPrivateCapture returns an external-safe summary copy. Private capture
+// state is intentionally retained in on-disk files for restart adoption, but no
+// archive/API/DataChannel response may expose the eligible collision ledger or
+// raw-source provenance.
+func stripPrivateCapture(summary *races.RaceSummary) *races.RaceSummary {
+	if summary == nil {
+		return nil
+	}
+	copySummary := *summary
+	copySummary.PrivateCapture = nil
+	return &copySummary
+}
+
 func main() {
 	// Log to file so the cmd banner stays clean
 	logDir := resolveSenderStoragePath("logs")
@@ -762,6 +797,7 @@ func main() {
 		// 아카이브 상세도 단일 DataChannel 메시지 — 미트리밍 incidents(워스트 ~2MB)는
 		// SCTP 256KB 예산을 깨므로 여기서만 제외한다. 공용 clone 헬퍼에서 strip하면
 		// 수동 업로드 경로(loadRaceSummaryWithoutReplay 공유)의 클립까지 유실되므로 금지.
+		summary = stripPrivateCapture(summary)
 		summary.Incidents = nil
 		return encodeP2PResponse(dto.WSResponse{
 			Type:      dto.MessageTypeRaceSummary,
@@ -1085,6 +1121,14 @@ func main() {
 		// 로컬은 원본 그대로, 업로드는 buildUploadRequest에서 예산 트리밍, DataChannel
 		// 전송 경로들은 각자 strip한다.
 		summary.Incidents = processor.GetIncidentClips(sessionUID)
+		if capture := processor.GetIncidentCaptureMetadata(sessionUID); capture != nil {
+			if summary.PrivateCapture != nil {
+				capture.RunID = summary.PrivateCapture.RunID
+				capture.Provenance = mergeCaptureProvenance(summary.PrivateCapture.Provenance, capture.Provenance)
+			}
+			summary.PrivateCapture = capture
+		}
+		races.RefreshLocalCompleteness(summary)
 		// 리플레이 타임라인은 로컬 저장 전용 대용량 부속 — 저장이 켜져 있을 때만 부착
 		// (꺼져 있으면 SetReplayRecording도 꺼져 있어 어차피 프레임이 없다).
 		if saveEnabled && (summary.DataStorageMode == rtconfig.DataStorageModeSummary || summary.DataStorageMode == rtconfig.DataStorageModeAdvanced) {
@@ -1132,10 +1176,10 @@ func main() {
 			// Strip the (potentially large) replay frames before the DataChannel push —
 			// the rich Detail (~50-60KB player-centric) stays within the SCTP budget,
 			// but the full replay would not. Mirrors cmd/server's broadcast strip.
-			broadcastSummary := *summary
+			broadcastSummary := stripPrivateCapture(summary)
 			broadcastSummary.Replay = nil
 			broadcastSummary.Incidents = nil // 미트리밍 클립 블록도 SCTP 예산 밖 — 전송 제외
-			broadcaster.BroadcastRaceResult(&broadcastSummary)
+			broadcaster.BroadcastRaceResult(broadcastSummary)
 		}
 
 		// Auto-upload: fire-and-forget so a slow/failed network never blocks the
@@ -1435,7 +1479,7 @@ func main() {
 		raceSummaryMu.RUnlock()
 		if summary != nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(summary)
+			json.NewEncoder(w).Encode(stripPrivateCapture(summary))
 			return
 		}
 
@@ -1474,7 +1518,7 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(loaded)
+		json.NewEncoder(w).Encode(stripPrivateCapture(loaded))
 	})
 
 	mux.HandleFunc("GET /api/races", func(w http.ResponseWriter, r *http.Request) {
@@ -1559,7 +1603,7 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(summary)
+		json.NewEncoder(w).Encode(stripPrivateCapture(summary))
 	})
 
 	// ── Platform upload (device pairing → token → authenticated POST /races) ──

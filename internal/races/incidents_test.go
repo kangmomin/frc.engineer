@@ -84,6 +84,9 @@ func TestProjectIncidentParticipantsKeepsPlayerPartnersAndColumns(t *testing.T) 
 	if len(clip.Participants) != 10 || len(clip.Frames[0].Cars) != 10 {
 		t.Fatalf("input clip mutated")
 	}
+	if len(clip.Collisions) != 1 || clip.Collisions[0] != [2]int{0, 7} {
+		t.Fatalf("input collisions mutated: %v", clip.Collisions)
+	}
 }
 
 func TestProjectIncidentParticipantsPartnerOverflow(t *testing.T) {
@@ -98,6 +101,38 @@ func TestProjectIncidentParticipantsPartnerOverflow(t *testing.T) {
 		if p.Idx != want[j] {
 			t.Fatalf("participants[%d] = %d, want %d", j, p.Idx, want[j])
 		}
+	}
+}
+
+func TestProjectIncidentParticipantsPreservesFreshnessAlignment(t *testing.T) {
+	clip := buildTestClip(0, []int{1}, []int{2, 3, 4, 5, 6, 7, 8, 9}, 1)
+	capturedParticipants, capturedFrames := len(clip.Participants), len(clip.Frames)
+	clip.Completeness = dto.IncidentCompleteness{
+		Status:                   dto.AvailabilityComplete,
+		Reasons:                  []dto.CompletenessReason{},
+		CapturedParticipantCount: &capturedParticipants,
+		StoredParticipantCount:   capturedParticipants,
+		CapturedFrameCount:       &capturedFrames,
+		StoredFrameCount:         capturedFrames,
+	}
+	// 8 is trimmed out below. The retained frame must not advertise an index for
+	// which it no longer has a Cars column, while genuine 0-valued inputs stay a
+	// separate concern from this freshness list.
+	clip.Frames[0].TelemetryUnavailable = []int{0, 1, 8}
+
+	out := projectIncidentParticipants(clip, 6)
+	if got, want := out.Frames[0].TelemetryUnavailable, []int{0, 1}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("telemetryUnavailable = %v, want %v after participant projection", got, want)
+	}
+	if len(out.Collisions) != 1 || out.Collisions[0] != [2]int{0, 1} {
+		t.Fatalf("projected collisions = %v, want retained player pair", out.Collisions)
+	}
+	if out.Completeness.StoredParticipantCount != 6 || out.Completeness.StoredFrameCount != 1 ||
+		!containsCompletenessReason(out.Completeness.Reasons, dto.ReasonUploadParticipantsTrimmed) {
+		t.Fatalf("projected completeness = %+v", out.Completeness)
+	}
+	if len(clip.Completeness.Reasons) != 0 {
+		t.Fatalf("input completeness reasons mutated: %v", clip.Completeness.Reasons)
 	}
 }
 

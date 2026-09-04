@@ -1,7 +1,7 @@
 // Hub sidebar — logo, nav, user footer (hub.dc.html:29-48).
 import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
-import { canManageRBAC, canViewFeedbackInbox } from '../data/permissions';
+import { canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canViewFeedbackInbox } from '../data/permissions';
 
 export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'feedback-inbox' | 'access' | 'driver-profile';
 
@@ -9,13 +9,13 @@ const MONO = "'JetBrains Mono',monospace";
 
 // ACCESS는 rbac 권한이 있을 때만 노출되므로 목록 끝에 두어 앞 항목의 번호가
 // 노출 여부에 따라 흔들리지 않게 한다. 노출은 편의일 뿐 — 경계는 서버 게이트다.
-const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean; needsFeedbackInbox?: boolean }[] = [
+const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean; needsFeedbackInbox?: boolean; needsAnalysis?: boolean }[] = [
   { id: 'guide', label: 'GUIDE', idx: '00' },
   { id: 'overview', label: 'OVERVIEW', idx: '01' },
   { id: 'rankings', label: 'RANKINGS', idx: '02' },
   { id: 'market', label: 'MARKET', idx: '03' },
   { id: 'setups', label: 'MY SETUPS', idx: '04' },
-  { id: 'analysis', label: 'ANALYSIS', idx: '05' },
+  { id: 'analysis', label: 'ANALYSIS', idx: '05', needsAnalysis: true },
   { id: 'profile', label: 'PROFILE', idx: '06' },
   { id: 'feedback', label: 'FEEDBACK', idx: '07' },
   { id: 'feedback-inbox', label: 'FEEDBACK INBOX', idx: '08', needsFeedbackInbox: true },
@@ -57,7 +57,8 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = fa
         {NAV.filter((item) =>
           (!viewOnly || (item.id !== 'access' && item.id !== 'feedback-inbox' && item.id !== 'analysis'))
           && (!item.needsRBAC || canManageRBAC(account))
-          && (!item.needsFeedbackInbox || canViewFeedbackInbox(account)),
+          && (!item.needsFeedbackInbox || canViewFeedbackInbox(account))
+          && (!item.needsAnalysis || canReadRaceAnalysis(account) || canReadAdminAnalysisReports(account)),
         ).map((item) => {
           const on = active === item.id;
           return (
