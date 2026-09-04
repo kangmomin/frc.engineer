@@ -13,6 +13,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"frc.engineer/internal/dto"
 )
 
 // ErrDuplicate is returned when a race with the same (account, source) was
@@ -154,6 +156,9 @@ func validateUpload(req *UploadRequest) error {
 				return ErrBadUpload
 			}
 		}
+		if req.SchemaVersion == 2 && !validV2Detail(req) {
+			return ErrBadUpload
+		}
 	}
 	if p := req.Pit; p != nil {
 		// pit 블록이 무효여도(lane==0 등) 레이스 전체를 버리지 않는다 — IngestRace가 lane>0일
@@ -271,6 +276,405 @@ func validIncident(inc *UploadIncident) bool {
 	return true
 }
 
+var validAvailability = map[string]struct{}{
+	string(dto.AvailabilityComplete): {}, string(dto.AvailabilityPartial): {},
+	string(dto.AvailabilityUnavailable): {}, string(dto.AvailabilityUnknown): {},
+}
+
+var validCompletenessReasons = map[string]struct{}{
+	string(dto.ReasonLegacyMetadataMissing): {}, string(dto.ReasonSchemaUnsupported): {},
+	string(dto.ReasonSourceMissing): {}, string(dto.ReasonLateCapture): {},
+	string(dto.ReasonCheckpointFinalize): {}, string(dto.ReasonEventBufferLimit): {},
+	string(dto.ReasonEventUploadLimit): {}, string(dto.ReasonIncidentWindowTruncated): {},
+	string(dto.ReasonIncidentParticipantLimit): {}, string(dto.ReasonIncidentCollisionLimit): {},
+	string(dto.ReasonIncidentFrameLimit): {}, string(dto.ReasonIncidentClipLimit): {},
+	string(dto.ReasonIncidentMergeLimit): {}, string(dto.ReasonUploadParticipantsTrimmed): {},
+	string(dto.ReasonUploadClipsDropped): {}, string(dto.ReasonRequestBudgetDropped): {},
+	string(dto.ReasonTrackOutlineUnavailable): {}, string(dto.ReasonTrackOutlineDownsampled): {},
+	string(dto.ReasonPitMeasurementUnavailable): {},
+}
+
+// validV2Detail validates the additive schema-v2 contract. v0/v1 retain the
+// existing intentionally looser structural rules above; unknown future schema
+// versions remain opaque and are guarded at read time rather than interpreted.
+func validV2Detail(req *UploadRequest) bool {
+	detail := req.Detail
+	if detail == nil || detail.Debrief == nil || detail.Completeness == nil {
+		return false
+	}
+	if !validV2Debrief(req, detail, &detail.Completeness.Sections.Pit) {
+		return false
+	}
+	sections := detail.Completeness.Sections
+	if !validAggregateSection(detail.Completeness.Analysis, sections) ||
+		!validSection(sections.Laps) || !validSection(sections.Sectors) ||
+		!validSection(sections.Stints) || !validSection(sections.Tyres) ||
+		!validSection(sections.Dynamics) || !validSection(sections.Penalties) ||
+		!validSection(sections.Events) || !validSection(sections.Pit) ||
+		!validSection(sections.TrackOutline) || !validSection(sections.Incidents) {
+		return false
+	}
+	if !exactCounts(sections.Laps, len(req.Laps), len(req.Laps)) {
+		return false
+	}
+	sectorStored := 0
+	for _, lap := range req.Laps {
+		if lap.S1Ms != 0 && lap.S2Ms != 0 && lap.S3Ms != 0 {
+			sectorStored++
+		}
+	}
+	if !exactCounts(sections.Sectors, len(req.Laps), sectorStored) ||
+		!arrayCounts(sections.Stints, len(detail.Stints)) ||
+		!arrayCounts(sections.Dynamics, len(detail.Dynamics)) ||
+		!arrayCounts(sections.Events, len(detail.Events)) ||
+		!arrayCounts(sections.Incidents, len(detail.Incidents)) ||
+		!exactCounts(sections.Penalties, 1, 1) || !exactCounts(sections.Tyres, 1, 1) ||
+		!exactCounts(sections.Pit, 1, 1) {
+		return false
+	}
+	if !validV2SectionAvailabilityTruth(sections) {
+		return false
+	}
+	if !validV2Outline(detail, sections.TrackOutline) {
+		return false
+	}
+	for i := range detail.Incidents {
+		if !validV2Incident(&detail.Incidents[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func validAggregateSection(section UploadSectionCompleteness, sections UploadCompletenessSections) bool {
+	if section.wire && (!section.capturedCountPresent || !section.storedCountPresent) {
+		return false
+	}
+	if section.CapturedCount != nil || section.StoredCount != nil {
+		return false
+	}
+	if !validSectionShape(section) {
+		return false
+	}
+	if section.Status == string(dto.AvailabilityUnknown) {
+		return false
+	}
+	return section.Status == aggregateAvailability(sections)
+}
+
+// aggregateAvailability mirrors the frozen sender truth table. The platform
+// validates the producer's status instead of trusting an arbitrary aggregate
+// label that could conceal an unavailable core section.
+func aggregateAvailability(sections UploadCompletenessSections) string {
+	core := []UploadSectionCompleteness{
+		sections.Laps, sections.Sectors, sections.Stints, sections.Tyres,
+		sections.Dynamics, sections.Penalties, sections.Events, sections.Pit,
+		sections.Incidents,
+	}
+	allComplete, allUnknown := true, true
+	usable, unavailable := false, false
+	for _, section := range core {
+		if section.Status != string(dto.AvailabilityComplete) {
+			allComplete = false
+		}
+		if section.Status != string(dto.AvailabilityUnknown) {
+			allUnknown = false
+		}
+		if section.Status == string(dto.AvailabilityComplete) || section.Status == string(dto.AvailabilityPartial) {
+			usable = true
+		}
+		if section.Status == string(dto.AvailabilityUnavailable) {
+			unavailable = true
+		}
+	}
+	switch {
+	case allComplete:
+		return string(dto.AvailabilityComplete)
+	case allUnknown:
+		return string(dto.AvailabilityUnknown)
+	case !usable && unavailable:
+		return string(dto.AvailabilityUnavailable)
+	default:
+		return string(dto.AvailabilityPartial)
+	}
+}
+
+func validSection(section UploadSectionCompleteness) bool {
+	if section.CapturedCount == nil || section.StoredCount == nil || *section.CapturedCount < 0 || *section.StoredCount < 0 ||
+		*section.CapturedCount < *section.StoredCount {
+		return false
+	}
+	if !validSectionShape(section) {
+		return false
+	}
+	if section.Status == string(dto.AvailabilityUnknown) {
+		return false
+	}
+	// A complete section cannot conceal an explicit loss. This generic rule is
+	// intentionally separate from unavailable required-object envelopes, whose
+	// status is not complete and whose source-missing reason is valid.
+	if section.Status == string(dto.AvailabilityComplete) {
+		return len(section.Reasons) == 0 && *section.CapturedCount == *section.StoredCount
+	}
+	if section.Status == string(dto.AvailabilityPartial) {
+		return len(section.Reasons) > 0 || *section.CapturedCount != *section.StoredCount
+	}
+	return true
+}
+
+func validV2SectionAvailabilityTruth(sections UploadCompletenessSections) bool {
+	// A v2 unavailable array/fact has no usable stored data. Penalties, tyres,
+	// and pit are the one deliberate exception: their required debrief envelope
+	// occupies object unit 1 even when it contains only nullable placeholders.
+	for _, section := range []UploadSectionCompleteness{
+		sections.Laps, sections.Sectors, sections.Stints, sections.Dynamics,
+		sections.Events, sections.TrackOutline, sections.Incidents,
+	} {
+		if section.Status == string(dto.AvailabilityUnavailable) &&
+			(*section.StoredCount != 0 || len(section.Reasons) == 0) {
+			return false
+		}
+	}
+	for _, section := range []UploadSectionCompleteness{sections.Penalties, sections.Tyres, sections.Pit} {
+		if section.Status == string(dto.AvailabilityUnavailable) &&
+			(*section.CapturedCount != 1 || *section.StoredCount != 1 || !containsReason(section.Reasons, string(dto.ReasonSourceMissing))) {
+			return false
+		}
+	}
+	return true
+}
+
+func validSectionShape(section UploadSectionCompleteness) bool {
+	if (section.wire && (!section.statusPresent || !section.reasonsPresent)) ||
+		section.Reasons == nil {
+		return false
+	}
+	if _, ok := validAvailability[section.Status]; !ok {
+		return false
+	}
+	seen := make(map[string]struct{}, len(section.Reasons))
+	for _, reason := range section.Reasons {
+		if _, ok := validCompletenessReasons[reason]; !ok {
+			return false
+		}
+		if _, duplicate := seen[reason]; duplicate {
+			return false
+		}
+		seen[reason] = struct{}{}
+	}
+	return true
+}
+
+func exactCounts(section UploadSectionCompleteness, captured, stored int) bool {
+	return section.CapturedCount != nil && section.StoredCount != nil &&
+		*section.CapturedCount == captured && *section.StoredCount == stored
+}
+
+func arrayCounts(section UploadSectionCompleteness, stored int) bool {
+	return section.CapturedCount != nil && section.StoredCount != nil &&
+		*section.CapturedCount >= stored && *section.StoredCount == stored
+}
+
+func validV2Debrief(req *UploadRequest, detail *UploadDetail, pitSection *UploadSectionCompleteness) bool {
+	if detail == nil || detail.Debrief == nil {
+		return false
+	}
+	if len(detail.debriefRaw) > 0 && !validV2DebriefWire(detail.debriefRaw) {
+		return false
+	}
+	debrief := detail.Debrief
+	if debrief == nil || debrief.Pit.Stops < 0 || debrief.Pit.Stops > 100 {
+		return false
+	}
+	hasLane := debrief.Pit.PitLaneTimeMs != nil
+	hasStationary := debrief.Pit.StationaryTimeMs != nil
+	if hasLane != hasStationary {
+		return false
+	}
+	if hasLane {
+		if debrief.Pit.Stops <= 0 || *debrief.Pit.PitLaneTimeMs == 0 || *debrief.Pit.PitLaneTimeMs > 600000 ||
+			*debrief.Pit.StationaryTimeMs > *debrief.Pit.PitLaneTimeMs || req.Pit == nil ||
+			(req.Pit.wire && (!req.Pit.stopsPresent || !req.Pit.pitLanePresent || !req.Pit.stationaryPresent ||
+				req.Pit.stopsNull || req.Pit.pitLaneNull || req.Pit.stationaryNull)) ||
+			req.Pit.Stops != debrief.Pit.Stops || req.Pit.PitLaneTimeMs != *debrief.Pit.PitLaneTimeMs ||
+			req.Pit.StationaryMs != *debrief.Pit.StationaryTimeMs {
+			return false
+		}
+		if pitSection.Status == string(dto.AvailabilityUnavailable) || pitSection.Status == string(dto.AvailabilityUnknown) {
+			return false
+		}
+	} else if req.Pit != nil {
+		return false
+	}
+	if debrief.Pit.Stops > 0 && !hasLane && (pitSection.Status != string(dto.AvailabilityPartial) || !containsReason(pitSection.Reasons, string(dto.ReasonPitMeasurementUnavailable))) {
+		return false
+	}
+	return true
+}
+
+func containsReason(reasons []string, wanted string) bool {
+	for _, reason := range reasons {
+		if reason == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func validV2Outline(detail *UploadDetail, section UploadSectionCompleteness) bool {
+	if detail == nil {
+		return false
+	}
+	outline := detail.TrackOutline
+	if outline == nil {
+		return section.Status == string(dto.AvailabilityUnavailable) &&
+			exactCounts(section, 0, 0) &&
+			containsReason(section.Reasons, string(dto.ReasonTrackOutlineUnavailable))
+	}
+	if len(detail.trackOutlineRaw) > 0 && !validV2OutlineWire(detail.trackOutlineRaw) {
+		return false
+	}
+	if len(outline.Points) < 2 || len(outline.Points) > 256 ||
+		!finiteOnly(outline.Bounds.MinX) || !finiteOnly(outline.Bounds.MaxX) ||
+		!finiteOnly(outline.Bounds.MinZ) || !finiteOnly(outline.Bounds.MaxZ) ||
+		outline.Bounds.MinX > outline.Bounds.MaxX || outline.Bounds.MinZ > outline.Bounds.MaxZ {
+		return false
+	}
+	for _, point := range outline.Points {
+		if !finiteOnly(point[0]) || !finiteOnly(point[1]) || point[0] < outline.Bounds.MinX || point[0] > outline.Bounds.MaxX ||
+			point[1] < outline.Bounds.MinZ || point[1] > outline.Bounds.MaxZ {
+			return false
+		}
+	}
+	if section.Status != string(dto.AvailabilityComplete) && section.Status != string(dto.AvailabilityPartial) ||
+		section.StoredCount == nil || section.CapturedCount == nil ||
+		*section.StoredCount != len(outline.Points) || *section.CapturedCount < *section.StoredCount {
+		return false
+	}
+	if section.Status == string(dto.AvailabilityComplete) {
+		return *section.CapturedCount == *section.StoredCount && len(section.Reasons) == 0
+	}
+	return *section.CapturedCount > *section.StoredCount &&
+		containsReason(section.Reasons, string(dto.ReasonTrackOutlineDownsampled))
+}
+
+func validV2Incident(incident *UploadIncident) bool {
+	if incident == nil || incident.Completeness == nil || !validIncidentCompleteness(incident.Completeness) {
+		return false
+	}
+	if incident.completenessWire && !validV2IncidentCompletenessWire(incident.completenessRaw) {
+		return false
+	}
+	participantIDs := make(map[int]struct{}, len(incident.Participants))
+	participantPositions := make(map[int]int, len(incident.Participants))
+	players := 0
+	for position, participant := range incident.Participants {
+		if _, duplicate := participantIDs[participant.Idx]; duplicate {
+			return false
+		}
+		participantIDs[participant.Idx] = struct{}{}
+		participantPositions[participant.Idx] = position
+		if participant.IsPlayer {
+			players++
+		}
+		// TeamID:nil is valid explicit null. The presence bit is populated for
+		// decoded JSON, where omission is prohibited by the v2 wire contract.
+		if !participant.teamIDPresent && incident.completenessWire {
+			return false
+		}
+	}
+	if players != 1 {
+		return false
+	}
+	for _, collision := range incident.Collisions {
+		if _, ok := participantIDs[collision[0]]; !ok {
+			return false
+		}
+		if _, ok := participantIDs[collision[1]]; !ok {
+			return false
+		}
+	}
+	lastTime := int64(-1)
+	for _, frame := range incident.Frames {
+		if frame.TMs <= lastTime || len(frame.Cars) != len(incident.Participants) || frame.TelemetryUnavailable == nil ||
+			(!frame.telemetryPresent && incident.completenessWire) {
+			return false
+		}
+		lastTime = frame.TMs
+		unavailable := make(map[int]struct{}, len(frame.TelemetryUnavailable))
+		for _, idx := range frame.TelemetryUnavailable {
+			if _, ok := participantIDs[idx]; !ok {
+				return false
+			}
+			if frame.Cars[participantPositions[idx]] == nil {
+				return false
+			}
+			if _, duplicate := unavailable[idx]; duplicate {
+				return false
+			}
+			unavailable[idx] = struct{}{}
+		}
+		for _, car := range frame.Cars {
+			if car != nil && !validV2CarTuple(car) {
+				return false
+			}
+		}
+	}
+	return incident.Completeness.StoredParticipantCount == len(incident.Participants) &&
+		incident.Completeness.StoredFrameCount == len(incident.Frames) &&
+		validV2IncidentCompletenessTruth(incident.Completeness)
+}
+
+func validV2IncidentCompletenessTruth(completeness *UploadIncidentCompleteness) bool {
+	if completeness == nil {
+		return false
+	}
+	countsEqual := completeness.CapturedParticipantCount != nil && completeness.CapturedFrameCount != nil &&
+		*completeness.CapturedParticipantCount == completeness.StoredParticipantCount &&
+		*completeness.CapturedFrameCount == completeness.StoredFrameCount
+	hasLossEvidence := len(completeness.Reasons) > 0 || !countsEqual
+	switch completeness.Status {
+	case string(dto.AvailabilityComplete):
+		return !hasLossEvidence
+	case string(dto.AvailabilityPartial):
+		return hasLossEvidence
+	case string(dto.AvailabilityUnavailable), string(dto.AvailabilityUnknown):
+		// validIncident already requires at least one participant and frame for
+		// every v2 clip, so it cannot honestly be unavailable or unknown.
+		return false
+	default:
+		return false
+	}
+}
+
+func validIncidentCompleteness(completeness *UploadIncidentCompleteness) bool {
+	if completeness.CapturedParticipantCount == nil || completeness.CapturedFrameCount == nil ||
+		*completeness.CapturedParticipantCount < completeness.StoredParticipantCount ||
+		*completeness.CapturedFrameCount < completeness.StoredFrameCount ||
+		completeness.StoredParticipantCount < 0 || completeness.StoredFrameCount < 0 {
+		return false
+	}
+	return completeness.Status != string(dto.AvailabilityUnknown) &&
+		validSectionShape(UploadSectionCompleteness{Status: completeness.Status, Reasons: completeness.Reasons})
+}
+
+func validV2CarTuple(car []float64) bool {
+	if len(car) != incidentCarFrameValues {
+		return false
+	}
+	for _, value := range car {
+		if !finiteOnly(value) {
+			return false
+		}
+	}
+	return car[9] >= 0 && car[10] >= 0 && car[10] <= 1 && car[11] >= 0 && car[11] <= 1 &&
+		car[12] >= -1 && car[12] <= 1 && car[13] >= -1 && car[13] <= 8 && math.Trunc(car[13]) == car[13]
+}
+
+func finiteOnly(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
 // UploadLap is one lap in an ingest payload. Every field is attacker-controlled;
 // `Valid` is only an advisory input to the server-side validity decision.
 type UploadLap struct {
@@ -340,9 +744,19 @@ type UploadRequest struct {
 // sender sends this only when a real measurement exists (PitLaneTimeMs>0); a
 // pure-estimate summary is omitted so averages stay measurement-only.
 type UploadPit struct {
-	Stops         int    `json:"stops,omitempty"`
+	Stops         int    `json:"stops"`
 	PitLaneTimeMs uint32 `json:"pitLaneTimeMs"`
-	StationaryMs  uint32 `json:"stationaryMs,omitempty"`
+	StationaryMs  uint32 `json:"stationaryMs"`
+	// Presence flags are only used by schema-v2 validation. A genuine measured
+	// stationary time can be zero, so scalar decoding alone cannot distinguish
+	// that value from an omitted top-level pit field.
+	wire              bool
+	stopsPresent      bool
+	pitLanePresent    bool
+	stationaryPresent bool
+	stopsNull         bool
+	pitLaneNull       bool
+	stationaryNull    bool
 }
 
 // UploadDetail is the rich, private per-race document stored (versioned) in
@@ -361,8 +775,18 @@ type UploadDetail struct {
 	// "session-switch", "idle-timeout", "shutdown"); checkpoint-class values mean
 	// the session may not have been over at save time. Both omitempty so legacy
 	// uploads keep their payload key set unchanged.
-	CaptureStartLap int    `json:"captureStartLap,omitempty"`
-	FinalizeTrigger string `json:"finalizeTrigger,omitempty"`
+	CaptureStartLap int                 `json:"captureStartLap,omitempty"`
+	FinalizeTrigger string              `json:"finalizeTrigger,omitempty"`
+	Debrief         *UploadDebrief      `json:"debrief,omitempty"`
+	TrackOutline    *UploadTrackOutline `json:"trackOutline,omitempty"`
+	Completeness    *UploadCompleteness `json:"completeness,omitempty"`
+	// Presence bits are populated only when decoding JSON. Programmatic callers
+	// can represent a required nullable teamId with TeamID:nil; HTTP decoding
+	// additionally rejects an omitted key rather than conflating it with null.
+	debriefPresent      bool
+	completenessPresent bool
+	debriefRaw          json.RawMessage
+	trackOutlineRaw     json.RawMessage
 }
 
 // UploadIncident mirrors the sender's uploadIncident (dto.IncidentClip): a
@@ -370,27 +794,304 @@ type UploadDetail struct {
 // Participants[j]; each non-nil entry is a fixed 14-value array. Structural
 // bounds are enforced in validIncident; the contents stay opaque.
 type UploadIncident struct {
-	SessionTimeMs   int64                       `json:"sessionTimeMs"`
-	WindowStartMs   int64                       `json:"windowStartMs"`
-	FrameIntervalMs int                         `json:"frameIntervalMs"`
-	Lap             int                         `json:"lap,omitempty"`
-	Collisions      [][2]int                    `json:"collisions"`
-	Participants    []UploadIncidentParticipant `json:"participants"`
-	Frames          []UploadIncidentFrame       `json:"frames"`
+	SessionTimeMs    int64                       `json:"sessionTimeMs"`
+	WindowStartMs    int64                       `json:"windowStartMs"`
+	FrameIntervalMs  int                         `json:"frameIntervalMs"`
+	Lap              int                         `json:"lap,omitempty"`
+	Collisions       [][2]int                    `json:"collisions"`
+	Participants     []UploadIncidentParticipant `json:"participants"`
+	Frames           []UploadIncidentFrame       `json:"frames"`
+	Completeness     *UploadIncidentCompleteness `json:"completeness,omitempty"`
+	completenessWire bool
+	completenessRaw  json.RawMessage
 }
 
 // UploadIncidentParticipant mirrors dto.IncidentParticipant.
 type UploadIncidentParticipant struct {
-	Idx      int     `json:"idx"`
-	Name     string  `json:"name,omitempty"`
-	IsPlayer bool    `json:"isPlayer,omitempty"`
-	MinDistM float64 `json:"minDistM"`
+	Idx           int     `json:"idx"`
+	Name          string  `json:"name,omitempty"`
+	TeamID        *int    `json:"teamId"`
+	IsPlayer      bool    `json:"isPlayer,omitempty"`
+	MinDistM      float64 `json:"minDistM"`
+	teamIDPresent bool
 }
 
 // UploadIncidentFrame mirrors dto.IncidentFrame.
 type UploadIncidentFrame struct {
-	TMs  int64       `json:"tMs"`
-	Cars [][]float64 `json:"cars"`
+	TMs                  int64       `json:"tMs"`
+	Cars                 [][]float64 `json:"cars"`
+	TelemetryUnavailable []int       `json:"telemetryUnavailable"`
+	telemetryPresent     bool
+}
+
+// UploadSectionCompleteness mirrors the frozen wire shape. Counts are pointers
+// because schema v2 permits null only for aggregate analysis; every individual
+// section is validated as explicit numeric values.
+type UploadSectionCompleteness struct {
+	Status        string   `json:"status"`
+	Reasons       []string `json:"reasons"`
+	CapturedCount *int     `json:"capturedCount"`
+	StoredCount   *int     `json:"storedCount"`
+	// JSON-wire presence is only relevant to schema-v2 validation. Direct Go
+	// callers keep the ergonomic zero-value construction used by legacy tests.
+	wire                 bool
+	statusPresent        bool
+	reasonsPresent       bool
+	capturedCountPresent bool
+	storedCountPresent   bool
+}
+
+type UploadCompletenessSections struct {
+	Laps         UploadSectionCompleteness `json:"laps"`
+	Sectors      UploadSectionCompleteness `json:"sectors"`
+	Stints       UploadSectionCompleteness `json:"stints"`
+	Tyres        UploadSectionCompleteness `json:"tyres"`
+	Dynamics     UploadSectionCompleteness `json:"dynamics"`
+	Penalties    UploadSectionCompleteness `json:"penalties"`
+	Events       UploadSectionCompleteness `json:"events"`
+	Pit          UploadSectionCompleteness `json:"pit"`
+	TrackOutline UploadSectionCompleteness `json:"trackOutline"`
+	Incidents    UploadSectionCompleteness `json:"incidents"`
+}
+
+type UploadCompleteness struct {
+	Analysis UploadSectionCompleteness  `json:"analysis"`
+	Sections UploadCompletenessSections `json:"sections"`
+}
+
+type UploadIncidentCompleteness struct {
+	Status                   string   `json:"status"`
+	Reasons                  []string `json:"reasons"`
+	CapturedParticipantCount *int     `json:"capturedParticipantCount"`
+	StoredParticipantCount   int      `json:"storedParticipantCount"`
+	CapturedFrameCount       *int     `json:"capturedFrameCount"`
+	StoredFrameCount         int      `json:"storedFrameCount"`
+}
+
+type UploadDebrief struct {
+	Penalties UploadPenaltyDebrief `json:"penalties"`
+	Tyres     UploadTyreDebrief    `json:"tyres"`
+	Pit       UploadPitDebrief     `json:"pit"`
+}
+
+type UploadPenaltyDebrief struct {
+	TimePenaltySeconds   int `json:"timePenaltySeconds"`
+	Warnings             int `json:"warnings"`
+	CornerCutWarnings    int `json:"cornerCutWarnings"`
+	UnservedDriveThrough int `json:"unservedDriveThrough"`
+	UnservedStopGo       int `json:"unservedStopGo"`
+}
+
+type UploadTyreDebrief struct {
+	FinalCompound    *string `json:"finalCompound"`
+	FinalAge         *int    `json:"finalAge"`
+	AverageWearPct   *int    `json:"averageWearPct"`
+	PeakWearPct      *int    `json:"peakWearPct"`
+	FinalSetWearPct  *int    `json:"finalSetWearPct"`
+	LifeSpan         *int    `json:"lifeSpan"`
+	UsableLife       *int    `json:"usableLife"`
+	LifeRemainingPct *int    `json:"lifeRemainingPct"`
+}
+
+type UploadPitDebrief struct {
+	Stops            int     `json:"stops"`
+	PitLaneTimeMs    *uint32 `json:"pitLaneTimeMs"`
+	StationaryTimeMs *uint32 `json:"stationaryTimeMs"`
+}
+
+type UploadTrackOutline struct {
+	Points [][2]float64        `json:"points"`
+	Bounds UploadOutlineBounds `json:"bounds"`
+}
+
+type UploadOutlineBounds struct {
+	MinX float64 `json:"minX"`
+	MaxX float64 `json:"maxX"`
+	MinZ float64 `json:"minZ"`
+	MaxZ float64 `json:"maxZ"`
+}
+
+// UnmarshalJSON records required-v2 key presence without changing the public Go
+// construction ergonomics used by internal callers/tests. A JSON null teamId is
+// valid and leaves TeamID nil; an omitted teamId is distinguishable and rejected
+// only for decoded schema-v2 payloads.
+func (p *UploadIncidentParticipant) UnmarshalJSON(data []byte) error {
+	type plain UploadIncidentParticipant
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*p = UploadIncidentParticipant(decoded)
+	_, p.teamIDPresent = fields["teamId"]
+	return nil
+}
+
+func (f *UploadIncidentFrame) UnmarshalJSON(data []byte) error {
+	type plain UploadIncidentFrame
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*f = UploadIncidentFrame(decoded)
+	_, f.telemetryPresent = fields["telemetryUnavailable"]
+	return nil
+}
+
+func (i *UploadIncident) UnmarshalJSON(data []byte) error {
+	type plain UploadIncident
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*i = UploadIncident(decoded)
+	i.completenessWire = true
+	i.completenessRaw = append(i.completenessRaw[:0], fields["completeness"]...)
+	return nil
+}
+
+func (d *UploadDetail) UnmarshalJSON(data []byte) error {
+	type plain UploadDetail
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*d = UploadDetail(decoded)
+	_, d.debriefPresent = fields["debrief"]
+	_, d.completenessPresent = fields["completeness"]
+	d.debriefRaw = append(d.debriefRaw[:0], fields["debrief"]...)
+	d.trackOutlineRaw = append(d.trackOutlineRaw[:0], fields["trackOutline"]...)
+	return nil
+}
+
+func (p *UploadPit) UnmarshalJSON(data []byte) error {
+	type plain UploadPit
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*p = UploadPit(decoded)
+	p.wire = true
+	_, p.stopsPresent = fields["stops"]
+	_, p.pitLanePresent = fields["pitLaneTimeMs"]
+	_, p.stationaryPresent = fields["stationaryMs"]
+	p.stopsNull = jsonRawNull(fields["stops"])
+	p.pitLaneNull = jsonRawNull(fields["pitLaneTimeMs"])
+	p.stationaryNull = jsonRawNull(fields["stationaryMs"])
+	return nil
+}
+
+func (section *UploadSectionCompleteness) UnmarshalJSON(data []byte) error {
+	type plain UploadSectionCompleteness
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*section = UploadSectionCompleteness(decoded)
+	section.wire = true
+	_, section.statusPresent = fields["status"]
+	_, section.reasonsPresent = fields["reasons"]
+	_, section.capturedCountPresent = fields["capturedCount"]
+	_, section.storedCountPresent = fields["storedCount"]
+	return nil
+}
+
+// validV2DebriefWire closes the JSON-null/omission gap left by Go's scalar
+// decoding: json.Unmarshal turns an omitted or null integer into the same zero
+// value. The v2 detail is exact about field presence, while programmatic
+// internal callers intentionally remain supported without wire bookkeeping.
+func validV2DebriefWire(raw json.RawMessage) bool {
+	debrief, ok := requiredJSONObject(raw, "penalties", "tyres", "pit")
+	if !ok || jsonRawNull(debrief["penalties"]) || jsonRawNull(debrief["tyres"]) || jsonRawNull(debrief["pit"]) {
+		return false
+	}
+	penalties, ok := requiredJSONObject(debrief["penalties"], "timePenaltySeconds", "warnings", "cornerCutWarnings", "unservedDriveThrough", "unservedStopGo")
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"timePenaltySeconds", "warnings", "cornerCutWarnings", "unservedDriveThrough", "unservedStopGo"} {
+		if jsonRawNull(penalties[key]) {
+			return false
+		}
+	}
+	if _, ok := requiredJSONObject(debrief["tyres"], "finalCompound", "finalAge", "averageWearPct", "peakWearPct", "finalSetWearPct", "lifeSpan", "usableLife", "lifeRemainingPct"); !ok {
+		return false
+	}
+	pit, ok := requiredJSONObject(debrief["pit"], "stops", "pitLaneTimeMs", "stationaryTimeMs")
+	return ok && !jsonRawNull(pit["stops"])
+}
+
+func validV2IncidentCompletenessWire(raw json.RawMessage) bool {
+	completeness, ok := requiredJSONObject(raw, "status", "reasons", "capturedParticipantCount", "storedParticipantCount", "capturedFrameCount", "storedFrameCount")
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"status", "reasons", "capturedParticipantCount", "storedParticipantCount", "capturedFrameCount", "storedFrameCount"} {
+		if jsonRawNull(completeness[key]) {
+			return false
+		}
+	}
+	return true
+}
+
+func validV2OutlineWire(raw json.RawMessage) bool {
+	outline, ok := requiredJSONObject(raw, "points", "bounds")
+	if !ok || jsonRawNull(outline["points"]) || jsonRawNull(outline["bounds"]) {
+		return false
+	}
+	bounds, ok := requiredJSONObject(outline["bounds"], "minX", "maxX", "minZ", "maxZ")
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"minX", "maxX", "minZ", "maxZ"} {
+		if jsonRawNull(bounds[key]) {
+			return false
+		}
+	}
+	return true
+}
+
+func requiredJSONObject(raw json.RawMessage, keys ...string) (map[string]json.RawMessage, bool) {
+	if len(raw) == 0 || jsonRawNull(raw) {
+		return nil, false
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return nil, false
+	}
+	for _, key := range keys {
+		if _, exists := object[key]; !exists {
+			return nil, false
+		}
+	}
+	return object, true
+}
+
+func jsonRawNull(raw json.RawMessage) bool {
+	return len(raw) == 0 || string(raw) == "null"
 }
 
 // UploadStint mirrors races.RaceStint.

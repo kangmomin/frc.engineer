@@ -1,0 +1,114 @@
+{
+  "sourceRaceId": "golden-race-analysis-v2",
+  "trackId": 10,
+  "trackName": "Monza",
+  "sessionType": "Race",
+  "gameFormat": "F1 26",
+  "schemaVersion": 2,
+  "laps": [
+    {
+      "lapNumber": 1,
+      "lapMs": 90000,
+      "s1Ms": 30000,
+      "s2Ms": 30000,
+      "s3Ms": 30000,
+      "tyre": "Soft",
+      "valid": true
+    }
+  ],
+  "detail": {
+    "stints": [
+      { "compound": "soft", "laps": 1, "startLap": 1, "endLap": 1, "tireWearPct": 4 }
+    ],
+    "dynamics": [
+      { "lapNum": 1, "understeerPct": 2.5, "oversteerPct": 1.5, "lockupCount": 0, "spinCount": 0 }
+    ],
+    "events": [
+      { "lap": 1, "timestamp": 1770000000000, "category": "info", "severity": "info", "message": "Race started", "driverName": "Player" }
+    ],
+    "incidents": [
+      {
+        "sessionTimeMs": 1000,
+        "windowStartMs": 0,
+        "frameIntervalMs": 50,
+        "lap": 1,
+        "collisions": [[0, 1]],
+        "participants": [
+          { "idx": 0, "name": "Player", "teamId": 0, "isPlayer": true, "minDistM": 0 },
+          { "idx": 1, "name": "No Team", "teamId": 255, "minDistM": 2.1 }
+        ],
+        "frames": [
+          {
+            "tMs": 0,
+            "cars": [
+              [0, 0, 0, 0, 0, 10, 0, 0, 0, 100, 0, 0, 0, 4],
+              [2, 0, 0, 0, 0, 9, 0, 0, 0, 90, 0, 0, 0, 4]
+            ],
+            "telemetryUnavailable": []
+          },
+          {
+            "tMs": 50,
+            "cars": [
+              [0, 0, 0.5, 0, 0, 10, 0, 0, 0, 100, 0, 0, 0, 4],
+              [2, 0, 0.45, 0, 0, 9, 0, 0, 0, 90, 0, 0, 0, 4]
+            ],
+            "telemetryUnavailable": []
+          }
+        ],
+        "completeness": {
+          "status": "complete",
+          "reasons": [],
+          "capturedParticipantCount": 2,
+          "storedParticipantCount": 2,
+          "capturedFrameCount": 2,
+          "storedFrameCount": 2
+        }
+      }
+    ],
+    "captureStartLap": 1,
+    "finalizeTrigger": "SEND",
+    "debrief": {
+      "penalties": {
+        "timePenaltySeconds": 0,
+        "warnings": 0,
+        "cornerCutWarnings": 0,
+        "unservedDriveThrough": 0,
+        "unservedStopGo": 0
+      },
+      "tyres": {
+        "finalCompound": "Soft",
+        "finalAge": 1,
+        "averageWearPct": 4,
+        "peakWearPct": 5,
+        "finalSetWearPct": null,
+        "lifeSpan": null,
+        "usableLife": null,
+        "lifeRemainingPct": null
+      },
+      "pit": {
+        "stops": 0,
+        "pitLaneTimeMs": null,
+        "stationaryTimeMs": null
+      }
+    },
+    "trackOutline": {
+      "points": [[0, 0], [10, 10]],
+      "bounds": { "minX": 0, "maxX": 10, "minZ": 0, "maxZ": 10 }
+    },
+    "completeness": {
+      "analysis": { "status": "complete", "reasons": [], "capturedCount": null, "storedCount": null },
+      "sections": {
+        "laps": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "sectors": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "stints": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "tyres": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "dynamics": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "penalties": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "events": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "pit": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 },
+        "trackOutline": { "status": "complete", "reasons": [], "capturedCount": 2, "storedCount": 2 },
+        "incidents": { "status": "complete", "reasons": [], "capturedCount": 1, "storedCount": 1 }
+      }
+    }
+  }
+}

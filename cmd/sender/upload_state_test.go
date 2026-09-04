@@ -161,6 +161,48 @@ func TestSaveWithStableIDMergesAdoptedFile(t *testing.T) {
 	}
 }
 
+func TestSaveWithStableIDSameProcessCheckpointDoesNotDoubleCumulativeProvenance(t *testing.T) {
+	dir := t.TempDir()
+	rs, err := races.NewFileStorage(dir, testUploadLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := newUploadState(dir, testUploadLogger())
+	build := func(normal bool) *races.RaceSummary {
+		return &races.RaceSummary{
+			SchemaVersion: races.RaceSummarySchemaVersion,
+			SessionUID:    42,
+			Detail: &races.RaceDetail{Events: []dto.RaceControlNotification{
+				{Timestamp: 100, Message: "checkpoint"}, {Timestamp: 200, Message: "final"},
+			}},
+			PrivateCapture: &dto.RacePrivateCapture{RunID: "one-process", Provenance: dto.RaceCaptureProvenance{
+				EventsCaptureActive: true, EventsSeen: 150, EventsBufferDropped: 4,
+				CheckpointFinalize: !normal, NormalFinalize: normal,
+			}},
+		}
+	}
+	checkpoint := build(false)
+	checkpoint.Detail.Events = checkpoint.Detail.Events[:1]
+	id, err := u.saveWithStableID(rs, 42, checkpoint)
+	if err != nil {
+		t.Fatalf("checkpoint save: %v", err)
+	}
+	if _, err := u.saveWithStableID(rs, 42, build(true)); err != nil {
+		t.Fatalf("normal final save: %v", err)
+	}
+	saved, err := rs.Load(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.PrivateCapture == nil {
+		t.Fatal("private capture missing after same-process save")
+	}
+	provenance := saved.PrivateCapture.Provenance
+	if provenance.EventsSeen != 150 || provenance.EventsBufferDropped != 4 || !provenance.NormalFinalize || provenance.CheckpointFinalize {
+		t.Fatalf("same-process persisted provenance = %+v, want latest cumulative normal-final facts", provenance)
+	}
+}
+
 func TestBuildUploadRequestTrimsMergedEvents(t *testing.T) {
 	// 병합 요약은 서버 캡(200)을 넘는 이벤트를 가질 수 있다(150 링버퍼 × 두 실행).
 	// 매퍼는 최신 200개만 남겨야 하고, 초과분 때문에 업로드 전체가 400으로 죽으면 안 된다.

@@ -42,10 +42,10 @@ const (
 // retained. valid=false marks non-finite motion floats (the whole car-frame nulls
 // out — Go json.Marshal would otherwise fail on NaN/Inf and poison the summary).
 type incidentCarSample struct {
-	valid        bool
-	hasTelemetry bool
-	hasLapData   bool
-	resultStatus uint8
+	valid                  bool
+	hasTelemetry           bool
+	hasLapData             bool
+	resultStatus           uint8
 	posX, posY, posZ       float32
 	velX, velY, velZ       float32
 	yaw, gLat, gLong       float32
@@ -61,21 +61,28 @@ type incidentTick struct {
 }
 
 type incidentPending struct {
-	playerIdx   uint8
-	t0MS        int64 // first merged COLL
-	windowStart int64 // nominal t0−pre (may be negative near session start)
-	endMS       int64 // current deadline (last merged t0 + post, clamped to hardEnd)
-	hardEndMS   int64 // windowStart + incidentMergedWindowMaxMS
-	lap         int
-	collisions  [][2]int
+	playerIdx           uint8
+	t0MS                int64 // first merged COLL
+	eligibleKey         dto.IncidentCaptureKey
+	windowStart         int64 // nominal t0−pre (may be negative near session start)
+	endMS               int64 // current deadline (last merged t0 + post, clamped to hardEnd)
+	hardEndMS           int64 // windowStart + incidentMergedWindowMaxMS
+	lap                 int
+	collisions          [][2]int
 	collisionsCapWarned bool
-	ticks       []incidentTick
+	framesCapWarned     bool
+	// candidateFrameCount remains uncapped so completeness can report every
+	// monotonic candidate sample even after ticks reaches the storage cap.
+	candidateFrameCount int
+	ticks               []incidentTick
 }
 
 type incidentRecorder struct {
-	mu           sync.Mutex
-	logger       *slog.Logger
-	nameResolver func(vehicleIdx uint8) string
+	mu                sync.Mutex
+	logger            *slog.Logger
+	nameResolver      func(vehicleIdx uint8) string
+	teamResolver      func(vehicleIdx uint8) *int
+	telemetryResolver func(vehicleIdx uint8) bool
 
 	sessionUID    uint64
 	sampledOnce   bool // lastSampleTMS==0 is a real timestamp at session time zero
@@ -90,17 +97,36 @@ type incidentRecorder struct {
 	ringLen  int
 	ringNext int
 
-	pending         *incidentPending
-	clips           []dto.IncidentClip
-	clipLimitWarned bool
+	pending *incidentPending
+	clips   []dto.IncidentClip
+	// eligibleKeys is deliberately separate from clips: an eligible event after
+	// the visible 20-clip cap still counts as captured for session completeness.
+	// Keys are persisted by the caller as private restart metadata.
+	eligibleKeys     []dto.IncidentCaptureKey
+	clipLimitWarned  bool
+	clipLimitReached bool
 }
 
-func newIncidentRecorder(logger *slog.Logger, nameResolver func(uint8) string) *incidentRecorder {
+func newIncidentRecorder(logger *slog.Logger, nameResolver func(uint8) string, teamResolvers ...func(uint8) *int) *incidentRecorder {
+	var teamResolver func(uint8) *int
+	if len(teamResolvers) > 0 {
+		teamResolver = teamResolvers[0]
+	}
 	return &incidentRecorder{
 		logger:       logger,
 		nameResolver: nameResolver,
+		teamResolver: teamResolver,
 		pairLastMS:   make(map[[2]uint8]int64),
 	}
+}
+
+func (r *incidentRecorder) setTelemetryResolver(resolve func(uint8) bool) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.telemetryResolver = resolve
+	r.mu.Unlock()
 }
 
 // observeSession resets everything (clips included) when the session changes,
@@ -120,13 +146,18 @@ func (r *incidentRecorder) observeSession(sessionUID uint64) {
 	r.latestTelemetry = nil
 	r.latestLapData = nil
 	r.clips = nil
+	r.eligibleKeys = nil
 	r.clipLimitWarned = false
+	r.clipLimitReached = false
 }
 
 // resetCaptureLocked drops the ring, any open capture and the pair debounce —
 // used on rewind (flashback / restart). Finalized clips are kept on purpose:
 // they hold a single consistent timeline (see plan Rejected Decisions).
 func (r *incidentRecorder) resetCaptureLocked() {
+	if r.pending != nil {
+		r.removeEligibleKeyLocked(r.pending.eligibleKey)
+	}
 	r.pending = nil
 	r.ringLen = 0
 	r.ringNext = 0
@@ -134,6 +165,29 @@ func (r *incidentRecorder) resetCaptureLocked() {
 	r.lastSampleTMS = 0
 	if len(r.pairLastMS) > 0 {
 		r.pairLastMS = make(map[[2]uint8]int64)
+	}
+}
+
+// removeEligibleKeyLocked removes the one pending event that was recorded when
+// its window opened but was later discarded by a flashback/rewind. Finalized
+// clips have no pending entry, so their restart facts remain intact.
+func (r *incidentRecorder) removeEligibleKeyLocked(wanted dto.IncidentCaptureKey) {
+	for i := len(r.eligibleKeys) - 1; i >= 0; i-- {
+		candidate := r.eligibleKeys[i]
+		if candidate.SessionTimeMS != wanted.SessionTimeMS || len(candidate.Collisions) != len(wanted.Collisions) {
+			continue
+		}
+		matches := true
+		for j := range candidate.Collisions {
+			if candidate.Collisions[j] != wanted.Collisions[j] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			r.eligibleKeys = append(r.eligibleKeys[:i], r.eligibleKeys[i+1:]...)
+			return
+		}
 	}
 }
 
@@ -192,8 +246,13 @@ func (r *incidentRecorder) noteMotion(m *packets.PacketMotionData, header *packe
 		r.ringLen++
 	}
 
-	if r.pending != nil && len(r.pending.ticks) < incidentMaxFrames {
-		r.pending.ticks = append(r.pending.ticks, tick)
+	if r.pending != nil {
+		r.pending.candidateFrameCount++
+		if len(r.pending.ticks) < incidentMaxFrames {
+			r.pending.ticks = append(r.pending.ticks, tick)
+		} else {
+			r.pending.framesCapWarned = true
+		}
 	}
 }
 
@@ -215,7 +274,7 @@ func (r *incidentRecorder) buildTickLocked(m *packets.PacketMotionData, header *
 			velX: cm.WorldVelocityX, velY: cm.WorldVelocityY, velZ: cm.WorldVelocityZ,
 			yaw: cm.Yaw, gLat: cm.GForceLateral, gLong: cm.GForceLongitudinal,
 		}
-		if telOK {
+		if telOK && (r.telemetryResolver == nil || r.telemetryResolver(uint8(i))) {
 			ct := &r.latestTelemetry.CarTelemetryData[i]
 			s.speedKmh = ct.Speed
 			s.throttle, s.brake, s.steer = ct.Throttle, ct.Brake, ct.Steer
@@ -280,7 +339,18 @@ func (r *incidentRecorder) onCollision(header *packets.PacketHeader, v1, v2 uint
 		return
 	}
 
+	// This is a distinct, non-merged eligible player collision. Record it before
+	// any visible-cap decision so a cap-refused event remains in capturedCount.
+	// resetCaptureLocked removes this pending key only if its timeline is later
+	// discarded by flashback/rewind.
+	eligibleKey := dto.IncidentCaptureKey{
+		SessionTimeMS: tMS,
+		Collisions:    normalizeIncidentCollisions([][2]int{{int(v1), int(v2)}}),
+	}
+	r.eligibleKeys = append(r.eligibleKeys, eligibleKey)
+
 	if len(r.clips) >= incidentMaxClipsPerSession {
+		r.clipLimitReached = true
 		if !r.clipLimitWarned {
 			r.clipLimitWarned = true
 			r.logger.Warn("incident clip cap reached; further collisions not captured", "cap", incidentMaxClipsPerSession)
@@ -291,6 +361,7 @@ func (r *incidentRecorder) onCollision(header *packets.PacketHeader, v1, v2 uint
 	p := &incidentPending{
 		playerIdx:   player,
 		t0MS:        tMS,
+		eligibleKey: eligibleKey,
 		windowStart: tMS - incidentPreWindowMS,
 		endMS:       tMS + incidentPostWindowMS,
 		hardEndMS:   tMS - incidentPreWindowMS + incidentMergedWindowMaxMS,
@@ -306,6 +377,7 @@ func (r *incidentRecorder) onCollision(header *packets.PacketHeader, v1, v2 uint
 		t := r.ring[idx]
 		if t.tMS >= p.windowStart && t.tMS <= tMS {
 			p.ticks = append(p.ticks, t)
+			p.candidateFrameCount++
 		}
 	}
 	r.pending = p
@@ -348,12 +420,43 @@ func (r *incidentRecorder) snapshot(sessionUID uint64) []dto.IncidentClip {
 	return out
 }
 
+// captureMetadata returns only private restart bookkeeping. Callers normally
+// invoke it after snapshot so an in-flight clip has been finalized. It never
+// exposes frames and it never mutates capture state.
+func (r *incidentRecorder) captureMetadata(sessionUID uint64) *dto.RacePrivateCapture {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if sessionUID == 0 || r.sessionUID != sessionUID {
+		return nil
+	}
+	keys := make([]dto.IncidentCaptureKey, len(r.eligibleKeys))
+	for i, key := range r.eligibleKeys {
+		keys[i] = key
+		keys[i].Collisions = append([][2]int(nil), key.Collisions...)
+	}
+	return &dto.RacePrivateCapture{
+		EligibleIncidentKeys: keys,
+		Provenance: dto.RaceCaptureProvenance{
+			IncidentsCaptureActive:   true,
+			IncidentClipLimitReached: r.clipLimitReached,
+		},
+	}
+}
+
 // finalizeLocked turns the pending capture into a dto.IncidentClip: per-sample
 // active-status radius selection, forced collision partners, nearest-K cap.
 func (r *incidentRecorder) finalizeLocked() {
 	p := r.pending
 	r.pending = nil
-	if p == nil || len(p.ticks) == 0 || len(r.clips) >= incidentMaxClipsPerSession {
+	if p == nil || len(p.ticks) == 0 {
+		return
+	}
+	if len(r.clips) >= incidentMaxClipsPerSession {
+		// The event was already ledgered when its window opened, even though a
+		// concurrent close filled the visible cap before this one finalized.
 		return
 	}
 
@@ -426,12 +529,13 @@ func (r *incidentRecorder) finalizeLocked() {
 		}
 		return ca.minDist < cb.minDist
 	})
+	capturedParticipantCount := len(cands)
 	if len(cands) > incidentMaxParticipants {
 		cands = cands[:incidentMaxParticipants]
 	}
 
 	participants := make([]dto.IncidentParticipant, len(cands))
-	column := make(map[int]int, len(cands))
+	retainedParticipants := make(map[int]struct{}, len(cands))
 	for j, c := range cands {
 		name := ""
 		if r.nameResolver != nil {
@@ -440,29 +544,58 @@ func (r *incidentRecorder) finalizeLocked() {
 		participants[j] = dto.IncidentParticipant{
 			Idx:      c.idx,
 			Name:     name,
+			TeamID:   teamIDFor(r.teamResolver, uint8(c.idx)),
 			IsPlayer: c.idx == playerIdx,
 			MinDistM: roundTo(c.minDist, 1),
 		}
-		column[c.idx] = j
+		retainedParticipants[c.idx] = struct{}{}
+	}
+	// A merged collision can name a partner that was later excluded by the
+	// participant cap or had no valid motion sample. The visible v2 clip must
+	// never retain an ID that is absent from Participants; keep the eligible key
+	// ledger untouched because it describes the original collision event.
+	collisions := make([][2]int, 0, len(p.collisions))
+	collisionsTrimmed := false
+	for _, pair := range p.collisions {
+		_, firstKept := retainedParticipants[pair[0]]
+		_, secondKept := retainedParticipants[pair[1]]
+		if !firstKept || !secondKept {
+			collisionsTrimmed = true
+			continue
+		}
+		collisions = append(collisions, pair)
+	}
+	if len(collisions) == 0 {
+		return
 	}
 
 	frames := make([]dto.IncidentFrame, 0, len(p.ticks))
 	for ti := range p.ticks {
 		t := &p.ticks[ti]
 		cars := make([][]float64, len(cands))
+		unavailable := make([]int, 0, len(cands))
 		any := false
-		for vehIdx, j := range column {
+		for j, participant := range participants {
+			vehIdx := participant.Idx
 			cs := &t.cars[vehIdx]
 			if !cs.valid {
 				continue
 			}
 			cars[j] = carFrameValues(cs)
+			if !cs.hasTelemetry {
+				unavailable = append(unavailable, vehIdx)
+			}
 			any = true
 		}
 		if !any {
 			continue
 		}
-		frames = append(frames, dto.IncidentFrame{TMS: t.tMS, Cars: cars})
+		// The 20Hz gate normally guarantees this, but retain strict v2 order even
+		// when a packet source has coarse/repeated SessionTime values.
+		if n := len(frames); n > 0 && t.tMS <= frames[n-1].TMS {
+			continue
+		}
+		frames = append(frames, dto.IncidentFrame{TMS: t.tMS, Cars: cars, TelemetryUnavailable: unavailable})
 	}
 	if len(frames) == 0 {
 		return
@@ -472,14 +605,62 @@ func (r *incidentRecorder) finalizeLocked() {
 	if windowStart < 0 {
 		windowStart = 0 // session-start clip: pre window is whatever existed
 	}
+	capturedFrameCount := p.candidateFrameCount
+	if capturedFrameCount < len(p.ticks) {
+		capturedFrameCount = len(p.ticks)
+	}
+	if capturedFrameCount < len(frames) {
+		capturedFrameCount = len(frames)
+	}
+	reasons := make([]dto.CompletenessReason, 0, 4)
+	// Retained pre-window coverage, not merely t0<1s, determines whether a
+	// late-attached recorder missed incident context. One gated sample interval
+	// absorbs ordinary packet timing jitter.
+	const preCoverageToleranceMS = incidentSampleGateMS + 5
+	if p.windowStart < 0 || len(p.ticks) == 0 || p.ticks[0].tMS > p.windowStart+preCoverageToleranceMS || r.lastMotionTMS < p.endMS {
+		reasons = append(reasons, dto.ReasonIncidentWindowTruncated)
+	}
+	if capturedParticipantCount > len(participants) {
+		reasons = append(reasons, dto.ReasonIncidentParticipantLimit)
+	}
+	if collisionsTrimmed && capturedParticipantCount <= len(participants) {
+		// No participant-cap loss occurred: a collision partner could not be
+		// represented because no valid motion sample existed. Keep the clip
+		// identity-safe and state the missing source honestly.
+		reasons = append(reasons, dto.ReasonSourceMissing)
+	}
+	if p.collisionsCapWarned {
+		reasons = append(reasons, dto.ReasonIncidentCollisionLimit)
+	}
+	if p.framesCapWarned {
+		reasons = append(reasons, dto.ReasonIncidentFrameLimit)
+	}
+	if capturedFrameCount > len(frames) && !p.framesCapWarned {
+		// An invalid/duplicate whole tick could not become a replay frame. The
+		// frozen vocabulary has no separate frame-validation code; source-missing
+		// truthfully prevents a false complete status without inventing a reason.
+		reasons = append(reasons, dto.ReasonSourceMissing)
+	}
+	status := dto.AvailabilityComplete
+	if len(reasons) > 0 {
+		status = dto.AvailabilityPartial
+	}
 	r.clips = append(r.clips, dto.IncidentClip{
 		SessionTimeMS:   p.t0MS,
 		WindowStartMS:   windowStart,
 		FrameIntervalMS: incidentFrameIntervalMS,
 		Lap:             p.lap,
-		Collisions:      p.collisions,
+		Collisions:      collisions,
 		Participants:    participants,
 		Frames:          frames,
+		Completeness: dto.IncidentCompleteness{
+			Status:                   status,
+			Reasons:                  reasons,
+			CapturedParticipantCount: intPtr(capturedParticipantCount),
+			StoredParticipantCount:   len(participants),
+			CapturedFrameCount:       intPtr(capturedFrameCount),
+			StoredFrameCount:         len(frames),
+		},
 	})
 	r.logger.Info("incident clip captured",
 		"t0Ms", p.t0MS, "participants", len(participants), "frames", len(frames),
@@ -529,6 +710,38 @@ func pairKey(v1, v2 uint8) [2]uint8 {
 		return [2]uint8{v1, v2}
 	}
 	return [2]uint8{v2, v1}
+}
+
+func normalizeIncidentCollisions(src [][2]int) [][2]int {
+	out := append([][2]int(nil), src...)
+	for i := range out {
+		if out[i][1] < out[i][0] {
+			out[i][0], out[i][1] = out[i][1], out[i][0]
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i][0] != out[j][0] {
+			return out[i][0] < out[j][0]
+		}
+		return out[i][1] < out[j][1]
+	})
+	return out
+}
+
+func teamIDFor(resolve func(uint8) *int, vehicleIdx uint8) *int {
+	if resolve == nil {
+		return nil
+	}
+	teamID := resolve(vehicleIdx)
+	if teamID == nil {
+		return nil
+	}
+	copyID := *teamID
+	return &copyID
+}
+
+func intPtr(value int) *int {
+	return &value
 }
 
 func roundTo(v float64, decimals int) float64 {

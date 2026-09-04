@@ -52,6 +52,14 @@ type PitwallManager struct {
 	peakActiveCars    int    // high-water mark for NumActiveCars
 	lastSessionUID    uint64 // last session UID for per-session cache reset
 	captureStartLap   int    // player's lap at first LapData of this session (0=unseen)
+	// Raw source observation flags feed v2 completeness. They intentionally track
+	// packet presence rather than normalized values, so an observed zero cannot be
+	// mistaken for absent telemetry at upload/read time.
+	lapDataObserved        bool
+	sessionHistoryObserved bool
+	carStatusObserved      bool
+	carDamageObserved      bool
+	tyreSetsObserved       bool
 
 	// Per-car penalty/warning log for the leaderboard hover detail. Reset on
 	// SessionUID change alongside the other per-session caches (noteSessionLocked).
@@ -81,6 +89,12 @@ type pitMeasureState struct {
 // maxTrackMapPoints bounds the trackMap point count so a long recorded lap can
 // never push the WebRTC DataChannel payload past Chrome's 256KB SCTP receive buffer.
 const maxTrackMapPoints = 2000
+
+// maxAnalysisTrackOutlinePoints is independent from the live TrackMap cap. The
+// analysis payload needs a small actual centreline that can safely coexist with
+// 24-car incident clips under the HTTP budget; this accessor never consumes the
+// live broadcast track-map send counter.
+const maxAnalysisTrackOutlinePoints = 256
 
 // downsampleStride returns the sampling stride needed to keep n points at or under max.
 func downsampleStride(n, max int) int {
@@ -239,6 +253,11 @@ func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
 		return
 	}
 	if pm.lastSessionUID != 0 && pm.lastSessionUID != uid {
+		// Participants carries identity and per-car telemetry permission. It must
+		// never bridge a session boundary: Motion/Telemetry commonly arrive before
+		// the new Participants packet, and retaining this pointer would leak a
+		// prior rival's name, team, or YourTelemetry bit into a new clip.
+		pm.participants = nil
 		pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
 		pm.sessionHistory = [packets.MaxCars]*packets.PacketSessionHistoryData{}
 		pm.peakActiveCars = 0
@@ -247,6 +266,11 @@ func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
 		pm.penaltyLog = [packets.MaxCars][]dto.PenaltyLogEntry{}
 		pm.pitMeasure = [packets.MaxCars]pitMeasureState{}
 		pm.captureStartLap = 0
+		pm.lapDataObserved = false
+		pm.sessionHistoryObserved = false
+		pm.carStatusObserved = false
+		pm.carDamageObserved = false
+		pm.tyreSetsObserved = false
 	}
 	pm.lastSessionUID = uid
 }
@@ -336,6 +360,7 @@ func (pm *PitwallManager) UpdateCarStatus(cs *packets.PacketCarStatusData) {
 	pm.mu.Lock()
 	pm.noteSessionLocked(&cs.Header)
 	pm.carStatus = cs
+	pm.carStatusObserved = true
 	lapData := pm.lapData
 	pm.mu.Unlock()
 	pm.strategyMgr.Update(cs, lapData)
@@ -346,6 +371,7 @@ func (pm *PitwallManager) UpdateLapData(ld *packets.PacketLapData) {
 	pm.mu.Lock()
 	pm.noteSessionLocked(&ld.Header)
 	pm.lapData = ld
+	pm.lapDataObserved = true
 	// 세션 첫 LapData에서 캡처 시작 랩을 고정. 헤더의 PlayerCarIndex를 쓴다 —
 	// pm.playerIndex는 Motion 미수신 시 0 (EventCollision 경로와 동일 근거).
 	if pm.captureStartLap == 0 {
@@ -393,6 +419,7 @@ func (pm *PitwallManager) UpdateCarDamage(cd *packets.PacketCarDamageData) {
 	pm.mu.Lock()
 	pm.noteSessionLocked(&cd.Header)
 	pm.carDamage = cd
+	pm.carDamageObserved = true
 	pm.mu.Unlock()
 	pm.strategyMgr.UpdateTyreWear(cd)
 }
@@ -405,6 +432,9 @@ func (pm *PitwallManager) UpdateTyreSets(ts *packets.PacketTyreSetsData) {
 	pm.mu.Lock()
 	pm.noteSessionLocked(&ts.Header)
 	pm.tyreSets[ts.CarIdx] = ts
+	if int(ts.CarIdx) == int(ts.Header.PlayerCarIndex) {
+		pm.tyreSetsObserved = true
+	}
 	pm.mu.Unlock()
 }
 
@@ -416,6 +446,9 @@ func (pm *PitwallManager) UpdateSessionHistory(sh *packets.PacketSessionHistoryD
 	pm.mu.Lock()
 	pm.noteSessionLocked(&sh.Header)
 	pm.sessionHistory[sh.CarIdx] = sh
+	if int(sh.CarIdx) == int(sh.Header.PlayerCarIndex) {
+		pm.sessionHistoryObserved = true
+	}
 	pm.mu.Unlock()
 }
 
@@ -1002,10 +1035,122 @@ func (pm *PitwallManager) sourceVisibilityMode() telemetryvisibility.Mode {
 func (pm *PitwallManager) GetDriverName(vehicleIdx uint8) string {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	if pm.participants == nil || int(vehicleIdx) >= len(pm.participants.Participants) {
+	if !pm.participantSlotKnownLocked(int(vehicleIdx)) {
 		return ""
 	}
 	return pm.participants.Participants[vehicleIdx].GetName()
+}
+
+// GetDriverTeamID returns a null-preserving identity source for incident
+// capture. Team 0 and the game's 255 no-team sentinel are both valid values;
+// nil is reserved solely for a missing participants source/invalid slot.
+func (pm *PitwallManager) GetDriverTeamID(vehicleIdx uint8) *int {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	if !pm.participantSlotKnownLocked(int(vehicleIdx)) {
+		return nil
+	}
+	teamID := int(pm.participants.Participants[vehicleIdx].TeamID)
+	return &teamID
+}
+
+func (pm *PitwallManager) participantSlotKnownLocked(idx int) bool {
+	if pm.participants == nil || idx < 0 || idx >= packets.MaxCars {
+		return false
+	}
+	active := int(pm.participants.NumActiveCars)
+	if active < 0 {
+		return false
+	}
+	if active > packets.MaxCars {
+		active = packets.MaxCars
+	}
+	return idx < active
+}
+
+// TelemetryAvailableForVehicle applies the established privacy rule to an
+// incident sample: the player is always available; a rival is available only
+// when that participant explicitly exposes telemetry. Packet freshness alone
+// is not permission to surface a restricted rival's inputs.
+func (pm *PitwallManager) TelemetryAvailableForVehicle(vehicleIdx uint8) bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	if int(vehicleIdx) == int(pm.playerIndex) {
+		return true
+	}
+	if !pm.participantSlotKnownLocked(int(vehicleIdx)) {
+		return false
+	}
+	return pm.participants.Participants[vehicleIdx].YourTelemetry == 1
+}
+
+// AnalysisTrackOutline returns a read-only, deterministic snapshot of the
+// recorded TrackStore centreline in world X/Z coordinates. It never fabricates a
+// track and returns nil when a usable recorded line is unavailable. sourcePoints
+// is the original TrackStore count retained in private restart provenance.
+func (pm *PitwallManager) AnalysisTrackOutline() (*dto.TrackOutlineDTO, int) {
+	pm.mu.RLock()
+	if pm.session == nil || pm.trackStore == nil {
+		pm.mu.RUnlock()
+		return nil, 0
+	}
+	trackID := pm.session.TrackID
+	store := pm.trackStore
+	pm.mu.RUnlock()
+
+	data := store.Get(trackID)
+	if data == nil || len(data.Points) < 2 {
+		return nil, 0
+	}
+	sourcePoints := len(data.Points)
+	count := sourcePoints
+	if count > maxAnalysisTrackOutlinePoints {
+		count = maxAnalysisTrackOutlinePoints
+	}
+	points := make([][2]float64, 0, count)
+	if count == 1 {
+		return nil, 0
+	}
+	for i := 0; i < count; i++ {
+		// Evenly select real points, including both source endpoints. This avoids
+		// synthetic interpolation while keeping a deterministic <=256 outline.
+		idx := i * (len(data.Points) - 1) / (count - 1)
+		p := data.Points[idx]
+		if !finiteTrackCoordinate(float64(p.X)) || !finiteTrackCoordinate(float64(p.Z)) {
+			return nil, 0
+		}
+		points = append(points, [2]float64{float64(p.X), float64(p.Z)})
+	}
+	bounds := dto.TrackOutlineBounds{MinX: data.MinX, MaxX: data.MaxX, MinZ: data.MinZ, MaxZ: data.MaxZ}
+	if !finiteTrackCoordinate(bounds.MinX) || !finiteTrackCoordinate(bounds.MaxX) ||
+		!finiteTrackCoordinate(bounds.MinZ) || !finiteTrackCoordinate(bounds.MaxZ) ||
+		bounds.MinX > bounds.MaxX || bounds.MinZ > bounds.MaxZ {
+		return nil, 0
+	}
+	return &dto.TrackOutlineDTO{Points: points, Bounds: bounds}, sourcePoints
+}
+
+func finiteTrackCoordinate(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// CaptureProvenance reports raw packet-source observations for the active
+// session. The returned value is a copy and is safe to retain in a summary.
+func (pm *PitwallManager) CaptureProvenance() dto.RaceCaptureProvenance {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	provenance := dto.RaceCaptureProvenance{
+		LapDataObserved:        pm.lapDataObserved,
+		SessionHistoryObserved: pm.sessionHistoryObserved,
+		CarStatusObserved:      pm.carStatusObserved,
+		CarDamageObserved:      pm.carDamageObserved,
+		TyreSetsObserved:       pm.tyreSetsObserved,
+	}
+	idx := int(pm.playerIndex)
+	if idx >= 0 && idx < packets.MaxCars {
+		provenance.PitMeasurementObserved = pm.pitMeasure[idx].lastLaneMs > 0
+	}
+	return provenance
 }
 
 // GetPlayerName returns the player's own participant name (header PlayerCarIndex

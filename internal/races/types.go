@@ -17,8 +17,9 @@ type NotificationCounts struct {
 
 // RaceSummarySchemaVersion is the single document version stamped on every
 // persisted summary. Bump when the summary/Detail structure changes so readers can
-// discriminate. 0 = legacy (pre-versioning, no Detail); 1 = rich Detail.
-const RaceSummarySchemaVersion = 1
+// discriminate. 0 = legacy (pre-versioning, no Detail); 1 = rich Detail; 2 =
+// explicit analysis completeness, identity/freshness fields, and restart metadata.
+const RaceSummarySchemaVersion = 2
 
 // RaceSummary is the persisted, non-raw race result snapshot. SchemaVersion is
 // always emitted (a single document version is an explicit signal, so readers
@@ -45,6 +46,10 @@ type RaceSummary struct {
 	// local block can far exceed the 256KB SCTP budget. The upload path sends a
 	// budget-trimmed copy (TrimIncidentsForUpload) inside the race_detail payload.
 	Incidents []dto.IncidentClip `json:"incidents,omitempty"`
+	// PrivateCapture is persisted only to support restart-safe capture merging.
+	// It must be stripped from DataChannel and local/archive API responses and is
+	// never mapped to the platform upload payload.
+	PrivateCapture *dto.RacePrivateCapture `json:"privateCapture,omitempty"`
 }
 
 // RaceDetail is the rich, player-centric sub-block (per-lap timings/dynamics, the
@@ -63,7 +68,9 @@ type RaceDetail struct {
 	// FinalizeTrigger: what caused this save — race-end event code, "session-switch",
 	// "idle-timeout", or "shutdown". Empty on legacy summaries (pre-feature, always
 	// event-final). Checkpoint-class values mean the session may not have been over.
-	FinalizeTrigger string `json:"finalizeTrigger,omitempty"`
+	FinalizeTrigger string                      `json:"finalizeTrigger,omitempty"`
+	TrackOutline    *dto.TrackOutlineDTO        `json:"trackOutline,omitempty"`
+	Completeness    *dto.RaceDetailCompleteness `json:"completeness,omitempty"`
 }
 
 // TrackInfo describes the track for a stored race summary.
@@ -280,6 +287,11 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 			out.Detail = buildDetail(detail, p, out.Player.Stints)
 		}
 	}
+	if detail != nil && detail.PrivateCapture != nil {
+		capture := *detail.PrivateCapture
+		capture.EligibleIncidentKeys = cloneIncidentKeys(detail.PrivateCapture.EligibleIncidentKeys)
+		out.PrivateCapture = &capture
+	}
 
 	return out
 }
@@ -368,11 +380,402 @@ func buildDetail(in *dto.RaceDetailInput, p dto.DriverInfo, stints []RaceStint) 
 		Setup:           in.PlayerSetup,
 		CaptureStartLap: in.CaptureStartLap,
 		FinalizeTrigger: in.FinalizeTrigger,
+		TrackOutline:    cloneTrackOutline(in.TrackOutline),
+		Completeness:    cloneCompleteness(in.Completeness),
 	}
-	if len(detail.Laps) == 0 && len(detail.Dynamics) == 0 && len(detail.Events) == 0 && detail.Setup == nil {
+	if len(detail.Laps) == 0 && len(detail.Dynamics) == 0 && len(detail.Events) == 0 && detail.Setup == nil &&
+		detail.TrackOutline == nil && detail.Completeness == nil {
 		return nil
 	}
 	return detail
+}
+
+func cloneIncidentKeys(src []dto.IncidentCaptureKey) []dto.IncidentCaptureKey {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]dto.IncidentCaptureKey, len(src))
+	for i, key := range src {
+		out[i] = key
+		out[i].Collisions = append([][2]int(nil), key.Collisions...)
+	}
+	return out
+}
+
+func cloneTrackOutline(src *dto.TrackOutlineDTO) *dto.TrackOutlineDTO {
+	if src == nil {
+		return nil
+	}
+	out := *src
+	out.Points = append([][2]float64(nil), src.Points...)
+	return &out
+}
+
+func cloneCompleteness(src *dto.RaceDetailCompleteness) *dto.RaceDetailCompleteness {
+	if src == nil {
+		return nil
+	}
+	out := *src
+	cloneSection(&out.Analysis)
+	for _, section := range []*dto.SectionCompleteness{
+		&out.Sections.Laps, &out.Sections.Sectors, &out.Sections.Stints, &out.Sections.Tyres,
+		&out.Sections.Dynamics, &out.Sections.Penalties, &out.Sections.Events, &out.Sections.Pit,
+		&out.Sections.TrackOutline, &out.Sections.Incidents,
+	} {
+		cloneSection(section)
+	}
+	return &out
+}
+
+func cloneSection(section *dto.SectionCompleteness) {
+	if section == nil {
+		return
+	}
+	section.Reasons = append([]dto.CompletenessReason(nil), section.Reasons...)
+	if section.CapturedCount != nil {
+		count := *section.CapturedCount
+		section.CapturedCount = &count
+	}
+	if section.StoredCount != nil {
+		count := *section.StoredCount
+		section.StoredCount = &count
+	}
+}
+
+// UploadCompletenessFacts describes transformations that happen after a local
+// summary was captured. In particular, trimming must update counts/reasons on a
+// copy of the v2 wire metadata instead of mutating restart state on disk.
+type UploadCompletenessFacts struct {
+	Incidents            []dto.IncidentClip
+	EventsStored         int
+	EventsUploadDropped  int
+	ParticipantsTrimmed  bool
+	DroppedClips         int
+	RequestBudgetDropped bool
+	IncidentMergeLimited bool
+}
+
+// RefreshLocalCompleteness records v2 capture truth before a local summary is
+// saved. It is safe for legacy summaries (a no-op) and is intentionally called
+// only after Incident clips/private ledger have been attached by the host.
+func RefreshLocalCompleteness(summary *RaceSummary) {
+	if summary == nil || summary.SchemaVersion < RaceSummarySchemaVersion || summary.Detail == nil {
+		return
+	}
+	summary.Detail.Completeness = DeriveUploadCompleteness(summary, UploadCompletenessFacts{
+		Incidents:            summary.Incidents,
+		EventsStored:         len(summary.Detail.Events),
+		IncidentMergeLimited: summary.PrivateCapture != nil && summary.PrivateCapture.Provenance.IncidentMergeLimited,
+	})
+}
+
+// DeriveUploadCompleteness constructs the frozen v2 completeness envelope from
+// producer provenance and the final serialized shapes. It does not mutate its
+// inputs, making it usable by the uploader after 300KiB and request-budget
+// trimming. Historical summaries deliberately return nil: they retain legacy
+// unknown semantics instead of fabricating metadata.
+func DeriveUploadCompleteness(summary *RaceSummary, facts UploadCompletenessFacts) *dto.RaceDetailCompleteness {
+	if summary == nil || summary.SchemaVersion < RaceSummarySchemaVersion || summary.Detail == nil {
+		return nil
+	}
+	detail := summary.Detail
+	provenance := dto.RaceCaptureProvenance{}
+	if summary.PrivateCapture != nil {
+		provenance = summary.PrivateCapture.Provenance
+	}
+	if facts.EventsStored < 0 {
+		facts.EventsStored = 0
+	}
+
+	sections := dto.DetailSections{}
+	lapCount := len(detail.Laps)
+	sections.Laps = directSection(lapCount > 0 && provenance.SessionHistoryObserved, lapCount, lapCount,
+		provenance, nil)
+	sectorCount := 0
+	for _, lap := range detail.Laps {
+		if lap.S1Ms != 0 && lap.S2Ms != 0 && lap.S3Ms != 0 {
+			sectorCount++
+		}
+	}
+	sectorReasons := []dto.CompletenessReason(nil)
+	if lapCount > 0 && sectorCount != lapCount {
+		sectorReasons = append(sectorReasons, dto.ReasonSourceMissing)
+	}
+	sections.Sectors = directSection(lapCount > 0, lapCount, sectorCount, provenance, sectorReasons)
+
+	stintCount := len(summary.Player.Stints)
+	stintReasons := []dto.CompletenessReason(nil)
+	if detail.CaptureStartLap > 1 {
+		stintReasons = append(stintReasons, dto.ReasonLateCapture)
+	}
+	sections.Stints = directSection(provenance.CarStatusObserved && stintCount > 0, stintCount, stintCount, provenance, stintReasons)
+
+	// A schema-v2 upload always carries one debrief object. Its object-unit count
+	// stays fixed even when no usable fact was observed; the section status tells
+	// clients whether that required envelope contains a confirmed fact or only
+	// nullable placeholders.
+	debriefPresent := true
+	debriefFactsPresent := summary.Debrief != nil
+	// The current tyre-set packet enriches optional life/set fields only. A
+	// complete debrief is still possible when those nullable fields are not
+	// applicable; car status and damage are the raw sources for the core final
+	// compound/age/wear facts.
+	tyreObserved := debriefFactsPresent && (provenance.CarStatusObserved || provenance.CarDamageObserved)
+	tyreComplete := debriefFactsPresent && provenance.CarStatusObserved && provenance.CarDamageObserved
+	tyreReasons := []dto.CompletenessReason(nil)
+	if tyreObserved && !tyreComplete {
+		tyreReasons = append(tyreReasons, dto.ReasonSourceMissing)
+	}
+	sections.Tyres = knownObjectSection(debriefPresent, tyreObserved, tyreComplete, provenance, tyreReasons)
+	penaltiesObserved := debriefFactsPresent && provenance.LapDataObserved
+	sections.Penalties = knownObjectSection(debriefPresent, penaltiesObserved, penaltiesObserved, provenance, nil)
+
+	dynamicCount := len(detail.Dynamics)
+	dynamicReasons := []dto.CompletenessReason(nil)
+	if detail.CaptureStartLap > 1 {
+		dynamicReasons = append(dynamicReasons, dto.ReasonLateCapture)
+	}
+	sections.Dynamics = directSection(detail.CaptureStartLap > 0 && dynamicCount > 0, dynamicCount, dynamicCount, provenance, dynamicReasons)
+
+	eventCaptured := provenance.EventsSeen
+	if eventCaptured < facts.EventsStored {
+		eventCaptured = facts.EventsStored
+	}
+	eventReasons := []dto.CompletenessReason(nil)
+	if provenance.EventsBufferDropped > 0 {
+		eventReasons = append(eventReasons, dto.ReasonEventBufferLimit)
+	}
+	if facts.EventsUploadDropped > 0 {
+		eventReasons = append(eventReasons, dto.ReasonEventUploadLimit)
+	}
+	if eventCaptured > facts.EventsStored && provenance.EventsBufferDropped == 0 && facts.EventsUploadDropped == 0 {
+		// Restart event union can deduplicate repeated observations, and malformed
+		// source samples can otherwise disappear before upload. Do not claim a
+		// complete event section when the observed count has no retained fact.
+		eventReasons = append(eventReasons, dto.ReasonSourceMissing)
+	}
+	sections.Events = directSection(provenance.EventsCaptureActive, eventCaptured, facts.EventsStored, provenance, eventReasons)
+
+	pitReasons := []dto.CompletenessReason(nil)
+	pitObserved := debriefFactsPresent && provenance.LapDataObserved
+	pitComplete := pitObserved
+	if summary.Debrief != nil && summary.Debrief.Pit.Stops > 0 && !provenance.PitMeasurementObserved {
+		pitReasons = append(pitReasons, dto.ReasonPitMeasurementUnavailable)
+		pitComplete = false
+	}
+	sections.Pit = knownObjectSection(debriefPresent, pitObserved, pitComplete, provenance, pitReasons)
+
+	outlineCaptured, outlineStored := 0, 0
+	outlineReasons := []dto.CompletenessReason(nil)
+	outlineAvailable := detail.TrackOutline != nil && len(detail.TrackOutline.Points) >= 2
+	if outlineAvailable {
+		outlineStored = len(detail.TrackOutline.Points)
+		outlineCaptured = outlineStored
+		if provenance.TrackOutlineSourcePoints > outlineCaptured {
+			outlineCaptured = provenance.TrackOutlineSourcePoints
+		}
+		if outlineCaptured > outlineStored {
+			outlineReasons = append(outlineReasons, dto.ReasonTrackOutlineDownsampled)
+		}
+	} else {
+		outlineReasons = append(outlineReasons, dto.ReasonTrackOutlineUnavailable)
+	}
+	// Unlike time-based sections, a recorded centreline is not made incomplete
+	// by checkpoint finalization. Its only v2 partial state is a real bounded
+	// sampling loss, which must agree with captured/stored point counts.
+	outlineStatus := dto.AvailabilityComplete
+	if !outlineAvailable {
+		outlineStatus = dto.AvailabilityUnavailable
+	} else if outlineCaptured > outlineStored {
+		outlineStatus = dto.AvailabilityPartial
+	}
+	sections.TrackOutline = explicitSection(outlineStatus, outlineReasons, outlineCaptured, outlineStored)
+
+	incidentCaptured := 0
+	if summary.PrivateCapture != nil {
+		incidentCaptured = len(summary.PrivateCapture.EligibleIncidentKeys)
+	}
+	if incidentCaptured < len(facts.Incidents) {
+		incidentCaptured = len(facts.Incidents)
+	}
+	incidentReasons := collectIncidentReasons(facts.Incidents)
+	// Only the recorder's explicit local refusal proves a clip-cap loss. Upload
+	// projection and the request-budget guard also reduce stored clips, and must
+	// retain their own precise reasons without inventing incident-clip-limit.
+	if provenance.IncidentClipLimitReached {
+		incidentReasons = append(incidentReasons, dto.ReasonIncidentClipLimit)
+	}
+	// An eligible local event can fail to yield any usable clip (for example all
+	// candidate motion frames were invalid). It is not a recorder clip-cap or an
+	// upload trim, but it still must not promote the session section to complete.
+	if incidentCaptured > len(facts.Incidents) && !provenance.IncidentClipLimitReached &&
+		facts.DroppedClips == 0 && !facts.RequestBudgetDropped && !facts.IncidentMergeLimited {
+		incidentReasons = append(incidentReasons, dto.ReasonSourceMissing)
+	}
+	if facts.ParticipantsTrimmed {
+		incidentReasons = append(incidentReasons, dto.ReasonUploadParticipantsTrimmed)
+	}
+	if facts.DroppedClips > 0 {
+		incidentReasons = append(incidentReasons, dto.ReasonUploadClipsDropped)
+	}
+	if facts.IncidentMergeLimited {
+		incidentReasons = append(incidentReasons, dto.ReasonIncidentMergeLimit)
+	}
+	if facts.RequestBudgetDropped {
+		incidentReasons = append(incidentReasons, dto.ReasonRequestBudgetDropped)
+	}
+	sections.Incidents = incidentSection(incidentCaptured, len(facts.Incidents), provenance.IncidentsCaptureActive, incidentReasons)
+
+	analysisSections := []dto.SectionCompleteness{
+		sections.Laps, sections.Sectors, sections.Stints, sections.Tyres, sections.Dynamics,
+		sections.Penalties, sections.Events, sections.Pit, sections.Incidents,
+	}
+	return &dto.RaceDetailCompleteness{
+		Analysis: aggregateCompleteness(analysisSections),
+		Sections: sections,
+	}
+}
+
+func knownObjectSection(recordPresent, observed, complete bool, provenance dto.RaceCaptureProvenance, extra []dto.CompletenessReason) dto.SectionCompleteness {
+	count := 0
+	if recordPresent {
+		count = 1
+	}
+	reasons := append([]dto.CompletenessReason(nil), extra...)
+	status := dto.AvailabilityComplete
+	switch {
+	case !observed:
+		// The required v2 debrief envelope is a metadata record, not itself a
+		// usable tyre/penalty/pit fact. It therefore may have storedCount=1
+		// while honestly reporting unavailable.
+		status = dto.AvailabilityUnavailable
+		reasons = append(reasons, dto.ReasonSourceMissing)
+	case !complete:
+		status = dto.AvailabilityPartial
+	}
+	if provenance.CheckpointFinalize && status != dto.AvailabilityUnavailable {
+		status = dto.AvailabilityPartial
+		reasons = append(reasons, dto.ReasonCheckpointFinalize)
+	}
+	return explicitSection(status, reasons, count, count)
+}
+
+func directSection(available bool, captured, stored int, provenance dto.RaceCaptureProvenance, extra []dto.CompletenessReason) dto.SectionCompleteness {
+	reasons := append([]dto.CompletenessReason(nil), extra...)
+	status := dto.AvailabilityComplete
+	if !available {
+		reasons = append(reasons, dto.ReasonSourceMissing)
+		// "unavailable" is reserved for no usable stored data. A malformed or
+		// partially adopted producer can still carry recognizable facts without
+		// its raw observation flag, which is honest partial data rather than an
+		// unavailable section with non-zero storedCount.
+		if stored > 0 {
+			status = dto.AvailabilityPartial
+		} else {
+			status = dto.AvailabilityUnavailable
+		}
+	}
+	if provenance.CheckpointFinalize {
+		reasons = append(reasons, dto.ReasonCheckpointFinalize)
+		if available {
+			status = dto.AvailabilityPartial
+		}
+	}
+	if len(reasons) > 0 && status == dto.AvailabilityComplete {
+		status = dto.AvailabilityPartial
+	}
+	return explicitSection(status, reasons, captured, stored)
+}
+
+func incidentSection(captured, stored int, captureActive bool, reasons []dto.CompletenessReason) dto.SectionCompleteness {
+	reasons = uniqueReasons(reasons)
+	status := dto.AvailabilityComplete
+	switch {
+	case !captureActive:
+		if stored > 0 {
+			status = dto.AvailabilityPartial
+		} else {
+			status = dto.AvailabilityUnavailable
+		}
+		reasons = uniqueReasons(append(reasons, dto.ReasonSourceMissing))
+	case stored == 0 && captured > 0:
+		status = dto.AvailabilityUnavailable
+	case len(reasons) > 0:
+		status = dto.AvailabilityPartial
+	}
+	return explicitSection(status, reasons, captured, stored)
+}
+
+func explicitSection(status dto.Availability, reasons []dto.CompletenessReason, captured, stored int) dto.SectionCompleteness {
+	if captured < stored {
+		captured = stored
+	}
+	return dto.SectionCompleteness{
+		Status:        status,
+		Reasons:       uniqueReasons(reasons),
+		CapturedCount: intCount(captured),
+		StoredCount:   intCount(stored),
+	}
+}
+
+func aggregateCompleteness(sections []dto.SectionCompleteness) dto.SectionCompleteness {
+	allComplete, allUnknown := true, true
+	usable, hasUnavailable := false, false
+	for _, section := range sections {
+		if section.Status != dto.AvailabilityComplete {
+			allComplete = false
+		}
+		if section.Status != dto.AvailabilityUnknown {
+			allUnknown = false
+		}
+		if section.Status == dto.AvailabilityComplete || section.Status == dto.AvailabilityPartial {
+			usable = true
+		}
+		if section.Status == dto.AvailabilityUnavailable {
+			hasUnavailable = true
+		}
+	}
+	status := dto.AvailabilityPartial
+	switch {
+	case allComplete:
+		status = dto.AvailabilityComplete
+	case allUnknown:
+		status = dto.AvailabilityUnknown
+	case !usable && hasUnavailable:
+		status = dto.AvailabilityUnavailable
+	}
+	return dto.SectionCompleteness{Status: status, Reasons: []dto.CompletenessReason{}, CapturedCount: nil, StoredCount: nil}
+}
+
+func collectIncidentReasons(clips []dto.IncidentClip) []dto.CompletenessReason {
+	var out []dto.CompletenessReason
+	for _, clip := range clips {
+		out = append(out, clip.Completeness.Reasons...)
+	}
+	return uniqueReasons(out)
+}
+
+func uniqueReasons(reasons []dto.CompletenessReason) []dto.CompletenessReason {
+	if len(reasons) == 0 {
+		return []dto.CompletenessReason{}
+	}
+	seen := make(map[dto.CompletenessReason]struct{}, len(reasons))
+	out := make([]dto.CompletenessReason, 0, len(reasons))
+	for _, reason := range reasons {
+		if reason == "" {
+			continue
+		}
+		if _, exists := seen[reason]; exists {
+			continue
+		}
+		seen[reason] = struct{}{}
+		out = append(out, reason)
+	}
+	return out
+}
+
+func intCount(value int) *int {
+	return &value
 }
 
 // tyreForLap returns the canonical compound of the stint covering lapNum, or "".

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
 )
 
@@ -48,9 +49,9 @@ type uploadRequest struct {
 // uploadPit mirrors platformsvc.UploadPit (sender must not import the platform DB
 // package). Sent only when a real measurement exists (PitLaneTimeMs>0).
 type uploadPit struct {
-	Stops         int    `json:"stops,omitempty"`
+	Stops         int    `json:"stops"`
 	PitLaneTimeMs uint32 `json:"pitLaneTimeMs"`
-	StationaryMs  uint32 `json:"stationaryMs,omitempty"`
+	StationaryMs  uint32 `json:"stationaryMs"`
 }
 
 type uploadLap struct {
@@ -98,6 +99,12 @@ type uploadDetail struct {
 	// flags a late attach; finalizeTrigger records what closed the summary.
 	CaptureStartLap int    `json:"captureStartLap,omitempty"`
 	FinalizeTrigger string `json:"finalizeTrigger,omitempty"`
+	// Schema-v2 analysis fields. They remain optional at the Go struct level so
+	// old local v0/v1 summaries keep their historical upload shape; every v2
+	// mapper path fills all required members.
+	Debrief      *uploadDebrief      `json:"debrief,omitempty"`
+	TrackOutline *uploadTrackOutline `json:"trackOutline,omitempty"`
+	Completeness *uploadCompleteness `json:"completeness,omitempty"`
 }
 
 // uploadIncident (+participant/frame) mirrors dto.IncidentClip and the platform's
@@ -111,18 +118,98 @@ type uploadIncident struct {
 	Collisions      [][2]int                    `json:"collisions"`
 	Participants    []uploadIncidentParticipant `json:"participants"`
 	Frames          []uploadIncidentFrame       `json:"frames"`
+	Completeness    *uploadIncidentCompleteness `json:"completeness,omitempty"`
 }
 
 type uploadIncidentParticipant struct {
 	Idx      int     `json:"idx"`
 	Name     string  `json:"name,omitempty"`
+	TeamID   *int    `json:"teamId"`
 	IsPlayer bool    `json:"isPlayer,omitempty"`
 	MinDistM float64 `json:"minDistM"`
 }
 
 type uploadIncidentFrame struct {
-	TMs  int64       `json:"tMs"`
-	Cars [][]float64 `json:"cars"`
+	TMs                  int64       `json:"tMs"`
+	Cars                 [][]float64 `json:"cars"`
+	TelemetryUnavailable []int       `json:"telemetryUnavailable"`
+}
+
+type uploadSectionCompleteness struct {
+	Status        string   `json:"status"`
+	Reasons       []string `json:"reasons"`
+	CapturedCount *int     `json:"capturedCount"`
+	StoredCount   *int     `json:"storedCount"`
+}
+
+type uploadCompletenessSections struct {
+	Laps         uploadSectionCompleteness `json:"laps"`
+	Sectors      uploadSectionCompleteness `json:"sectors"`
+	Stints       uploadSectionCompleteness `json:"stints"`
+	Tyres        uploadSectionCompleteness `json:"tyres"`
+	Dynamics     uploadSectionCompleteness `json:"dynamics"`
+	Penalties    uploadSectionCompleteness `json:"penalties"`
+	Events       uploadSectionCompleteness `json:"events"`
+	Pit          uploadSectionCompleteness `json:"pit"`
+	TrackOutline uploadSectionCompleteness `json:"trackOutline"`
+	Incidents    uploadSectionCompleteness `json:"incidents"`
+}
+
+type uploadCompleteness struct {
+	Analysis uploadSectionCompleteness  `json:"analysis"`
+	Sections uploadCompletenessSections `json:"sections"`
+}
+
+type uploadIncidentCompleteness struct {
+	Status                   string   `json:"status"`
+	Reasons                  []string `json:"reasons"`
+	CapturedParticipantCount *int     `json:"capturedParticipantCount"`
+	StoredParticipantCount   int      `json:"storedParticipantCount"`
+	CapturedFrameCount       *int     `json:"capturedFrameCount"`
+	StoredFrameCount         int      `json:"storedFrameCount"`
+}
+
+type uploadDebrief struct {
+	Penalties uploadPenaltyDebrief `json:"penalties"`
+	Tyres     uploadTyreDebrief    `json:"tyres"`
+	Pit       uploadPitDebrief     `json:"pit"`
+}
+
+type uploadPenaltyDebrief struct {
+	TimePenaltySeconds   int `json:"timePenaltySeconds"`
+	Warnings             int `json:"warnings"`
+	CornerCutWarnings    int `json:"cornerCutWarnings"`
+	UnservedDriveThrough int `json:"unservedDriveThrough"`
+	UnservedStopGo       int `json:"unservedStopGo"`
+}
+
+type uploadTyreDebrief struct {
+	FinalCompound    *string `json:"finalCompound"`
+	FinalAge         *int    `json:"finalAge"`
+	AverageWearPct   *int    `json:"averageWearPct"`
+	PeakWearPct      *int    `json:"peakWearPct"`
+	FinalSetWearPct  *int    `json:"finalSetWearPct"`
+	LifeSpan         *int    `json:"lifeSpan"`
+	UsableLife       *int    `json:"usableLife"`
+	LifeRemainingPct *int    `json:"lifeRemainingPct"`
+}
+
+type uploadPitDebrief struct {
+	Stops            int     `json:"stops"`
+	PitLaneTimeMs    *uint32 `json:"pitLaneTimeMs"`
+	StationaryTimeMs *uint32 `json:"stationaryTimeMs"`
+}
+
+type uploadTrackOutline struct {
+	Points [][2]float64        `json:"points"`
+	Bounds uploadOutlineBounds `json:"bounds"`
+}
+
+type uploadOutlineBounds struct {
+	MinX float64 `json:"minX"`
+	MaxX float64 `json:"maxX"`
+	MinZ float64 `json:"minZ"`
+	MaxZ float64 `json:"maxZ"`
 }
 
 type uploadStint struct {
@@ -349,9 +436,11 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 		})
 	}
 	events := summary.Detail.Events
+	eventsUploadDropped := 0
 	if len(events) > uploadMaxDetailEvents {
+		eventsUploadDropped = len(events) - uploadMaxDetailEvents
 		logger.Warn("detail events trimmed for upload cap", "id", summary.ID,
-			"dropped", len(events)-uploadMaxDetailEvents, "kept", uploadMaxDetailEvents)
+			"dropped", eventsUploadDropped, "kept", uploadMaxDetailEvents)
 		events = events[len(events)-uploadMaxDetailEvents:]
 	}
 	for _, e := range events {
@@ -360,9 +449,9 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 			Severity: e.Severity, DriverName: e.DriverName,
 		})
 	}
-	trimmedIncidents, droppedClips := races.TrimIncidentsForUpload(summary.Incidents)
-	if droppedClips > 0 {
-		logger.Warn("incident clips trimmed for upload budget", "id", summary.ID, "droppedClips", droppedClips, "kept", len(trimmedIncidents))
+	trimmedIncidents, trimFacts := races.TrimIncidentsForUploadWithFacts(summary.Incidents)
+	if trimFacts.DroppedClips > 0 {
+		logger.Warn("incident clips trimmed for upload budget", "id", summary.ID, "droppedClips", trimFacts.DroppedClips, "kept", len(trimmedIncidents))
 	}
 	for _, c := range trimmedIncidents {
 		inc := uploadIncident{
@@ -374,20 +463,38 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 		}
 		for _, pt := range c.Participants {
 			inc.Participants = append(inc.Participants, uploadIncidentParticipant{
-				Idx: pt.Idx, Name: pt.Name, IsPlayer: pt.IsPlayer, MinDistM: pt.MinDistM,
+				Idx: pt.Idx, Name: pt.Name, TeamID: copyOptionalInt(pt.TeamID), IsPlayer: pt.IsPlayer, MinDistM: pt.MinDistM,
 			})
 		}
 		for _, f := range c.Frames {
-			inc.Frames = append(inc.Frames, uploadIncidentFrame{TMs: f.TMS, Cars: f.Cars})
+			inc.Frames = append(inc.Frames, uploadIncidentFrame{
+				TMs: f.TMS, Cars: f.Cars, TelemetryUnavailable: append([]int{}, f.TelemetryUnavailable...),
+			})
+		}
+		if summary.SchemaVersion >= races.RaceSummarySchemaVersion {
+			inc.Completeness = mapIncidentCompleteness(c.Completeness)
 		}
 		detail.Incidents = append(detail.Incidents, inc)
 	}
-	if len(detail.Stints) > 0 || len(detail.Dynamics) > 0 || len(detail.Events) > 0 || len(detail.Incidents) > 0 ||
+	if summary.SchemaVersion >= races.RaceSummarySchemaVersion {
+		detail.Debrief = mapUploadDebrief(summary)
+		detail.TrackOutline = mapUploadTrackOutline(summary.Detail.TrackOutline)
+		detail.Completeness = mapUploadCompleteness(races.DeriveUploadCompleteness(summary, races.UploadCompletenessFacts{
+			Incidents:            trimmedIncidents,
+			EventsStored:         len(detail.Events),
+			EventsUploadDropped:  eventsUploadDropped,
+			ParticipantsTrimmed:  trimFacts.ParticipantsTrimmed,
+			DroppedClips:         trimFacts.DroppedClips,
+			IncidentMergeLimited: summary.PrivateCapture != nil && summary.PrivateCapture.Provenance.IncidentMergeLimited,
+		}))
+	}
+	if summary.SchemaVersion >= races.RaceSummarySchemaVersion || len(detail.Stints) > 0 || len(detail.Dynamics) > 0 || len(detail.Events) > 0 || len(detail.Incidents) > 0 ||
 		detail.CaptureStartLap > 0 || detail.FinalizeTrigger != "" {
 		req.Detail = detail
 	}
 	// 실측 피트로스만 업로드(PitLaneTimeMS>0). 추정치(stops*22000)는 평균을 오염시키므로 제외.
-	if d := summary.Debrief; d != nil && d.Pit.PitLaneTimeMS > 0 {
+	if d := summary.Debrief; d != nil && d.Pit.PitLaneTimeMS > 0 &&
+		(summary.SchemaVersion < races.RaceSummarySchemaVersion || (summary.PrivateCapture != nil && summary.PrivateCapture.Provenance.PitMeasurementObserved)) {
 		req.Pit = &uploadPit{
 			Stops:         d.Pit.Stops,
 			PitLaneTimeMs: d.Pit.PitLaneTimeMS,
@@ -399,13 +506,142 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 		if raw, err := json.Marshal(req); err != nil || len(raw) > uploadRequestSafetyBytes {
 			logger.Warn("incidents dropped from upload (request over safety cap)", "id", summary.ID, "clips", len(req.Detail.Incidents))
 			req.Detail.Incidents = nil
-			if len(req.Detail.Stints) == 0 && len(req.Detail.Dynamics) == 0 && len(req.Detail.Events) == 0 &&
+			if summary.SchemaVersion >= races.RaceSummarySchemaVersion {
+				req.Detail.Completeness = mapUploadCompleteness(races.DeriveUploadCompleteness(summary, races.UploadCompletenessFacts{
+					Incidents:            nil,
+					EventsStored:         len(req.Detail.Events),
+					EventsUploadDropped:  eventsUploadDropped,
+					ParticipantsTrimmed:  trimFacts.ParticipantsTrimmed,
+					DroppedClips:         trimFacts.DroppedClips,
+					RequestBudgetDropped: true,
+					IncidentMergeLimited: summary.PrivateCapture != nil && summary.PrivateCapture.Provenance.IncidentMergeLimited,
+				}))
+			} else if len(req.Detail.Stints) == 0 && len(req.Detail.Dynamics) == 0 && len(req.Detail.Events) == 0 &&
 				req.Detail.CaptureStartLap == 0 && req.Detail.FinalizeTrigger == "" {
 				req.Detail = nil
 			}
 		}
 	}
 	return req, true
+}
+
+func copyOptionalInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	copyValue := *value
+	return &copyValue
+}
+
+func copyOptionalUint32(value uint32, available bool) *uint32 {
+	if !available {
+		return nil
+	}
+	copyValue := value
+	return &copyValue
+}
+
+func copyOptionalString(value string, available bool) *string {
+	if !available || value == "" {
+		return nil
+	}
+	copyValue := value
+	return &copyValue
+}
+
+func copyOptionalValue(value int, available bool) *int {
+	if !available {
+		return nil
+	}
+	copyValue := value
+	return &copyValue
+}
+
+func mapUploadDebrief(summary *races.RaceSummary) *uploadDebrief {
+	result := &uploadDebrief{}
+	if summary == nil || summary.Debrief == nil {
+		return result
+	}
+	d := summary.Debrief
+	provenance := dto.RaceCaptureProvenance{}
+	if summary.PrivateCapture != nil {
+		provenance = summary.PrivateCapture.Provenance
+	}
+	if provenance.LapDataObserved {
+		result.Penalties = uploadPenaltyDebrief{
+			TimePenaltySeconds: d.Penalties.TimePenaltySeconds,
+			Warnings:           d.Penalties.Warnings, CornerCutWarnings: d.Penalties.CornerCutWarnings,
+			UnservedDriveThrough: d.Penalties.UnservedDriveThrough, UnservedStopGo: d.Penalties.UnservedStopGo,
+		}
+	}
+	result.Tyres = uploadTyreDebrief{
+		FinalCompound:    copyOptionalString(d.Tyres.FinalCompound, provenance.CarStatusObserved),
+		FinalAge:         copyOptionalValue(d.Tyres.FinalAge, provenance.CarStatusObserved),
+		AverageWearPct:   copyOptionalValue(d.Tyres.AverageWearPct, provenance.CarDamageObserved),
+		PeakWearPct:      copyOptionalValue(d.Tyres.PeakWearPct, provenance.CarDamageObserved),
+		FinalSetWearPct:  copyOptionalValue(d.Tyres.FinalSetWearPct, provenance.TyreSetsObserved),
+		LifeSpan:         copyOptionalValue(d.Tyres.LifeSpan, provenance.TyreSetsObserved),
+		UsableLife:       copyOptionalValue(d.Tyres.UsableLife, provenance.TyreSetsObserved),
+		LifeRemainingPct: copyOptionalValue(d.Tyres.LifeRemainingPct, provenance.TyreSetsObserved),
+	}
+	result.Pit = uploadPitDebrief{
+		Stops: d.Pit.Stops,
+		PitLaneTimeMs: copyOptionalUint32(d.Pit.PitLaneTimeMS,
+			provenance.PitMeasurementObserved && d.Pit.PitLaneTimeMS > 0),
+		StationaryTimeMs: copyOptionalUint32(d.Pit.StationaryTimeMS,
+			provenance.PitMeasurementObserved && d.Pit.PitLaneTimeMS > 0),
+	}
+	return result
+}
+
+func mapUploadTrackOutline(outline *dto.TrackOutlineDTO) *uploadTrackOutline {
+	if outline == nil {
+		return nil
+	}
+	return &uploadTrackOutline{
+		Points: append([][2]float64(nil), outline.Points...),
+		Bounds: uploadOutlineBounds{MinX: outline.Bounds.MinX, MaxX: outline.Bounds.MaxX, MinZ: outline.Bounds.MinZ, MaxZ: outline.Bounds.MaxZ},
+	}
+}
+
+func mapUploadCompleteness(completeness *dto.RaceDetailCompleteness) *uploadCompleteness {
+	if completeness == nil {
+		return nil
+	}
+	section := func(source dto.SectionCompleteness) uploadSectionCompleteness {
+		reasons := make([]string, len(source.Reasons))
+		for i, reason := range source.Reasons {
+			reasons[i] = string(reason)
+		}
+		return uploadSectionCompleteness{
+			Status: string(source.Status), Reasons: reasons,
+			CapturedCount: copyOptionalInt(source.CapturedCount), StoredCount: copyOptionalInt(source.StoredCount),
+		}
+	}
+	return &uploadCompleteness{
+		Analysis: section(completeness.Analysis),
+		Sections: uploadCompletenessSections{
+			Laps: section(completeness.Sections.Laps), Sectors: section(completeness.Sections.Sectors),
+			Stints: section(completeness.Sections.Stints), Tyres: section(completeness.Sections.Tyres),
+			Dynamics: section(completeness.Sections.Dynamics), Penalties: section(completeness.Sections.Penalties),
+			Events: section(completeness.Sections.Events), Pit: section(completeness.Sections.Pit),
+			TrackOutline: section(completeness.Sections.TrackOutline), Incidents: section(completeness.Sections.Incidents),
+		},
+	}
+}
+
+func mapIncidentCompleteness(completeness dto.IncidentCompleteness) *uploadIncidentCompleteness {
+	reasons := make([]string, len(completeness.Reasons))
+	for i, reason := range completeness.Reasons {
+		reasons[i] = string(reason)
+	}
+	return &uploadIncidentCompleteness{
+		Status: string(completeness.Status), Reasons: reasons,
+		CapturedParticipantCount: copyOptionalInt(completeness.CapturedParticipantCount),
+		StoredParticipantCount:   completeness.StoredParticipantCount,
+		CapturedFrameCount:       copyOptionalInt(completeness.CapturedFrameCount),
+		StoredFrameCount:         completeness.StoredFrameCount,
+	}
 }
 
 // summaryRecordedAt maps the legacy timezone-less local storage stamp to an
