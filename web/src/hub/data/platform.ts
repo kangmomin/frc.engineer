@@ -9,6 +9,7 @@
 // codes to user-facing outcomes.
 import { getPlatformUrl, isPlatformConfigured } from './platformBase';
 import { getActiveSessionToken, getViewAsToken, notifySessionUnauthorized } from './session';
+import type { IncidentReplay, RaceAnalysisDetail, RaceAnalysisListResponse } from './raceAnalysisTypes';
 
 export type ListingKind = 'setup' | 'strategy';
 
@@ -335,6 +336,28 @@ export class ListingError extends Error {
   }
 }
 
+// Owner race-analysis screens need the actual HTTP outcome to decide whether
+// to retain surrounding data, refresh a disappeared race, or clear private
+// state. Keep this distinct from the older marketplace's coarse errors.
+export type RaceAnalysisErrorReason = 'unauthorized' | 'forbidden' | 'not-found' | 'bad-input' | 'network';
+
+export class RaceAnalysisError extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: RaceAnalysisErrorReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'RaceAnalysisError';
+  }
+}
+
+export interface RaceAnalysisListOptions {
+  limit?: number;
+  offset?: number;
+  signal?: AbortSignal;
+}
+
 async function pfetch(path: string, init?: RequestInit): Promise<Response> {
   if (!isPlatformConfigured()) {
     throw new ListingError('network', '플랫폼이 구성되지 않았습니다');
@@ -415,6 +438,39 @@ async function okJson<T>(res: Response, what: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+function raceAnalysisErrorForStatus(status: number, what: string): RaceAnalysisError {
+  switch (status) {
+    case 400:
+      return new RaceAnalysisError(status, 'bad-input', `${what} 입력이 올바르지 않습니다`);
+    case 401:
+      return new RaceAnalysisError(status, 'unauthorized', '로그인이 필요합니다');
+    case 403:
+      return new RaceAnalysisError(status, 'forbidden', '레이스 분석을 볼 권한이 없습니다');
+    case 404:
+      return new RaceAnalysisError(status, 'not-found', '레이스 분석을 찾을 수 없습니다');
+    default:
+      return new RaceAnalysisError(status, 'network', `${what} 실패 (${status})`);
+  }
+}
+
+async function ownerRaceAnalysisJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  try {
+    const response = await pfetch(path, { cache: 'no-store', signal });
+    if (response.status !== 200) throw raceAnalysisErrorForStatus(response.status, '레이스 분석 조회');
+    return (await response.json()) as T;
+  } catch (error: unknown) {
+    if (error instanceof RaceAnalysisError) throw error;
+    if (error instanceof ListingError) {
+      const status = error.reason === 'unauthorized' ? 401 : error.reason === 'view-as-read-only' ? 403 : 0;
+      const reason: RaceAnalysisErrorReason = status === 401 ? 'unauthorized' : status === 403 ? 'forbidden' : 'network';
+      throw new RaceAnalysisError(status, reason, error.message);
+    }
+    // pfetch intentionally preserves cancellation for selection changes.
+    if (typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError') throw error;
+    throw new RaceAnalysisError(0, 'network', '네트워크 오류');
+  }
+}
+
 // PlatformMarket is a thin, stateless client. Callers own loading/error UI state.
 export class PlatformMarket {
   async getDriverProfile(accountId: string, signal?: AbortSignal): Promise<PlatformDriverProfile> {
@@ -456,6 +512,38 @@ export class PlatformMarket {
 
   async listMyRaces(): Promise<PlatformSellableRace[]> {
     return okJson(await pfetch('/me/races'), '내 레이스');
+  }
+
+  // --- Owner race analysis (no HTML document or client-side cache) ---
+
+  async listRaceAnalyses(): Promise<RaceAnalysisListResponse>;
+  async listRaceAnalyses(options: RaceAnalysisListOptions): Promise<RaceAnalysisListResponse>;
+  async listRaceAnalyses(limit: number, offset?: number, signal?: AbortSignal): Promise<RaceAnalysisListResponse>;
+  async listRaceAnalyses(
+    optionsOrLimit: RaceAnalysisListOptions | number = {},
+    positionalOffset = 0,
+    positionalSignal?: AbortSignal,
+  ): Promise<RaceAnalysisListResponse> {
+    const options = typeof optionsOrLimit === 'number'
+      ? { limit: optionsOrLimit, offset: positionalOffset, signal: positionalSignal }
+      : optionsOrLimit;
+    const limit = options.limit ?? 50;
+    const offset = options.offset ?? 0;
+    return ownerRaceAnalysisJson<RaceAnalysisListResponse>(
+      `/me/race-analyses?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+      options.signal,
+    );
+  }
+
+  async getRaceAnalysis(raceId: string, signal?: AbortSignal): Promise<RaceAnalysisDetail> {
+    return ownerRaceAnalysisJson<RaceAnalysisDetail>(`/me/race-analyses/${encodeURIComponent(raceId)}`, signal);
+  }
+
+  async getRaceAnalysisIncident(raceId: string, index: number, signal?: AbortSignal): Promise<IncidentReplay> {
+    return ownerRaceAnalysisJson<IncidentReplay>(
+      `/me/race-analyses/${encodeURIComponent(raceId)}/incidents/${encodeURIComponent(String(index))}`,
+      signal,
+    );
   }
 
   // --- My Setups (owner-only history) ---

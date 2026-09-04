@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canEditMySetups, canManageRBAC, canReadMySetups, canStartViewAs, canViewAnalysis, canViewFeedbackInbox, hasPermission } from './permissions';
+import { canDeleteAdminAnalysisReports, canEditMySetups, canManageRBAC, canReadAdminAnalysisReports, canReadMySetups, canReadRaceAnalysis, canStartViewAs, canViewAnalysis, canViewFeedbackInbox, hasPermission } from './permissions';
 import type { PlatformAccount } from './session';
 
 // internal/rbac/rbac_test.go의 테이블과 동형 — Go/TS 매칭 규칙이 갈라지면 여기서 잡힌다.
@@ -48,6 +48,30 @@ describe('canViewAnalysis', () => {
     expect(canViewAnalysis({ ...base, admin: true })).toBe(true);
     expect(canViewAnalysis({ ...base, admin: false })).toBe(false);
     expect(canViewAnalysis(base)).toBe(false);
+  });
+});
+
+describe('race analysis owner/admin permission split', () => {
+  const base: PlatformAccount = {
+    id: 'a', steamId64: '7', persona: 'P', avatarUrl: '', kind: 'user',
+    verified: false, banned: false, createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  it('shows structured owner analysis for race.read, not the administrator HTML grant', () => {
+    expect(canReadRaceAnalysis({ ...base, permissions: ['pithub.race.read'] })).toBe(true);
+    expect(canReadRaceAnalysis({ ...base, permissions: ['pithub.race-analyze.read'] })).toBe(false);
+    expect(canReadRaceAnalysis({ ...base, permissions: ['pithub'] })).toBe(true);
+    expect(canReadRaceAnalysis({ ...base, admin: true })).toBe(false);
+    expect(canReadRaceAnalysis({ ...base, banned: true, permissions: ['pithub.race.read'] })).toBe(false);
+  });
+
+  it('keeps HTML report read and delete gates distinct and fail-closed', () => {
+    expect(canReadAdminAnalysisReports({ ...base, permissions: ['pithub.race-analyze.read'] })).toBe(true);
+    expect(canDeleteAdminAnalysisReports({ ...base, permissions: ['pithub.race-analyze.read'] })).toBe(false);
+    expect(canDeleteAdminAnalysisReports({ ...base, permissions: ['pithub.race-analyze.delete'] })).toBe(true);
+    expect(canReadAdminAnalysisReports({ ...base, permissions: ['pithub.race.read'] })).toBe(false);
+    expect(canReadAdminAnalysisReports({ ...base, admin: true })).toBe(false);
+    expect(canDeleteAdminAnalysisReports({ ...base, banned: true, permissions: ['pithub'] })).toBe(false);
   });
 });
 
