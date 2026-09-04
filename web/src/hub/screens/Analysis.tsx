@@ -188,7 +188,7 @@ export function Analysis({
       });
   }, [detail.id, detail.value?.incidents, fetchList, invalidatePrivate, market]);
 
-  const basicReady = configured && !loading && account !== null && account.permissions !== undefined && !viewOnly && ownerAllowed;
+  const basicReady = configured && !loading && account !== null && account.permissions !== undefined && ownerAllowed;
   useEffect(() => {
     if (!basicReady) {
       invalidatePrivate(null);
@@ -219,9 +219,8 @@ export function Analysis({
     : !configured ? ['플랫폼 연결이 필요합니다', '플랫폼 주소가 구성되면 내 레이스 분석을 불러옵니다.']
       : loading ? ['세션 확인 중', '권한을 확인하고 있습니다.']
         : !account ? ['로그인이 필요합니다', '내 레이스 분석은 로그인한 계정에만 표시됩니다.']
-          : viewOnly ? ['View As에서는 분석을 열 수 없습니다', '개인 telemetry와 사고 프레임은 대상 사용자에게 노출하지 않습니다.']
-            : !account.permissions ? ['권한 정보를 확인할 수 없습니다', '이 서버는 개인 레이스 분석 권한을 아직 제공하지 않습니다.']
-              : null;
+          : !account.permissions ? ['권한 정보를 확인할 수 없습니다', '이 서버는 개인 레이스 분석 권한을 아직 제공하지 않습니다.']
+            : null;
   const ownerGate = !ownerAllowed ? ['레이스 분석 권한이 없습니다', 'pithub.race.read 권한이 필요한 개인 화면입니다.'] : null;
 
   return (
@@ -247,7 +246,7 @@ export function Analysis({
               </div>
             </div>
           )}
-          {canAdminReports && <AdminAnalysisReports t={t} market={market} canDelete={canDeleteAdminReports} />}
+          {!viewOnly && canAdminReports && <AdminAnalysisReports t={t} market={market} canDelete={canDeleteAdminReports} />}
         </>
       )}
     </section>

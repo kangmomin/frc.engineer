@@ -55,10 +55,10 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = fa
 
       <nav style={{ padding: '14px 0', flex: 1, overflowY: 'auto' }}>
         {NAV.filter((item) =>
-          (!viewOnly || (item.id !== 'access' && item.id !== 'feedback-inbox' && item.id !== 'analysis'))
+          (!viewOnly || (item.id !== 'access' && item.id !== 'feedback-inbox'))
           && (!item.needsRBAC || canManageRBAC(account))
           && (!item.needsFeedbackInbox || canViewFeedbackInbox(account))
-          && (!item.needsAnalysis || canReadRaceAnalysis(account) || canReadAdminAnalysisReports(account)),
+          && (!item.needsAnalysis || canReadRaceAnalysis(account) || (!viewOnly && canReadAdminAnalysisReports(account))),
         ).map((item) => {
           const on = active === item.id;
           return (
