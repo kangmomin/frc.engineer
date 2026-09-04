@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { HubApp } from './hub/HubApp';
 import { AppShell } from './shell/AppShell';
 import './styles/theme.css';
+import { getViewAsToken } from './hub/data/session';
 
 type Surface = 'hub' | 'telemetry';
 
@@ -10,6 +11,8 @@ type Surface = 'hub' | 'telemetry';
 // 텔레메트리 서피스는 재구축된 AppShell(Broadcast/PitWall/Qualifying)이다 — legacy Layout 대체.
 // ?mock도 텔레메트리 검증용 딥링크이므로 telemetry로 라우팅한다.
 function initialSurface(): Surface {
+  // A tab carrying a View As child may not deep-link into local telemetry.
+  if (getViewAsToken()) return 'hub';
   const p = new URLSearchParams(window.location.search);
   if (p.has('remote') || p.has('roomId') || p.has('roomCode') || p.has('signalingUrl') || p.has('view') || p.has('mock')) {
     return 'telemetry';

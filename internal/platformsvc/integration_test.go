@@ -36,7 +36,7 @@ func testStore(t *testing.T) *Store {
 	// (treasury/fee_sink); TRUNCATE ... CASCADE on the children never reaches the
 	// accounts root, and TRUNCATE bypasses the ledger's append-only row trigger.
 	// Only user accounts are then removed.
-	_, err = store.pool.Exec(ctx, `TRUNCATE platform.sessions,
+	_, err = store.pool.Exec(ctx, `TRUNCATE platform.view_as_sessions, platform.sessions,
 		platform.openid_nonces, platform.device_pairings, platform.rate_limits,
 		platform.account_bans, platform.races, platform.race_setup, platform.setup_groups, platform.laps,
 		platform.snapshots, platform.listings, platform.wallets,

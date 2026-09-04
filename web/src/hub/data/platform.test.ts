@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlatformMarket, PlatformSearch, ListingError, isStintPayload } from './platform';
+import { subscribeSessionUnauthorized } from './session';
 
-function fakeWindow(token?: string) {
+function fakeWindow(token?: string, child?: string) {
   const store = new Map<string, string>();
+  const session = new Map<string, string>();
   if (token) store.set('pitwall.platformToken', token);
+  if (child) session.set('pitwall.viewAsToken', child);
+  const storage = (values: Map<string, string>) => ({
+    getItem: (k: string) => values.get(k) ?? null,
+    setItem: (k: string, v: string) => void values.set(k, v),
+    removeItem: (k: string) => void values.delete(k),
+  });
   return {
-    localStorage: {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-    },
+    localStorage: storage(store),
+    sessionStorage: storage(session),
     location: { hash: '', pathname: '/hub', search: '' },
     history: { replaceState: vi.fn() },
   };
@@ -45,12 +50,12 @@ describe('PlatformSearch', () => {
     expect(init.headers).toEqual({});
   });
 
-  it('optionally attaches a token to public search', async () => {
+  it('keeps public search anonymous even when a token exists', async () => {
     vi.stubGlobal('window', fakeWindow('tok_1'));
     const fetchMock = vi.fn().mockResolvedValue(res(200, { setups: [], drivers: [] }));
     vi.stubGlobal('fetch', fetchMock);
     await search.search('apex');
-    expect(fetchMock.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer tok_1' });
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({});
   });
 
   it('keeps a server 400 as an error instead of treating it as empty', async () => {
@@ -77,6 +82,28 @@ describe('PlatformMarket auth', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('https://platform.test/me/races');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok_1');
+  });
+
+  it('prefers the View As child for reads and rejects mutations before fetch', async () => {
+    vi.stubGlobal('window', fakeWindow('parent', 'child'));
+    const fetchMock = vi.fn().mockResolvedValue(res(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.listMyRaces();
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ Authorization: 'Bearer child' });
+    fetchMock.mockClear();
+    await expect(mkt.createListing({ kind: 'setup', sourceRaceId: 'r', title: 'x', priceCredits: 1 }))
+      .rejects.toMatchObject({ reason: 'view-as-read-only' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses strict-viewer auth for leaderboards while public browse stays anonymous', async () => {
+    vi.stubGlobal('window', fakeWindow('parent', 'child'));
+    const fetchMock = vi.fn().mockResolvedValue(res(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.leaderboardTT(1, 'F1 26');
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ Authorization: 'Bearer child' });
+    await mkt.browse('setup', 1, 'F1 26');
+    expect(fetchMock.mock.calls[1][1].headers).toEqual({});
   });
 });
 
@@ -142,6 +169,38 @@ describe('createListing status mapping', () => {
 });
 
 describe('detail / similar / delist', () => {
+  it('allows anonymous listing detail without an Authorization header', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    const fetchMock = vi.fn().mockResolvedValue(res(200, { id: 'L-x', owned: false, payload: null }));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.getListing('L-x');
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({});
+  });
+
+  it('sends the active viewer and emits its captured token on a strict-viewer 401', async () => {
+    const target = new EventTarget();
+    const win = {
+      ...fakeWindow('parent', 'child'),
+      addEventListener: target.addEventListener.bind(target),
+      removeEventListener: target.removeEventListener.bind(target),
+      dispatchEvent: target.dispatchEvent.bind(target),
+    };
+    class TestCustomEvent<T> extends Event {
+      constructor(type: string, readonly detailInit: { detail: T }) { super(type); }
+      get detail(): T { return this.detailInit.detail; }
+    }
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('CustomEvent', TestCustomEvent);
+    const listener = vi.fn();
+    const unsubscribe = subscribeSessionUnauthorized(listener);
+    const fetchMock = vi.fn().mockResolvedValue(res(401));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(mkt.getListing('L-x')).rejects.toMatchObject({ reason: 'unauthorized' });
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ Authorization: 'Bearer child' });
+    expect(listener).toHaveBeenCalledWith('child');
+    unsubscribe();
+  });
+
   it('getListing 404 → not-found ListingError', async () => {
     vi.stubGlobal('window', fakeWindow('tok'));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(404)));
@@ -169,10 +228,10 @@ describe('detail / similar / delist', () => {
 });
 
 describe('economy (3D1)', () => {
-  it('getWallet returns the balance', async () => {
+  it('getWallet returns balance and initialization state', async () => {
     vi.stubGlobal('window', fakeWindow('tok'));
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(200, { balance: 850 })));
-    expect(await mkt.getWallet()).toBe(850);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(200, { balance: 850, initialized: true })));
+    expect(await mkt.getWallet()).toEqual({ balance: 850, initialized: true });
   });
 
   it('browse 400 (missing track/format) → empty array', async () => {
@@ -181,7 +240,7 @@ describe('economy (3D1)', () => {
     expect(await mkt.browse('setup', 99, 'F1 26')).toEqual([]);
   });
 
-  it('browse attaches token when present but is public', async () => {
+  it('browse is anonymous public transport', async () => {
     vi.stubGlobal('window', fakeWindow()); // no token
     const fetchMock = vi.fn().mockResolvedValue(res(200, []));
     vi.stubGlobal('fetch', fetchMock);

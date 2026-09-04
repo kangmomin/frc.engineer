@@ -118,6 +118,21 @@ func (s *Store) GetWallet(ctx context.Context, accountID string) (int64, error) 
 	return balance, nil
 }
 
+// PeekWallet reads without provisioning a wallet or signup grant. It is used
+// by View As so a read-only child cannot create wallet or ledger rows.
+func (s *Store) PeekWallet(ctx context.Context, accountID string) (balance int64, initialized bool, err error) {
+	err = s.pool.QueryRow(ctx,
+		`SELECT balance FROM platform.wallets WHERE account_id = $1`, accountID,
+	).Scan(&balance)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("platformsvc: peek wallet: %w", err)
+	}
+	return balance, true, nil
+}
+
 // GetLedger returns the caller's own ledger rows, newest first.
 func (s *Store) GetLedger(ctx context.Context, accountID string) ([]LedgerEntry, error) {
 	rows, err := s.pool.Query(ctx, `

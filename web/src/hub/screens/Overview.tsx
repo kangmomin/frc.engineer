@@ -15,6 +15,7 @@ const MONO = "'JetBrains Mono',monospace";
 // (Phase 3D1). Absent (logged out) → the wallet card shows a login prompt.
 export interface RealWallet {
   balance: number;
+  initialized: boolean;
   ledger: HubLedgerEntry[];
 }
 
@@ -110,7 +111,7 @@ export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, r
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}>
               <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.14em', color: t.t2, fontWeight: 600 }}>CREDIT WALLET</div>
             </div>
-            {wallet ? (
+            {wallet?.initialized ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
                   <span style={{ fontFamily: MONO, fontSize: 34, fontWeight: 700, color: t.accInk, lineHeight: 0.9 }}>⬢ {wallet.balance.toLocaleString('en-US')}</span>
@@ -128,6 +129,10 @@ export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, r
                   )}
                 </div>
               </>
+            ) : wallet ? (
+              <div style={{ fontSize: 12.5, color: t.t3, lineHeight: 1.6, padding: '6px 0 4px' }}>
+                이 계정의 크레딧 지갑은 미개설 상태입니다.
+              </div>
             ) : (
               <div style={{ fontSize: 12.5, color: t.t3, lineHeight: 1.6, padding: '6px 0 4px' }}>
                 Steam으로 로그인하면 크레딧 지갑과 거래 내역이 표시됩니다.

@@ -133,6 +133,8 @@ func main() {
 	mux.HandleFunc("/auth/steam/login", srv.handleLogin)
 	mux.HandleFunc("/auth/steam/callback", srv.handleCallback)
 	mux.HandleFunc("/auth/logout", srv.handleLogout)
+	mux.HandleFunc("POST /view-as", srv.handleViewAs)
+	mux.HandleFunc("POST /view-as/exit", srv.handleViewAsExit)
 	mux.HandleFunc("/me", srv.handleMe)
 	mux.HandleFunc("/device/pair", srv.handlePair)
 	mux.HandleFunc("/device/exchange", srv.handleExchange)
@@ -274,7 +276,7 @@ func (s *server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	if _, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true}); !ok {
+	if _, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, allowViewAs: true}); !ok {
 		return
 	}
 	id, ok := pathUUID(r)
@@ -409,16 +411,17 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleMe returns the authenticated account.
 func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	// 게이트는 authenticate만: /me에 permission을 걸면 Role 0개 계정이 401/403을
 	// 받고, 웹 fetchMe가 그 응답에 토큰을 지워 락아웃 루프가 된다. ban 시에도
 	// 응답하는 것 역시 현행 유지(자기 조회 semantics).
-	p, ok := s.gate(ctx, w, r, gateSpec{})
+	p, ok := s.gate(ctx, w, r, gateSpec{allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -431,11 +434,171 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	// admin은 deprecated: 유일한 실소비자였던 구버전 웹의 ANALYSIS 게이트
 	// semantics(분석 열람 가능 여부)를 보존하는 호환 필드다. 신규 소비자 금지 —
 	// permissions를 쓸 것.
+	var viewAs *viewAsMe
+	if p.ViewAs {
+		viewAs = &viewAsMe{
+			SessionID: p.ViewAsSessionID,
+			Actor: viewAsActor{
+				ID:      p.ActorAccountID,
+				Persona: p.ActorPersona,
+			},
+			ExpiresAt: p.ViewAsExpiresAt.UTC().Format(time.RFC3339),
+		}
+	}
 	writeJSON(w, http.StatusOK, struct {
 		*platformsvc.Account
-		Admin       bool     `json:"admin"`
-		Permissions []string `json:"permissions"`
-	}{account, rbac.HasPermission(p.Permissions, rbac.PermAnalyzeRead), p.Permissions})
+		Admin       bool      `json:"admin"`
+		Permissions []string  `json:"permissions"`
+		ViewAs      *viewAsMe `json:"viewAs,omitempty"`
+	}{account, rbac.HasPermission(p.Permissions, rbac.PermAnalyzeRead), p.Permissions, viewAs})
+}
+
+type viewAsActor struct {
+	ID      string `json:"id"`
+	Persona string `json:"persona"`
+}
+
+type viewAsMe struct {
+	SessionID string      `json:"sessionId"`
+	Actor     viewAsActor `json:"actor"`
+	ExpiresAt string      `json:"expiresAt"`
+}
+
+type viewAsSubject struct {
+	ID        string `json:"id"`
+	Persona   string `json:"persona"`
+	AvatarURL string `json:"avatarUrl"`
+	Kind      string `json:"kind"`
+	Verified  bool   `json:"verified"`
+	Banned    bool   `json:"banned"`
+}
+
+const viewAsMaxBytes = 4 << 10
+
+// handleViewAs creates a short-lived read-only child from a current parent web
+// session. Authorization is complete before the body is inspected.
+func (s *server) handleViewAs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{
+		scope:            platformsvc.ScopeWeb,
+		blockBanned:      true,
+		permission:       rbac.PermViewAsCreate,
+		deniedAuditEvent: "view_as.denied_start",
+	})
+	if !ok {
+		return
+	}
+	accountID, err := decodeViewAsAccountID(w, r)
+	if err != nil {
+		s.auditViewAsDenied("view_as.denied_start", p, r)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	created, err := s.store.CreateViewAsSession(ctx, bearerToken(r), accountID)
+	switch {
+	case errors.Is(err, platformsvc.ErrInvalidSession):
+		s.auditViewAsDenied("view_as.denied_start", p, r, accountID)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	case errors.Is(err, platformsvc.ErrNotFound):
+		s.auditViewAsDenied("view_as.denied_start", p, r, accountID)
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	case errors.Is(err, platformsvc.ErrForbidden), errors.Is(err, platformsvc.ErrBanned):
+		s.auditViewAsDenied("view_as.denied_start", p, r, accountID)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	case err != nil:
+		s.log.Error("create view-as", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	event := "view_as.start"
+	if created.Replaced {
+		event = "view_as.replaced"
+	}
+	if s.log != nil {
+		s.log.Info(event,
+			"actor_account_id", p.AccountID,
+			"subject_account_id", created.Subject.ID,
+			"view_as_session_id", created.ID,
+			"expires_at", created.ExpiresAt.UTC().Format(time.RFC3339),
+			"replaced", created.Replaced,
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
+	}
+	writeJSON(w, http.StatusCreated, struct {
+		Token     string        `json:"token"`
+		SessionID string        `json:"sessionId"`
+		ExpiresAt string        `json:"expiresAt"`
+		Subject   viewAsSubject `json:"subject"`
+	}{
+		created.Token,
+		created.ID,
+		created.ExpiresAt.UTC().Format(time.RFC3339),
+		viewAsSubject{
+			ID:        created.Subject.ID,
+			Persona:   created.Subject.Persona,
+			AvatarURL: created.Subject.AvatarURL,
+			Kind:      created.Subject.Kind,
+			Verified:  created.Subject.Verified,
+			Banned:    created.Subject.Banned,
+		},
+	})
+}
+
+func decodeViewAsAccountID(w http.ResponseWriter, r *http.Request) (string, error) {
+	var body struct {
+		AccountID string `json:"accountId"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, viewAsMaxBytes))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		return "", err
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return "", errors.New("trailing view-as JSON")
+	}
+	if _, err := uuid.Parse(body.AccountID); err != nil {
+		return "", err
+	}
+	return body.AccountID, nil
+}
+
+// handleViewAsExit deletes only the presented child token. Parent and unknown
+// tokens are deliberately indistinguishable successful no-ops.
+func (s *server) handleViewAsExit(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	token := bearerToken(r)
+	if token == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	deleted, err := s.store.DeleteViewAsSession(ctx, token)
+	if err != nil {
+		s.log.Error("exit view-as", "error", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if s.log != nil {
+		args := []any{"method", r.Method, "path", r.URL.Path}
+		if deleted != nil {
+			args = append(args,
+				"actor_account_id", deleted.ActorAccountID,
+				"subject_account_id", deleted.SubjectID,
+				"view_as_session_id", deleted.ID,
+				"expires_at", deleted.ExpiresAt.UTC().Format(time.RFC3339),
+			)
+		}
+		s.log.Info("view_as.exit", args...)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handlePair mints a device pairing code for the logged-in (web) account.
@@ -540,14 +703,19 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 // handleLeaderboardTT serves the Time Trial leaderboard (public; optional Bearer
 // for you-highlight).
 func (s *server) handleLeaderboardTT(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	viewer, err := s.optionalViewer(ctx, r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	trackID, format, ok := leaderboardParams(r)
 	if !ok {
 		http.Error(w, "track and format required", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	rows, err := s.store.TimeTrialLeaderboard(ctx, trackID, format, s.optionalViewer(ctx, r))
+	rows, err := s.store.TimeTrialLeaderboard(ctx, trackID, format, viewer)
 	if err != nil {
 		s.log.Error("tt leaderboard", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -561,14 +729,19 @@ func (s *server) handleLeaderboardTT(w http.ResponseWriter, r *http.Request) {
 
 // handleLeaderboardPace serves the Race Pace leaderboard.
 func (s *server) handleLeaderboardPace(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	viewer, err := s.optionalViewer(ctx, r)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	trackID, format, ok := leaderboardParams(r)
 	if !ok {
 		http.Error(w, "track and format required", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	rows, err := s.store.PaceLeaderboard(ctx, trackID, format, s.optionalViewer(ctx, r))
+	rows, err := s.store.PaceLeaderboard(ctx, trackID, format, viewer)
 	if err != nil {
 		s.log.Error("pace leaderboard", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -641,7 +814,7 @@ func (s *server) browseMarket(w http.ResponseWriter, r *http.Request, kind strin
 func (s *server) handleMyRaces(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead, allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -663,7 +836,7 @@ func (s *server) handleMySetups(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead, allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -685,7 +858,7 @@ func (s *server) handleMySetup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead, allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -808,7 +981,7 @@ func isJSONNull(raw json.RawMessage) bool {
 func (s *server) handleMyListings(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermMarketRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermMarketRead, allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -971,27 +1144,37 @@ const (
 // handleWallet returns the caller's credit balance (provisioning the one-time
 // signup grant on first read). Web scope; own private data → uncacheable.
 func (s *server) handleWallet(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermWalletRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermWalletRead, allowViewAs: true})
 	if !ok {
 		return
 	}
-	balance, err := s.store.GetWallet(ctx, p.AccountID)
+	var balance int64
+	initialized := true
+	var err error
+	if p.ViewAs {
+		balance, initialized, err = s.store.PeekWallet(ctx, p.AccountID)
+	} else {
+		balance, err = s.store.GetWallet(ctx, p.AccountID)
+	}
 	if err != nil {
 		s.log.Error("wallet", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]int64{"balance": balance})
+	writeJSON(w, http.StatusOK, struct {
+		Balance     int64 `json:"balance"`
+		Initialized bool  `json:"initialized"`
+	}{balance, initialized})
 }
 
 // handleLedger returns the caller's own ledger entries. Web scope; uncacheable.
 func (s *server) handleLedger(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermWalletRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermWalletRead, allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -1170,7 +1353,7 @@ func (s *server) handleCreateFeedback(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleMyFeedback(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermFeedbackRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermFeedbackRead, allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -1225,24 +1408,44 @@ const (
 // (e.g. delist not ban-blocked) are deliberately preserved as recorded
 // follow-ups; do not "fix" them here.
 type gateSpec struct {
-	scope       string // platformsvc.ScopeWeb / ScopeUpload; "" = no scope check
-	blockBanned bool
-	permission  string // rbac node; "" = no permission check
+	scope            string // platformsvc.ScopeWeb / ScopeUpload; "" = no scope check
+	blockBanned      bool
+	permission       string // rbac node; "" = no permission check
+	allowViewAs      bool   // default deny; opt in only exact privacy-safe reads
+	deniedAuditEvent string // optional route-specific denial event (start)
 }
 
-// gate runs authenticate → scope → ban → permission (the adminGate order,
-// generalized to every authenticated route). The permission check precedes
-// any path parsing or DB access, and denial is a uniform 403 "forbidden" —
-// no existence oracle for under-privileged callers. Rate limits stay in the
-// handlers (domain-specific keys/limits, and they must not be consumed by
-// requests this gate rejects).
+// gate runs authenticate → View As allowlist → scope → ban → permission. The
+// View As decision is deliberately first after authentication, before route
+// parsing, rate limits, body decoding, or domain storage. The permission check
+// likewise precedes path parsing and DB access, preserving the existing uniform
+// 403 behavior for under-privileged callers.
 func (s *server) gate(ctx context.Context, w http.ResponseWriter, r *http.Request, spec gateSpec) (platformsvc.Principal, bool) {
 	p, err := s.authenticate(ctx, r)
 	if err != nil {
+		if spec.deniedAuditEvent != "" && s.log != nil {
+			s.log.Info(spec.deniedAuditEvent, "method", r.Method, "path", r.URL.Path)
+		}
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return platformsvc.Principal{}, false
 	}
+	if p.ViewAs && !spec.allowViewAs {
+		w.Header().Set("Cache-Control", "no-store")
+		event := spec.deniedAuditEvent
+		if event == "" {
+			event = "view_as.denied_read_or_mutation"
+		}
+		s.auditViewAsDenied(event, p, r)
+		http.Error(w, "view-as is read-only", http.StatusForbidden)
+		return platformsvc.Principal{}, false
+	}
+	if p.ViewAs {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	if spec.scope != "" && p.Scope != spec.scope {
+		if spec.deniedAuditEvent != "" {
+			s.auditViewAsDenied(spec.deniedAuditEvent, p, r)
+		}
 		msg := "web session required"
 		if spec.scope == platformsvc.ScopeUpload {
 			msg = "upload token required"
@@ -1251,14 +1454,41 @@ func (s *server) gate(ctx context.Context, w http.ResponseWriter, r *http.Reques
 		return platformsvc.Principal{}, false
 	}
 	if spec.blockBanned && p.Banned {
+		if spec.deniedAuditEvent != "" {
+			s.auditViewAsDenied(spec.deniedAuditEvent, p, r)
+		}
 		http.Error(w, "account banned", http.StatusForbidden)
 		return platformsvc.Principal{}, false
 	}
 	if spec.permission != "" && !rbac.HasPermission(p.Permissions, spec.permission) {
+		if spec.deniedAuditEvent != "" {
+			s.auditViewAsDenied(spec.deniedAuditEvent, p, r)
+		}
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return platformsvc.Principal{}, false
 	}
 	return p, true
+}
+
+func (s *server) auditViewAsDenied(event string, p platformsvc.Principal, r *http.Request, requestedSubjectID ...string) {
+	if s.log == nil {
+		return
+	}
+	args := []any{"method", r.Method, "path", r.URL.Path}
+	if p.ViewAs {
+		args = append(args,
+			"actor_account_id", p.ActorAccountID,
+			"subject_account_id", p.AccountID,
+			"view_as_session_id", p.ViewAsSessionID,
+			"expires_at", p.ViewAsExpiresAt.UTC().Format(time.RFC3339),
+		)
+	} else if p.AccountID != "" {
+		args = append(args, "actor_account_id", p.AccountID)
+		if len(requestedSubjectID) > 0 {
+			args = append(args, "subject_account_id", requestedSubjectID[0])
+		}
+	}
+	s.log.Info(event, args...)
 }
 
 // handleCreateAnalysis stores one operator-authored race analysis report.
@@ -1378,7 +1608,7 @@ func (s *server) handleDeleteAnalysis(w http.ResponseWriter, r *http.Request) {
 func (s *server) handlePermissions(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{})
+	p, ok := s.gate(ctx, w, r, gateSpec{allowViewAs: true})
 	if !ok {
 		return
 	}
@@ -1645,7 +1875,7 @@ func pathRoleName(r *http.Request) (string, bool) {
 // (401), never a silent downgrade to anonymous. A banned viewer keeps their id so
 // they can still self-view their own listings.
 func (s *server) viewerStrict(ctx context.Context, r *http.Request) (string, error) {
-	if bearerToken(r) == "" {
+	if !authorizationHeaderPresent(r) {
 		return "", nil
 	}
 	p, err := s.authenticate(ctx, r)
@@ -1686,14 +1916,21 @@ func leaderboardParams(r *http.Request) (int, string, bool) {
 	return int(trackID), format, true
 }
 
-// optionalViewer resolves a Bearer token to an account id for you-highlighting.
-// Absent/invalid/expired → "" (anonymous). Banned viewers get no highlight.
-func (s *server) optionalViewer(ctx context.Context, r *http.Request) string {
-	p, err := s.authenticate(ctx, r)
-	if err != nil || p.Banned {
-		return ""
+// optionalViewer is anonymous only when Authorization is absent. A present
+// credential is strict: invalid, expired, or revoked View As linkage is a 401,
+// never a silent downgrade that could leave stale subject state in the client.
+func (s *server) optionalViewer(ctx context.Context, r *http.Request) (string, error) {
+	if !authorizationHeaderPresent(r) {
+		return "", nil
 	}
-	return p.AccountID
+	p, err := s.authenticate(ctx, r)
+	if err != nil {
+		return "", err
+	}
+	if p.Banned {
+		return "", nil
+	}
+	return p.AccountID, nil
 }
 
 // authenticate resolves the Bearer token to a Principal.
@@ -1713,6 +1950,19 @@ func bearerToken(r *http.Request) string {
 		return strings.TrimSpace(after)
 	}
 	return ""
+}
+
+// authorizationHeaderPresent distinguishes a truly anonymous request from a
+// caller that supplied an empty or malformed credential. Optional strict
+// viewers use this signal to reject the latter instead of downgrading to public
+// data. Required-auth routes continue to rely on bearerToken unchanged.
+func authorizationHeaderPresent(r *http.Request) bool {
+	for name := range r.Header {
+		if strings.EqualFold(name, "Authorization") {
+			return true
+		}
+	}
+	return false
 }
 
 func randomState() (string, error) {

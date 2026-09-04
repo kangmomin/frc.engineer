@@ -26,23 +26,22 @@ interface Props {
   account: PlatformAccount | null;
   market: PlatformMarket;
   onLogin: () => void;
-  onSessionExpired: () => void;
+  viewOnly?: boolean;
 }
 
-export function MySetups({ t, configured, loading, account, market, onLogin, onSessionExpired }: Props) {
+export function MySetups({ t, configured, loading, account, market, onLogin, viewOnly = false }: Props) {
   if (!configured) return <Gate t={t} title="플랫폼 연결이 필요합니다" note="My Setups는 연결된 플랫폼에서 사용할 수 있습니다." />;
   if (loading) return <Gate t={t} title="세션을 확인하는 중…" note="" status />;
   if (!account) return <Gate t={t} title="로그인이 필요합니다" note="내 셋업과 레이스 기록은 Profile에서 로그인한 뒤 확인할 수 있습니다." action="Profile에서 로그인" onAction={onLogin} />;
   if (!account.permissions) return <Gate t={t} title="서버 업데이트 필요" note="My Setups 권한 정보를 받지 못했습니다. 플랫폼 서버를 업데이트한 뒤 다시 시도하세요." />;
   if (!canReadMySetups(account)) return <Gate t={t} title="My Setups 열람 권한이 없습니다" note="pithub.race.read 권한이 필요합니다." alert />;
-  return <MySetupsData key={`${account.id}:${account.permissions.join('\u0001')}`} t={t} market={market} canEdit={canEditMySetups(account)} onSessionExpired={onSessionExpired} />;
+  return <MySetupsData key={`${account.id}:${account.permissions.join('\u0001')}`} t={t} market={market} canEdit={!viewOnly && canEditMySetups(account)} />;
 }
 
-function MySetupsData({ t, market, canEdit, onSessionExpired }: {
+function MySetupsData({ t, market, canEdit }: {
   t: HubTheme;
   market: PlatformMarket;
   canEdit: boolean;
-  onSessionExpired: () => void;
 }) {
   const [list, setList] = useState<LoadState<PlatformMySetupSummary[]>>({ kind: 'loading' });
   const [detail, setDetail] = useState<LoadState<PlatformMySetupDetail> | null>(null);
@@ -55,12 +54,10 @@ function MySetupsData({ t, market, canEdit, onSessionExpired }: {
   const { selectedId, draft } = selection;
 
   const expireIfUnauthorized = useCallback((error: unknown) => {
-    if (reasonOf(error) === 'unauthorized') {
-      onSessionExpired();
-      return true;
-    }
-    return false;
-  }, [onSessionExpired]);
+    // pfetch emits the captured-token 401 event. HubApp is the single owner of
+    // child recovery, so screens only stop their local error path here.
+    return reasonOf(error) === 'unauthorized';
+  }, []);
 
   // A denied owner GET must never leave previously loaded private metadata on
   // screen. This is intentionally separate from a denied POST, which keeps the

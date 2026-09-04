@@ -29,9 +29,10 @@ interface Props {
   onLaunchLive: () => void;
   // Logged-in platform account; null when logged out / platform unconfigured.
   account: PlatformAccount | null;
+  viewOnly?: boolean;
 }
 
-export function Sidebar({ t, active, onNav, onLaunchLive, account }: Props) {
+export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = false }: Props) {
   return (
     <aside
       className="hubSidebar"
@@ -54,7 +55,8 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account }: Props) {
 
       <nav style={{ padding: '14px 0', flex: 1, overflowY: 'auto' }}>
         {NAV.filter((item) =>
-          (!item.needsRBAC || canManageRBAC(account))
+          (!viewOnly || (item.id !== 'access' && item.id !== 'feedback-inbox' && item.id !== 'analysis'))
+          && (!item.needsRBAC || canManageRBAC(account))
           && (!item.needsFeedbackInbox || canViewFeedbackInbox(account)),
         ).map((item) => {
           const on = active === item.id;
@@ -81,17 +83,18 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account }: Props) {
         <button
           className="hubNavButton"
           onClick={onLaunchLive}
+          disabled={viewOnly}
           aria-label="LIVE 피트월"
           style={{
             display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left',
             background: 'transparent', border: 0, borderLeft: '2px solid transparent',
-            padding: '11px 20px 11px 18px', marginTop: 8, cursor: 'pointer',
-            color: t.t2, fontFamily: MONO, fontSize: 11.5, letterSpacing: '.13em', fontWeight: 600,
+            padding: '11px 20px 11px 18px', marginTop: 8, cursor: viewOnly ? 'not-allowed' : 'pointer',
+            color: viewOnly ? t.t3 : t.t2, opacity: viewOnly ? .55 : 1, fontFamily: MONO, fontSize: 11.5, letterSpacing: '.13em', fontWeight: 600,
           }}
         >
           <span className="hubNavIndex" style={{ color: t.ok, fontSize: 9.5, letterSpacing: 0, animation: 'escpulse 1.6s ease-in-out infinite' }}>◆</span>
           <span className="hubMobileNavLabel">LIVE</span>
-          <span className="hubNavLabel">LIVE · 피트월</span>
+          <span className="hubNavLabel">{viewOnly ? 'LIVE · View As 미지원' : 'LIVE · 피트월'}</span>
         </button>
       </nav>
 

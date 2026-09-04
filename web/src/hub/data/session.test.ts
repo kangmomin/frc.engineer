@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   captureTokenFromFragment, getSessionToken, clearSessionToken, fetchMe,
+  getParentSessionToken, getViewAsToken, getActiveSessionToken, storeViewAsSession,
+  clearViewAsSession, fetchMeWithToken, startViewAs, exitViewAs,
+  clearCurrentParentSession,
 } from './session';
 
 // jsdom is not configured, so stand up a minimal window (local/session storage +
@@ -76,14 +79,14 @@ describe('fetchMe', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok_xyz');
   });
 
-  it('clears the token and returns null on 401', async () => {
+  it('keeps storage unchanged and returns null on 401', async () => {
     const win = fakeWindow();
     win.localStorage.setItem('pitwall.platformToken', 'stale');
     vi.stubGlobal('window', win);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
 
     expect(await fetchMe()).toBeNull();
-    expect(getSessionToken()).toBeNull();
+    expect(getSessionToken()).toBe('stale');
   });
 
   it('returns null without fetching when no token is stored', async () => {
@@ -102,5 +105,63 @@ describe('fetchMe', () => {
     expect(await fetchMe()).toBeNull();
     expect(getSessionToken()).toBe('tok');
     clearSessionToken();
+  });
+});
+
+describe('parent and View As child storage', () => {
+  it('keeps the parent durable and selects the tab-scoped child as active', () => {
+    const win = fakeWindow();
+    win.localStorage.setItem('pitwall.platformToken', 'parent');
+    vi.stubGlobal('window', win);
+    storeViewAsSession('child', '2026-09-04T12:00:00Z');
+    expect(getParentSessionToken()).toBe('parent');
+    expect(getViewAsToken()).toBe('child');
+    expect(getActiveSessionToken()).toBe('child');
+    clearViewAsSession();
+    expect(getActiveSessionToken()).toBe('parent');
+  });
+
+  it('uses explicit tokens for /me, start, and exit without clearing storage', async () => {
+    const win = fakeWindow();
+    win.localStorage.setItem('pitwall.platformToken', 'parent');
+    vi.stubGlobal('window', win);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ token: 'child', sessionId: 's', expiresAt: '2026-09-04T12:00:00Z', subject: { id: 'b' } }) })
+      .mockResolvedValueOnce({ ok: true, status: 204 });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(fetchMeWithToken('bad-child')).rejects.toMatchObject({ status: 401 });
+    expect(getParentSessionToken()).toBe('parent');
+    await startViewAs('b', 'parent');
+    await exitViewAs('child');
+    expect(fetchMock.mock.calls[1][1].headers).toMatchObject({ Authorization: 'Bearer parent' });
+    expect(fetchMock.mock.calls[2][1].headers).toMatchObject({ Authorization: 'Bearer child' });
+  });
+
+  it('leaves both stores untouched when best-effort exit fails', async () => {
+    const win = fakeWindow();
+    win.localStorage.setItem('pitwall.platformToken', 'parent');
+    vi.stubGlobal('window', win);
+    storeViewAsSession('child', '2026-09-04T12:00:00Z');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    await expect(exitViewAs('child')).rejects.toThrow('offline');
+    expect(getParentSessionToken()).toBe('parent');
+    expect(getViewAsToken()).toBe('child');
+  });
+
+  it('clears a stale parent only when the captured parent/child snapshot is current', () => {
+    const win = fakeWindow();
+    win.localStorage.setItem('pitwall.platformToken', 'parent');
+    vi.stubGlobal('window', win);
+    expect(clearCurrentParentSession('old-parent', null)).toBe(false);
+    expect(getParentSessionToken()).toBe('parent');
+    expect(clearCurrentParentSession('parent', null)).toBe(true);
+    expect(getParentSessionToken()).toBeNull();
+
+    win.localStorage.setItem('pitwall.platformToken', 'parent-2');
+    storeViewAsSession('child', '2026-09-04T12:00:00Z');
+    expect(clearCurrentParentSession('parent-2', null)).toBe(false);
+    expect(getParentSessionToken()).toBe('parent-2');
+    expect(getViewAsToken()).toBe('child');
   });
 });

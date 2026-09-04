@@ -30,7 +30,7 @@ const detail: PlatformMySetupDetail = {
 };
 
 function render(overrides: Partial<Parameters<typeof MySetups>[0]> = {}) {
-  return renderToStaticMarkup(<MySetups t={t} configured loading={false} account={account} market={new PlatformMarket()} onLogin={vi.fn()} onSessionExpired={vi.fn()} {...overrides} />);
+  return renderToStaticMarkup(<MySetups t={t} configured loading={false} account={account} market={new PlatformMarket()} onLogin={vi.fn()} {...overrides} />);
 }
 
 describe('MySetups', () => {

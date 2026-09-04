@@ -8,7 +8,7 @@
 // mutating and owner calls do. This layer only shapes requests and maps status
 // codes to user-facing outcomes.
 import { getPlatformUrl, isPlatformConfigured } from './platformBase';
-import { getSessionToken } from './session';
+import { getActiveSessionToken, getViewAsToken, notifySessionUnauthorized } from './session';
 
 export type ListingKind = 'setup' | 'strategy';
 
@@ -306,7 +306,13 @@ export interface PlatformAccountRoles {
   persona: string;
   avatarUrl?: string;
   kind: string;
+  banned: boolean;
   roles: string[];
+}
+
+export interface PlatformWallet {
+  balance: number;
+  initialized: boolean;
 }
 
 // ListingError carries a coarse, user-facing reason so the sell modal can show a
@@ -319,6 +325,7 @@ export type ListingErrorReason =
   | 'not-found'
   | 'bad-input'
   | 'rate-limited'
+  | 'view-as-read-only'
   | 'network';
 
 export class ListingError extends Error {
@@ -332,15 +339,21 @@ async function pfetch(path: string, init?: RequestInit): Promise<Response> {
   if (!isPlatformConfigured()) {
     throw new ListingError('network', '플랫폼이 구성되지 않았습니다');
   }
-  const token = getSessionToken();
+  const token = getActiveSessionToken();
   if (!token) {
     throw new ListingError('unauthorized', '로그인이 필요합니다');
   }
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD' && getViewAsToken()) {
+    throw new ListingError('view-as-read-only', 'View As는 읽기 전용입니다');
+  }
   try {
-    return await fetch(getPlatformUrl(path), {
+    const res = await fetch(getPlatformUrl(path), {
       ...init,
       headers: { ...(init?.headers ?? {}), Authorization: `Bearer ${token}` },
     });
+    if (res.status === 401) notifySessionUnauthorized(token);
+    return res;
   } catch (error: unknown) {
     if (typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError') {
       throw error;
@@ -349,18 +362,30 @@ async function pfetch(path: string, init?: RequestInit): Promise<Response> {
   }
 }
 
-// pfetchOpen is for public GETs (browse, reviews list): it attaches the Bearer
-// token when present but does not require one.
-async function pfetchOpen(path: string, init?: RequestInit): Promise<Response> {
+// Strict-viewer reads may be anonymous, but an available token must be sent and
+// a rejected token must remain a 401 (never silently downgrade to anonymous).
+async function pfetchViewer(path: string, init?: RequestInit): Promise<Response> {
   if (!isPlatformConfigured()) {
     throw new ListingError('network', '플랫폼이 구성되지 않았습니다');
   }
-  const token = getSessionToken();
+  const token = getActiveSessionToken();
   try {
-    return await fetch(getPlatformUrl(path), {
+    const res = await fetch(getPlatformUrl(path), {
       ...init,
       headers: { ...(init?.headers ?? {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
+    if (res.status === 401 && token) notifySessionUnauthorized(token);
+    return res;
+  } catch {
+    throw new ListingError('network', '네트워크 오류');
+  }
+}
+
+// Privacy-independent public reads never carry either identity token.
+async function pfetchAnonymous(path: string, init?: RequestInit): Promise<Response> {
+  if (!isPlatformConfigured()) throw new ListingError('network', '플랫폼이 구성되지 않았습니다');
+  try {
+    return await fetch(getPlatformUrl(path), { ...init, headers: { ...(init?.headers ?? {}) } });
   } catch {
     throw new ListingError('network', '네트워크 오류');
   }
@@ -372,7 +397,7 @@ async function pfetchOpen(path: string, init?: RequestInit): Promise<Response> {
 export class PlatformSearch {
   async search(query: string, signal?: AbortSignal): Promise<PlatformSearchResponse> {
     const q = query.trim();
-    const res = await pfetchOpen(`/search?q=${encodeURIComponent(q)}`, { signal });
+    const res = await pfetchAnonymous(`/search?q=${encodeURIComponent(q)}`, { signal });
     if (res.status === 400) {
       throw new ListingError('bad-input', '검색어는 2자 이상이어야 합니다');
     }
@@ -411,20 +436,20 @@ export class PlatformMarket {
   // --- Leaderboards (public; attach viewer token for the `you` highlight) ---
 
   async leaderboardTT(trackId: number, format: string): Promise<PlatformTTRow[]> {
-    const res = await pfetchOpen(`/leaderboards/tt?track=${trackId}&format=${encodeURIComponent(format)}`);
+    const res = await pfetchViewer(`/leaderboards/tt?track=${trackId}&format=${encodeURIComponent(format)}`);
     if (res.status === 400) return [];
     return okJson(res, '타임트라이얼 리더보드');
   }
 
   async leaderboardPace(trackId: number, format: string): Promise<PlatformPaceRow[]> {
-    const res = await pfetchOpen(`/leaderboards/pace?track=${trackId}&format=${encodeURIComponent(format)}`);
+    const res = await pfetchViewer(`/leaderboards/pace?track=${trackId}&format=${encodeURIComponent(format)}`);
     if (res.status === 400) return [];
     return okJson(res, '레이스 페이스 리더보드');
   }
 
   // Measured pit-loss averages for a track, split by stop type (public).
   async pitLoss(trackId: number, format: string): Promise<PlatformPitLossRow[]> {
-    const res = await pfetchOpen(`/tracks/${trackId}/pit-loss?format=${encodeURIComponent(format)}`);
+    const res = await pfetchAnonymous(`/tracks/${trackId}/pit-loss?format=${encodeURIComponent(format)}`);
     if (res.status === 400) return [];
     return okJson(res, '피트로스 평균');
   }
@@ -489,7 +514,7 @@ export class PlatformMarket {
   // getListing returns owner detail. As the seller, the backend reveals the
   // payload; as anyone else it 404s a delisted/banned listing.
   async getListing(id: string): Promise<PlatformListingDetail> {
-    const res = await pfetch(`/listings/${encodeURIComponent(id)}`);
+    const res = await pfetchViewer(`/listings/${encodeURIComponent(id)}`);
     if (res.status === 404) {
       throw new ListingError('not-found', '리스팅을 찾을 수 없습니다');
     }
@@ -497,7 +522,7 @@ export class PlatformMarket {
   }
 
   async getSimilar(id: string): Promise<PlatformListingCard[]> {
-    const res = await pfetch(`/listings/${encodeURIComponent(id)}/similar`);
+    const res = await pfetchAnonymous(`/listings/${encodeURIComponent(id)}/similar`);
     if (res.status === 404) return [];
     return okJson(res, '유사 리스팅');
   }
@@ -516,9 +541,8 @@ export class PlatformMarket {
 
   // --- Phase 3D1 economy ---
 
-  async getWallet(): Promise<number> {
-    const body = await okJson<{ balance: number }>(await pfetch('/wallet'), '지갑');
-    return body.balance;
+  async getWallet(): Promise<PlatformWallet> {
+    return okJson<PlatformWallet>(await pfetch('/wallet'), '지갑');
   }
 
   async getLedger(): Promise<PlatformLedgerEntry[]> {
@@ -529,7 +553,7 @@ export class PlatformMarket {
   // track/format is a 400 → treated as empty.
   async browse(kind: ListingKind, trackId: number, format: string): Promise<PlatformListingCard[]> {
     const path = kind === 'setup' ? '/market/setups' : '/market/strategies';
-    const res = await pfetchOpen(`${path}?track=${trackId}&format=${encodeURIComponent(format)}`);
+    const res = await pfetchAnonymous(`${path}?track=${trackId}&format=${encodeURIComponent(format)}`);
     if (res.status === 400) return [];
     return okJson(res, '거래소');
   }
@@ -558,7 +582,7 @@ export class PlatformMarket {
   }
 
   async listReviews(listingId: string): Promise<PlatformReview[]> {
-    const res = await pfetchOpen(`/listings/${encodeURIComponent(listingId)}/reviews`);
+    const res = await pfetchAnonymous(`/listings/${encodeURIComponent(listingId)}/reviews`);
     if (res.status === 404) return [];
     return okJson(res, '리뷰');
   }
