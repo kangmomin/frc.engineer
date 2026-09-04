@@ -25,7 +25,17 @@ describe('Sidebar Analysis navigation', () => {
     expect(render()).not.toContain('ANALYSIS');
   });
 
-  it('never exposes owner Analysis in View As', () => {
-    expect(render(['pithub.race.read'], true)).not.toContain('ANALYSIS');
+  it('shows View As Analysis for race.read, including the hierarchical pithub grant', () => {
+    expect(render(['pithub.race.read'], true)).toContain('ANALYSIS');
+    expect(render(['pithub'], true)).toContain('ANALYSIS');
+  });
+
+  it('keeps View As Analysis hidden for report-only and missing race grants', () => {
+    expect(render(['pithub.race-analyze.read'], true)).not.toContain('ANALYSIS');
+    expect(render(undefined, true)).not.toContain('ANALYSIS');
+  });
+
+  it('keeps legacy report-only Analysis navigation in normal mode', () => {
+    expect(render(['pithub.race-analyze.read'])).toContain('ANALYSIS');
   });
 });

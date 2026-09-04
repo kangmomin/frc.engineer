@@ -16,13 +16,20 @@ function render(overrides: Partial<Parameters<typeof Analysis>[0]> = {}): string
 }
 
 describe('Analysis owner screen gates', () => {
-  it('renders configuration, session, login, View As and permission gates distinctly', () => {
+  it('renders configuration, session, login, and permission gates distinctly', () => {
     expect(render({ configured: false })).toContain('플랫폼 연결이 필요합니다');
     expect(render({ loading: true })).toContain('role="status"');
     expect(render({ account: null })).toContain('로그인이 필요합니다');
-    expect(render({ viewOnly: true })).toContain('View As에서는 분석을 열 수 없습니다');
     expect(render({ account: { ...account, permissions: undefined }, canReadOwnerAnalysis: false })).toContain('권한 정보를 확인할 수 없습니다');
     expect(render({ canReadOwnerAnalysis: false })).toContain('pithub.race.read');
+  });
+
+  it('renders the structured analysis surface in View As without legacy administrator HTML', () => {
+    const html = render({ viewOnly: true, canAdminReports: true });
+    expect(html).toContain('My race analysis');
+    expect(html).toContain('My races');
+    expect(html).not.toContain('View As에서는 분석을 열 수 없습니다');
+    expect(html).not.toContain('관리자 HTML 리포트');
   });
 
   it('uses the structured owner page and an idle-list status, never an owner HTML iframe', () => {

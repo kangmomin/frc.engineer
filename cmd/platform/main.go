@@ -855,7 +855,7 @@ func (s *server) handleMyRaceAnalyses(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead, allowViewAs: r.Method == http.MethodGet})
 	if !ok {
 		return
 	}
@@ -879,7 +879,7 @@ func (s *server) handleMyRaceAnalysis(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead, allowViewAs: r.Method == http.MethodGet})
 	if !ok {
 		return
 	}
@@ -907,7 +907,7 @@ func (s *server) handleMyRaceAnalysisIncident(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead})
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, blockBanned: true, permission: rbac.PermRaceRead, allowViewAs: r.Method == http.MethodGet})
 	if !ok {
 		return
 	}

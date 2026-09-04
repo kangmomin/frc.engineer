@@ -446,8 +446,8 @@ describe('owner race analysis API', () => {
     expect(fixture.detail.trackOutline.points.length).toBeLessThanOrEqual(256);
   });
 
-  it('uses root-relative, encoded no-store list/detail/incident routes and forwards cancellation', async () => {
-    vi.stubGlobal('window', fakeWindow('tok'));
+  it('uses the View As child for root-relative, encoded no-store list/detail/incident routes and forwards cancellation', async () => {
+    vi.stubGlobal('window', fakeWindow('parent', 'child'));
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(res(200, { items: [], nextOffset: 25 }))
       .mockResolvedValueOnce(res(200, { id: 'race/1', laps: [], stints: [], dynamics: [], events: [], incidents: [] }))
@@ -465,7 +465,7 @@ describe('owner race analysis API', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('https://platform.test/me/race-analyses/race%2F1');
     expect(fetchMock.mock.calls[2][0]).toBe('https://platform.test/me/race-analyses/race%2F1/incidents/3');
     for (const [, init] of fetchMock.mock.calls) {
-      expect(init).toMatchObject({ cache: 'no-store', signal: controller.signal, headers: { Authorization: 'Bearer tok' } });
+      expect(init).toMatchObject({ cache: 'no-store', signal: controller.signal, headers: { Authorization: 'Bearer child' } });
     }
   });
 

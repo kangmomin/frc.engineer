@@ -27,7 +27,7 @@ describe('View As static affordances', () => {
 
   it('hides operator navigation and disables local Live', () => {
     const html = renderToStaticMarkup(<Sidebar t={t} active="profile" onNav={vi.fn()} onLaunchLive={vi.fn()} account={subject} viewOnly />);
-    expect(html).not.toContain('aria-label="ANALYSIS"');
+    expect(html).toContain('aria-label="ANALYSIS"');
     expect(html).not.toContain('aria-label="ACCESS"');
     expect(html).not.toContain('aria-label="FEEDBACK INBOX"');
     expect(html).toContain('disabled="" aria-label="LIVE 피트월"');
