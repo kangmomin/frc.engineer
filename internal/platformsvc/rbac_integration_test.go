@@ -98,8 +98,13 @@ func TestSetRolePermissionsValidation(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	// Unknown-but-well-formed node: catalog pre-check must 400, not FK-500.
-	if err := store.SetRolePermissions(ctx, "helper", []string{"pithub.race.update"}); !errors.Is(err, ErrBadUpload) {
+	// The setup metadata update leaf is catalogued and grantable. Keep a
+	// separate unknown-but-well-formed leaf pin so catalog validation remains
+	// a clean 400 rather than an FK-backed 500.
+	if err := store.SetRolePermissions(ctx, "helper", []string{rbac.PermRaceUpdate}); err != nil {
+		t.Fatalf("race.update grant = %v, want nil", err)
+	}
+	if err := store.SetRolePermissions(ctx, "helper", []string{"pithub.race.delete"}); !errors.Is(err, ErrBadUpload) {
 		t.Fatalf("unknown node = %v, want ErrBadUpload", err)
 	}
 	if err := store.SetRolePermissions(ctx, "helper", []string{"pithub.race.list"}); !errors.Is(err, ErrBadUpload) {

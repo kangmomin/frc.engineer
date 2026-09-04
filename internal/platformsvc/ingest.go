@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -59,13 +60,13 @@ const (
 	// Incident-clip caps. The sender enforces the same bounds at the source
 	// (incident recorder + races.TrimIncidentsForUpload); these mirror them so a
 	// forged or buggy payload gets a clean 400 instead of bloating race_detail.
-	maxDetailIncidents        = 20
-	maxIncidentParticipants   = 10
-	maxIncidentFrames         = 101 // 5s merged window at nominal 50ms + endpoints
-	maxIncidentCollisions     = 20
-	maxIncidentNameLen        = 48
-	maxIncidentVehicleIdx     = 23 // 2026 grid: 24 slots
-	incidentCarFrameValues    = 14
+	maxDetailIncidents      = 20
+	maxIncidentParticipants = 10
+	maxIncidentFrames       = 101 // 5s merged window at nominal 50ms + endpoints
+	maxIncidentCollisions   = 20
+	maxIncidentNameLen      = 48
+	maxIncidentVehicleIdx   = 23 // 2026 grid: 24 slots
+	incidentCarFrameValues  = 14
 )
 
 // validTyres whitelists the compound strings that may reach the public pace
@@ -126,6 +127,9 @@ func validateUpload(req *UploadRequest) error {
 	if req.Setup != nil && !setupFloatsFinite(req.Setup) {
 		return ErrBadUpload
 	}
+	if !validFinishPosition(req) {
+		return ErrBadUpload
+	}
 	// schema_version is a SMALLINT column: a value past its range would 500 at
 	// INSERT (mirrors the int4 lap-ms guard above). Detail requires a real version.
 	if req.SchemaVersion < 0 || req.SchemaVersion > maxSchemaVersion {
@@ -162,6 +166,25 @@ func validateUpload(req *UploadRequest) error {
 		}
 	}
 	return nil
+}
+
+// validFinishPosition admits the final live position only for the one sender
+// path that knows the session ended. It is intentionally not an official race
+// classification: checkpoint, session-switch, legacy, and non-race uploads do
+// not carry this optional field at all.
+func validFinishPosition(req *UploadRequest) bool {
+	if req.FinishPosition == nil {
+		return true
+	}
+	if *req.FinishPosition < 1 || *req.FinishPosition > 24 || req.Detail == nil || req.Detail.FinalizeTrigger != "SEND" {
+		return false
+	}
+	switch req.SessionType {
+	case "Race", "Race 2", "Race 3":
+		return true
+	default:
+		return false
+	}
 }
 
 // setupNumericMax bounds any single float setup field. Real setups are tiny
@@ -304,6 +327,12 @@ type UploadRequest struct {
 	SchemaVersion int           `json:"schemaVersion,omitempty"`
 	Detail        *UploadDetail `json:"detail,omitempty"`
 	Pit           *UploadPit    `json:"pit,omitempty"`
+	// RecordedAt is the sender's summary/finish record time, not an upload
+	// timestamp. A nil value deliberately preserves legacy unknown history.
+	RecordedAt *time.Time `json:"recordedAt,omitempty"`
+	// FinishPosition is the last live position at a SEND-triggered Race/Race
+	// 2/Race 3 close. It is not supplied for session switches or legacy files.
+	FinishPosition *int `json:"finishPosition,omitempty"`
 }
 
 // UploadPit mirrors the measured fields of races.RacePitSummary. Stored
@@ -472,11 +501,13 @@ func (s *Store) IngestRace(ctx context.Context, accountID string, req UploadRequ
 	var raceID string
 	err = tx.QueryRow(ctx, `
 		INSERT INTO platform.races
-		    (account_id, source_race_id, track_id, track_name, session_type, game_format)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		    (account_id, source_race_id, track_id, track_name, session_type, game_format,
+		     recorded_at, finish_position, completed_laps)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (account_id, source_race_id) DO NOTHING
 		RETURNING id`,
 		accountID, req.SourceRaceID, req.TrackID, req.TrackName, req.SessionType, req.GameFormat,
+		req.RecordedAt, req.FinishPosition, len(req.Laps),
 	).Scan(&raceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Idempotent re-upload: return the already-stored race instead of failing,

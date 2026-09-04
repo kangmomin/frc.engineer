@@ -2,10 +2,12 @@ package platformsvc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -477,6 +479,73 @@ func TestIngestSetupHashDeterministic(t *testing.T) {
 	_ = store.pool.QueryRow(ctx, `SELECT content_hash FROM platform.race_setup WHERE race_id=$1`, r2.RaceID).Scan(&h2)
 	if h1 == "" || h1 != h2 {
 		t.Fatalf("content_hash not deterministic: %q vs %q", h1, h2)
+	}
+}
+
+func TestIngestStoresMySetupRaceFields(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	accountID, _ := store.UpsertSteamAccount(ctx, steamA, "P", "")
+	recordedAt := time.Date(2026, time.September, 4, 19, 23, 45, 0, time.FixedZone("KST", 9*60*60))
+	finishPosition := 24 // F1 26's 24-car grid is valid.
+
+	res, err := store.IngestRace(ctx, accountID, UploadRequest{
+		SourceRaceID: "my-setup-fields", TrackID: 99, TrackName: "Monza",
+		SessionType: "Race 3", GameFormat: "F1 26", Laps: []UploadLap{vlap(1, 88000), vlap(2, 89000)},
+		RecordedAt: &recordedAt, FinishPosition: &finishPosition,
+		Detail: &UploadDetail{FinalizeTrigger: "SEND"}, SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("IngestRace: %v", err)
+	}
+	var gotRecordedAt *time.Time
+	var gotFinish, gotLaps *int
+	if err := store.pool.QueryRow(ctx, `
+		SELECT recorded_at, finish_position, completed_laps
+		FROM platform.races WHERE id = $1`, res.RaceID,
+	).Scan(&gotRecordedAt, &gotFinish, &gotLaps); err != nil {
+		t.Fatalf("query stored fields: %v", err)
+	}
+	if gotRecordedAt == nil || !gotRecordedAt.Equal(recordedAt) || gotFinish == nil || *gotFinish != 24 || gotLaps == nil || *gotLaps != 2 {
+		t.Fatalf("stored fields = %v/%v/%v, want %v/24/2", gotRecordedAt, gotFinish, gotLaps, recordedAt)
+	}
+
+	for _, tc := range []struct {
+		name string
+		req  UploadRequest
+	}{
+		{
+			name: "finish without SEND",
+			req:  UploadRequest{SourceRaceID: "bad-no-send", TrackID: 99, SessionType: "Race", Laps: []UploadLap{vlap(1, 88000)}, FinishPosition: &finishPosition},
+		},
+		{
+			name: "finish on non-race session",
+			req:  UploadRequest{SourceRaceID: "bad-session", TrackID: 99, SessionType: "Time Trial", Laps: []UploadLap{vlap(1, 88000)}, FinishPosition: &finishPosition, Detail: &UploadDetail{FinalizeTrigger: "SEND"}, SchemaVersion: 1},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := store.IngestRace(ctx, accountID, tc.req); !errors.Is(err, ErrBadUpload) {
+				t.Fatalf("IngestRace err = %v, want ErrBadUpload", err)
+			}
+		})
+	}
+}
+
+func TestValidateUploadAcceptsZeroRFC3339RecordedAt(t *testing.T) {
+	var req UploadRequest
+	if err := json.Unmarshal([]byte(`{"recordedAt":"0001-01-01T00:00:00Z"}`), &req); err != nil {
+		t.Fatalf("decode zero RFC3339 recordedAt: %v", err)
+	}
+	if req.RecordedAt == nil || !req.RecordedAt.IsZero() {
+		t.Fatalf("decoded recordedAt = %v, want non-nil zero time", req.RecordedAt)
+	}
+	req.SourceRaceID = "zero-rfc3339-recorded-at"
+	req.TrackID = 99
+	req.GameFormat = "F1 26"
+	req.SessionType = "Race"
+	req.Laps = []UploadLap{vlap(1, 88000)}
+	if err := validateUpload(&req); err != nil {
+		t.Fatalf("validateUpload zero RFC3339 recordedAt: %v", err)
 	}
 }
 

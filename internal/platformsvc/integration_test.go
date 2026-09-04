@@ -38,7 +38,7 @@ func testStore(t *testing.T) *Store {
 	// Only user accounts are then removed.
 	_, err = store.pool.Exec(ctx, `TRUNCATE platform.sessions,
 		platform.openid_nonces, platform.device_pairings, platform.rate_limits,
-		platform.account_bans, platform.races, platform.race_setup, platform.laps,
+		platform.account_bans, platform.races, platform.race_setup, platform.setup_groups, platform.laps,
 		platform.snapshots, platform.listings, platform.wallets,
 		platform.ledger_entries, platform.purchases, platform.reviews, platform.feedback,
 		platform.race_analysis, platform.account_roles

@@ -13,6 +13,7 @@ func TestHasPermission(t *testing.T) {
 		want   bool
 	}{
 		{"exact leaf", []string{PermMarketCreate}, PermMarketCreate, true},
+		{"new setup metadata leaf", []string{PermRaceUpdate}, PermRaceUpdate, true},
 		{"root covers leaf", []string{"pithub"}, PermRaceRead, true},
 		{"root covers mid", []string{"pithub"}, "pithub.race", true},
 		{"mid covers leaf", []string{"pithub.race"}, PermRaceRead, true},
@@ -92,8 +93,8 @@ func TestValidRoleName(t *testing.T) {
 // themselves in the catalog (grantable at any level).
 func TestSeedCatalogIntegrity(t *testing.T) {
 	nodes := AllSeededNodes()
-	if len(nodes) != 36 {
-		t.Fatalf("AllSeededNodes() has %d nodes, want 36", len(nodes))
+	if len(nodes) != 37 {
+		t.Fatalf("AllSeededNodes() has %d nodes, want 37", len(nodes))
 	}
 	seen := make(map[string]bool, len(nodes))
 	for _, n := range nodes {
@@ -120,8 +121,11 @@ func TestSeedCatalogIntegrity(t *testing.T) {
 			t.Errorf("seed grant %q is not in the catalog", g)
 		}
 	}
-	if len(SeedUserGrants()) != 13 {
-		t.Errorf("SeedUserGrants() has %d grants, want 13", len(SeedUserGrants()))
+	if len(SeedUserGrants()) != 14 {
+		t.Errorf("SeedUserGrants() has %d grants, want 14", len(SeedUserGrants()))
+	}
+	if !HasPermission(SeedUserGrants(), PermRaceUpdate) {
+		t.Error("default user grants must include setup metadata update access")
 	}
 	if HasPermission(SeedUserGrants(), PermFeedbackInboxRead) {
 		t.Error("default user grants must not include feedback inbox access")
