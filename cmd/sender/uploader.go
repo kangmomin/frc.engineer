@@ -27,20 +27,22 @@ const (
 	defaultPlatformBaseURL = "https://pithub.up.railway.app"
 	// 사용자 안내용 웹 허브 — 페어링 코드 발급 UI가 있는 프론트엔드 (정적 호스팅, API 아님)
 	defaultHubBaseURL = "https://pitwall.up.railway.app"
-	uploadHTTPTimeout      = 15 * time.Second
+	uploadHTTPTimeout = 15 * time.Second
 )
 
 type uploadRequest struct {
-	SourceRaceID  string        `json:"sourceRaceId"`
-	TrackID       int           `json:"trackId"`
-	TrackName     string        `json:"trackName"`
-	SessionType   string        `json:"sessionType"`
-	GameFormat    string        `json:"gameFormat"`
-	Laps          []uploadLap   `json:"laps"`
-	Setup         *uploadSetup  `json:"setup,omitempty"`
-	SchemaVersion int           `json:"schemaVersion,omitempty"`
-	Detail        *uploadDetail `json:"detail,omitempty"`
-	Pit           *uploadPit    `json:"pit,omitempty"`
+	SourceRaceID   string        `json:"sourceRaceId"`
+	TrackID        int           `json:"trackId"`
+	TrackName      string        `json:"trackName"`
+	SessionType    string        `json:"sessionType"`
+	GameFormat     string        `json:"gameFormat"`
+	Laps           []uploadLap   `json:"laps"`
+	Setup          *uploadSetup  `json:"setup,omitempty"`
+	SchemaVersion  int           `json:"schemaVersion,omitempty"`
+	Detail         *uploadDetail `json:"detail,omitempty"`
+	Pit            *uploadPit    `json:"pit,omitempty"`
+	RecordedAt     *time.Time    `json:"recordedAt,omitempty"`
+	FinishPosition *int          `json:"finishPosition,omitempty"`
 }
 
 // uploadPit mirrors platformsvc.UploadPit (sender must not import the platform DB
@@ -290,13 +292,26 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 	if summary == nil || summary.Detail == nil || len(summary.Detail.Laps) == 0 {
 		return nil, false
 	}
+	sourceRaceID := summary.ID
+	if sourceRaceID == "" {
+		// Save Files can be disabled while platform upload stays enabled. Match
+		// FileStorage.Save's ID shape so the platform's source-id invariant still
+		// holds without mutating the in-memory summary.
+		sourceRaceID = races.DefaultSummaryID(summary, time.Now())
+	}
 	req := &uploadRequest{
-		SourceRaceID:  summary.ID,
+		SourceRaceID:  sourceRaceID,
 		TrackID:       int(summary.Track.TrackID),
 		TrackName:     summary.Track.TrackName,
 		SessionType:   summary.Session.SessionType,
 		GameFormat:    summary.GameFormat,
 		SchemaVersion: summary.SchemaVersion,
+	}
+	if recordedAt, ok := summaryRecordedAt(summary.SavedAtLocal); ok {
+		req.RecordedAt = &recordedAt
+	}
+	if finishPosition, ok := summaryFinishPosition(summary); ok {
+		req.FinishPosition = &finishPosition
 	}
 	req.Laps = make([]uploadLap, 0, len(summary.Detail.Laps))
 	for _, l := range summary.Detail.Laps {
@@ -391,4 +406,33 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 		}
 	}
 	return req, true
+}
+
+// summaryRecordedAt maps the legacy timezone-less local storage stamp to an
+// RFC3339 instant for platform history. Invalid / absent stamps intentionally
+// remain unknown; upload time must never be presented as a race record time.
+func summaryRecordedAt(savedAtLocal string) (time.Time, bool) {
+	parsed, err := time.ParseInLocation("2006-01-02 15:04:05", savedAtLocal, time.Local)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+// summaryFinishPosition returns the last live position only for a definitive
+// SEND close of one of the Race session variants. This is intentionally not a
+// classification result and must not be inferred for session switches/legacy
+// summaries or from an out-of-range player position.
+func summaryFinishPosition(summary *races.RaceSummary) (int, bool) {
+	if summary == nil || summary.Detail == nil || summary.Detail.FinalizeTrigger != "SEND" {
+		return 0, false
+	}
+	switch summary.Session.SessionType {
+	case "Race", "Race 2", "Race 3":
+		position := summary.Player.FinalPosition
+		if position >= 1 && position <= 24 {
+			return position, true
+		}
+	}
+	return 0, false
 }

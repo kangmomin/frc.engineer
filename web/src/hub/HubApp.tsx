@@ -2,7 +2,7 @@
 // threads the shared track context into the leaderboard and marketplace. Data
 // is real: own telemetry (OwnHubDataSource), platform leaderboards, wallet, and
 // the hosted marketplace. Screens render explicit empty states, not demo data.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
 import { tyreLabel, relativeTime } from './format';
@@ -24,6 +24,7 @@ import { Analysis } from './screens/Analysis';
 import { Access } from './screens/Access';
 import { Guide } from './screens/Guide';
 import { DriverProfile } from './screens/DriverProfile';
+import { MySetups } from './screens/MySetups';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket, PlatformSearch } from './data/platform';
 import type { PlatformLedgerEntry, PlatformListingCard } from './data/platform';
@@ -37,7 +38,6 @@ import { canViewAnalysis, canManageRBAC, canViewFeedbackInbox } from './data/per
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
 
 const PLACEHOLDER: Record<string, { title: string; note: string }> = {
-  setups: { title: 'MY SETUPS', note: '캡처·작성 셋업 관리 · 편집 · 불변 스냅샷으로 판매 등록' },
   analysis: { title: 'ANALYSIS', note: '프리미엄 분석 리포트를 크레딧으로 unlock — 순소각 sink' },
 };
 
@@ -143,7 +143,14 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     return () => { alive = false; };
   }, [platformConfigured]);
 
-  const handleLogout = () => { void platformLogout().then(() => setPlatformAccount(null)); };
+  const handleLogout = () => { setPlatformAccount(null); void platformLogout(); };
+  // Owner API 401 is distinct from an ordinary screen error: remove the stale
+  // session best-effort and move to Profile so no prior account state survives.
+  const handleSessionExpired = useCallback(() => {
+    void platformLogout();
+    setPlatformAccount(null);
+    setActive('profile');
+  }, []);
 
   const ctx = ctxLabel(active, trackCtx);
   const setUserTrackContext = (context: TrackContext) => {
@@ -272,7 +279,11 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
           )}
 
           {active === 'setups' && (
-            <Placeholder t={t} title={PLACEHOLDER.setups.title} note={PLACEHOLDER.setups.note} />
+            <MySetups
+              t={t} configured={platformConfigured} loading={platformLoading}
+              account={platformAccount} market={platformMkt}
+              onLogin={beginSteamLogin} onSessionExpired={handleSessionExpired}
+            />
           )}
 
           {/* ANALYSIS: race-analyze 열람 권한이 있을 때만 실화면 — 아니면 기존

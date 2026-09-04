@@ -35,3 +35,18 @@ export function canViewFeedbackInbox(account: PlatformAccount | null): boolean {
   if (!account?.permissions || account.banned) return false;
   return hasPermission(account.permissions, 'pithub.feedback-inbox.read');
 }
+
+// My Setups is new enough that a legacy account response without `permissions`
+// must not optimistically call an endpoint an older server may not have.
+export function canReadMySetups(account: PlatformAccount | null): boolean {
+  if (!account?.permissions) return false;
+  return hasPermission(account.permissions, 'pithub.race.read');
+}
+
+// A banned user may retain private-read access but cannot edit private setup
+// metadata. This mirrors the server gate while keeping the form affordance
+// accurate before a POST is attempted.
+export function canEditMySetups(account: PlatformAccount | null): boolean {
+  if (!account?.permissions || account.banned) return false;
+  return hasPermission(account.permissions, 'pithub.race.update');
+}

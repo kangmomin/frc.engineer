@@ -181,3 +181,49 @@ func TestBuildUploadRequestTrimsMergedEvents(t *testing.T) {
 		t.Fatalf("oldest kept event ts = %d, want 50 (newest-first trim)", got)
 	}
 }
+
+func TestBuildUploadRequestMapsMySetupHistoryFields(t *testing.T) {
+	summary := newTestSummary(42, 1, 2)
+	summary.ID = "" // Save Files off: upload must still mint a source id.
+	summary.SavedAtLocal = "2026-09-04 19:23:45"
+	summary.Session.SessionType = "Race 2"
+	summary.Player.FinalPosition = 24 // F1 26's 24-car grid is valid.
+	summary.Detail.FinalizeTrigger = "SEND"
+
+	req, ok := buildUploadRequest(summary, testUploadLogger())
+	if !ok || req == nil {
+		t.Fatal("buildUploadRequest did not produce a request")
+	}
+	if req.SourceRaceID == "" {
+		t.Fatal("empty summary id must get a source race id before upload")
+	}
+	if summary.ID != "" {
+		t.Fatal("upload-only source id must not mutate the in-memory summary")
+	}
+	wantRecordedAt, err := time.ParseInLocation("2006-01-02 15:04:05", summary.SavedAtLocal, time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.RecordedAt == nil || !req.RecordedAt.Equal(wantRecordedAt) {
+		t.Fatalf("recordedAt = %v, want %v", req.RecordedAt, wantRecordedAt)
+	}
+	if req.FinishPosition == nil || *req.FinishPosition != 24 {
+		t.Fatalf("finishPosition = %v, want 24", req.FinishPosition)
+	}
+}
+
+func TestBuildUploadRequestOmitsInvalidMySetupHistoryFields(t *testing.T) {
+	summary := newTestSummary(42, 1)
+	summary.SavedAtLocal = "not-a-local-timestamp"
+	summary.Session.SessionType = "Race"
+	summary.Player.FinalPosition = 1
+	summary.Detail.FinalizeTrigger = "session-switch"
+
+	req, ok := buildUploadRequest(summary, testUploadLogger())
+	if !ok || req == nil {
+		t.Fatal("buildUploadRequest did not produce a request")
+	}
+	if req.RecordedAt != nil || req.FinishPosition != nil {
+		t.Fatalf("legacy/switch fields = %v/%v, want nil/nil", req.RecordedAt, req.FinishPosition)
+	}
+}

@@ -98,7 +98,7 @@ func TestDriverProfileCanonicalMetricsAndFullRanks(t *testing.T) {
 		SELECT r.id, lap.n, 80000 + substring(a.persona from 11)::int,
 		       26000, 26000, 28000 + substring(a.persona from 11)::int, 'Soft', true
 		FROM new_races r
-		JOIN platform.accounts a ON a.id = r.account_id
+		JOIN new_accounts a ON a.id = r.account_id
 		CROSS JOIN generate_series(1, 5) AS lap(n)`); err != nil {
 		t.Fatalf("bulk insert competitors: %v", err)
 	}

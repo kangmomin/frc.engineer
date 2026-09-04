@@ -201,6 +201,75 @@ export interface PlatformFeedbackEntry {
   createdAt: string;
 }
 
+// My Setups is an owner-only history surface. It deliberately has its own
+// payload types rather than reusing marketplace payloads: the server never
+// exposes a content hash or an equality oracle to the browser.
+export interface PlatformMySetupParams {
+  frontWing: number;
+  rearWing: number;
+  onThrottle: number;
+  offThrottle: number;
+  frontCamber: number;
+  rearCamber: number;
+  frontToe: number;
+  rearToe: number;
+  frontSuspension: number;
+  rearSuspension: number;
+  frontAntiRollBar: number;
+  rearAntiRollBar: number;
+  frontSuspensionHeight: number;
+  rearSuspensionHeight: number;
+  brakePressure: number;
+  brakeBias: number;
+  engineBraking: number;
+  rearLeftTyrePressure: number;
+  rearRightTyrePressure: number;
+  frontLeftTyrePressure: number;
+  frontRightTyrePressure: number;
+  ballast: number;
+  fuelLoad: number;
+}
+
+export interface PlatformMySetupSummary {
+  id: string;
+  name: string;
+  rating: number | null;
+  memo: string;
+  params: PlatformMySetupParams;
+  usageCount: number;
+  firstRecordedAt: string | null;
+  lastRecordedAt: string | null;
+  lastTrackId: number;
+  lastTrackName: string;
+  lastGameFormat: string;
+}
+
+export interface PlatformMySetupRace {
+  id: string;
+  recordedAt: string | null;
+  trackId: number;
+  trackName: string;
+  gameFormat: string;
+  sessionType: string;
+  finishPosition: number | null;
+  completedLaps: number | null;
+  bestLapMs: number | null;
+}
+
+export interface PlatformMySetupDetail extends PlatformMySetupSummary {
+  races: PlatformMySetupRace[];
+}
+
+export interface UpdateMySetupInput {
+  name: string;
+  rating: number | null;
+  memo: string;
+}
+
+export interface UpdateMySetupResult extends UpdateMySetupInput {
+  updatedAt: string;
+}
+
 export interface CreateFeedbackInput {
   category: FeedbackCategory;
   body: string;
@@ -362,6 +431,28 @@ export class PlatformMarket {
 
   async listMyRaces(): Promise<PlatformSellableRace[]> {
     return okJson(await pfetch('/me/races'), '내 레이스');
+  }
+
+  // --- My Setups (owner-only history) ---
+
+  async listMySetups(): Promise<PlatformMySetupSummary[]> {
+    const res = await pfetch('/me/setups', { cache: 'no-store' });
+    return mySetupsJson<PlatformMySetupSummary[]>(res, '셋업 목록');
+  }
+
+  async getMySetup(id: string): Promise<PlatformMySetupDetail> {
+    const res = await pfetch(`/me/setups/${encodeURIComponent(id)}`, { cache: 'no-store' });
+    return mySetupsJson<PlatformMySetupDetail>(res, '셋업 상세');
+  }
+
+  async updateMySetup(id: string, input: UpdateMySetupInput): Promise<UpdateMySetupResult> {
+    const res = await pfetch(`/me/setups/${encodeURIComponent(id)}`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    return mySetupsJson<UpdateMySetupResult>(res, '셋업 저장');
   }
 
   async listMyListings(): Promise<PlatformListingCard[]> {
@@ -635,6 +726,26 @@ export class PlatformMarket {
     });
     if (res.status === 204) return;
     throw rbacMutationError(res.status, 'Role 할당');
+  }
+}
+
+// My Setups needs a finer status distinction than okJson: GET 403 is a read
+// permission problem, while POST 403 leaves the user's draft intact as a
+// read-only account. Keep this mapping local to the owner API contract.
+async function mySetupsJson<T>(res: Response, what: string): Promise<T> {
+  switch (res.status) {
+    case 200:
+      return (await res.json()) as T;
+    case 400:
+      throw new ListingError('bad-input', '입력이 올바르지 않습니다');
+    case 401:
+      throw new ListingError('unauthorized', '로그인이 필요합니다');
+    case 403:
+      throw new ListingError('forbidden', 'My Setups 권한이 없습니다');
+    case 404:
+      throw new ListingError('not-found', '셋업을 찾을 수 없습니다');
+    default:
+      throw new ListingError('network', `${what} 실패 (${res.status})`);
   }
 }
 

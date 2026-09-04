@@ -8,11 +8,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -141,6 +143,9 @@ func main() {
 	mux.HandleFunc("GET /profiles/{id}", srv.handleProfile)
 	mux.HandleFunc("GET /tracks/{id}/pit-loss", srv.handlePitLoss)
 	mux.HandleFunc("GET /me/races", srv.handleMyRaces)
+	mux.HandleFunc("GET /me/setups", srv.handleMySetups)
+	mux.HandleFunc("GET /me/setups/{id}", srv.handleMySetup)
+	mux.HandleFunc("POST /me/setups/{id}", srv.handleUpdateMySetup)
 	mux.HandleFunc("GET /me/listings", srv.handleMyListings)
 	mux.HandleFunc("GET /market/setups", srv.handleMarketSetups)
 	mux.HandleFunc("GET /market/strategies", srv.handleMarketStrategies)
@@ -648,6 +653,154 @@ func (s *server) handleMyRaces(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, races)
+}
+
+const mySetupMetadataMaxBytes = 4 << 10
+
+// handleMySetups lists the caller's private canonical setup groups. Set
+// no-store before auth so a denial can never be cached as an owner response.
+func (s *server) handleMySetups(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead})
+	if !ok {
+		return
+	}
+	setups, err := s.store.ListMySetups(ctx, p.AccountID)
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("list my setups", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, setups)
+}
+
+// handleMySetup returns one private group and its own latest setup uses.
+// Authentication/permission checks intentionally precede UUID parsing so an
+// under-privileged caller cannot turn malformed ids into an existence oracle.
+func (s *server) handleMySetup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{scope: platformsvc.ScopeWeb, permission: rbac.PermRaceRead})
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	detail, err := s.store.GetMySetup(ctx, p.AccountID, id)
+	if errors.Is(err, platformsvc.ErrNotFound) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("get my setup", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+// handleUpdateMySetup fully replaces private setup metadata. Its gate includes
+// the write permission and ban check; only after that gate does it parse the
+// opaque UUID or inspect the request body.
+func (s *server) handleUpdateMySetup(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	p, ok := s.gate(ctx, w, r, gateSpec{
+		scope:       platformsvc.ScopeWeb,
+		blockBanned: true,
+		permission:  rbac.PermRaceUpdate,
+	})
+	if !ok {
+		return
+	}
+	id, ok := pathUUID(r)
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	visible, err := s.store.HasMySetup(ctx, p.AccountID, id)
+	if err != nil {
+		if s.log != nil {
+			s.log.Error("check my setup visibility", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if !visible {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	body, err := decodeMySetupUpdateBody(w, r)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	result, err := s.store.UpdateMySetup(ctx, p.AccountID, id, body)
+	switch {
+	case errors.Is(err, platformsvc.ErrBadUpload):
+		http.Error(w, "bad request", http.StatusBadRequest)
+	case errors.Is(err, platformsvc.ErrNotFound):
+		http.Error(w, "not found", http.StatusNotFound)
+	case err != nil:
+		if s.log != nil {
+			s.log.Error("update my setup", "error", err)
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	default:
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+// decodeMySetupUpdateBody is intentionally stricter than the legacy upload
+// decoder: metadata is a full replacement, so all three keys must be present,
+// name/memo cannot be null, unknown keys and trailing JSON are rejected, and
+// only rating has an explicit null clearing representation.
+func decodeMySetupUpdateBody(w http.ResponseWriter, r *http.Request) (platformsvc.UpdateMySetupRequest, error) {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, mySetupMetadataMaxBytes))
+	var raw map[string]json.RawMessage
+	if err := dec.Decode(&raw); err != nil || len(raw) != 3 {
+		return platformsvc.UpdateMySetupRequest{}, errors.New("invalid my setup metadata body")
+	}
+	nameRaw, nameOK := raw["name"]
+	ratingRaw, ratingOK := raw["rating"]
+	memoRaw, memoOK := raw["memo"]
+	if !nameOK || !ratingOK || !memoOK || isJSONNull(nameRaw) || isJSONNull(memoRaw) {
+		return platformsvc.UpdateMySetupRequest{}, errors.New("invalid my setup metadata fields")
+	}
+	var result platformsvc.UpdateMySetupRequest
+	if err := json.Unmarshal(nameRaw, &result.Name); err != nil {
+		return platformsvc.UpdateMySetupRequest{}, err
+	}
+	if err := json.Unmarshal(memoRaw, &result.Memo); err != nil {
+		return platformsvc.UpdateMySetupRequest{}, err
+	}
+	if !isJSONNull(ratingRaw) {
+		var rating int
+		if err := json.Unmarshal(ratingRaw, &rating); err != nil {
+			return platformsvc.UpdateMySetupRequest{}, err
+		}
+		result.Rating = &rating
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return platformsvc.UpdateMySetupRequest{}, errors.New("trailing my setup metadata JSON")
+	}
+	return result, nil
+}
+
+func isJSONNull(raw json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
 // handleMyListings lists the caller's own listings (active + delisted) for the

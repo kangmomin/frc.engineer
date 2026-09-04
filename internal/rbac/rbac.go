@@ -35,6 +35,7 @@ const (
 	PermDeviceCreate      = "pithub.device.create"
 	PermRaceCreate        = "pithub.race.create"
 	PermRaceRead          = "pithub.race.read"
+	PermRaceUpdate        = "pithub.race.update"
 	PermAnalyzeCreate     = "pithub.race-analyze.create"
 	PermAnalyzeRead       = "pithub.race-analyze.read"
 	PermAnalyzeDelete     = "pithub.race-analyze.delete"
@@ -75,7 +76,7 @@ var seedMids = []string{
 }
 
 var seedLeaves = []string{
-	PermDeviceCreate, PermRaceCreate, PermRaceRead,
+	PermDeviceCreate, PermRaceCreate, PermRaceRead, PermRaceUpdate,
 	PermAnalyzeCreate, PermAnalyzeRead, PermAnalyzeDelete,
 	PermMarketCreate, PermMarketRead, PermMarketUpdate,
 	PermWalletRead, PermPurchaseCreate, PermReviewCreate,
@@ -100,7 +101,7 @@ func AllSeededNodes() []string {
 // a scope must not leak to all users implicitly.
 func SeedUserGrants() []string {
 	return []string{
-		PermDeviceCreate, PermRaceCreate, PermRaceRead,
+		PermDeviceCreate, PermRaceCreate, PermRaceRead, PermRaceUpdate,
 		PermMarketCreate, PermMarketRead, PermMarketUpdate,
 		PermWalletRead, PermPurchaseCreate, PermReviewCreate,
 		PermFeedbackCreate, PermFeedbackRead,
