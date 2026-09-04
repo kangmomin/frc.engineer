@@ -12,30 +12,46 @@ import (
 )
 
 type raceAnalysisReaderStub struct {
-	listErr     error
-	detailErr   error
-	incidentErr error
-	calls       int
+	listErr           error
+	detailErr         error
+	incidentErr       error
+	calls             int
+	listAccountID     string
+	listLimit         int
+	listOffset        int
+	detailAccountID   string
+	detailRaceID      string
+	incidentAccountID string
+	incidentRaceID    string
+	incidentIndex     int
 }
 
-func (s *raceAnalysisReaderStub) ListMyRaceAnalyses(context.Context, string, int, int) (*platformsvc.RaceAnalysisListResponse, error) {
+func (s *raceAnalysisReaderStub) ListMyRaceAnalyses(_ context.Context, accountID string, limit, offset int) (*platformsvc.RaceAnalysisListResponse, error) {
 	s.calls++
+	s.listAccountID = accountID
+	s.listLimit = limit
+	s.listOffset = offset
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
 	return &platformsvc.RaceAnalysisListResponse{Items: []platformsvc.RaceAnalysisListItem{}}, nil
 }
 
-func (s *raceAnalysisReaderStub) GetMyRaceAnalysis(context.Context, string, string) (*platformsvc.RaceAnalysisDetail, error) {
+func (s *raceAnalysisReaderStub) GetMyRaceAnalysis(_ context.Context, accountID, raceID string) (*platformsvc.RaceAnalysisDetail, error) {
 	s.calls++
+	s.detailAccountID = accountID
+	s.detailRaceID = raceID
 	if s.detailErr != nil {
 		return nil, s.detailErr
 	}
 	return &platformsvc.RaceAnalysisDetail{}, nil
 }
 
-func (s *raceAnalysisReaderStub) GetMyRaceAnalysisIncident(context.Context, string, string, int) (*platformsvc.RaceAnalysisIncidentReplay, error) {
+func (s *raceAnalysisReaderStub) GetMyRaceAnalysisIncident(_ context.Context, accountID, raceID string, index int) (*platformsvc.RaceAnalysisIncidentReplay, error) {
 	s.calls++
+	s.incidentAccountID = accountID
+	s.incidentRaceID = raceID
+	s.incidentIndex = index
 	if s.incidentErr != nil {
 		return nil, s.incidentErr
 	}
@@ -115,10 +131,10 @@ func TestRaceAnalysisStrictParameters(t *testing.T) {
 
 func TestRaceAnalysisHandlersDenyFullAuthMatrixBeforeReader(t *testing.T) {
 	for name, principal := range map[string]platformsvc.Principal{
-		"wrong scope": {AccountID: "owner", Scope: platformsvc.ScopeUpload, Permissions: []string{rbac.PermRaceRead}},
-		"banned":      {AccountID: "owner", Scope: platformsvc.ScopeWeb, Banned: true, Permissions: []string{rbac.PermRaceRead}},
-		"permission":  {AccountID: "owner", Scope: platformsvc.ScopeWeb},
-		"view as":     {AccountID: "subject", Scope: platformsvc.ScopeWeb, ViewAs: true, Permissions: []string{rbac.PermRaceRead}},
+		"wrong scope":          {AccountID: "owner", Scope: platformsvc.ScopeUpload, Permissions: []string{rbac.PermRaceRead}},
+		"banned":               {AccountID: "owner", Scope: platformsvc.ScopeWeb, Banned: true, Permissions: []string{rbac.PermRaceRead}},
+		"permission":           {AccountID: "owner", Scope: platformsvc.ScopeWeb},
+		"view as analyze only": {AccountID: "subject", Scope: platformsvc.ScopeWeb, ViewAs: true, Permissions: []string{rbac.PermAnalyzeRead}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			reader := &raceAnalysisReaderStub{}
@@ -138,6 +154,107 @@ func TestRaceAnalysisHandlersDenyFullAuthMatrixBeforeReader(t *testing.T) {
 			}
 			if reader.calls != 0 {
 				t.Fatalf("%s reached analysis reader %d times", name, reader.calls)
+			}
+		})
+	}
+}
+
+func TestRaceAnalysisHandlersAllowViewAsGetForSubject(t *testing.T) {
+	const raceID = "00000000-0000-4000-8000-000000000001"
+	principal := platformsvc.Principal{
+		AccountID:      "subject",
+		ActorAccountID: "actor",
+		Scope:          platformsvc.ScopeWeb,
+		ViewAs:         true,
+		Permissions:    []string{rbac.PermRaceRead},
+	}
+	for name, testCase := range map[string]struct {
+		target string
+		check  func(*testing.T, *raceAnalysisReaderStub)
+	}{
+		"list": {
+			target: "/me/race-analyses?limit=17&offset=3",
+			check: func(t *testing.T, reader *raceAnalysisReaderStub) {
+				t.Helper()
+				if reader.listAccountID != "subject" || reader.listLimit != 17 || reader.listOffset != 3 {
+					t.Fatalf("list args = account=%q limit=%d offset=%d, want subject/17/3", reader.listAccountID, reader.listLimit, reader.listOffset)
+				}
+			},
+		},
+		"detail": {
+			target: "/me/race-analyses/" + raceID,
+			check: func(t *testing.T, reader *raceAnalysisReaderStub) {
+				t.Helper()
+				if reader.detailAccountID != "subject" || reader.detailRaceID != raceID {
+					t.Fatalf("detail args = account=%q race=%q, want subject/%q", reader.detailAccountID, reader.detailRaceID, raceID)
+				}
+			},
+		},
+		"incident": {
+			target: "/me/race-analyses/" + raceID + "/incidents/4",
+			check: func(t *testing.T, reader *raceAnalysisReaderStub) {
+				t.Helper()
+				if reader.incidentAccountID != "subject" || reader.incidentRaceID != raceID || reader.incidentIndex != 4 {
+					t.Fatalf("incident args = account=%q race=%q index=%d, want subject/%q/4", reader.incidentAccountID, reader.incidentRaceID, reader.incidentIndex, raceID)
+				}
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reader := &raceAnalysisReaderStub{}
+			srv := &server{raceAnalysisReader: reader, authenticateForTest: func(context.Context, *http.Request) (platformsvc.Principal, error) {
+				return principal, nil
+			}}
+			recorder := raceAnalysisRequest(raceAnalysisMux(srv), testCase.target)
+			if recorder.Code != http.StatusOK || recorder.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("response = %d cache=%q, want 200/no-store", recorder.Code, recorder.Header().Get("Cache-Control"))
+			}
+			if reader.calls != 1 {
+				t.Fatalf("reader calls = %d, want 1", reader.calls)
+			}
+			testCase.check(t, reader)
+		})
+	}
+}
+
+func TestRaceAnalysisHandlersDenyViewAsHeadBeforeReader(t *testing.T) {
+	principal := platformsvc.Principal{AccountID: "subject", Scope: platformsvc.ScopeWeb, ViewAs: true, Permissions: []string{rbac.PermRaceRead}}
+	for name, target := range map[string]string{
+		"list":     "/me/race-analyses",
+		"detail":   "/me/race-analyses/00000000-0000-4000-8000-000000000001",
+		"incident": "/me/race-analyses/00000000-0000-4000-8000-000000000001/incidents/0",
+	} {
+		t.Run(name, func(t *testing.T) {
+			reader := &raceAnalysisReaderStub{}
+			srv := &server{raceAnalysisReader: reader, authenticateForTest: func(context.Context, *http.Request) (platformsvc.Principal, error) {
+				return principal, nil
+			}}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodHead, target, nil)
+			request.Header.Set("Authorization", "Bearer test")
+			raceAnalysisMux(srv).ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusForbidden || recorder.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("response = %d cache=%q, want 403/no-store", recorder.Code, recorder.Header().Get("Cache-Control"))
+			}
+			if reader.calls != 0 {
+				t.Fatalf("reader calls = %d, want 0", reader.calls)
+			}
+		})
+	}
+}
+
+func TestLegacyAnalysisHandlersDenyViewAsBeforeStore(t *testing.T) {
+	principal := platformsvc.Principal{AccountID: "subject", Scope: platformsvc.ScopeWeb, ViewAs: true, Permissions: []string{"pithub"}}
+	for name, handler := range map[string]http.HandlerFunc{
+		"list":   (&server{authenticateForTest: func(context.Context, *http.Request) (platformsvc.Principal, error) { return principal, nil }}).handleListAnalyses,
+		"detail": (&server{authenticateForTest: func(context.Context, *http.Request) (platformsvc.Principal, error) { return principal, nil }}).handleGetAnalysis,
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/analysis/00000000-0000-4000-8000-000000000001", nil)
+			handler(recorder, request)
+			if recorder.Code != http.StatusForbidden || recorder.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("response = %d cache=%q, want 403/no-store", recorder.Code, recorder.Header().Get("Cache-Control"))
 			}
 		})
 	}
