@@ -1,8 +1,9 @@
 const { app, BrowserWindow, Menu, dialog, globalShortcut, ipcMain } = require('electron');
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { stopSenderProcess } = require('./sender-lifecycle.cjs');
 const {
   isTrustedMicrophoneCheck,
   isTrustedMicrophoneRequest,
@@ -170,6 +171,8 @@ function normalizeStoredPath(value) {
 
 // ─── Sender process management ───
 let senderProcess = null;
+let senderStopPromise = null;
+let senderInstallPending = false;
 let isQuitting = false;
 let registeredOverlayHotkeys = {};
 // 강제 업데이트 게이트 상태 — { version, phase: 'downloading' | 'installing' | 'failed' }
@@ -389,7 +392,7 @@ ipcMain.handle('select-directory', async (_event, defaultPath) => {
 });
 
 function startSender() {
-  if (senderProcess || isQuitting) {
+  if (senderProcess || senderStopPromise || senderInstallPending || isQuitting) {
     return;
   }
   // 강제 업데이트 중에는 구버전 sender 가 다시 뜨지 않도록 차단
@@ -419,78 +422,64 @@ function startSender() {
     SETTINGS_PORT: '8099',
     FRC_NO_BROWSER: '1',
     DRIVER_PACK_EMBEDDED: '1',
+    FRC_MANAGED_STDIN: '1',
     SAVE_FILES: 'true',
     FRC_INTERCOM_BRIDGE_TOKEN: INTERCOM_BRIDGE_TOKEN,
   };
   env.FRC_STORAGE_DIR = senderStorageRoot;
   console.log('[sender] Using storage root:', senderStorageRoot);
 
-  senderProcess = spawn(bin, [], {
+  const proc = spawn(bin, [], {
     cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
     env,
   });
-
-  senderProcess.stdout?.on('data', d => console.log('[sender]', d.toString().trim()));
-  senderProcess.stderr?.on('data', d => console.error('[sender]', d.toString().trim()));
-  senderProcess.on('error', err => console.error('[sender] Failed to start:', err.message));
-  senderProcess.on('exit', (code, signal) => {
+  senderProcess = proc;
+  proc.stdout?.on('data', d => console.log('[sender]', d.toString().trim()));
+  proc.stderr?.on('data', d => console.error('[sender]', d.toString().trim()));
+  proc.on('error', err => console.error('[sender] Failed to start:', err.message));
+  proc.on('exit', (code, signal) => {
     console.log(`[sender] Exited: code=${code} signal=${signal}`);
-    senderProcess = null;
+    if (senderProcess === proc) senderProcess = null;
   });
 }
 
-async function stopSender() {
+function stopSender() {
+  if (senderStopPromise) return senderStopPromise;
   const proc = senderProcess;
-  if (!proc) return;
+  if (!proc) return Promise.resolve();
   console.log('[sender] Stopping...');
-  senderProcess = null;
-
-  await new Promise((resolve) => {
-    let finished = false;
-    const finish = () => {
-      if (finished) {
+  senderStopPromise = stopSenderProcess(proc, {
+    forceStop: (child) => {
+      console.warn('[sender] Graceful stop timed out or pipe unavailable; forcing exit.');
+      if (!isWin) {
+        child.kill('SIGKILL');
         return;
       }
-      finished = true;
-      resolve();
-    };
-
-    const timer = setTimeout(finish, 5000);
-    proc.once('exit', () => {
-      clearTimeout(timer);
-      finish();
-    });
-    proc.once('error', () => {
-      clearTimeout(timer);
-      finish();
-    });
-
-    if (isWin && proc.pid) {
-      const killer = spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t'], {
-        stdio: 'ignore',
-        windowsHide: true,
+      return new Promise((resolve, reject) => {
+        const killer = spawn('taskkill', ['/pid', String(child.pid), '/f', '/t'], {
+          stdio: 'ignore', windowsHide: true,
+        });
+        killer.once('error', reject);
+        killer.once('exit', (code) => {
+          if (code === 0 || child.exitCode !== null || child.signalCode !== null) resolve();
+          else reject(new Error(`taskkill failed with exit code ${code}`));
+        });
       });
-      killer.on('error', () => {
-        clearTimeout(timer);
-        finish();
-      });
-      return;
+    },
+  }).finally(() => {
+    if (senderProcess === proc && (proc.exitCode !== null || proc.signalCode !== null || !proc.pid)) {
+      senderProcess = null;
     }
-
-    try {
-      proc.kill('SIGTERM');
-    } catch {
-      clearTimeout(timer);
-      finish();
-    }
+    senderStopPromise = null;
   });
+  return senderStopPromise;
 }
 
 ipcMain.handle('restart-sender', async () => {
   // 게이트를 우회해 sender 를 되살리는 경로 차단
-  if (isUpdateGateActive()) {
+  if (isUpdateGateActive() || senderInstallPending) {
     console.log('[sender] Restart blocked: mandatory update in progress');
     return;
   }
@@ -582,6 +571,16 @@ function setupAutoUpdater(win) {
 
   let downloadRetries = 0;
   let stallTimer = null;
+  let optionalInstallTimer = null;
+
+  function failOptionalInstall(error, install = senderInstallPending) {
+    if (!install || senderInstallPending !== install) return;
+    clearTimeout(optionalInstallTimer);
+    senderInstallPending = false;
+    console.error('[updater] Optional install failed:', error.message);
+    startSender();
+    broadcastUpdateStatus({ status: 'error', releasesUrl: RELEASES_URL });
+  }
 
   // fail-open: 강제 게이트를 풀고 앱을 다시 사용 가능한 상태로 되돌린다.
   // 업데이터가 깨진 릴리스를 배포해도 전체 사용자가 영구히 잠기지 않도록 하는 안전장치.
@@ -608,13 +607,18 @@ function setupAutoUpdater(win) {
 
   async function installMandatoryUpdate(version) {
     clearTimeout(stallTimer);
+    const update = mandatoryUpdate;
     await stopSender();
+    if (mandatoryUpdate !== update || !isUpdateGateActive()) {
+      startSender();
+      return;
+    }
     // 설치 결과는 알 수 없으므로(위 recordUpdateFailure 주석 참조) 시도 직전에 카운트한다.
     // writeSettings 는 동기라 곧바로 이어지는 app.quit() 이후에도 남는다.
     recordUpdateFailure(version);
     // quitAndInstall 이 종료 없이 반환되는 경로(BaseUpdater.install → false)를 대비한 워치독
     setTimeout(() => {
-      if (mandatoryUpdate && mandatoryUpdate.phase === 'installing') {
+      if (mandatoryUpdate === update && mandatoryUpdate.phase === 'installing') {
         console.error(`[updater] Install did not quit within ${INSTALL_WATCHDOG_MS}ms — releasing gate`);
         releaseGate(version);
       }
@@ -662,11 +666,15 @@ function setupAutoUpdater(win) {
     }
     mandatoryUpdate = { version: info.version, phase: 'installing' };
     broadcastUpdateStatus({ status: 'mandatory', phase: 'installing', version: info.version });
-    void installMandatoryUpdate(info.version);
+    void installMandatoryUpdate(info.version).catch((error) => {
+      console.error('[updater] Could not stop Sender for update:', error.message);
+      releaseGate(info.version);
+    });
   });
 
   autoUpdater.on('error', (err) => {
     console.error('[updater] Error:', err.message);
+    failOptionalInstall(err);
     if (!isUpdateGateActive()) {
       return;
     }
@@ -692,9 +700,21 @@ function setupAutoUpdater(win) {
 
   ipcMain.removeAllListeners('install-update');
   ipcMain.on('install-update', () => {
-    void stopSender().finally(() => {
+    if (senderInstallPending || isUpdateGateActive()) return;
+    // Take ownership before awaiting a shared stop: an earlier restart handler
+    // must not launch a new Sender in the gap before quitAndInstall runs.
+    const install = {};
+    senderInstallPending = install;
+    void stopSender().then(() => {
+      if (senderInstallPending !== install) {
+        startSender();
+        return;
+      }
+      optionalInstallTimer = setTimeout(() => {
+        failOptionalInstall(new Error('Installer did not quit the application.'), install);
+      }, INSTALL_WATCHDOG_MS);
       autoUpdater.quitAndInstall(true, true);
-    });
+    }).catch((error) => failOptionalInstall(error, install));
   });
 
   setTimeout(() => {
@@ -832,34 +852,18 @@ if (!gotSingleInstanceLock) {
 }
 
 app.on('window-all-closed', () => {
-  isQuitting = true;
-  void stopSender().finally(() => {
-    app.quit();
-  });
+  app.quit();
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true;
-  const proc = senderProcess;
-  if (!proc) {
-    return;
-  }
-  senderProcess = null;
-  // before-quit 은 await 할 수 없다. 비동기 종료는 NSIS 인스톨러가
-  // 아직 잠겨 있는 sender exe 를 덮어쓰려다 실패하는 경쟁을 만들 수 있어 동기로 죽인다.
-  if (isWin && proc.pid) {
-    try {
-      spawnSync('taskkill', ['/pid', String(proc.pid), '/f', '/t'], { stdio: 'ignore', windowsHide: true });
-    } catch (error) {
-      console.error('[sender] taskkill failed:', error instanceof Error ? error.message : String(error));
-    }
-    return;
-  }
-  try {
-    proc.kill('SIGKILL');
-  } catch {
-    // 이미 종료된 프로세스는 무시
-  }
+  if (!senderProcess && !senderStopPromise) return;
+  // Resume quit only after exit; autoInstallOnAppQuit then sees closed files.
+  event.preventDefault();
+  void stopSender().then(() => app.quit()).catch((error) => {
+    isQuitting = false;
+    console.error('[sender] Could not stop Sender:', error.message);
+  });
 });
 
 app.on('will-quit', () => {

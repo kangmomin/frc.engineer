@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { DriverInfo } from '../types/telemetry';
-import { createLapHistoryIngestor, type LapRecord } from './lapHistoryStore';
+import type { DriverInfo, PitwallState } from '../types/telemetry';
+import { createLapHistoryIngestor, startLapHistoryTracker, useLapHistoryStore, type LapRecord } from './lapHistoryStore';
+import { startRaceMetaTracker, useRaceMetaStore } from './raceMetaStore';
+import { useTelemetryStore } from './telemetryStore';
 
 // ── Helpers ──
 
@@ -61,6 +63,82 @@ function makeDriver(overrides: Partial<DriverInfo> = {}): DriverInfo {
 }
 
 const KEY = '5|Race|0';
+
+function liveFrame(driver: Partial<DriverInfo>): PitwallState {
+  return {
+    session: {
+      weather: 'Clear', trackTemp: 30, airTemp: 20, safetyCar: 'None',
+      sessionType: 'Race', totalLaps: 20, trackId: 5, trackName: 'Monaco', trackLength: 3337,
+    },
+    drivers: [makeDriver(driver)], positions: [], playerIndex: 0,
+    ersEstimateEnabled: false, ersComparisonEnabled: false,
+  };
+}
+
+describe('live room boundaries', () => {
+  function startRoom(): void {
+    startRaceMetaTracker();
+    startLapHistoryTracker();
+    useTelemetryStore.getState().resetRoom();
+  }
+
+  it('clears Alice history, grid, notification tags and ingest baselines before Bob joins the same track and lap', () => {
+    startRoom();
+    const telemetry = useTelemetryStore.getState();
+    telemetry.setPitwallState(liveFrame({ name: 'Alice', position: 5 }));
+    telemetry.setPitwallState(liveFrame({ name: 'Alice', currentLapNum: 4, lastLapTime: 80_000 }));
+    telemetry.setPitwallState(liveFrame({ name: 'Alice', currentLapNum: 4, lastLapTime: 81_000 }));
+    telemetry.addRaceControlNotification({ id: 'alice', timestamp: 1, category: 'info', severity: 'info', message: 'Alice' });
+    expect(useLapHistoryStore.getState().history.get(0)).toMatchObject([{ lap: 4, lapMs: 81_000 }]);
+    expect(useRaceMetaStore.getState().grid).toEqual({ 0: 5 });
+
+    const epoch = useRaceMetaStore.getState().epoch;
+    telemetry.resetRoom();
+    expect(useRaceMetaStore.getState()).toMatchObject({ grid: {}, gridStatus: 'empty', notificationLaps: {} });
+    expect(useRaceMetaStore.getState().epoch).toBeGreaterThan(epoch);
+    expect(useLapHistoryStore.getState().history.size).toBe(0);
+    telemetry.setPitwallState(liveFrame({ name: 'Bob', currentLapNum: 4, lastLapTime: 90_000 }));
+    expect(useLapHistoryStore.getState().history.size).toBe(0);
+    expect(useRaceMetaStore.getState()).toMatchObject({ grid: {}, gridStatus: 'unavailable', firstSeenLap: 4 });
+    telemetry.setPitwallState(liveFrame({ name: 'Bob', currentLapNum: 5, lastLapTime: 89_000 }));
+    expect(useLapHistoryStore.getState().history.get(0)).toMatchObject([{ lap: 4, lapMs: 89_000, partial: true }]);
+  });
+
+  it('preserves same-room history and baselines across a transient reconnect', () => {
+    startRoom();
+    const telemetry = useTelemetryStore.getState();
+    telemetry.setPitwallState(liveFrame({ currentLapNum: 4, lastLapTime: 80_000 }));
+    telemetry.setPitwallState(liveFrame({ currentLapNum: 5, lastLapTime: 81_000 }));
+    const history = useLapHistoryStore.getState().history;
+    telemetry.setConnectionState('reconnecting');
+    telemetry.setPitwallState(null);
+    telemetry.setConnectionState('connected');
+    expect(useLapHistoryStore.getState().history).toBe(history);
+    telemetry.setPitwallState(liveFrame({ currentLapNum: 6, lastLapTime: 82_000 }));
+    expect(useLapHistoryStore.getState().history.get(0)).toMatchObject([
+      { lap: 4, lapMs: 81_000 }, { lap: 5, lapMs: 82_000 },
+    ]);
+  });
+
+  it('preserves normal replay isolation but discards the prior-room snapshot on explicit exit', () => {
+    startRoom();
+    const telemetry = useTelemetryStore.getState();
+    const live = liveFrame({ name: 'Alice', currentLapNum: 4, lastLapTime: 80_000 });
+    telemetry.setPitwallState(live);
+    telemetry.setPlaybackActive(true);
+    telemetry.applyReplayFrame({ pitwall: liveFrame({ currentLapNum: 4, lastLapTime: 70_000 }) });
+    telemetry.setPlaybackActive(false);
+    expect(useTelemetryStore.getState().pitwallState).toBe(live);
+    expect(useLapHistoryStore.getState().history.size).toBe(0);
+
+    telemetry.setPlaybackActive(true);
+    telemetry.applyReplayFrame({ pitwall: liveFrame({ currentLapNum: 5, lastLapTime: 71_000 }) });
+    telemetry.resetRoom();
+    telemetry.setPlaybackActive(false);
+    expect(useTelemetryStore.getState().pitwallState).toBeNull();
+    expect(useLapHistoryStore.getState().history.size).toBe(0);
+  });
+});
 
 /** 프레임 시퀀스를 순차 ingest — 각 프레임은 단일 드라이버(index 0). history 스레딩 포함. */
 function run(frames: Array<Partial<DriverInfo>>, key = KEY) {

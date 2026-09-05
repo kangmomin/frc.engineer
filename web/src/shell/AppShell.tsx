@@ -107,9 +107,6 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
   const [setupOpen, setSetupOpen] = useState(false);
 
   const setConnectionMode = useTelemetryStore((s) => s.setConnectionMode);
-  const setConnectionState = useTelemetryStore((s) => s.setConnectionState);
-  const setPitwallState = useTelemetryStore((s) => s.setPitwallState);
-  const clearNotifications = useTelemetryStore((s) => s.clearNotifications);
   const clearRaceResult = useTelemetryStore((s) => s.clearRaceResult);
   const connectionState = useTelemetryStore((s) => s.connectionState);
   const raceResult = useTelemetryStore((s) => s.raceResult);
@@ -143,6 +140,7 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
     sendView,
     request,
     stream,
+    disconnect,
     forceReconnect,
     intercom,
   } = useWebRTCDataChannel(webrtcOpts);
@@ -215,34 +213,25 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
   }, [sendView]);
 
   const handleRemoteConnect = useCallback((nextOptions: RemoteRTCOptions) => {
+    disconnect();
     persistRemoteSession(nextOptions);
     setRtcOptions(nextOptions);
     setConnectAttempted(true);
-    setConnectionState('disconnected');
-    setPitwallState(null);
-    clearNotifications();
-    clearRaceResult();
     forceReconnect();
-  }, [clearNotifications, clearRaceResult, forceReconnect, setConnectionState, setPitwallState]);
+  }, [disconnect, forceReconnect]);
 
   const openRoomPicker = useCallback(() => {
+    disconnect();
     setRtcOptions(null);
-    setConnectionState('disconnected');
-    setPitwallState(null);
-    clearNotifications();
-    clearRaceResult();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState]);
+  }, [disconnect]);
 
   const goToMainScreen = useCallback(() => {
+    disconnect();
     clearRemoteQuery();
     setRtcOptions(null);
     setConnectAttempted(false);
-    setConnectionState('disconnected');
-    setPitwallState(null);
-    clearNotifications();
-    clearRaceResult();
     onExitToHub?.();
-  }, [clearNotifications, clearRaceResult, setConnectionState, setPitwallState, onExitToHub]);
+  }, [disconnect, onExitToHub]);
 
   const controls: ShellControls = {
     view,

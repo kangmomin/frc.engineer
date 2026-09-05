@@ -222,7 +222,7 @@ let trackerStarted = false;
 // 재생 중 마지막으로 관측한 리플레이 프레임 — 재생 종료 직후 잔류 프레임을 라이브로 오인해
 // ingest 하지 않도록 기억한다 (raceMetaStore lastReplayState 선례).
 let lastReplayState: PitwallState | null = null;
-const ingestor = createLapHistoryIngestor();
+let ingestor = createLapHistoryIngestor();
 
 /**
  * telemetryStore를 1회 구독해 랩 히스토리를 축적한다 (idempotent, 앱 수명).
@@ -232,8 +232,15 @@ const ingestor = createLapHistoryIngestor();
 export function startLapHistoryTracker(): void {
   if (trackerStarted) return;
   trackerStarted = true;
+  let roomGeneration = useTelemetryStore.getState().roomGeneration;
   const run = () => {
-    const { pitwallState, playbackActive } = useTelemetryStore.getState();
+    const { pitwallState, playbackActive, roomGeneration: currentRoom } = useTelemetryStore.getState();
+    if (roomGeneration !== currentRoom) {
+      roomGeneration = currentRoom;
+      lastReplayState = null;
+      ingestor = createLapHistoryIngestor();
+      useLapHistoryStore.setState({ history: new Map() });
+    }
     if (playbackActive) {
       lastReplayState = pitwallState;
       return;

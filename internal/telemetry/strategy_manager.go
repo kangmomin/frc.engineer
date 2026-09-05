@@ -94,6 +94,13 @@ func NewStrategyManager() *StrategyManager {
 	return &StrategyManager{}
 }
 
+// Reset clears all per-car history when PitwallManager observes a new session.
+func (sm *StrategyManager) Reset() {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.drivers = [packets.MaxCars]DriverStrategy{}
+}
+
 // Update processes the latest car status and lap data to detect compound changes.
 func (sm *StrategyManager) Update(carStatus *packets.PacketCarStatusData, lapData *packets.PacketLapData) {
 	if carStatus == nil || lapData == nil {

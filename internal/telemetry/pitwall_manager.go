@@ -258,6 +258,11 @@ func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
 		// the new Participants packet, and retaining this pointer would leak a
 		// prior rival's name, team, or YourTelemetry bit into a new clip.
 		pm.participants = nil
+		// Strategy updates require a status/lap pair from this session. Otherwise
+		// the first arriving packet can seed new history with the previous race.
+		pm.carStatus = nil
+		pm.lapData = nil
+		pm.strategyMgr.Reset()
 		pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
 		pm.sessionHistory = [packets.MaxCars]*packets.PacketSessionHistoryData{}
 		pm.peakActiveCars = 0

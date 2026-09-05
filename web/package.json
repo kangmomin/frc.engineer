@@ -9,7 +9,8 @@
     "build:remote": "tsc -p tsconfig.build.json && vite build --mode remote",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "node scripts/test-webrtc.mjs"
   },
   "dependencies": {
     "@msgpack/msgpack": "^3.1.3",

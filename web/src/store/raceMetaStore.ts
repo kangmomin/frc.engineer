@@ -152,8 +152,17 @@ let lastReplayState: PitwallState | null = null;
 export function startRaceMetaTracker(): void {
   if (trackerStarted) return;
   trackerStarted = true;
+  let roomGeneration = useTelemetryStore.getState().roomGeneration;
   const run = () => {
-    const { pitwallState, raceControlNotifications, playbackActive } = useTelemetryStore.getState();
+    const { pitwallState, raceControlNotifications, playbackActive, roomGeneration: currentRoom } = useTelemetryStore.getState();
+    if (roomGeneration !== currentRoom) {
+      roomGeneration = currentRoom;
+      lastReplayState = null;
+      useRaceMetaStore.setState((state) => ({
+        ...useRaceMetaStore.getInitialState(),
+        epoch: state.epoch + 1,
+      }));
+    }
     if (playbackActive) {
       lastReplayState = pitwallState;
       return;

@@ -17,6 +17,9 @@ interface TelemetryState {
   setConnectionMode: (mode: ConnectionMode) => void;
   playbackActive: boolean;
   setPlaybackActive: (active: boolean) => void;
+  /** Explicit sender-room boundary; transient reconnects keep the same generation. */
+  roomGeneration: number;
+  resetRoom: () => void;
 
   // Telemetry core
   pitwallState: PitwallState | null;
@@ -56,6 +59,18 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   connectionMode: 'local',
   setConnectionMode: (mode) => set({ connectionMode: mode }),
   playbackActive: false,
+  roomGeneration: 0,
+  resetRoom: () => {
+    liveSnapshot = null;
+    set((state) => ({
+      roomGeneration: state.roomGeneration + 1,
+      connectionState: 'disconnected',
+      playbackActive: false,
+      pitwallState: null,
+      raceControlNotifications: [],
+      raceResult: null,
+    }));
+  },
   setPlaybackActive: (active) =>
     set((state) => {
       // 프레임마다 발화하는 중복 호출 무시 — 전이 시점에만 스냅샷/복원

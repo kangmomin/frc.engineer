@@ -33,10 +33,10 @@ jobs:
           go-version: '1.22'
 
       - name: Test
-        run: go test ./...
+        run: go test -race ./...
 
   frontend:
-    name: Web Lint And Build
+    name: Web Test, Lint And Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,6 +57,40 @@ jobs:
         run: npm run lint
         working-directory: web
 
+      - name: Test
+        run: npm test
+        working-directory: web
+
       - name: Build
         run: npm run build
         working-directory: web
+
+  driver-pack:
+    name: Driver Pack Test, Typecheck And Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/setup-manager/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: apps/setup-manager
+
+      - name: Test
+        run: npm test
+        working-directory: apps/setup-manager
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: apps/setup-manager
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/setup-manager

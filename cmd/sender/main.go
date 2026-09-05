@@ -35,7 +35,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-var appVersion = "v4.51.0"
+var appVersion = "v4.52.0"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
@@ -336,6 +336,10 @@ func main() {
 
 	// Start system tray early so update progress is visible via tooltip
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if os.Getenv("FRC_MANAGED_STDIN") == "1" {
+		go watchManagedShutdown(os.Stdin, cancel)
+	}
 	settingsURL := fmt.Sprintf("http://localhost:%s", settingsPort)
 	trayReady := startTray(settingsURL, appVersion, func() {
 		cancel()
@@ -1150,10 +1154,6 @@ func main() {
 				}
 			}
 		}
-		raceSummaryMu.Lock()
-		latestRaceSummary = summary
-		raceSummaryMu.Unlock()
-
 		var savedID string
 		var saveErr error
 		if saveEnabled && rs != nil {
@@ -1163,6 +1163,11 @@ func main() {
 				logger.Error("failed to save race summary", "error", saveErr)
 			}
 		}
+		// Saving may merge prior capture data and assign the stable ID. Publish
+		// only after those mutations finish so readers see an immutable summary.
+		raceSummaryMu.Lock()
+		latestRaceSummary = summary
+		raceSummaryMu.Unlock()
 
 		trigger := ""
 		if detail != nil {
@@ -1193,7 +1198,7 @@ func main() {
 					ctx, cancel := context.WithTimeout(context.Background(), uploadHTTPTimeout)
 					defer cancel()
 					if uploadID != "" {
-						if _, status, err := upState.uploadSealed(ctx, base, token, uploadID, trigger, req); err != nil {
+						if _, status, err := upState.uploadSealed(ctx, base, token, uploadID, loadRaceSummaryWithoutReplay); err != nil {
 							logger.Warn("auto-upload failed", "id", uploadID, "status", status, "error", err)
 						} else {
 							logger.Info("race auto-uploaded", "id", uploadID)
@@ -1684,38 +1689,25 @@ func main() {
 			json.NewEncoder(w).Encode(map[string]string{"error": "먼저 페어링하세요"})
 			return
 		}
-		summary, err := loadRaceSummaryWithoutReplay(id)
-		if err != nil {
-			if os.IsNotExist(err) {
-				w.WriteHeader(http.StatusNotFound)
-				json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
-			} else {
-				logger.Error("failed to load race summary for upload", "id", id, "error", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
-			}
-			return
-		}
-		req, ok := buildUploadRequest(summary, logger)
-		if !ok {
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			json.NewEncoder(w).Encode(map[string]string{"error": "이 레이스에는 업로드할 랩 데이터가 없습니다"})
-			return
-		}
 		ctx, cancel := context.WithTimeout(r.Context(), uploadHTTPTimeout)
 		defer cancel()
-		manualTrigger := ""
-		if summary.Detail != nil {
-			manualTrigger = summary.Detail.FinalizeTrigger
-		}
-		result, status, err := upState.uploadSealed(ctx, base, token, id, manualTrigger, req)
+		result, status, err := upState.uploadSealed(ctx, base, token, id, loadRaceSummaryWithoutReplay)
 		if err != nil {
 			code := http.StatusBadGateway
-			if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			message := err.Error()
+			switch {
+			case errors.Is(err, os.ErrNotExist):
+				code, message = http.StatusNotFound, "race summary not found"
+			case errors.Is(err, errUploadSnapshot):
+				logger.Error("failed to load race summary for upload", "id", id, "error", err)
+				code, message = http.StatusInternalServerError, "failed to load race summary"
+			case errors.Is(err, errNoUploadableLaps):
+				code, message = http.StatusUnprocessableEntity, "이 레이스에는 업로드할 랩 데이터가 없습니다"
+			case status == http.StatusUnauthorized || status == http.StatusForbidden:
 				code = http.StatusUnauthorized
 			}
 			w.WriteHeader(code)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]string{"error": message})
 			return
 		}
 		json.NewEncoder(w).Encode(result)
@@ -2187,13 +2179,9 @@ func main() {
 
 	// Block until user clicks Quit in the system tray
 	<-ctx.Done()
-	// processor의 shutdown flush(진행 중 세션 체크포인트 저장)가 Start 고루틴 안에서
-	// 끝나기를 기다린다 — 로컬 디스크 I/O만이라 2s면 충분하고, 초과 시 정리로 진행.
-	select {
-	case <-processor.Done():
-	case <-time.After(2 * time.Second):
-		logger.Warn("processor shutdown flush timed out")
-	}
+	// Do not tear down stores while the processor is saving its final checkpoint.
+	// Driver Pack owns the bounded forced-stop fallback if the process stalls.
+	<-processor.Done()
 	forwarder.Close()
 	peerManager.Close()
 	compareMonitor.Close()

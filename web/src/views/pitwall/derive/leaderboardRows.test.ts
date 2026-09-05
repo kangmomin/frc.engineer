@@ -279,7 +279,7 @@ describe('deriveSectorCells', () => {
     expect(deriveSectorCells(d, null).s2.text).toBe('·');
   });
   it('S2 shows formatted time once currentSector advances to S3 (currentSector=2)', () => {
-    const d = makeDriver({ currentSector: 2, sector2TimeMs: 30456 });
+    const d = makeDriver({ currentSector: 2, sector1TimeMs: 28123, sector2TimeMs: 30456 });
     expect(deriveSectorCells(d, null).s2.text).toBe('30.456');
   });
   it('S3 dashes when there is no completed-lap record yet (first lap, no history)', () => {

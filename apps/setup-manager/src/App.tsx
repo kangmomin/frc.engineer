@@ -32,7 +32,7 @@ declare global {
       setSetting?: (key: string, value: unknown) => Promise<void>;
       getAllSettings?: () => Promise<Record<string, unknown>>;
       getOverlayHotkeys?: () => Promise<Record<string, string> | null>;
-      setOverlayHotkeys?: (hotkeys: Record<string, string>) => Promise<OverlayHotkeySyncResult>;
+      setOverlayHotkeys?: (hotkeys: OverlayHotkeySyncResult['hotkeys']) => Promise<OverlayHotkeySyncResult>;
       getSenderStorageInfo?: () => Promise<SenderStorageInfo>;
       selectDirectory?: (defaultPath?: string) => Promise<string | null>;
       restartSender?: () => Promise<void>;

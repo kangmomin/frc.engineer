@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -61,6 +62,12 @@ const (
 )
 
 var raceIDSessionSuffix = regexp.MustCompile(`_([0-9]{1,20})$`)
+
+var (
+	errNoUploadableLaps = errors.New("race summary has no uploadable laps")
+	errUploadSnapshot   = errors.New("load upload snapshot")
+	errUploadDeferred   = errors.New("upload checkpoint deferred")
+)
 
 // uploadState coordinates the sealed-ID lifecycle between the save callback
 // (processor goroutine), the boot/pairing sweep, and the manual upload API.
@@ -224,12 +231,26 @@ func (u *uploadState) saveWithStableID(rs *races.FileStorage, sessionUID uint64,
 	return savedID, nil
 }
 
-// uploadSealed runs the seal → upload → record protocol for one race ID.
-// Lock is held only around the local sidecar transitions; the network call runs
-// unlocked (safe: the seal freezes the content, concurrent uploaders of the
-// same ID send identical bytes and converge via the server's Duplicate).
-func (u *uploadState) uploadSealed(ctx context.Context, baseURL, token, id, trigger string, req *uploadRequest) (*uploadResult, int, error) {
+// uploadSealed loads and seals the same persisted snapshot under the save lock.
+// Callers must not supply a previously loaded request: a checkpoint may have
+// been overwritten by a final save before this lock is acquired. Network I/O
+// remains outside the lock, after the ID's content has become immutable.
+func (u *uploadState) uploadSealed(ctx context.Context, baseURL, token, id string, load func(string) (*races.RaceSummary, error)) (*uploadResult, int, error) {
 	u.mu.Lock()
+	summary, err := load(id)
+	if err != nil {
+		u.mu.Unlock()
+		return nil, 0, fmt.Errorf("%w: %w", errUploadSnapshot, err)
+	}
+	if summary == nil || summary.ID != id {
+		u.mu.Unlock()
+		return nil, 0, fmt.Errorf("%w: snapshot does not match race id %q", errUploadSnapshot, id)
+	}
+	req, ok := buildUploadRequest(summary, u.logger)
+	if !ok {
+		u.mu.Unlock()
+		return nil, 0, errNoUploadableLaps
+	}
 	sc, err := u.readSidecar(id)
 	if err != nil {
 		u.mu.Unlock()
@@ -240,7 +261,7 @@ func (u *uploadState) uploadSealed(ctx context.Context, baseURL, token, id, trig
 		return &uploadResult{RaceID: sc.PlatformRaceID, Duplicate: true}, 0, nil
 	}
 	if sc == nil {
-		sc = &uploadSidecar{SealedAt: time.Now().Format(time.RFC3339), Trigger: trigger}
+		sc = &uploadSidecar{SealedAt: time.Now().Format(time.RFC3339), Trigger: summary.Detail.FinalizeTrigger}
 		if err := u.writeSidecarDurable(id, sc); err != nil {
 			u.mu.Unlock()
 			return nil, 0, fmt.Errorf("seal write failed: %w", err)
@@ -280,12 +301,7 @@ func (u *uploadState) sweep(ctx context.Context, baseURL, token string, load fun
 	if err != nil {
 		return
 	}
-	type candidate struct {
-		id  string
-		age time.Duration
-	}
-	var candidates []candidate
-	now := time.Now()
+	var candidates []string
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || filepath.Ext(name) != ".json" || strings.HasSuffix(name, ".meta.json") {
@@ -298,57 +314,63 @@ func (u *uploadState) sweep(ctx context.Context, baseURL, token string, load fun
 		if scErr != nil || (sc != nil && sc.UploadedAt != "") {
 			continue
 		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		candidates = append(candidates, candidate{id: id, age: now.Sub(info.ModTime())})
+		candidates = append(candidates, id)
 	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].id > candidates[j].id })
+	sort.Sort(sort.Reverse(sort.StringSlice(candidates)))
+
+	// uploadSealed invokes this under the save lock. A checkpoint can have been
+	// refreshed since enumeration, so both trigger and age must be checked here.
+	loadPending := func(id string) (*races.RaceSummary, error) {
+		summary, err := load(id)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(filepath.Join(u.dir, id+".json"))
+		if err != nil {
+			return nil, err
+		}
+		trigger := ""
+		if summary != nil && summary.Detail != nil {
+			trigger = summary.Detail.FinalizeTrigger
+		}
+		age := time.Since(info.ModTime())
+		if (trigger == "" && age > sweepLegacyMaxAge) || (!isFinalClassTrigger(trigger) && age < sweepCheckpointHold) {
+			return nil, errUploadDeferred
+		}
+		return summary, nil
+	}
 
 	attempted, uploaded := 0, 0
-	for _, c := range candidates {
+	for i, id := range candidates {
 		if attempted >= sweepMaxPerRun {
-			u.logger.Info("upload sweep cap reached — remainder next run", "pending", len(candidates)-attempted)
+			u.logger.Info("upload sweep cap reached — remainder next run", "pending", len(candidates)-i)
 			break
 		}
 		if ctx.Err() != nil {
 			return
 		}
-		summary, err := load(c.id)
-		if err != nil {
-			u.logger.Warn("upload sweep: summary unreadable", "id", c.id, "error", err)
+		reqCtx, cancel := context.WithTimeout(ctx, uploadHTTPTimeout)
+		result, status, err := u.uploadSealed(reqCtx, baseURL, token, id, loadPending)
+		cancel()
+		if errors.Is(err, errUploadDeferred) || errors.Is(err, errNoUploadableLaps) {
 			continue
 		}
-		trigger := ""
-		if summary.Detail != nil {
-			trigger = summary.Detail.FinalizeTrigger
-		}
-		if trigger == "" && c.age > sweepLegacyMaxAge {
-			continue // legacy pre-feature history — never mass-upload
-		}
-		if !isFinalClassTrigger(trigger) && c.age < sweepCheckpointHold {
-			continue // young checkpoint: its session may still be alive
-		}
-		req, ok := buildUploadRequest(summary, u.logger)
-		if !ok {
-			continue // no uploadable laps
+		if errors.Is(err, errUploadSnapshot) {
+			u.logger.Warn("upload sweep: summary unreadable", "id", id, "error", err)
+			continue
 		}
 		attempted++
-		reqCtx, cancel := context.WithTimeout(ctx, uploadHTTPTimeout)
-		result, status, err := u.uploadSealed(reqCtx, baseURL, token, c.id, trigger, req)
-		cancel()
 		if err != nil {
 			retryable := status == 0 || status >= 500 || status == 401 || status == 403 || status == 409 || status == 429
 			if retryable {
-				u.logger.Warn("upload sweep aborted", "id", c.id, "status", status, "error", err)
+				u.logger.Warn("upload sweep aborted", "id", id, "status", status, "error", err)
 				return
 			}
-			u.logger.Warn("upload sweep: race rejected — skipping", "id", c.id, "status", status, "error", err)
+			u.logger.Warn("upload sweep: race rejected — skipping", "id", id, "status", status, "error", err)
 			continue
 		}
 		uploaded++
-		u.logger.Info("upload sweep: race uploaded", "id", c.id, "duplicate", result.Duplicate)
+		u.logger.Info("upload sweep: race uploaded", "id", id, "duplicate", result.Duplicate)
 		select {
 		case <-ctx.Done():
 			return

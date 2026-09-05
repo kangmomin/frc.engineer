@@ -1,11 +1,13 @@
 {
   "name": "minmo-driver-pack",
-  "version": "4.51.0",
+  "version": "4.52.0",
   "description": "F1 Driver Pack for F1 25 setup and telemetry",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test electron/*.test.cjs",
     "preview": "vite preview",
     "electron": "electron .",
     "dist": "vite build && electron-builder",

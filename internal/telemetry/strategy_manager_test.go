@@ -1,10 +1,72 @@
 package telemetry
 
 import (
+	"fmt"
 	"testing"
 
 	"frc.engineer/internal/packets"
 )
+
+func TestPitwallStrategyResetsOnSessionChange(t *testing.T) {
+	for _, first := range []string{"session", "lap", "status", "damage"} {
+		for _, nextLap := range []uint8{3, 8} {
+			t.Run(fmt.Sprintf("%s-first/lap-%d", first, nextLap), func(t *testing.T) {
+				sm := NewStrategyManager()
+				pm := NewPitwallManager(sm, nil, nil)
+				status := func(uid uint64, compound, age uint8) *packets.PacketCarStatusData {
+					p := carStatusFor(compound, age)
+					p.Header.SessionUID = uid
+					return p
+				}
+				lap := func(uid uint64, n uint8) *packets.PacketLapData {
+					p := lapDataFor(n, 0)
+					p.Header.SessionUID = uid
+					return p
+				}
+				pm.UpdateLapData(lap(1, 3))
+				pm.UpdateCarStatus(status(1, 16, 2))
+				pm.UpdateCarStatus(status(1, 17, 0))
+				if len(sm.GetDriverStrategy(0).StintHistory) != 1 {
+					t.Fatal("fixture has no previous stint")
+				}
+				switch first {
+				case "session":
+					pm.UpdateSession(&packets.PacketSessionData{Header: packets.PacketHeader{SessionUID: 2}})
+				case "lap":
+					pm.UpdateLapData(lap(2, nextLap))
+				case "status":
+					pm.UpdateCarStatus(status(2, 18, 0))
+				case "damage":
+					damage := carDamageFor(1)
+					damage.Header.SessionUID = 2
+					pm.UpdateCarDamage(damage)
+				}
+				if strategy := sm.GetDriverStrategy(0); strategy.initialized || len(strategy.StintHistory) > 0 || len(strategy.RecentLaps) > 0 {
+					t.Fatalf("first packet seeded a mixed-session strategy: %+v", strategy)
+				}
+				if first == "lap" {
+					pm.UpdateCarStatus(status(2, 18, 0))
+				} else {
+					pm.UpdateCarStatus(status(2, 18, 0))
+					pm.UpdateLapData(lap(2, nextLap))
+				}
+				state := pm.BuildState()
+				if len(state.Drivers[0].StintHistory) != 0 {
+					t.Fatalf("new session retained old stints: %+v", state.Drivers[0].StintHistory)
+				}
+				if got := sm.GetDriverStrategy(0); got.CurrentCompound != "hard" || got.lastSeenLapNum != int(nextLap) {
+					t.Fatalf("new strategy did not initialize: %+v", got)
+				}
+				// Same-session updates must still record actual tyre changes.
+				pm.UpdateCarStatus(status(2, 18, 2))
+				pm.UpdateCarStatus(status(2, 16, 0))
+				if got := sm.GetDriverStrategy(0).StintHistory; len(got) != 1 || got[0].Compound != "hard" {
+					t.Fatalf("same-session history was lost: %+v", got)
+				}
+			})
+		}
+	}
+}
 
 // carStatusFor builds a single-car CarStatus packet (driver 0) with the given
 // visual compound and tyre age.

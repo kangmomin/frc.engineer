@@ -547,6 +547,8 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       cancelAnimationFrame(positionsRafRef.current);
       positionsRafRef.current = 0;
     }
+    pendingPitwallRef.current = null;
+    pendingPositionsRef.current = null;
     return true;
   }, [clearStageTimeout, clearReconnectTimer, clearWebRTCTimers, invalidateIntercomTransport, rejectAllPendingRequests]);
 
@@ -645,9 +647,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     clearReconnectTimer();
     setLastError('');
     cleanup();
-    setConnectionState('disconnected');
+    lastTargetRef.current = '';
+    useTelemetryStore.getState().resetRoom();
     setRtcState('new');
-  }, [cleanup, clearStageTimeout, clearReconnectTimer, setConnectionState]);
+  }, [cleanup, clearStageTimeout, clearReconnectTimer]);
 
   // forceReconnect clears any terminal failure and bumps the nonce so the main
   // effect re-runs even when the connection target is unchanged (e.g. the user
@@ -820,6 +823,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     const connectionTarget = `${signalingUrl}|${roomId ?? ''}|${roomCode ?? ''}`;
     if (lastTargetRef.current !== connectionTarget) {
       lastTargetRef.current = connectionTarget;
+      useTelemetryStore.getState().resetRoom();
       reconnectAttemptsRef.current = 0;
       hadConnectedRef.current = false;
       lastPeerIdRef.current = '';
@@ -1453,6 +1457,10 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       pcRef.current = pc;
 
       const markConnected = () => {
+        if (!isCurrentSession() || terminalFailureRef.current || pcRef.current !== pc) return;
+        // ICE/DTLS can connect before SCTP delivers the reliable channel. RPCs
+        // and the selected-view effect must see a usable channel before ready.
+        if (pc.connectionState !== 'connected' || dcRef.current?.readyState !== 'open') return;
         hadConnectedRef.current = true;
         completeRecoveryGrace();
         setRtcState('connected');
@@ -1587,6 +1595,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       };
 
       pc.ondatachannel = (event) => {
+        if (!isCurrentSession() || terminalFailureRef.current || pcRef.current !== pc) return;
         const dc = event.channel;
 
         dc.binaryType = 'arraybuffer';
@@ -1683,7 +1692,13 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         // Only the reliable "data" channel governs connection state.
         if (dc.label === 'data') {
           dcRef.current = dc;
-          emitP2PDebug('info', 'connection', 'P2P data channel opened.', { label: dc.label });
+          dc.onopen = () => {
+            if (dcRef.current !== dc) return;
+            emitP2PDebug('info', 'connection', 'P2P data channel opened.', { label: dc.label });
+            markConnected();
+          };
+          // Remote-created channels may already be open when delivered.
+          if (dc.readyState === 'open') markConnected();
           dc.onclose = () => {
             if (!isCurrentSession() || terminalFailureRef.current || pcRef.current !== pc) return;
             emitP2PDebug('warn', 'connection', 'P2P data channel closed.', {

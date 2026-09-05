@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +17,207 @@ import (
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
 )
+
+func TestUploadSealedUsesFinalSnapshotAfterCheckpointWasRead(t *testing.T) {
+	dir := t.TempDir()
+	logger := testUploadLogger()
+	rs, err := races.NewFileStorage(dir, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := newUploadState(dir, logger)
+	checkpoint := newTestSummary(42, 1)
+	checkpoint.Detail.FinalizeTrigger = "idle-timeout"
+	id, err := u.saveWithStableID(rs, 42, checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Manual/sweep eligibility checks may already have read the old checkpoint.
+	old, err := rs.Load(id)
+	if err != nil || len(old.Detail.Laps) != 1 {
+		t.Fatalf("checkpoint = %+v, error = %v", old, err)
+	}
+	final := newTestSummary(42, 1, 2)
+	final.Detail.FinalizeTrigger = "SEND"
+	if finalID, err := u.saveWithStableID(rs, 42, final); err != nil || finalID != id {
+		t.Fatalf("final ID = %q, error = %v", finalID, err)
+	}
+	received := make(chan uploadRequest, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req uploadRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+		}
+		received <- req
+		json.NewEncoder(w).Encode(uploadResult{RaceID: "platform-race"})
+	}))
+	defer server.Close()
+	if _, _, err := u.uploadSealed(context.Background(), server.URL, "test", id, rs.Load); err != nil {
+		t.Fatal(err)
+	}
+	req := <-received
+	if req.SourceRaceID != id || len(req.Laps) != 2 || req.Detail.FinalizeTrigger != "SEND" {
+		t.Fatalf("uploaded stale checkpoint: %+v", req)
+	}
+	result, _, err := u.uploadSealed(context.Background(), server.URL, "test", id, rs.Load)
+	if err != nil || !result.Duplicate {
+		t.Fatalf("repeat = %+v, error = %v", result, err)
+	}
+	select {
+	case <-received:
+		t.Fatal("already uploaded final snapshot sent again")
+	default:
+	}
+}
+
+func TestUploadSealedFreezesSnapshotAndDoesNotBlockSaveOnNetwork(t *testing.T) {
+	dir := t.TempDir()
+	logger := testUploadLogger()
+	rs, err := races.NewFileStorage(dir, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := newUploadState(dir, logger)
+	id, err := u.saveWithStableID(rs, 42, newTestSummary(42, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstBody := make(chan []byte, 1)
+	nextBody := make(chan []byte, 2)
+	releaseResponse := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		select {
+		case <-releaseResponse:
+			nextBody <- body
+			json.NewEncoder(w).Encode(uploadResult{RaceID: "platform-race"})
+		default:
+			firstBody <- body
+			<-releaseResponse
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+	}))
+	t.Cleanup(server.Close)
+	// Ensure a failing assertion cannot leave the server handler blocked.
+	t.Cleanup(func() {
+		select {
+		case <-releaseResponse:
+		default:
+			close(releaseResponse)
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	uploadDone := make(chan error, 1)
+	go func() {
+		_, _, err := u.uploadSealed(ctx, server.URL, "test", id, rs.Load)
+		uploadDone <- err
+	}()
+	var original []byte
+	select {
+	case original = <-firstBody:
+	case <-ctx.Done():
+		t.Fatal("initial upload did not reach server")
+	}
+	final := newTestSummary(42, 1, 2)
+	saveDone := make(chan error, 1)
+	go func() {
+		_, err := u.saveWithStableID(rs, 42, final)
+		saveDone <- err
+	}()
+	select {
+	case err := <-saveDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		close(releaseResponse)
+		t.Fatal("network upload blocked the final save")
+	}
+	if final.ID == id {
+		close(releaseResponse)
+		t.Fatal("final save reused the sealed checkpoint ID")
+	}
+	close(releaseResponse)
+	if err := <-uploadDone; err == nil {
+		t.Fatal("initial 503 upload should fail")
+	}
+	if _, _, err := u.uploadSealed(ctx, server.URL, "test", id, rs.Load); err != nil {
+		t.Fatal(err)
+	}
+	if retry := <-nextBody; !bytes.Equal(original, retry) {
+		t.Fatal("retry changed the sealed checkpoint payload")
+	}
+	if _, _, err := u.uploadSealed(ctx, server.URL, "test", final.ID, rs.Load); err != nil {
+		t.Fatal(err)
+	}
+	var uploadedFinal uploadRequest
+	if err := json.Unmarshal(<-nextBody, &uploadedFinal); err != nil {
+		t.Fatal(err)
+	}
+	if uploadedFinal.SourceRaceID != final.ID || len(uploadedFinal.Laps) != 2 {
+		t.Fatalf("final snapshot lost: %+v", uploadedFinal)
+	}
+}
+
+func TestSweepDefersCheckpointRefreshedDuringEarlierUpload(t *testing.T) {
+	dir := t.TempDir()
+	logger := testUploadLogger()
+	rs, err := races.NewFileStorage(dir, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := newUploadState(dir, logger)
+	for uid := uint64(41); uid <= 43; uid++ {
+		summary := newTestSummary(uid, 1)
+		summary.ID = fmt.Sprintf("20260905-120000_%d", uid)
+		summary.Detail.FinalizeTrigger = "SEND"
+		if uid == 42 {
+			summary.Detail.FinalizeTrigger = "shutdown"
+		}
+		if _, err := u.saveWithStableID(rs, uid, summary); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkpointID := u.thisRun[42]
+	old := time.Now().Add(-3 * time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, checkpointID+".json"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	firstID, lastID := u.thisRun[43], u.thisRun[41]
+	received := make(chan string, 3)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req uploadRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+		}
+		if req.SourceRaceID == firstID {
+			// Sweep has enumerated the aged checkpoint, but a resumed session
+			// saves another lap while the first candidate's HTTP request runs.
+			resumed := newTestSummary(42, 1, 2)
+			resumed.Detail.FinalizeTrigger = "idle-timeout"
+			if id, err := u.saveWithStableID(rs, 42, resumed); err != nil || id != checkpointID {
+				t.Errorf("resumed save ID = %q, error = %v", id, err)
+			}
+		}
+		received <- req.SourceRaceID
+		json.NewEncoder(w).Encode(uploadResult{RaceID: "platform-" + req.SourceRaceID})
+	}))
+	defer server.Close()
+	u.sweep(context.Background(), server.URL, "test", rs.Load)
+	if len(received) != 2 {
+		t.Fatalf("sweep must defer the refreshed checkpoint and continue: %d uploads", len(received))
+	}
+	if first, last := <-received, <-received; first != firstID || last != lastID {
+		t.Fatalf("uploaded unexpected candidates: %q, %q", first, last)
+	}
+	if sc, err := u.readSidecar(checkpointID); err != nil || sc != nil {
+		t.Fatalf("live checkpoint must remain unsealed: %+v, error = %v", sc, err)
+	}
+}
 
 func testUploadLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
