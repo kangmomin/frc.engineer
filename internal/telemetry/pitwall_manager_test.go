@@ -212,6 +212,7 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 		lapData.LapData[i].CarPosition = uint8(i + 1)
 		lapData.LapData[i].CurrentLapNum = 30
 		lapData.LapData[i].LastLapTimeInMS = 92345
+		lapData.LapData[i].ResultStatus = 2 // transmitted in every RTC view
 		carStatus.CarStatusData[i].VisualTyreCompound = 17
 		carStatus.CarStatusData[i].ERSStoreEnergy = 3_300_000
 		telemetry.CarTelemetryData[i].Speed = 280

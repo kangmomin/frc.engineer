@@ -73,12 +73,14 @@ async function runBrowser() {
   });
   await call('Page.navigate', { url: `${server.resolvedUrls.local[0]}__webrtc-test` });
   await loaded;
-  const result = await call('Runtime.evaluate', {
-    expression: "import('/src/hooks/useWebRTCDataChannel.browser.tsx').then(m => m.run())",
-    awaitPromise: true, returnByValue: true,
-  });
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
-  console.log(result.result.value);
+  for (const suite of ['/src/hooks/useWebRTCDataChannel.browser.tsx', '/src/components/archiveRemote.browser.tsx']) {
+    const result = await call('Runtime.evaluate', {
+      expression: `import(${JSON.stringify(suite)}).then(m => m.run())`,
+      awaitPromise: true, returnByValue: true,
+    });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+    console.log(result.result.value);
+  }
 }
 
 let deadline;

@@ -59,13 +59,29 @@ func TestPitwallBroadcastVariantsPassThroughTelemetry(t *testing.T) {
 	if d.TopSpeed != 334 || d.DeltaToPlayer != -842 {
 		t.Fatalf("expected top speed and player delta to pass through, got %#v", d)
 	}
-	// View-based masking (not permission-based): cockpit hides DriverStatus,
-	// and ResultStatus is always masked.
+	// Cockpit hides DriverStatus, but race-result status is needed in every view.
 	if d.DriverStatus != 0 {
 		t.Fatalf("expected DriverStatus to be masked in cockpit view, got %d", d.DriverStatus)
 	}
-	if d.ResultStatus != 0 {
-		t.Fatalf("expected ResultStatus to always be masked, got %d", d.ResultStatus)
+	if d.ResultStatus != 5 {
+		t.Fatalf("expected ResultStatus to pass through, got %d", d.ResultStatus)
+	}
+}
+
+func TestPitwallBroadcastVariantsPreserveActiveAndRetiredStatus(t *testing.T) {
+	state := dto.PitwallState{Drivers: []dto.DriverInfo{
+		{Index: 0, ResultStatus: 2},
+		{Index: 1, ResultStatus: 3},
+		{Index: 2, ResultStatus: 7},
+	}}
+	variants := &pitwallBroadcastVariants{cache: make(map[string][]byte), state: state}
+	for _, view := range []string{"cockpit", "qualifying"} {
+		got := decodePitwallState(t, variants.resolve(view))
+		for i, want := range state.Drivers {
+			if got.Drivers[i].ResultStatus != want.ResultStatus {
+				t.Errorf("%s driver %d resultStatus = %d, want %d", view, i, got.Drivers[i].ResultStatus, want.ResultStatus)
+			}
+		}
 	}
 }
 

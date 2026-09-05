@@ -129,7 +129,6 @@ func (v *pitwallBroadcastVariants) resolve(view string) []byte {
 		if view != "qualifying" {
 			state.Drivers[i].DriverStatus = 0
 		}
-		state.Drivers[i].ResultStatus = 0
 	}
 
 	payload, err := dto.MsgpackMarshal(dto.WSResponse{

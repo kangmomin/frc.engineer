@@ -246,9 +246,10 @@ func (s *FileStorage) WalkReplay(
 	}
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	f, err := os.Open(s.filePath(id))
+	// Retain the original file snapshot (a temporary copy on Windows).
+	// Never keep the storage lock while callbacks wait for a replay client.
+	f, err := openReplayFile(s.filePath(id))
+	s.mu.RUnlock()
 	if err != nil {
 		return err
 	}

@@ -61,6 +61,7 @@ export function RemoteConnect({
   const [password, setPassword] = useState(initialPassword);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [roomsError, setRoomsError] = useState('');
+  const roomsRequestRef = useRef<AbortController | null>(null);
   const passwordRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -80,8 +81,12 @@ export function RemoteConnect({
   }, [initialPassword]);
 
   const fetchRooms = useCallback(async () => {
+    roomsRequestRef.current?.abort();
+    const controller = new AbortController();
+    roomsRequestRef.current = controller;
+    setRooms([]);
+    setLoadingRooms(false);
     if (!signalingUrl) {
-      setRooms([]);
       setRoomsError('');
       return;
     }
@@ -90,7 +95,6 @@ export function RemoteConnect({
     try {
       endpoint = getRoomsEndpoint(signalingUrl);
     } catch {
-      setRooms([]);
       setRoomsError('Invalid signaling URL.');
       return;
     }
@@ -98,11 +102,12 @@ export function RemoteConnect({
     setLoadingRooms(true);
     setRoomsError('');
     try {
-      const res = await fetch(endpoint);
+      const res = await fetch(endpoint, { signal: controller.signal });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
       const raw = await res.json();
+      if (controller.signal.aborted) return;
       const data = Array.isArray(raw) ? (raw as RoomListItem[]) : [];
       setRooms(data);
       setSelectedRoomId((current) => {
@@ -121,21 +126,24 @@ export function RemoteConnect({
         return data[0]?.roomId ?? '';
       });
     } catch {
+      if (controller.signal.aborted) return;
       setRooms([]);
       setRoomsError('Failed to load room list from signaling server.');
     } finally {
-      setLoadingRooms(false);
+      if (!controller.signal.aborted) setLoadingRooms(false);
     }
   }, [initialRoomCode, initialRoomId, signalingUrl]);
 
   useEffect(() => {
     void fetchRooms();
+    return () => roomsRequestRef.current?.abort();
   }, [fetchRooms]);
 
   useEffect(() => {
     if (!selectedRoomId) return;
     const selectedRoom = rooms.find((room) => room.roomId === selectedRoomId);
-    if (selectedRoom?.requiresPassword) {
+    if (!selectedRoom) return;
+    if (selectedRoom.requiresPassword) {
       passwordRef.current?.focus();
     } else {
       setPassword('');
@@ -144,16 +152,16 @@ export function RemoteConnect({
 
   const selectedRoom = rooms.find((room) => room.roomId === selectedRoomId) ?? null;
   const isConnecting = isConnectionPending(connectionState);
-  const isReady = !!selectedRoom && (!selectedRoom.requiresPassword || password.length > 0) && signalingUrl.length > 0;
+  const isReady = !loadingRooms && !!selectedRoom && (!selectedRoom.requiresPassword || password.length > 0) && signalingUrl.length > 0;
 
   const handleSubmit = useCallback(() => {
-    if (!selectedRoom || !signalingUrl) return;
+    if (!isReady || !selectedRoom) return;
     onConnect({
       signalingUrl,
       roomId: selectedRoom.roomId,
       password: selectedRoom.requiresPassword ? password : '',
     });
-  }, [onConnect, password, selectedRoom, signalingUrl]);
+  }, [isReady, onConnect, password, selectedRoom, signalingUrl]);
 
   return (
     <div className={styles.container}>

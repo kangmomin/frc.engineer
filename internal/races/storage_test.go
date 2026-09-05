@@ -1,15 +1,129 @@
 package races
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
 	"frc.engineer/internal/dto"
 )
+
+type blockedReplayWriter struct {
+	bytes.Buffer
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (w *blockedReplayWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.entered); <-w.release })
+	return w.Buffer.Write(p)
+}
+
+func TestReplayStreamDoesNotBlockSaveOrDelete(t *testing.T) {
+	for _, operation := range []string{"save other race", "replace same race", "delete same race"} {
+		t.Run(operation, func(t *testing.T) {
+			store, err := NewFileStorage(t.TempDir(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Exceed the decoder's read-ahead buffer to exercise the open file
+			// snapshot after the original path is replaced or deleted.
+			frames := make([]ReplayFrame, 300)
+			for i := range frames {
+				frames[i] = ReplayFrame{Timestamp: int64(i + 1000), Pitwall: &dto.PitwallState{PlayerIndex: 1}}
+			}
+			if _, err := store.Save(&RaceSummary{ID: "original", Replay: &ReplayTimeline{FrameIntervalMS: 500, Frames: frames}}); err != nil {
+				t.Fatal(err)
+			}
+			writer := &blockedReplayWriter{entered: make(chan struct{}), release: make(chan struct{})}
+			var release sync.Once
+			defer release.Do(func() { close(writer.release) })
+			streamDone := make(chan error, 1)
+			go func() { streamDone <- store.StreamReplayNDJSON("original", writer) }()
+			select {
+			case <-writer.entered:
+			case <-time.After(time.Second):
+				t.Fatal("replay did not reach the network writer")
+			}
+			mutationDone := make(chan error, 1)
+			go func() {
+				if operation == "delete same race" {
+					mutationDone <- store.Delete("original")
+					return
+				}
+				id := "original"
+				if operation == "save other race" {
+					id = "other"
+				}
+				_, err := store.Save(&RaceSummary{ID: id, Replay: &ReplayTimeline{Frames: []ReplayFrame{{Timestamp: 99999}}}})
+				mutationDone <- err
+			}()
+			select {
+			case err := <-mutationDone:
+				if err != nil {
+					t.Error(err)
+				}
+			case <-time.After(time.Second):
+				t.Error("storage mutation waited for the replay client")
+				release.Do(func() { close(writer.release) })
+				if err := <-mutationDone; err != nil {
+					t.Error(err)
+				}
+			}
+			release.Do(func() { close(writer.release) })
+			if err := <-streamDone; err != nil {
+				t.Fatal(err)
+			}
+			decoder := json.NewDecoder(&writer.Buffer)
+			var meta ReplayStreamMeta
+			if err := decoder.Decode(&meta); err != nil {
+				t.Fatal(err)
+			}
+			for i, want := range frames {
+				var got ReplayStreamFrame
+				if err := decoder.Decode(&got); err != nil {
+					t.Fatal(err)
+				}
+				if got.Frame.Timestamp != want.Timestamp {
+					t.Fatalf("frame %d timestamp = %d, want original snapshot %d", i, got.Frame.Timestamp, want.Timestamp)
+				}
+			}
+		})
+	}
+}
+
+func TestReplaySnapshotCleanup(t *testing.T) {
+	store, err := NewFileStorage(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotDir := t.TempDir()
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, snapshotDir)
+	}
+	if _, err := store.Save(&RaceSummary{ID: "replay", Replay: &ReplayTimeline{Frames: []ReplayFrame{{Timestamp: 1}}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, callbackErr := range []error{nil, io.ErrClosedPipe} {
+		err := store.WalkReplay("replay", func(ReplayStreamMeta) error { return callbackErr }, nil)
+		if !errors.Is(err, callbackErr) {
+			t.Fatalf("stream error = %v, want %v", err, callbackErr)
+		}
+		entries, err := os.ReadDir(snapshotDir)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("temporary snapshots left after stream: %v, error %v", entries, err)
+		}
+	}
+}
 
 func TestFileStorageSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()

@@ -476,20 +476,27 @@ func sendDataChannelWith(ch *webrtc.DataChannel, sendMu *sync.Mutex, outgoing in
 		return fmt.Errorf("peer data channel not open")
 	}
 
-	sendMu.Lock()
-	defer sendMu.Unlock()
 	deadline := time.Now().Add(wait)
 	for {
 		if ch.ReadyState() != webrtc.DataChannelStateOpen {
 			return fmt.Errorf("peer data channel closed")
 		}
-		if canQueueDataChannelMessage(ch.BufferedAmount(), outgoing) {
-			return send()
+		// Only the queue check and send are serialized. Archive backpressure
+		// must not hold up live telemetry (wait=0) or other peers' broadcasts.
+		if sendMu.TryLock() {
+			if canQueueDataChannelMessage(ch.BufferedAmount(), outgoing) {
+				defer sendMu.Unlock()
+				return send()
+			}
+			sendMu.Unlock()
 		}
 		if wait <= 0 || !time.Now().Before(deadline) {
 			return fmt.Errorf("peer data channel congested")
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(min(10*time.Millisecond, time.Until(deadline)))
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("peer data channel congested")
+		}
 	}
 }
 
