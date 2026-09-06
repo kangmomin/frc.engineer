@@ -67,7 +67,9 @@ export function deriveCutoffWatch(
     };
   }
 
-  const myPos = `P${player.position}`;
+  const sortedIndex = sorted.findIndex((driver) => driver.index === player.index);
+  const position = player.position > 0 && sortedIndex >= 0 ? sortedIndex + 1 : 0;
+  const myPos = position > 0 ? `P${position}` : DASH;
   const showCutoff = !segment.noCutoff && segment.safeCount != null;
 
   if (!showCutoff) {
@@ -92,13 +94,17 @@ export function deriveCutoffWatch(
   }
 
   const safeCount = segment.safeCount as number;
-  // 0-idx sorted 배열에서 safeCount번째 원소 = (safeCount+1)번째 순위 = 첫 탈락권.
-  const cutoffDriver = sorted[safeCount] ?? null;
-  const isSafe = player.position <= safeCount;
+  const isSafe = position > 0 && position <= safeCount;
+  // A safe driver defends against the first eliminated car; a driver outside
+  // the cutoff must beat the last advancing car, not their own row.
+  const cutoffIndex = isSafe ? safeCount : safeCount - 1;
+  const cutoffDriver = sorted[cutoffIndex] ?? null;
 
   const playerBest = getQualifyingBestLapTime(player);
   const cutoffBest = cutoffDriver ? getQualifyingBestLapTime(cutoffDriver) : 0;
-  const marginMs = playerBest > 0 && cutoffBest > 0 ? playerBest - cutoffBest : null;
+  const marginMs = position > 0 && playerBest > 0 && cutoffBest > 0
+    ? isSafe ? Math.max(0, cutoffBest - playerBest) : Math.max(1, playerBest - cutoffBest + 1)
+    : null;
   const marginAbsS = marginMs != null ? Math.abs(marginMs) / 1000 : null;
 
   const marginText = marginAbsS == null ? DASH : isSafe ? `Safe by ${marginAbsS.toFixed(3)}s` : `Need ${marginAbsS.toFixed(3)}s`;
@@ -108,11 +114,11 @@ export function deriveCutoffWatch(
     hasPlayer: true,
     showCutoff: true,
     myPos,
-    statusLabel: isSafe ? 'PROVISIONALLY THROUGH' : 'IN THE DROP ZONE',
+    statusLabel: position === 0 ? DASH : isSafe ? 'PROVISIONALLY THROUGH' : 'IN THE DROP ZONE',
     statusColor,
     marginText,
     marginColor: marginAbsS == null ? 'var(--text-muted)' : statusColor,
-    cutoffPosText: `P${safeCount + 1}`,
+    cutoffPosText: `P${cutoffIndex + 1}`,
     cutoffCodeText: cutoffDriver ? codes.get(cutoffDriver.index) ?? DASH : DASH,
     marginTileText: marginAbsS == null ? DASH : `+${marginAbsS.toFixed(3)}s`,
     marginTileTone: marginAbsS != null && marginAbsS > MARGIN_TERTIARY_THRESHOLD_S ? 'tertiary' : 'secondary',

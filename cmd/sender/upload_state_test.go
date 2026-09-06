@@ -11,12 +11,86 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
 )
+
+func TestSweepAdvancesPastPermanentRejectionsAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+	logger := testUploadLogger()
+	rs, err := races.NewFileStorage(dir, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i <= sweepMaxPerRun; i++ {
+		summary := newTestSummary(uint64(i+1), 1)
+		summary.ID = fmt.Sprintf("capture_%03d", i)
+		if _, err := rs.Save(summary); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var mu sync.Mutex
+	attempts := make(map[string]int)
+	allowRetry := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request uploadRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+		}
+		mu.Lock()
+		attempts[request.SourceRaceID]++
+		reject := request.SourceRaceID != "capture_000" && !allowRetry
+		mu.Unlock()
+		if reject {
+			http.Error(w, "invalid capture", http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(uploadResult{RaceID: "platform-" + request.SourceRaceID})
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	u := newUploadState(dir, logger)
+	u.sweep(ctx, server.URL, "test", rs.Load)
+	sc, err := u.readSidecar("capture_020")
+	if err != nil || sc == nil || sc.RejectedAt == "" || sc.SealedAt == "" || sc.UploadedAt != "" {
+		t.Fatalf("rejection was not durably sealed: %+v / %v", sc, err)
+	}
+	u = newUploadState(dir, logger)
+	u.sweep(ctx, server.URL, "test", rs.Load)
+	mu.Lock()
+	validAttempts, rejectedAttempts := attempts["capture_000"], attempts["capture_020"]
+	allowRetry = true
+	mu.Unlock()
+	if validAttempts != 1 || rejectedAttempts != 1 {
+		t.Fatalf("backlog starved or rejection retried: valid=%d rejected=%d", validAttempts, rejectedAttempts)
+	}
+	// The explicit API remains able to retry the same sealed content.
+	if _, _, err := u.uploadSealed(ctx, server.URL, "test", "capture_020", rs.Load); err != nil {
+		t.Fatal(err)
+	}
+	sc, err = u.readSidecar("capture_020")
+	if err != nil || sc.UploadedAt == "" || sc.RejectedAt != "" {
+		t.Fatalf("manual retry state: %+v / %v", sc, err)
+	}
+}
+
+func TestTransientUploadFailuresRemainRetryable(t *testing.T) {
+	for _, status := range []int{0, 401, 403, 408, 409, 429, 500, 503} {
+		if permanentUploadRejection(status) {
+			t.Fatalf("status %d must remain retryable", status)
+		}
+	}
+	for _, status := range []int{400, 413, 415, 422} {
+		if !permanentUploadRejection(status) {
+			t.Fatalf("status %d must not starve later captures", status)
+		}
+	}
+}
 
 func TestUploadSealedUsesFinalSnapshotAfterCheckpointWasRead(t *testing.T) {
 	dir := t.TempDir()
@@ -330,6 +404,7 @@ func TestSaveWithStableIDMergesAdoptedFile(t *testing.T) {
 	}
 	// 이전 실행이 남긴 파일: 랩 1의 다이내믹스 보유.
 	prev := newTestSummary(42, 1)
+	prev.Replay = &races.ReplayTimeline{FrameIntervalMS: 500, Frames: []races.ReplayFrame{{Timestamp: 1000}, {Timestamp: 1500}}}
 	prevID, err := rs.Save(prev)
 	if err != nil {
 		t.Fatal(err)
@@ -339,6 +414,7 @@ func TestSaveWithStableIDMergesAdoptedFile(t *testing.T) {
 	u := newUploadState(dir, testUploadLogger())
 	next := newTestSummary(42, 1, 2)
 	next.Detail.Dynamics = next.Detail.Dynamics[1:] // 새 실행은 랩 2 다이내믹스만 관측
+	next.Replay = &races.ReplayTimeline{FrameIntervalMS: 500, Frames: []races.ReplayFrame{{Timestamp: 2000}}}
 	savedID, err := u.saveWithStableID(rs, 42, next)
 	if err != nil || savedID != prevID {
 		t.Fatalf("adopted save id = %q/%v, want %q", savedID, err, prevID)
@@ -349,6 +425,9 @@ func TestSaveWithStableIDMergesAdoptedFile(t *testing.T) {
 	}
 	if len(merged.Detail.Dynamics) != 2 {
 		t.Fatalf("merged dynamics len = %d, want 2 (union with pre-restart data)", len(merged.Detail.Dynamics))
+	}
+	if merged.Replay == nil || len(merged.Replay.Frames) != 3 || merged.Replay.Frames[0].Timestamp != 1000 {
+		t.Fatalf("restart discarded earlier replay frames: %+v", merged.Replay)
 	}
 
 	// 세 번째 저장(thisRun 경로): 이번 실행 관측분(랩 3)만 든 요약이 와도,
@@ -365,6 +444,9 @@ func TestSaveWithStableIDMergesAdoptedFile(t *testing.T) {
 	}
 	if len(final.Detail.Dynamics) != 3 {
 		t.Fatalf("final dynamics len = %d, want 3 (thisRun re-save must keep merged laps)", len(final.Detail.Dynamics))
+	}
+	if final.Replay == nil || len(final.Replay.Frames) != 3 || final.Replay.Frames[2].Timestamp != 2000 {
+		t.Fatalf("repeated save discarded merged replay frames: %+v", final.Replay)
 	}
 }
 

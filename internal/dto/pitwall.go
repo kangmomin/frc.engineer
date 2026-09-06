@@ -2,6 +2,7 @@ package dto
 
 // PitwallState is the comprehensive state DTO broadcast to pitwall clients
 type PitwallState struct {
+	SessionUID           string        `json:"sessionUid,omitempty"` // uint64 identity must retain JavaScript precision, including before Session arrives
 	Session              *SessionInfo  `json:"session"`
 	Drivers              []DriverInfo  `json:"drivers"`
 	Positions            []CarPosition `json:"positions"`
@@ -73,6 +74,9 @@ type CrossoverPredictionDTO struct {
 
 // SessionInfo contains session-level data (weather, track, safety car)
 type SessionInfo struct {
+	Formula                uint8                   `json:"formula"`
+	QualifyingGridSize     int                     `json:"qualifyingGridSize,omitempty"` // observed full roster, never packet capacity
+	SessionUID             string                  `json:"sessionUid,omitempty"`
 	Weather                string                  `json:"weather"`
 	TrackTemp              float32                 `json:"trackTemp"`
 	AirTemp                float32                 `json:"airTemp"`
@@ -94,31 +98,32 @@ type SessionInfo struct {
 
 // DriverInfo contains per-driver race data
 type DriverInfo struct {
-	Index           int     `json:"index"`
-	Name            string  `json:"name"`
-	TeamID          int     `json:"teamId"`
-	AIControlled    bool    `json:"aiControlled"`
-	Position        int     `json:"position"`
-	CurrentLapNum   int     `json:"currentLapNum"`
-	Speed           uint16  `json:"speed,omitempty"`
-	TopSpeed        int     `json:"topSpeed,omitempty"`
-	Throttle        float32 `json:"throttle,omitempty"`
-	Brake           float32 `json:"brake,omitempty"`
-	Gear            int8    `json:"gear,omitempty"`
-	Steering        float32 `json:"steering,omitempty"`
-	DRSActivated    bool    `json:"drsActivated"`
+	Index         int     `json:"index"`
+	Name          string  `json:"name"`
+	TeamID        int     `json:"teamId"`
+	AIControlled  bool    `json:"aiControlled"`
+	Position      int     `json:"position"`
+	CurrentLapNum int     `json:"currentLapNum"`
+	Speed         uint16  `json:"speed,omitempty"`
+	TopSpeed      int     `json:"topSpeed,omitempty"`
+	Throttle      float32 `json:"throttle,omitempty"`
+	Brake         float32 `json:"brake,omitempty"`
+	Gear          int8    `json:"gear,omitempty"`
+	Steering      float32 `json:"steering,omitempty"`
+	DRSActivated  bool    `json:"drsActivated"`
 	// 2026 Season Pack 전용 (F1 25에서는 항상 zero-value로 omit)
-	OvertakeActive    bool `json:"overtakeActive,omitempty"`
-	OvertakeAvailable bool `json:"overtakeAvailable,omitempty"`
-	ActiveAeroMode    int  `json:"activeAeroMode,omitempty"` // 0=corner(Z), 1=straight(X)
-	LastLapTime     float32 `json:"lastLapTime"`
-	BestLapTime     float32 `json:"bestLapTime"`
-	TireCompound    string  `json:"tireCompound"`
-	TireAge         int     `json:"tireAge"`
-	TireWear        [4]int  `json:"tireWear"`
-	TireSurfaceTemp [4]int  `json:"tireSurfaceTemp"`
-	TireInnerTemp   [4]int  `json:"tireInnerTemp"`
-	BrakeTemp       [4]int  `json:"brakeTemp,omitempty"`
+	OvertakeActive          bool    `json:"overtakeActive,omitempty"`
+	OvertakeAvailable       bool    `json:"overtakeAvailable,omitempty"`
+	ActiveAeroMode          int     `json:"activeAeroMode,omitempty"` // 0=corner(Z), 1=straight(X)
+	LastLapTime             float32 `json:"lastLapTime"`
+	BestLapTime             float32 `json:"bestLapTime"`
+	SessionHistoryAvailable bool    `json:"sessionHistoryAvailable,omitempty"`
+	TireCompound            string  `json:"tireCompound"`
+	TireAge                 int     `json:"tireAge"`
+	TireWear                [4]int  `json:"tireWear"`
+	TireSurfaceTemp         [4]int  `json:"tireSurfaceTemp"`
+	TireInnerTemp           [4]int  `json:"tireInnerTemp"`
+	BrakeTemp               [4]int  `json:"brakeTemp,omitempty"`
 
 	// Car Controls
 	BrakeBias       int `json:"brakeBias"`

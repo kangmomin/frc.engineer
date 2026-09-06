@@ -26,6 +26,7 @@ async function runBrowser() {
   const chromeReady = new Promise((resolve, reject) => {
     chrome = spawn(process.env.CHROME_BIN || 'google-chrome', [
       '--headless=new', '--no-sandbox', '--disable-gpu', '--remote-debugging-port=0',
+      '--autoplay-policy=no-user-gesture-required',
       `--user-data-dir=${profile}`, 'about:blank',
     ], { stdio: ['ignore', 'ignore', 'pipe'] });
     chrome.once('error', reject);
@@ -73,7 +74,7 @@ async function runBrowser() {
   });
   await call('Page.navigate', { url: `${server.resolvedUrls.local[0]}__webrtc-test` });
   await loaded;
-  for (const suite of ['/src/hooks/useWebRTCDataChannel.browser.tsx', '/src/components/archiveRemote.browser.tsx']) {
+  for (const suite of ['/src/hooks/useWebRTCDataChannel.browser.tsx', '/src/components/archiveRemote.browser.tsx', '/src/intercom/runtime.browser.ts', '/src/views/qualifying/qualifying.browser.tsx']) {
     const result = await call('Runtime.evaluate', {
       expression: `import(${JSON.stringify(suite)}).then(m => m.run())`,
       awaitPromise: true, returnByValue: true,
@@ -88,7 +89,7 @@ try {
   await Promise.race([
     runBrowser(),
     new Promise((_resolve, reject) => {
-      deadline = setTimeout(() => reject(new Error('Chrome WebRTC regression timed out.')), 45_000);
+      deadline = setTimeout(() => reject(new Error('Chrome WebRTC regression timed out.')), 90_000);
     }),
   ]);
 } finally {

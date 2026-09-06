@@ -463,12 +463,6 @@ func fastestLap(laps []LapSummary) (int, uint32) {
 	if bestLapNum != 0 {
 		return bestLapNum, bestLapTime
 	}
-	for _, lap := range laps {
-		if lap.LapTimeMs > 0 && lap.LapTimeMs < bestLapTime {
-			bestLapTime = lap.LapTimeMs
-			bestLapNum = lap.LapNum
-		}
-	}
 	if bestLapTime == uint32(math.MaxUint32) {
 		bestLapTime = 0
 	}

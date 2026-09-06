@@ -219,6 +219,48 @@ func TestBuildUploadRequestCarriesRestartMergedPitMeasurement(t *testing.T) {
 	}
 }
 
+func TestRestartDebriefPreservesEachObservationGroupAndObservedZeros(t *testing.T) {
+	previous := senderGoldenV2Summary()
+	previous.PrivateCapture.Provenance.TyreSetsObserved = true
+	previous.Debrief.Tyres = races.RaceTyreSummary{
+		FinalCompound: "Medium", FinalAge: 12, AverageWearPct: 31, PeakWearPct: 35,
+		FinalSetWearPct: 32, LifeSpan: 30, UsableLife: 25, LifeRemainingPct: 60,
+	}
+	previous.Debrief.Penalties = races.RacePenaltySummary{TimePenaltySeconds: 5, Warnings: 3}
+	for _, observed := range []bool{false, true} {
+		next := senderGoldenV2Summary()
+		next.Debrief.Tyres = races.RaceTyreSummary{}
+		next.Debrief.Penalties = races.RacePenaltySummary{}
+		next.PrivateCapture.Provenance = dto.RaceCaptureProvenance{
+			CarStatusObserved: observed, CarDamageObserved: observed, TyreSetsObserved: observed, LapDataObserved: observed,
+		}
+		races.MergeAdoptedSummary(previous, next)
+		wire := mapUploadDebrief(next)
+		wantAge, wantWear, wantSet, wantWarnings := 12, 31, 32, 3
+		if observed {
+			wantAge, wantWear, wantSet, wantWarnings = 0, 0, 0, 0
+		}
+		if wire.Tyres.FinalAge == nil || *wire.Tyres.FinalAge != wantAge ||
+			wire.Tyres.AverageWearPct == nil || *wire.Tyres.AverageWearPct != wantWear ||
+			wire.Tyres.FinalSetWearPct == nil || *wire.Tyres.FinalSetWearPct != wantSet ||
+			wire.Penalties.Warnings != wantWarnings {
+			t.Fatalf("observed=%v: upload debrief %+v / %+v", observed, wire.Tyres, wire.Penalties)
+		}
+		if !observed && next.Debrief.Tyres != previous.Debrief.Tyres {
+			t.Fatalf("lost tyre facts: %+v", next.Debrief.Tyres)
+		}
+	}
+	// A new CarStatus packet says nothing about damage or fitted-set wear.
+	next := senderGoldenV2Summary()
+	next.Debrief.Tyres = races.RaceTyreSummary{FinalCompound: "Soft"}
+	next.PrivateCapture.Provenance = dto.RaceCaptureProvenance{CarStatusObserved: true}
+	races.MergeAdoptedSummary(previous, next)
+	if next.Debrief.Tyres.FinalCompound != "Soft" || next.Debrief.Tyres.FinalAge != 0 ||
+		next.Debrief.Tyres.PeakWearPct != 35 || next.Debrief.Tyres.LifeRemainingPct != 60 {
+		t.Fatalf("mixed observation groups: %+v", next.Debrief.Tyres)
+	}
+}
+
 func TestBuildUploadRequestCarriesRestartMergedZeroStationaryMeasurement(t *testing.T) {
 	previous := senderGoldenV2Summary()
 	previous.PrivateCapture.RunID = "previous-process"

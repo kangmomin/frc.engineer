@@ -5,9 +5,16 @@ import type {
   ConnectionState,
   RaceControlNotification,
   RaceSummary,
+  ReplayFrame,
 } from '../types/telemetry';
 
 export type ConnectionMode = 'local' | 'remote';
+
+export interface ReplayContext {
+  sourceId: string;
+  frames: ReplayFrame[];
+  index: number;
+}
 
 interface TelemetryState {
   // Connection
@@ -16,6 +23,7 @@ interface TelemetryState {
   connectionMode: ConnectionMode;
   setConnectionMode: (mode: ConnectionMode) => void;
   playbackActive: boolean;
+  replayContext: ReplayContext | null;
   setPlaybackActive: (active: boolean) => void;
   /** Explicit sender-room boundary; transient reconnects keep the same generation. */
   roomGeneration: number;
@@ -28,7 +36,7 @@ interface TelemetryState {
   applyReplayFrame: (frame: {
     pitwall: PitwallState;
     raceControl?: RaceControlNotification[];
-  }) => void;
+  }, context?: ReplayContext) => void;
 
   // Events & Notifications
   raceControlNotifications: RaceControlNotification[];
@@ -45,6 +53,7 @@ interface TelemetryState {
 }
 
 const MAX_NOTIFICATIONS = 50;
+let liveSessionUid = '';
 
 // 리플레이 진입(false→true) 시점의 라이브 상태 스냅샷 — 재생 종료 시 복원해
 // 리플레이 프레임이 라이브 상태를 오염시키지 않도록 한다.
@@ -59,13 +68,16 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
   connectionMode: 'local',
   setConnectionMode: (mode) => set({ connectionMode: mode }),
   playbackActive: false,
+  replayContext: null,
   roomGeneration: 0,
   resetRoom: () => {
     liveSnapshot = null;
+    liveSessionUid = '';
     set((state) => ({
       roomGeneration: state.roomGeneration + 1,
       connectionState: 'disconnected',
       playbackActive: false,
+      replayContext: null,
       pitwallState: null,
       raceControlNotifications: [],
       raceResult: null,
@@ -84,23 +96,31 @@ export const useTelemetryStore = create<TelemetryState>((set) => ({
       }
       const restored = liveSnapshot;
       liveSnapshot = null;
-      if (!restored) return { playbackActive: false };
+      if (!restored) return { playbackActive: false, replayContext: null };
       return {
         playbackActive: false,
+      replayContext: null,
         pitwallState: restored.pitwallState,
         raceControlNotifications: restored.raceControlNotifications,
       };
     }),
 
   pitwallState: null,
-  setPitwallState: (state) => set({ pitwallState: state }),
+  setPitwallState: (pitwallState) => set((state) => {
+    const previousUid = liveSessionUid || state.pitwallState?.sessionUid || state.pitwallState?.session?.sessionUid;
+    const nextUid = pitwallState?.sessionUid ?? pitwallState?.session?.sessionUid;
+    const changed = Boolean(previousUid && nextUid && previousUid !== nextUid);
+    if (nextUid) liveSessionUid = nextUid;
+    return { pitwallState, ...(changed ? { raceControlNotifications: [], raceResult: null } : {}) };
+  }),
   updatePositions: (positions) =>
     set((state) => {
       if (!state.pitwallState) return state;
       return { pitwallState: { ...state.pitwallState, positions } };
     }),
-  applyReplayFrame: (frame) =>
+  applyReplayFrame: (frame, context) =>
     set({
+      replayContext: context ?? null,
       pitwallState: frame.pitwall,
       raceControlNotifications: frame.raceControl ?? [],
     }),

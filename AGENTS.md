@@ -9,6 +9,8 @@
 
 > deploy 레포(`kangmomin/frc.engineer-deploy`)는 Minmo Driver Pack 인스톨러를 배포하는 단일 배포 지점이다.
 
+> 100MiB를 넘는 `Minmo-Driver-Pack-Setup.exe`는 deploy 레포에서 Git LFS로 추적한다. 배포 클론에는 Git LFS를 설치하고, GitHub Release에는 LFS pointer가 아닌 실제 installer 파일을 업로드한다.
+
 ### Version Source of Truth
 
 릴리스 버전은 **`apps/setup-manager/package.json`의 `version` 필드**가 기준이다.

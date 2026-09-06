@@ -1,10 +1,44 @@
 package races
 
 import (
+	"reflect"
 	"testing"
 
 	"frc.engineer/internal/dto"
 )
+
+func TestMergeReplayPreservesRestartHistoryAndIsIdempotent(t *testing.T) {
+	previous := &RaceSummary{Replay: &ReplayTimeline{
+		FrameIntervalMS: 500, Session: &dto.SessionInfo{TrackID: 0}, TrackMap: &dto.TrackMapDTO{},
+		Frames: []ReplayFrame{{Timestamp: 1000}, {Timestamp: 1500}},
+	}}
+	next := &RaceSummary{Replay: &ReplayTimeline{Frames: []ReplayFrame{
+		{Timestamp: 2000}, {Timestamp: 1500, Pitwall: &dto.PitwallState{PlayerIndex: 3}},
+	}}}
+	for range 2 {
+		MergeAdoptedSummary(previous, next)
+		if len(next.Replay.Frames) != 3 || next.Replay.Frames[0].Timestamp != 1000 ||
+			next.Replay.Frames[1].Timestamp != 1500 || next.Replay.Frames[2].Timestamp != 2000 ||
+			next.Replay.Frames[1].Pitwall.PlayerIndex != 3 {
+			t.Fatalf("merged replay: %+v", next.Replay.Frames)
+		}
+		if next.Replay.FrameIntervalMS != 500 || next.Replay.Session == nil || next.Replay.TrackMap == nil {
+			t.Fatalf("lost replay metadata: %+v", next.Replay)
+		}
+	}
+	if len(previous.Replay.Frames) != 2 || previous.Replay.Frames[1].Pitwall != nil {
+		t.Fatal("merge mutated previous frames")
+	}
+	missing := &RaceSummary{}
+	MergeAdoptedSummary(next, missing)
+	if !reflect.DeepEqual(missing.Replay, next.Replay) {
+		t.Fatal("nil resumed replay discarded history")
+	}
+	missing.Replay.Frames[0].Timestamp = 1
+	if next.Replay.Frames[0].Timestamp != 1000 {
+		t.Fatal("merged frame slice aliases the previous slice")
+	}
+}
 
 func TestMergeAdoptedSummary(t *testing.T) {
 	prev := &RaceSummary{

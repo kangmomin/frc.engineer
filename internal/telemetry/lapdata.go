@@ -17,9 +17,9 @@ type TelemetryPoint struct {
 type LapTelemetry struct {
 	TrackID    int8             `json:"trackId"`
 	LapTimeMS  uint32           `json:"lapTimeMs"`
-	Sector1MS  uint16           `json:"sector1Ms"`
-	Sector2MS  uint16           `json:"sector2Ms"`
-	Sector3MS  uint16           `json:"sector3Ms"`
+	Sector1MS  uint32           `json:"sector1Ms"`
+	Sector2MS  uint32           `json:"sector2Ms"`
+	Sector3MS  uint32           `json:"sector3Ms"`
 	DataPoints []TelemetryPoint `json:"dataPoints"`
 	CreatedAt  time.Time        `json:"createdAt"`
 }
@@ -39,7 +39,7 @@ func (lt *LapTelemetry) AddPoint(point TelemetryPoint) {
 }
 
 // SetLapTimes sets the final lap times after lap completion
-func (lt *LapTelemetry) SetLapTimes(lapTimeMS uint32, sector1MS, sector2MS, sector3MS uint16) {
+func (lt *LapTelemetry) SetLapTimes(lapTimeMS uint32, sector1MS, sector2MS, sector3MS uint32) {
 	lt.LapTimeMS = lapTimeMS
 	lt.Sector1MS = sector1MS
 	lt.Sector2MS = sector2MS

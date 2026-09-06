@@ -93,17 +93,17 @@ export function useBattleEngine(
   safetyCar: string | undefined,
 ): BattleInfo[] {
   const historyRef = useRef<Map<string, PairHistory>>(new Map());
-  const [battles, setBattles] = useState<BattleInfo[]>([]);
+  const identity = `${sessionKey}|${epoch}`;
+  const [result, setResult] = useState<{ identity: string; battles: BattleInfo[] }>({ identity, battles: [] });
 
   // 세션 변경/리스타트·리플레이 rewind(epoch bump) 시 히스토리 전체 리셋.
   useEffect(() => {
     historyRef.current = new Map();
-    setBattles([]);
   }, [sessionKey, epoch]);
 
   useEffect(() => {
     if (drivers.length < 2) {
-      setBattles([]);
+      setResult({ identity, battles: [] });
       return;
     }
 
@@ -212,12 +212,8 @@ export function useBattleEngine(
       .slice(0, MAX_BATTLES)
       .sort((a, b) => a.forPosition - b.forPosition);
 
-    setBattles(top);
-    // drivers 참조가 바뀔 때(=매 텔레메트리 프레임)만 재계산한다. is2026/safetyCar는
-    // 동일 프레임의 session에서 함께 갱신되므로 drivers 변경에 자연히 동기화되고,
-    // sessionKey/epoch는 별도 리셋 effect가 전담한다 — 의도적으로 deps에서 제외.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drivers]);
+    setResult({ identity, battles: top });
+  }, [drivers, identity, is2026, safetyCar]);
 
-  return battles;
+  return result.identity === identity ? result.battles : [];
 }

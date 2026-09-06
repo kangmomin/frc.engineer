@@ -13,6 +13,7 @@ const (
 	MessageTypeGetRaceSummary      = "getRaceSummary"
 	MessageTypeRaceSummary         = "raceSummary"
 	MessageTypeGetRaceReplay       = "getRaceReplay"
+	MessageTypeCancelRaceReplay    = "cancelRaceReplay"
 	MessageTypeRaceReplayMeta      = "raceReplayMeta"
 	MessageTypeRaceReplayChunk     = "raceReplayChunk"
 	MessageTypeRaceReplayDone      = "raceReplayDone"
@@ -64,9 +65,9 @@ type LapDataResponse struct {
 type LapTelemetryDTO struct {
 	TrackID    int8                `json:"trackId"`
 	LapTimeMS  uint32              `json:"lapTimeMs"`
-	Sector1MS  uint16              `json:"sector1Ms"`
-	Sector2MS  uint16              `json:"sector2Ms"`
-	Sector3MS  uint16              `json:"sector3Ms"`
+	Sector1MS  uint32              `json:"sector1Ms"`
+	Sector2MS  uint32              `json:"sector2Ms"`
+	Sector3MS  uint32              `json:"sector3Ms"`
 	DataPoints []TelemetryPointDTO `json:"dataPoints"`
 }
 

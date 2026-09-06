@@ -41,6 +41,7 @@ func MergeAdoptedSummary(prev, next *RaceSummary) {
 		}
 	}
 	mergeDebrief(prev, next)
+	mergeReplay(prev, next)
 	mergePrivateCapture(prev, next)
 	mergeIncidents(prev, next)
 	RefreshLocalCompleteness(next)
@@ -59,6 +60,29 @@ func mergeDebrief(prev, next *RaceSummary) {
 		next.Debrief = &copyDebrief
 		return
 	}
+	// Read the original provenance before mergePrivateCapture ORs its flags.
+	// An observed zero is a value; only missing observation groups are restored.
+	var oldFacts, newFacts dto.RaceCaptureProvenance
+	if prev.PrivateCapture != nil {
+		oldFacts = prev.PrivateCapture.Provenance
+	}
+	if next.PrivateCapture != nil {
+		newFacts = next.PrivateCapture.Provenance
+	}
+	oldTyres, newTyres := prev.Debrief.Tyres, &next.Debrief.Tyres
+	if oldFacts.CarStatusObserved && !newFacts.CarStatusObserved {
+		newTyres.FinalCompound, newTyres.FinalAge = oldTyres.FinalCompound, oldTyres.FinalAge
+	}
+	if oldFacts.CarDamageObserved && !newFacts.CarDamageObserved {
+		newTyres.AverageWearPct, newTyres.PeakWearPct = oldTyres.AverageWearPct, oldTyres.PeakWearPct
+	}
+	if oldFacts.TyreSetsObserved && !newFacts.TyreSetsObserved {
+		newTyres.FinalSetWearPct, newTyres.LifeSpan = oldTyres.FinalSetWearPct, oldTyres.LifeSpan
+		newTyres.UsableLife, newTyres.LifeRemainingPct = oldTyres.UsableLife, oldTyres.LifeRemainingPct
+	}
+	if oldFacts.LapDataObserved && !newFacts.LapDataObserved {
+		next.Debrief.Penalties = prev.Debrief.Penalties
+	}
 	oldPit, newPit := prev.Debrief.Pit, &next.Debrief.Pit
 	if newPit.Stops < oldPit.Stops {
 		newPit.Stops = oldPit.Stops
@@ -68,6 +92,43 @@ func mergeDebrief(prev, next *RaceSummary) {
 		newPit.PitLaneTimeMS = oldPit.PitLaneTimeMS
 		newPit.StationaryTimeMS = oldPit.StationaryTimeMS
 	}
+}
+
+func mergeReplay(prev, next *RaceSummary) {
+	if prev.Replay == nil {
+		return
+	}
+	if next.Replay == nil {
+		copyReplay := *prev.Replay
+		copyReplay.Frames = append([]ReplayFrame(nil), prev.Replay.Frames...)
+		next.Replay = &copyReplay
+		return
+	}
+	old, current := prev.Replay, next.Replay
+	if current.TrackMap == nil {
+		current.TrackMap = old.TrackMap
+	}
+	if current.Session == nil {
+		current.Session = old.Session
+	}
+	if current.FrameIntervalMS <= 0 {
+		current.FrameIntervalMS = old.FrameIntervalMS
+	}
+	// Frame timestamps are capture wall-clock milliseconds, not session time
+	// (which can rewind). The new snapshot wins an overlapping checkpoint.
+	frames := make(map[int64]ReplayFrame, len(old.Frames)+len(current.Frames))
+	for _, frame := range old.Frames {
+		frames[frame.Timestamp] = frame
+	}
+	for _, frame := range current.Frames {
+		frames[frame.Timestamp] = frame
+	}
+	merged := make([]ReplayFrame, 0, len(frames))
+	for _, frame := range frames {
+		merged = append(merged, frame)
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Timestamp < merged[j].Timestamp })
+	current.Frames = merged
 }
 
 func mergeDynamics(prev, next *RaceDetail) {

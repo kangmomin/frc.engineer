@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DriverInfo, PitwallState, RaceControlNotification, SessionInfo } from '../types/telemetry';
 import { useTelemetryStore } from './telemetryStore';
+import { sessionIdentity } from './sessionIdentity';
 
 /**
  * 레이스 메타 추적 스토어.
@@ -14,7 +15,7 @@ import { useTelemetryStore } from './telemetryStore';
 
 export type GridStatus = 'empty' | 'captured' | 'unavailable';
 
-interface RaceMetaState {
+export interface RaceMetaState {
   sessionKey: string;
   /** 세션 변경/리스타트/리플레이 rewind 마다 증가 — 배틀·페이스 히스토리 리셋 키 */
   epoch: number;
@@ -28,14 +29,11 @@ interface RaceMetaState {
   /** notification.id → 최초 관측 리더 lap */
   notificationLaps: Record<string, number>;
   ingest: (
-    session: SessionInfo,
+    session: SessionInfo | null,
     drivers: DriverInfo[],
     notifications: RaceControlNotification[],
+    sessionUid?: string,
   ) => void;
-}
-
-function sessionKeyOf(session: SessionInfo): string {
-  return `${session.trackId}|${session.sessionType}|${session.totalLaps}`;
 }
 
 function maxLeaderLap(drivers: DriverInfo[]): number {
@@ -44,7 +42,7 @@ function maxLeaderLap(drivers: DriverInfo[]): number {
   return max;
 }
 
-export const useRaceMetaStore = create<RaceMetaState>((set) => ({
+export const createRaceMetaStore = () => create<RaceMetaState>((set) => ({
   sessionKey: '',
   epoch: 0,
   gridStatus: 'empty',
@@ -54,12 +52,10 @@ export const useRaceMetaStore = create<RaceMetaState>((set) => ({
   firstSeenLap: 0,
   notificationLaps: {},
 
-  ingest: (session, drivers, notifications) =>
+  ingest: (session, drivers, notifications, sessionUid) =>
     set((state) => {
-      if (drivers.length === 0) return state;
-
-      const key = sessionKeyOf(session);
-      const isRace = /^Race/i.test(session.sessionType);
+      const key = sessionIdentity(session, sessionUid ?? session?.sessionUid);
+      const isRace = /^Race/i.test(session?.sessionType ?? '');
       const leaderLap = maxLeaderLap(drivers);
 
       const resetFrom = (base: RaceMetaState): RaceMetaState => ({
@@ -80,6 +76,7 @@ export const useRaceMetaStore = create<RaceMetaState>((set) => ({
       } else if (leaderLap > 0 && state.observedLeaderLap - leaderLap >= 1) {
         s = resetFrom(state);
       }
+      if (!session || drivers.length === 0) return s;
 
       const observedLeaderLap = Math.max(s.observedLeaderLap, leaderLap);
 
@@ -92,9 +89,11 @@ export const useRaceMetaStore = create<RaceMetaState>((set) => ({
         if (leaderLap <= 1) {
           const captured: Record<number, number> = {};
           for (const d of drivers) if (d.position > 0) captured[d.index] = d.position;
-          grid = captured;
-          gridStatus = 'captured';
-          capturedAtLap = leaderLap;
+          if (Object.keys(captured).length > 0) {
+            grid = captured;
+            gridStatus = 'captured';
+            capturedAtLap = leaderLap;
+          }
         } else {
           gridStatus = 'unavailable';
           firstSeenLap = leaderLap;
@@ -143,6 +142,8 @@ export const useRaceMetaStore = create<RaceMetaState>((set) => ({
     }),
 }));
 
+export const useRaceMetaStore = createRaceMetaStore();
+
 let trackerStarted = false;
 // 재생 중 마지막으로 관측한 리플레이 프레임 — 재생 종료 직후 pitwallState 에
 // 그대로 남아 있으면 라이브로 오인해 ingest 하지 않도록 기억한다.
@@ -167,12 +168,12 @@ export function startRaceMetaTracker(): void {
       lastReplayState = pitwallState;
       return;
     }
-    if (!pitwallState?.session) return;
+    if (!pitwallState || (!pitwallState.session && !pitwallState.sessionUid)) return;
     if (pitwallState === lastReplayState) return;
     lastReplayState = null;
     useRaceMetaStore
       .getState()
-      .ingest(pitwallState.session, pitwallState.drivers, raceControlNotifications);
+      .ingest(pitwallState.session, pitwallState.drivers, raceControlNotifications, pitwallState.sessionUid);
   };
   useTelemetryStore.subscribe(run);
   run();

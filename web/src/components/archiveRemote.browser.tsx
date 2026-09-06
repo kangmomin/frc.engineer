@@ -2,6 +2,8 @@ import { createRoot } from 'react-dom/client';
 import { RaceArchiveDrawer } from './races/RaceArchiveDrawer';
 import type { RaceArchiveDataSource } from './races/replayArchive';
 import { RemoteConnect } from './remote/RemoteConnect';
+import { useTelemetryStore } from '../store/telemetryStore';
+import type { ReplayFrame, ReplayStreamMeta } from '../types/telemetry';
 
 const wait = () => new Promise<void>((resolve) => window.setTimeout(resolve, 10));
 
@@ -145,8 +147,55 @@ async function roomRequests(): Promise<void> {
   }
 }
 
+async function replaySourceOrdering(): Promise<void> {
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  const pending = new Map<string, { signal?: AbortSignal; resolve: (bundle: { meta: ReplayStreamMeta | null; frames: ReplayFrame[] }) => void }>();
+  const source: RaceArchiveDataSource = {
+    listRaces: async () => ['A', 'B', 'C'].map((id) => ({
+      id, savedAtLocal: '2026-09-06', trackName: `Track ${id}`, sessionType: 'Race', playerName: id,
+      finalPosition: 1, fileSizeBytes: 100, dataStorageMode: 'advanced', hasReplay: true,
+    })),
+    loadSummary: async () => { throw new Error('Replay must not load a summary.'); },
+    loadReplay: (id, signal) => new Promise((resolve) => { pending.set(id, { signal, resolve }); }),
+  };
+  const frame = (id: string): ReplayFrame => ({
+    timestamp: 1,
+    pitwall: { sessionUid: id, session: null, drivers: [], positions: [], playerIndex: -1, ersEstimateEnabled: false, ersComparisonEnabled: false },
+  });
+  const store = useTelemetryStore.getState(); store.resetRoom();
+  const seen: { source: string; uid?: string }[] = [];
+  const unsubscribe = useTelemetryStore.subscribe((s) => {
+    if (s.replayContext) seen.push({ source: s.replayContext.sourceId, uid: s.pitwallState?.sessionUid });
+  });
+  const select = async (id: string, reopen = true) => {
+    if (reopen) button(container, 'Archive').click();
+    await until(() => container.textContent!.includes(`Track ${id}`), 'Archive did not open.');
+    button(container, `Track ${id}`).click();
+    await until(() => pending.has(id), `Replay ${id} request did not start.`);
+  };
+  try {
+    root.render(<RaceArchiveDrawer dataSource={source} onClose={() => {}} />);
+    await select('A', false);
+    pending.get('A')!.resolve({ meta: null, frames: [frame('A')] });
+    await until(() => useTelemetryStore.getState().replayContext?.sourceId === 'A', 'Archive A was not displayed.');
+    await select('B');
+    await wait();
+    check(seen.every((item) => item.source === item.uid), 'Pending B relabeled loaded A frames as B.');
+    await select('C');
+    check(pending.get('B')!.signal?.aborted, 'Archive switch did not cancel B.');
+    pending.get('C')!.resolve({ meta: null, frames: [frame('C')] });
+    await until(() => useTelemetryStore.getState().replayContext?.sourceId === 'C', 'Archive C was not displayed.');
+    pending.get('B')!.resolve({ meta: null, frames: [frame('B')] });
+    await wait();
+    check(useTelemetryStore.getState().replayContext?.sourceId === 'C', 'Late B replaced C.');
+    check(seen.every((item) => item.source === item.uid), 'Replay frame provenance mismatched its archive.');
+  } finally { unsubscribe(); root.unmount(); container.remove(); store.resetRoom(); }
+}
+
 export async function run(): Promise<string> {
   await replayRetry();
+  await replaySourceOrdering();
   await roomRequests();
-  return 'PASS: real Chrome/React replay retry, room response ordering, refresh, stale errors/loading, invalid URL and unmount.';
+  return 'PASS: real Chrome/React replay retry/provenance, room response ordering, refresh, stale errors/loading, invalid URL and unmount.';
 }

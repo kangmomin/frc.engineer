@@ -4,10 +4,31 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   backend:
-    name: Go Test
+    name: Go Test with PostgreSQL
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: frc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d frc_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GOTOOLCHAIN: local
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/frc_test?sslmode=disable
+      TEST_DB_SCHEMA: ban_test
+      PLATFORM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/frc_test?sslmode=disable
+      PLATFORM_UPGRADE_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/frc_upgrade_test?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,10 +51,19 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
 
-      - name: Test
-        run: go test -race ./...
+      - name: Create separate migration upgrade database
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h 127.0.0.1 -U postgres frc_upgrade_test
+
+      # DB tests truncate shared tables; serialize packages using this test DB.
+      - name: Test including DB integration and upgrade
+        run: go test -race -p 1 ./...
+
+      - name: Audit reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
   frontend:
     name: Web Test, Lint And Build
@@ -53,6 +83,10 @@ jobs:
         run: npm ci
         working-directory: web
 
+      - name: Audit dependencies
+        run: npm audit --audit-level=low
+        working-directory: web
+
       - name: Lint
         run: npm run lint
         working-directory: web
@@ -60,6 +94,12 @@ jobs:
       - name: Test
         run: npm test
         working-directory: web
+
+      - name: Browser lifecycle and native WebRTC regressions
+        run: npm run test:browser
+        working-directory: web
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
 
       - name: Build
         run: npm run build
@@ -87,6 +127,10 @@ jobs:
         run: npm test
         working-directory: apps/setup-manager
 
+      - name: Audit dependencies
+        run: npm audit --audit-level=low
+        working-directory: apps/setup-manager
+
       - name: Typecheck
         run: npm run typecheck
         working-directory: apps/setup-manager
@@ -94,3 +138,49 @@ jobs:
       - name: Build
         run: npm run build
         working-directory: apps/setup-manager
+
+  windows:
+    name: Windows Sender lifecycle and Driver Pack installer
+    runs-on: windows-latest
+    env:
+      GOTOOLCHAIN: local
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/setup-manager/package-lock.json
+      - name: Native Windows storage, cancellation, and Sender regressions
+        run: go test ./cmd/sender ./internal/telemetry ./internal/races ./internal/rtc
+      - name: Build Windows GUI Sender
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/artifacts | Out-Null
+          go build -ldflags "-H windowsgui" -o build/artifacts/frc-pitwall-sender.exe ./cmd/sender
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go version -m build/artifacts/frc-pitwall-sender.exe
+      - name: Install Driver Pack dependencies
+        run: npm ci
+        working-directory: apps/setup-manager
+      - name: Native child shutdown, restart and update handoff
+        run: npm test
+        working-directory: apps/setup-manager
+      - name: Package Windows installer without publishing
+        run: npm run dist:win:unsigned -- --publish never
+        working-directory: apps/setup-manager
+      - name: Native Electron packaged renderer and quit
+        run: node scripts/smoke-electron.cjs release/win-unpacked/resources/app.asar
+        working-directory: apps/setup-manager
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-driver-pack
+          path: |
+            apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe
+            apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe.blockmap
+            apps/setup-manager/release/latest.yml
+            build/artifacts/frc-pitwall-sender.exe

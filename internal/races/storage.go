@@ -1,6 +1,7 @@
 package races
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,9 +41,12 @@ type ReplayStreamFrame struct {
 
 // FileStorage stores race summaries as JSON files.
 type FileStorage struct {
-	baseDir string
-	logger  *slog.Logger
-	mu      sync.RWMutex
+	baseDir    string
+	logger     *slog.Logger
+	mu         sync.RWMutex
+	resultID   string
+	resultInfo os.FileInfo
+	result     *ResultSummary
 }
 
 var safeIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -114,6 +118,9 @@ func (s *FileStorage) Save(summary *RaceSummary) (string, error) {
 	if err := os.Rename(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath)
 		return "", fmt.Errorf("rename temp summary: %w", err)
+	}
+	if s.resultID == id {
+		s.result = nil
 	}
 	_ = s.writeListMeta(buildRaceListItem(summary, int64(len(data))))
 
@@ -241,6 +248,14 @@ func (s *FileStorage) WalkReplay(
 	onMeta func(ReplayStreamMeta) error,
 	onFrame func(ReplayFrame) error,
 ) error {
+	return s.WalkReplayContext(context.Background(), id, onMeta, onFrame)
+}
+
+// WalkReplayContext stops both decoding and callbacks when the client cancels.
+func (s *FileStorage) WalkReplayContext(ctx context.Context, id string, onMeta func(ReplayStreamMeta) error, onFrame func(ReplayFrame) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !isSafeID(id) {
 		return ErrUnsafeID
 	}
@@ -248,14 +263,14 @@ func (s *FileStorage) WalkReplay(
 	s.mu.RLock()
 	// Retain the original file snapshot (a temporary copy on Windows).
 	// Never keep the storage lock while callbacks wait for a replay client.
-	f, err := openReplayFile(s.filePath(id))
+	f, err := openReplayFileContext(ctx, s.filePath(id))
 	s.mu.RUnlock()
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	dec := json.NewDecoder(f)
+	dec := json.NewDecoder(contextReader{ctx: ctx, reader: f})
 
 	rootTok, err := dec.Token()
 	if err != nil {
@@ -271,6 +286,9 @@ func (s *FileStorage) WalkReplay(
 	emitMeta := func() error {
 		if metaWritten {
 			return nil
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		metaWritten = true
 		if onMeta != nil {
@@ -355,6 +373,9 @@ func (s *FileStorage) WalkReplay(
 				}
 
 				for dec.More() {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
 					var frame ReplayFrame
 					if err := dec.Decode(&frame); err != nil {
 						return err
@@ -742,4 +763,17 @@ func slugTrackName(name string) string {
 		return "track"
 	}
 	return out
+}
+
+// contextReader bounds cancellation while scanning fields before the replay.
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
 }

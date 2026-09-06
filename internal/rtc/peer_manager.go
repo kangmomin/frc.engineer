@@ -1,6 +1,7 @@
 package rtc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -48,7 +49,7 @@ var sigDialer = &websocket.Dialer{HandshakeTimeout: 10 * time.Second}
 
 // RequestHandler is called when an engineer sends a request over DataChannel.
 // The returned bytes are sent back as a unicast response.
-type RequestHandler func(peerID string, msg []byte) []byte
+type RequestHandler func(peerID string, msg []byte, transport *RequestTransport) []byte
 
 type IntercomTransportState struct {
 	Generation      uint64
@@ -58,12 +59,13 @@ type IntercomTransportState struct {
 
 // peerMeta tracks per-peer keepalive and ICE-restart state. Guarded by pm.mu.
 type peerMeta struct {
-	lastPongAt   time.Time
-	pongSeen     bool // 구버전 viewer(pong 미응답)에서는 워치독을 비활성화하는 안전망
-	restarts     int
-	windowStart  time.Time
-	restartingAt time.Time // zero = restart 진행 중 아님
-	restartTimer *time.Timer
+	requestCancel context.CancelFunc
+	lastPongAt    time.Time
+	pongSeen      bool // 구버전 viewer(pong 미응답)에서는 워치독을 비활성화하는 안전망
+	restarts      int
+	windowStart   time.Time
+	restartingAt  time.Time // zero = restart 진행 중 아님
+	restartTimer  *time.Timer
 	// Each DataChannel gets a serial send section. Pion channels can be touched
 	// by telemetry, request responses, and keepalive goroutines concurrently.
 	reliableSendMu sync.Mutex
@@ -469,6 +471,10 @@ func sendDataChannelText(ch *webrtc.DataChannel, sendMu *sync.Mutex, message str
 }
 
 func sendDataChannelWith(ch *webrtc.DataChannel, sendMu *sync.Mutex, outgoing int, wait time.Duration, send func() error) error {
+	return sendDataChannelWithContext(context.Background(), ch, sendMu, outgoing, wait, send)
+}
+
+func sendDataChannelWithContext(ctx context.Context, ch *webrtc.DataChannel, sendMu *sync.Mutex, outgoing int, wait time.Duration, send func() error) error {
 	if outgoing > maxDataChannelMessageBytes {
 		return fmt.Errorf("data channel message exceeds 256KB")
 	}
@@ -478,6 +484,9 @@ func sendDataChannelWith(ch *webrtc.DataChannel, sendMu *sync.Mutex, outgoing in
 
 	deadline := time.Now().Add(wait)
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if ch.ReadyState() != webrtc.DataChannelStateOpen {
 			return fmt.Errorf("peer data channel closed")
 		}
@@ -486,6 +495,9 @@ func sendDataChannelWith(ch *webrtc.DataChannel, sendMu *sync.Mutex, outgoing in
 		if sendMu.TryLock() {
 			if canQueueDataChannelMessage(ch.BufferedAmount(), outgoing) {
 				defer sendMu.Unlock()
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				return send()
 			}
 			sendMu.Unlock()
@@ -493,7 +505,13 @@ func sendDataChannelWith(ch *webrtc.DataChannel, sendMu *sync.Mutex, outgoing in
 		if wait <= 0 || !time.Now().Before(deadline) {
 			return fmt.Errorf("peer data channel congested")
 		}
-		time.Sleep(min(10*time.Millisecond, time.Until(deadline)))
+		timer := time.NewTimer(min(10*time.Millisecond, time.Until(deadline)))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf("peer data channel congested")
 		}
@@ -597,7 +615,9 @@ func (pm *PeerManager) SendTo(peerID string, message []byte) {
 	if !ok || meta == nil {
 		return
 	}
-	_ = sendDataChannel(ch, &meta.reliableSendMu, message, 0)
+	if err := sendDataChannel(ch, &meta.reliableSendMu, message, 2*time.Second); err != nil {
+		pm.logger.Warn("reliable response send failed", "peerId", peerID, "error", err)
+	}
 }
 
 func (pm *PeerManager) peerChannelCurrent(peerID string, pc *webrtc.PeerConnection, ch *webrtc.DataChannel) bool {
@@ -612,7 +632,9 @@ func (pm *PeerManager) sendToIfCurrent(peerID string, pc *webrtc.PeerConnection,
 	current := pm.peers[peerID] == pc && pm.channels[peerID] == ch && meta != nil
 	pm.mu.RUnlock()
 	if current {
-		_ = sendDataChannel(ch, &meta.reliableSendMu, message, 0)
+		if err := sendDataChannel(ch, &meta.reliableSendMu, message, 2*time.Second); err != nil {
+			pm.logger.Warn("reliable response send failed", "peerId", peerID, "error", err)
+		}
 	}
 }
 
@@ -744,8 +766,13 @@ func (pm *PeerManager) Close() {
 	peers := make([]*webrtc.PeerConnection, 0, len(pm.peers))
 	for id, pc := range pm.peers {
 		peers = append(peers, pc)
-		if meta := pm.peerMeta[id]; meta != nil && meta.restartTimer != nil {
-			meta.restartTimer.Stop()
+		if meta := pm.peerMeta[id]; meta != nil {
+			if meta.requestCancel != nil {
+				meta.requestCancel()
+			}
+			if meta.restartTimer != nil {
+				meta.restartTimer.Stop()
+			}
 		}
 	}
 	clear(pm.peers)
@@ -1215,9 +1242,19 @@ func (pm *PeerManager) createPeerAfterTurnGate(peerID string, generation, turnGe
 	if fastDC != nil {
 		pm.fastChannels[peerID] = fastDC
 	}
-	pm.peerMeta[peerID] = &peerMeta{windowStart: time.Now()}
+	peerContext, cancelRequests := context.WithCancel(context.Background())
+	meta := &peerMeta{windowStart: time.Now(), requestCancel: cancelRequests}
+	pm.peerMeta[peerID] = meta
 	pm.mu.Unlock()
 
+	transport := &RequestTransport{ctx: peerContext, send: func(ctx context.Context, message []byte, wait time.Duration) error {
+		return sendDataChannelWithContext(ctx, dc, &meta.reliableSendMu, len(message), wait, func() error {
+			if !pm.peerChannelCurrent(peerID, pc, dc) {
+				return context.Canceled
+			}
+			return dc.Send(message)
+		})
+	}}
 	dc.OnOpen(func() {
 		pm.logger.Info("data channel opened", "peerId", peerID)
 		if pm.onCountChange != nil {
@@ -1226,6 +1263,7 @@ func (pm *PeerManager) createPeerAfterTurnGate(peerID string, generation, turnGe
 	})
 
 	dc.OnClose(func() {
+		cancelRequests()
 		pm.logger.Info("data channel closed", "peerId", peerID)
 		if pm.onCountChange != nil {
 			pm.onCountChange(pm.ConnectedCount())
@@ -1268,7 +1306,7 @@ func (pm *PeerManager) createPeerAfterTurnGate(peerID string, generation, turnGe
 		if pm.onRequest == nil {
 			return
 		}
-		response := pm.onRequest(peerID, msg.Data)
+		response := pm.onRequest(peerID, msg.Data, transport)
 		if response != nil {
 			pm.sendToIfCurrent(peerID, pc, dc, response)
 		}
@@ -1726,8 +1764,13 @@ func (pm *PeerManager) detachPeerLocked(peerID string) {
 	delete(pm.peerViews, peerID)
 	delete(pm.pendingPeers, peerID)
 	delete(pm.pendingRemoteCandidates, peerID)
-	if meta := pm.peerMeta[peerID]; meta != nil && meta.restartTimer != nil {
-		meta.restartTimer.Stop()
+	if meta := pm.peerMeta[peerID]; meta != nil {
+		if meta.requestCancel != nil {
+			meta.requestCancel()
+		}
+		if meta.restartTimer != nil {
+			meta.restartTimer.Stop()
+		}
 	}
 	delete(pm.peerMeta, peerID)
 }

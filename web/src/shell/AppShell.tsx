@@ -10,6 +10,7 @@ import { useMockTelemetry } from '../hooks/useMockTelemetry';
 import { useWebRTCDataChannel } from '../hooks/useWebRTCDataChannel';
 import { isMockMode, mockScenario } from '../runtimeFlags';
 import { startLapHistoryTracker } from '../store/lapHistoryStore';
+import { startReplayDerivedTracker } from '../store/replayDerivedStore';
 import { startRaceMetaTracker } from '../store/raceMetaStore';
 import { useTelemetryStore } from '../store/telemetryStore';
 import type {
@@ -118,6 +119,7 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
   useEffect(() => {
     startRaceMetaTracker();
     startLapHistoryTracker();
+    startReplayDerivedTracker();
   }, []);
 
   useEffect(() => {

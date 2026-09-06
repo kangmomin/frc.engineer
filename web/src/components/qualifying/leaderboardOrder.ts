@@ -1,12 +1,10 @@
+import { q1AdvancingCount, type QualifyingFormat } from './format';
 import type { DriverInfo } from '../../types/telemetry';
 
 export function getQualifyingBestLapTime(driver: DriverInfo | null | undefined): number {
   if (!driver) return 0;
   if (Number.isFinite(driver.bestLapTime) && driver.bestLapTime > 0) {
     return driver.bestLapTime;
-  }
-  if (Number.isFinite(driver.lastLapTime) && driver.lastLapTime > 0) {
-    return driver.lastLapTime;
   }
   return 0;
 }
@@ -27,11 +25,13 @@ function compareDriversByBestLap(a: DriverInfo, b: DriverInfo): number {
   return a.position - b.position;
 }
 
-function getKnockoutCutoff(sessionType: string | null | undefined): number | null {
+function getKnockoutCutoff(sessionType: string | null | undefined, format?: QualifyingFormat | null): number | null {
+  const q1Count = q1AdvancingCount(format);
+  if (q1Count === null) return null;
   switch ((sessionType ?? '').trim().toUpperCase()) {
     case 'Q2':
     case 'SS2':
-      return 15;
+      return q1Count;
     case 'Q3':
     case 'SS3':
       return 10;
@@ -46,16 +46,11 @@ function getKnockoutGroup(driver: DriverInfo, cutoff: number): number {
   return 1;
 }
 
-export function sortQualifyingDrivers(drivers: DriverInfo[], sessionType: string | null | undefined): DriverInfo[] {
-  const cutoff = getKnockoutCutoff(sessionType);
+export function sortQualifyingDrivers(drivers: DriverInfo[], sessionType: string | null | undefined, format?: QualifyingFormat | null): DriverInfo[] {
+  const cutoff = getKnockoutCutoff(sessionType, format);
   const copy = [...drivers];
 
   copy.sort((a, b) => {
-    const aHasLap = hasRecordedBestLap(a);
-    const bHasLap = hasRecordedBestLap(b);
-    if (aHasLap !== bHasLap) return aHasLap ? -1 : 1;
-    if (!aHasLap && !bHasLap) return a.position - b.position;
-
     if (cutoff != null) {
       const aGroup = getKnockoutGroup(a, cutoff);
       const bGroup = getKnockoutGroup(b, cutoff);

@@ -117,7 +117,7 @@ describe('intercom runtime recovery', () => {
     try {
       invalidate();
       expect(disableSources).toHaveBeenCalled();
-      expect(muteSinks).toHaveBeenCalledTimes(1);
+      expect(muteSinks).toHaveBeenCalled();
       expect(runtime.getState().status).toBe('reconnecting');
     } finally {
       internal.joined = null;

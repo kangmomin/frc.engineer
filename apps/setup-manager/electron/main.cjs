@@ -754,7 +754,8 @@ function createWindow() {
   }
 
   const win = new BrowserWindow(winOpts);
-  trustedRendererWebContentsId = win.webContents.id;
+  const rendererWebContentsId = win.webContents.id;
+  trustedRendererWebContentsId = rendererWebContentsId;
   Menu.setApplicationMenu(null);
 
   const permissionSession = win.webContents.session;
@@ -793,7 +794,7 @@ function createWindow() {
   }, 3000);
   win.once('closed', () => {
     clearTimeout(fallbackShowTimer);
-    if (trustedRendererWebContentsId === win.webContents.id) trustedRendererWebContentsId = null;
+    if (trustedRendererWebContentsId === rendererWebContentsId) trustedRendererWebContentsId = null;
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {

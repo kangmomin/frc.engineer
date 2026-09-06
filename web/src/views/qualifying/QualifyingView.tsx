@@ -7,8 +7,7 @@ import { useTrackGaps } from '../../hooks/useTrackGaps';
 import { NavTabs } from '../../shell/NavTabs';
 import { TelemetryWaitingActions } from '../../shell/TelemetryWaitingActions';
 import type { ShellControls } from '../../shell/types';
-import { useLapHistoryStore } from '../../store/lapHistoryStore';
-import { useRaceMetaStore } from '../../store/raceMetaStore';
+import { useDisplayedLapHistory, useReplayDerivedStore, useDisplayedRaceMeta, useDisplayedSourceKey } from '../../store/replayDerivedStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { deriveDriverCodes } from '../../utils/driverCodes';
 import { getRaceStatus } from '../../utils/raceDisplay';
@@ -57,11 +56,15 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
   const [weatherStep, setWeatherStep] = useState(DEFAULT_WEATHER_STEP);
 
   // ── 재사용 도메인 모듈 + lift 누적기(모두 게이트 이전 — session=null/drivers=[]에 안전) ──
-  const sortedDrivers = useMemo(() => sortQualifyingDrivers(allDrivers, sessionType), [allDrivers, sessionType]);
+  const sortedDrivers = useMemo(() => sortQualifyingDrivers(allDrivers, sessionType, session), [allDrivers, sessionType, session]);
   // 세션 리스타트/리플레이 rewind 시 누적기 리셋 키로 쓰이는 epoch (raceMetaStore).
-  const epoch = useRaceMetaStore((s) => s.epoch);
-  const accMap = useSectorAccumulator(allDrivers, session, epoch);
-  const qualiState = useQualifyingState(player, player?.lapInvalid ?? false, isQualifying);
+  const epoch = useDisplayedRaceMeta((s) => s.epoch);
+  const playback = useTelemetryStore((state) => state.playbackActive);
+  const replay = useReplayDerivedStore();
+  const sourceKey = useDisplayedSourceKey();
+  const liveAccMap = useSectorAccumulator(allDrivers, session, epoch, !playback);
+  const accMap = playback ? replay.sectors : liveAccMap;
+  const qualiState = useQualifyingState(player, player?.lapInvalid ?? false, isQualifying, sourceKey);
   const trackGap = useTrackGaps(allDrivers, trackLength, playerIndex);
 
   const overallBest = useMemo(() => computeOverallBestSectors(accMap), [accMap]);
@@ -73,12 +76,12 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
     return next;
   }, [accMap, allDrivers]);
   const codes = useMemo(() => deriveDriverCodes(allDrivers), [allDrivers]);
-  const segment = useMemo(() => deriveQualiSegment(sessionType), [sessionType]);
+  const segment = useMemo(() => deriveQualiSegment(sessionType, session), [sessionType, session]);
   const playerAcc = player ? accMap.get(player.index) : undefined;
   const leaderBest = getQualifyingBestLapTime(sortedDrivers[0]);
   // My Lap 섹터 표시의 근간 — 직전 완료 랩의 S1/S2/S3(lapHistoryStore 역산 레코드). 라이브
   // 와이어에 없는 S3를 신뢰성 있게 얻고, 다음 랩 완료 전까지 유지된다(커밋 시에만 참조 변경).
-  const lapHistory = useLapHistoryStore((s) => s.history);
+  const lapHistory = useDisplayedLapHistory((s) => s.history);
   const playerLastLap = useMemo(() => {
     if (!player) return null;
     const recs = lapHistory.get(player.index);

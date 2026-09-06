@@ -28,6 +28,7 @@ import (
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rbac"
 	"frc.engineer/internal/rtc"
+	"frc.engineer/internal/storage"
 	"frc.engineer/internal/strategydata"
 	"frc.engineer/internal/telemetry"
 	"frc.engineer/internal/tracks"
@@ -35,7 +36,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-var appVersion = "v4.53.0"
+var appVersion = "v4.54.0"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
@@ -434,6 +435,7 @@ func main() {
 
 	// Create telemetry processor (pitwallState at 4Hz, skip dashboard telemetry)
 	processor := telemetry.NewProcessor(parser, broadcaster, 0, logger, trackStore)
+
 	processor.SetFastBroadcaster(broadcaster)
 	compareMonitor := newERSCompareMonitor(resolveSenderStoragePath("logs", "ers_compare"), logger)
 	processor.SetPitwallStateObserver(compareMonitor.Observe)
@@ -456,6 +458,25 @@ func main() {
 	cfgUDPPort := udpPort
 	cfgSaveFiles := saveFiles
 	cfgDataStorageMode := dataStorageMode
+	bestLapStorage, err := storage.NewFileLapStorage(trackDataDir)
+	if err != nil {
+		logger.Warn("best lap storage unavailable", "error", err)
+	} else {
+		processor.DeltaCalculator().SetStorageCallbacks(func(trackID int8, lap *telemetry.LapTelemetry) error {
+			cfgMu.Lock()
+			enabled := cfgSaveFiles && cfgDataStorageMode == rtconfig.DataStorageModeAdvanced
+			cfgMu.Unlock()
+			if !enabled {
+				return nil
+			}
+			err := bestLapStorage.SaveBestLap(trackID, lap)
+			if err != nil {
+				logger.Warn("failed to save best lap", "trackId", trackID, "error", err)
+			}
+			return err
+		}, bestLapStorage.LoadBestLap)
+	}
+
 	cfgTrackRecording := trackRecording
 	cfgRoomName := roomName
 	cfgRoomPassword := roomPassword
@@ -518,7 +539,6 @@ func main() {
 	processor.SetCheckpointSaves(true)
 	processor.SetReplayRecording(saveFiles && (dataStorageMode == rtconfig.DataStorageModeSummary || dataStorageMode == rtconfig.DataStorageModeAdvanced))
 	const maxRaceArchiveListChunkBytes = 48 * 1024
-	const maxRaceReplayChunkBytes = 48 * 1024
 	const maxRaceReplaySendWait = 5 * time.Second
 
 	encodeP2PResponse := func(response dto.WSResponse) []byte {
@@ -581,108 +601,6 @@ func main() {
 	// 페어링돼 있을 때만 — sweep 내부에서 요청별 deadline과 중단 조건을 관리한다.
 	if cfgUploadToken != "" {
 		go upState.sweep(ctx, cfgPlatformBaseURL, cfgUploadToken, loadRaceSummaryWithoutReplay)
-	}
-
-	streamRaceReplay := func(peerID, requestID, raceID string) {
-		logger.Info("race replay stream requested", "peerId", peerID, "requestId", requestID, "raceId", raceID)
-		rs, err := getRaceArchiveStorage()
-		if err != nil {
-			logger.Warn("race replay storage unavailable", "peerId", peerID, "requestId", requestID, "raceId", raceID, "error", err)
-			sendP2PResponse(peerID, dto.WSResponse{
-				Type:      dto.MessageTypeRaceReplayDone,
-				RequestID: requestID,
-				Error:     "race archive unavailable",
-			})
-			return
-		}
-
-		chunkCount := 0
-		sendChunk := func(frames []races.ReplayFrame) error {
-			if len(frames) == 0 {
-				return nil
-			}
-			chunkCount++
-			logger.Info("sending race replay chunk", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkIndex", chunkCount, "frames", len(frames))
-			return sendBufferedP2PResponse(peerID, dto.WSResponse{
-				Type:      dto.MessageTypeRaceReplayChunk,
-				RequestID: requestID,
-				Data: map[string]any{
-					"frames": frames,
-				},
-			})
-		}
-
-		frameCount := 0
-		batch := make([]races.ReplayFrame, 0, 8)
-		err = rs.WalkReplay(
-			raceID,
-			func(meta races.ReplayStreamMeta) error {
-				logger.Info("race replay meta ready", "peerId", peerID, "requestId", requestID, "raceId", raceID, "frameIntervalMs", meta.FrameIntervalMS)
-				return sendBufferedP2PResponse(peerID, dto.WSResponse{
-					Type:      dto.MessageTypeRaceReplayMeta,
-					RequestID: requestID,
-					Data:      meta,
-				})
-			},
-			func(frame races.ReplayFrame) error {
-				tentative := append(batch, frame)
-				testPayload := encodeP2PResponse(dto.WSResponse{
-					Type:      dto.MessageTypeRaceReplayChunk,
-					RequestID: requestID,
-					Data: map[string]any{
-						"frames": tentative,
-					},
-				})
-				if testPayload == nil {
-					return fmt.Errorf("encode race replay chunk")
-				}
-				if len(batch) > 0 && len(testPayload) > maxRaceReplayChunkBytes {
-					if err := sendChunk(batch); err != nil {
-						return err
-					}
-					batch = append(batch[:0], frame)
-				} else {
-					batch = tentative
-				}
-				frameCount++
-				return nil
-			},
-		)
-		if err != nil {
-			logger.Warn("failed to stream race replay", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount, "error", err)
-			errorMessage := "failed to stream race replay"
-			if os.IsNotExist(err) {
-				errorMessage = "race replay not found"
-			}
-			sendP2PResponse(peerID, dto.WSResponse{
-				Type:      dto.MessageTypeRaceReplayDone,
-				RequestID: requestID,
-				Error:     errorMessage,
-			})
-			return
-		}
-
-		if err := sendChunk(batch); err != nil {
-			logger.Warn("failed to send race replay chunk", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount, "error", err)
-			sendP2PResponse(peerID, dto.WSResponse{
-				Type:      dto.MessageTypeRaceReplayDone,
-				RequestID: requestID,
-				Error:     "failed to send race replay chunk",
-			})
-			return
-		}
-
-		if err := sendBufferedP2PResponse(peerID, dto.WSResponse{
-			Type:      dto.MessageTypeRaceReplayDone,
-			RequestID: requestID,
-			Data: map[string]any{
-				"frameCount": frameCount,
-			},
-		}); err != nil {
-			logger.Warn("failed to finish race replay stream", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount, "error", err)
-			return
-		}
-		logger.Info("race replay stream finished", "peerId", peerID, "requestId", requestID, "raceId", raceID, "chunkCount", chunkCount, "frameCount", frameCount)
 	}
 
 	streamRaceArchiveList := func(peerID, requestID string) {
@@ -818,7 +736,7 @@ func main() {
 		}
 	})
 
-	peerManager.SetRequestHandler(func(peerID string, msg []byte) []byte {
+	peerManager.SetRequestHandler(func(peerID string, msg []byte, transport *rtc.RequestTransport) []byte {
 		var req dto.WSRequest
 		if err := json.Unmarshal(msg, &req); err != nil {
 			logger.Warn("failed to decode peer request", "peerId", peerID, "bytes", len(msg), "error", err)
@@ -872,6 +790,9 @@ func main() {
 			}
 			logger.Info("received p2p race summary request", "peerId", peerID, "requestId", req.RequestID, "raceId", body.ID)
 			return sendRaceSummary(peerID, req.RequestID, body.ID)
+		case dto.MessageTypeCancelRaceReplay:
+			transport.CancelRequest(req.RequestID)
+			return nil
 		case dto.MessageTypeGetRaceReplay:
 			var body struct {
 				ID string `json:"id"`
@@ -892,7 +813,29 @@ func main() {
 				})
 			}
 			logger.Info("received p2p race replay request", "peerId", peerID, "requestId", req.RequestID, "raceId", body.ID)
-			go streamRaceReplay(peerID, req.RequestID, body.ID)
+			streamCtx, finish := transport.BeginRequest(req.RequestID)
+			go func() {
+				defer finish()
+				send := func(response dto.WSResponse) error {
+					payload := encodeP2PResponse(response)
+					if payload == nil {
+						return fmt.Errorf("encode replay response")
+					}
+					return transport.SendBuffered(streamCtx, payload, maxRaceReplaySendWait)
+				}
+				rs, err := getRaceArchiveStorage()
+				if err == nil {
+					err = streamRaceReplay(streamCtx, rs, req.RequestID, body.ID, send)
+				}
+				if err != nil && streamCtx.Err() == nil {
+					logger.Warn("failed to stream race replay", "peerId", peerID, "raceId", body.ID, "error", err)
+					message := "failed to stream race replay"
+					if os.IsNotExist(err) {
+						message = "race replay not found"
+					}
+					_ = send(dto.WSResponse{Type: dto.MessageTypeRaceReplayDone, RequestID: req.RequestID, Error: message})
+				}
+			}()
 			return nil
 		case dto.MessageTypeGetStrategyGuide:
 			var body struct {
@@ -1478,53 +1421,18 @@ func main() {
 		json.NewEncoder(w).Encode(preview)
 	})
 
-	mux.HandleFunc("GET /api/races/latest", func(w http.ResponseWriter, r *http.Request) {
-		raceSummaryMu.RLock()
-		summary := latestRaceSummary
-		raceSummaryMu.RUnlock()
-		if summary != nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(stripPrivateCapture(summary))
-			return
-		}
-
-		cfgMu.Lock()
-		rs := raceStorage
-		cfgMu.Unlock()
-		if rs == nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
-			return
-		}
-
-		list, err := rs.List()
-		if err != nil {
-			logger.Error("failed to list race summaries", "error", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
-			return
-		}
-		if len(list) == 0 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": "race summary not found"})
-			return
-		}
-
-		loaded, err := rs.Load(list[0].ID)
-		if err != nil {
-			logger.Error("failed to load latest race summary", "id", list[0].ID, "error", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load race summary"})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(stripPrivateCapture(loaded))
-	})
+	mux.HandleFunc("GET /api/races/latest", latestRaceHandler(
+		func() *races.RaceSummary {
+			raceSummaryMu.RLock()
+			defer raceSummaryMu.RUnlock()
+			return latestRaceSummary
+		},
+		func() *races.FileStorage {
+			cfgMu.Lock()
+			defer cfgMu.Unlock()
+			return raceStorage
+		}, logger,
+	))
 
 	mux.HandleFunc("GET /api/races", func(w http.ResponseWriter, r *http.Request) {
 		rs, err := getRaceArchiveStorage()

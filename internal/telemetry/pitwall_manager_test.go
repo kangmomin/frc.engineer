@@ -175,7 +175,7 @@ func TestRecordPenaltyNewSessionEventBeforeSessionPacket(t *testing.T) {
 // 넘지 않고, (2) 트랙맵 전송분 소진 후 정상 상태가 백프레셔 임계(maxBufferedAmount 128KB)를 넘지 않는지 확인.
 // (CLAUDE.md: SCTP 256KB / maxBufferedAmount 128KB 제약)
 func TestBuildState24CarPayloadSize(t *testing.T) {
-	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, GameYear: 26, SessionUID: 1}
+	header := packets.PacketHeader{PacketFormat: packets.PacketFormat2026, GameYear: 26, SessionUID: ^uint64(0)}
 
 	session := &packets.PacketSessionData{
 		Header:          header,
@@ -183,6 +183,7 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 		TotalLaps:       57,
 		TrackLength:     5400,
 		SessionType:     15,
+		Formula:         13,
 		TrackID:         42,
 		NumMarshalZones: 21,
 	}
@@ -239,6 +240,21 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 	pm.UpdateCarTelemetry2(carTelemetry2)
 	pm.UpdateMotion(motion, 0)
 	pm.UpdateCarDamage(carDamage)
+	for i := 0; i < packets.MaxCars; i++ {
+		history := &packets.PacketSessionHistoryData{
+			Header: header, CarIdx: uint8(i), NumLaps: packets.MaxNumLapsInHistory,
+			BestLapTimeLapNum: 100, BestSector1LapNum: 100, BestSector2LapNum: 100, BestSector3LapNum: 100,
+		}
+		for lap := range history.LapHistoryData {
+			history.LapHistoryData[lap] = packets.LapHistoryData{
+				LapTimeInMS: 210000, LapValidBitFlags: 15,
+				Sector1TimeMinPart: 1, Sector1TimeMSPart: 10000,
+				Sector2TimeMinPart: 1, Sector2TimeMSPart: 10000,
+				Sector3TimeMinPart: 1, Sector3TimeMSPart: 10000,
+			}
+		}
+		pm.UpdateSessionHistory(history)
+	}
 
 	// Worst-case penalty log: every car at the per-car cap, so the 128KB guard
 	// covers the added field (msgpack, numeric codes — see PenaltyLogEntry).
@@ -263,6 +279,9 @@ func TestBuildState24CarPayloadSize(t *testing.T) {
 	}
 	if !state.Drivers[23].OvertakeActive {
 		t.Fatal("driver 23 overtakeActive must survive BuildState")
+	}
+	if state.Session.QualifyingGridSize != 24 || !state.Drivers[23].SessionHistoryAvailable || state.Drivers[23].BestSector1Ms == nil || *state.Drivers[23].BestSector1Ms != 70000 {
+		t.Fatal("full history and grid metadata must be included in the payload fixture")
 	}
 	if state.TrackMap == nil {
 		t.Fatal("expected trackmap in first BuildState")

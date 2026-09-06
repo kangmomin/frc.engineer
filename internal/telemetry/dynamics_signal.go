@@ -29,15 +29,19 @@ func ClassifyDynamicsFrame(
 	speed uint16,
 	steer, brake float32,
 ) DynamicsSignal {
+	// Yaw is specified in [-pi, pi]. Ignore corrupt frames instead of feeding
+	// non-finite values (or enormous angles) into the live and offline signals.
+	for _, value := range [...]float32{velX, velZ, yaw, steer, brake} {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return DynamicsSignal{}
+		}
+	}
+	if math.Abs(float64(yaw)) > math.Pi+1e-6 {
+		return DynamicsSignal{}
+	}
 	speedKmh := float64(speed)
 
-	slipAngle := math.Atan2(float64(velX), float64(velZ)) - float64(yaw)
-	for slipAngle > math.Pi {
-		slipAngle -= 2 * math.Pi
-	}
-	for slipAngle < -math.Pi {
-		slipAngle += 2 * math.Pi
-	}
+	slipAngle := math.Remainder(math.Atan2(float64(velX), float64(velZ))-float64(yaw), 2*math.Pi)
 
 	slipDeg := math.Abs(slipAngle) * 180.0 / math.Pi
 	absSteer := math.Abs(float64(steer))

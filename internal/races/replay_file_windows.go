@@ -1,6 +1,7 @@
 package races
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -10,6 +11,13 @@ import (
 // sharing. Copy locally while the storage lock is held, then stream the copy
 // so slow clients cannot block Save's rename. Memory use stays bounded.
 func openReplayFile(name string) (io.ReadCloser, error) {
+	return openReplayFileContext(context.Background(), name)
+}
+
+func openReplayFileContext(ctx context.Context, name string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	source, err := os.Open(name)
 	if err != nil {
 		return nil, err
@@ -19,7 +27,7 @@ func openReplayFile(name string) (io.ReadCloser, error) {
 		return nil, errors.Join(err, source.Close())
 	}
 	snapshot := &replaySnapshot{File: file}
-	_, copyErr := io.Copy(file, source)
+	_, copyErr := io.Copy(file, contextReader{ctx: ctx, reader: source})
 	if err := errors.Join(copyErr, source.Close()); err != nil {
 		return nil, errors.Join(err, snapshot.Close())
 	}

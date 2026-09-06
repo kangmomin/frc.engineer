@@ -166,9 +166,17 @@ export class SFUAudioController {
   }
 
   start(role: IntercomRole, rawTrack: MediaStreamTrack | null, chiefDriverKeys: string[]): Promise<void> {
+    const lifecycle = ++this.lifecycle;
     return this.serialize(async () => {
+      if (lifecycle !== this.lifecycle) {
+        rawTrack?.stop();
+        return;
+      }
       await this.stopInternal(false);
-      const lifecycle = ++this.lifecycle;
+      if (lifecycle !== this.lifecycle) {
+        rawTrack?.stop();
+        return;
+      }
       this.listener?.('connecting');
       this.rawTrack = rawTrack;
       try {
@@ -208,7 +216,11 @@ export class SFUAudioController {
         if (lifecycle !== this.lifecycle) throw new Error('Stale SFU start.');
         this.listener?.('connected');
       } catch (error) {
-        this.disableAll();
+        if (lifecycle !== this.lifecycle) {
+          rawTrack?.stop();
+          return;
+        }
+        await this.stopInternal(false);
         this.listener?.('failed', error instanceof Error ? error.message : 'Intercom media failed.');
         throw error;
       }
@@ -221,7 +233,12 @@ export class SFUAudioController {
   }
 
   replaceInput(nextRawTrack: MediaStreamTrack): Promise<void> {
+    const lifecycle = this.lifecycle;
     return this.serialize(async () => {
+      if (lifecycle !== this.lifecycle) {
+        nextRawTrack.stop();
+        return;
+      }
       const replacements = this.publications.map((publication) => {
         const clone = cloneDisabledTrack(nextRawTrack);
         return { publication, clone };
@@ -230,7 +247,13 @@ export class SFUAudioController {
         await Promise.all(replacements.map(({ publication, clone }) => publication.sender.replaceTrack(clone)));
       } catch (error) {
         for (const { clone } of replacements) clone.stop();
+        nextRawTrack.stop();
         throw error;
+      }
+      if (lifecycle !== this.lifecycle) {
+        for (const { clone } of replacements) clone.stop();
+        nextRawTrack.stop();
+        return;
       }
       const previousRaw = this.rawTrack;
       for (const { publication, clone } of replacements) {
@@ -256,8 +279,8 @@ export class SFUAudioController {
 
   stop(): Promise<void> {
     ++this.lifecycle;
-    this.disableAll();
-    return this.serialize(() => this.stopInternal(true));
+    // Teardown must run now, even if an earlier SFU RPC is still awaiting ACK.
+    return this.stopInternal(true);
   }
 
   private async publish(lifecycle: number): Promise<void> {
@@ -291,6 +314,7 @@ export class SFUAudioController {
     const response = await this.rpc.request<ServerIntercomEnvelope>(
       'intercom_sfu_subscribe', { sessionHandle: this.sessionHandle }, 'intercom_sfu_subscribed',
     );
+    this.requirePC(lifecycle);
     const payload = responsePayload<{
       sessionDescription?: IntercomSessionDescription;
       requiresImmediateRenegotiation: boolean;
@@ -354,8 +378,9 @@ export class SFUAudioController {
     this.publications = [];
     this.rawTrack?.stop();
     this.rawTrack = null;
-    this.pc?.close();
+    const pc = this.pc;
     this.pc = null;
+    pc?.close();
     this.remoteRoutes.clear();
     this.remoteBinder.clear();
     this.remoteAudio.clear();

@@ -37,6 +37,8 @@ type uploadSidecar struct {
 	Trigger        string `json:"trigger,omitempty"`
 	UploadedAt     string `json:"uploadedAt,omitempty"`
 	PlatformRaceID string `json:"platformRaceId,omitempty"`
+	RejectedAt     string `json:"rejectedAt,omitempty"`
+	RejectedStatus int    `json:"rejectedStatus,omitempty"`
 }
 
 // isFinalClassTrigger reports whether a summary's finalize trigger means the
@@ -271,12 +273,28 @@ func (u *uploadState) uploadSealed(ctx context.Context, baseURL, token, id strin
 
 	result, status, err := uploadRace(ctx, baseURL, token, req)
 	if err != nil {
+		if permanentUploadRejection(status) {
+			u.mu.Lock()
+			// A simultaneous manual retry may already have succeeded. Preserve
+			// that result and the immutable seal instead of overwriting it.
+			current, readErr := u.readSidecar(id)
+			if readErr == nil && current != nil && current.UploadedAt == "" {
+				current.RejectedAt = time.Now().Format(time.RFC3339)
+				current.RejectedStatus = status
+				readErr = u.writeSidecarDurable(id, current)
+			}
+			u.mu.Unlock()
+			if readErr != nil {
+				u.logger.Warn("failed to persist upload rejection", "id", id, "error", readErr)
+			}
+		}
 		return nil, status, err
 	}
 
 	u.mu.Lock()
 	sc.UploadedAt = time.Now().Format(time.RFC3339)
 	sc.PlatformRaceID = result.RaceID
+	sc.RejectedAt, sc.RejectedStatus = "", 0
 	if err := u.writeSidecarDurable(id, sc); err != nil {
 		// 다음 sweep이 동일 바이트를 재전송하고 Duplicate로 수렴하므로 로그만.
 		u.logger.Warn("failed to record uploadedAt", "id", id, "error", err)
@@ -285,12 +303,18 @@ func (u *uploadState) uploadSealed(ctx context.Context, baseURL, token, id strin
 	return result, status, nil
 }
 
+func permanentUploadRejection(status int) bool {
+	return status >= 400 && status < 500 && status != 401 && status != 403 && status != 408 && status != 409 && status != 429
+}
+
 // sweep uploads pending (un-uploaded) summaries: newest first, capped per run,
 // with per-request deadlines. Legacy files (no finalizeTrigger) older than 7
 // days are skipped (pre-feature history); fresh checkpoint-class files get a 2h
 // hold (the session might still be alive right after a sender restart — the
 // sealed-ID rule keeps even that safe, this only avoids duplicate-row noise).
-// Aborts on network errors, 5xx and auth/rate statuses; other 4xx skip the file.
+// Permanent 4xx rejections are durably skipped by later sweeps so a full batch
+// of rejected files cannot starve older captures. Manual uploads can retry
+// these sealed IDs after the underlying rejection has been resolved.
 func (u *uploadState) sweep(ctx context.Context, baseURL, token string, load func(id string) (*races.RaceSummary, error)) {
 	if !u.sweeping.CompareAndSwap(false, true) {
 		return
@@ -311,7 +335,7 @@ func (u *uploadState) sweep(ctx context.Context, baseURL, token string, load fun
 		u.mu.Lock()
 		sc, scErr := u.readSidecar(id)
 		u.mu.Unlock()
-		if scErr != nil || (sc != nil && sc.UploadedAt != "") {
+		if scErr != nil || (sc != nil && (sc.UploadedAt != "" || sc.RejectedAt != "")) {
 			continue
 		}
 		candidates = append(candidates, id)
@@ -361,8 +385,7 @@ func (u *uploadState) sweep(ctx context.Context, baseURL, token string, load fun
 		}
 		attempted++
 		if err != nil {
-			retryable := status == 0 || status >= 500 || status == 401 || status == 403 || status == 409 || status == 429
-			if retryable {
+			if !permanentUploadRejection(status) {
 				u.logger.Warn("upload sweep aborted", "id", id, "status", status, "error", err)
 				return
 			}

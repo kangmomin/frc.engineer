@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"frc.engineer/internal/tracks"
 )
@@ -107,6 +108,11 @@ func ListSessions(packetsDir string) ([]SessionInfo, error) {
 	}
 
 	sort.Slice(sessions, func(i, j int) bool {
+		left, _ := time.Parse("20060102_150405", sessions[i].Timestamp)
+		right, _ := time.Parse("20060102_150405", sessions[j].Timestamp)
+		if !left.Equal(right) {
+			return left.After(right)
+		}
 		return sessions[i].Directory > sessions[j].Directory
 	})
 

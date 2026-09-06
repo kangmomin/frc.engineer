@@ -375,6 +375,8 @@ export interface MarshalZone {
 }
 
 export interface PitwallState {
+	/** Decimal uint64 identity, also available before session metadata arrives. */
+  sessionUid?: string;
   session: SessionInfo | null;
   drivers: DriverInfo[];
   positions: CarPosition[];
@@ -420,6 +422,9 @@ export interface CrossoverPrediction {
 }
 
 export interface SessionInfo {
+  formula?: number;
+  qualifyingGridSize?: number;
+  sessionUid?: string;
   weather: string;
   trackTemp: number;
   airTemp: number;
@@ -462,6 +467,7 @@ export interface DriverInfo {
   activeAeroMode?: number;
   lastLapTime: number;
   bestLapTime: number;
+  sessionHistoryAvailable?: boolean;
   tireCompound: string;
   tireAge: number;
   tireWear: number[];

@@ -29,6 +29,8 @@ async function scenario(mode: 'already-open' | 'connecting' | 'never-opens'): Pr
   let observedView = '';
   let rpcResult = false;
   let rpcError = '';
+  let replayRequestId = '';
+  let replayCanceled = false;
   let client: ReturnType<typeof useWebRTCDataChannel> | null = null;
   const options = { signalingUrl: 'ws://test.invalid', roomId: mode, password: '' };
   const received: RTCIceCandidateInit[] = [];
@@ -98,6 +100,8 @@ async function scenario(mode: 'already-open' | 'connecting' | 'never-opens'): Pr
   };
   data.onmessage = ({ data: raw }) => {
     const message = JSON.parse(raw);
+    if (message.type === 'getRaceReplay') { replayRequestId = message.requestId; return; }
+    if (message.type === 'cancelRaceReplay') { replayCanceled = message.requestId === replayRequestId; return; }
     if (message.type === 'setView') observedView = message.view;
     if (message.requestId) data.send(JSON.stringify({ type: 'strategyGuide', requestId: message.requestId, data: { ok: true } }));
   };
@@ -148,6 +152,38 @@ async function scenario(mode: 'already-open' | 'connecting' | 'never-opens'): Pr
     check(initial.request === client!.request && initial.stream === client!.stream && initial.sendView === client!.sendView,
       'RPC function identities changed during connection publication.');
     check(!rpcError, rpcError);
+    if (mode === 'already-open') {
+      const abort = new AbortController();
+      let lateChunks = 0;
+      const stream = client!.stream({ type: 'getRaceReplay', data: { id: 'cancel' } }, {
+        doneType: 'raceReplayDone', signal: abort.signal, onMessage: () => { lateChunks++; },
+      }).then(() => '', (error: Error) => error.message);
+      await until(() => !!replayRequestId, 'Replay request did not reach the native sender channel.');
+      abort.abort();
+      check((await stream).includes('aborted'), 'Aborted replay did not reject.');
+      await until(() => replayCanceled, 'Replay cancellation did not reach the sender.');
+      data.send(JSON.stringify({ type: 'raceReplayChunk', requestId: replayRequestId, data: { frames: [] } }));
+      await wait(50);
+      check(lateChunks === 0, 'Aborted stream delivered a late chunk.');
+      const samePeer = receiver.current!;
+      // Suppress transition notifications while retaining real Chrome ICE/DTLS.
+      // Successful ICE restarts are permitted to stay in connected throughout.
+      const connectionHandler = samePeer.onconnectionstatechange;
+      const iceHandler = samePeer.oniceconnectionstatechange;
+      samePeer.onconnectionstatechange = null;
+      samePeer.oniceconnectionstatechange = null;
+      const restarted = await sender.createOffer({ iceRestart: true });
+      await sender.setLocalDescription(restarted);
+      signaling.current!.emit({ type: 'offer', restart: true, negotiationId: 2, payload: sender.localDescription });
+      await until(() => sender.signalingState === 'stable', 'ICE restart answer did not arrive.');
+      data.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+      await until(() => useTelemetryStore.getState().connectionState === 'connected', 'Healthy in-place restart remained reconnecting.');
+      const pingTimer = window.setInterval(() => data.send(JSON.stringify({ type: 'ping', ts: Date.now() })), 1000);
+      try { await wait(12_500); } finally { clearInterval(pingTimer); }
+      check(receiver.current === samePeer && useTelemetryStore.getState().connectionState === 'connected', 'Successful restart left a 12-second reconnect watchdog armed.');
+      samePeer.onconnectionstatechange = connectionHandler;
+      samePeer.oniceconnectionstatechange = iceHandler;
+    }
     const generation = useTelemetryStore.getState().roomGeneration;
     client!.disconnect();
     check(useTelemetryStore.getState().roomGeneration > generation, 'Explicit disconnect did not reset the room.');

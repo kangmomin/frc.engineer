@@ -82,6 +82,33 @@ describe('live room boundaries', () => {
     useTelemetryStore.getState().resetRoom();
   }
 
+  it('resets the same-format lap-one grid and history on a new exact UID, including an empty first frame', () => {
+    startRoom();
+    const telemetry = useTelemetryStore.getState();
+    const frame = (uid: string, driver: Partial<DriverInfo>) => ({ ...liveFrame(driver), sessionUid: uid });
+    telemetry.setPitwallState(frame('18446744073709551614', { position: 5 }));
+    telemetry.setPitwallState(frame('18446744073709551614', { position: 5, lastLapTime: 81000 }));
+    telemetry.addRaceControlNotification({ id: 'old', timestamp: 1, category: 'info', severity: 'info', message: 'Previous session' });
+    expect(useRaceMetaStore.getState().grid).toEqual({ 0: 5 });
+    expect(useLapHistoryStore.getState().history.size).toBe(1);
+    const epoch = useRaceMetaStore.getState().epoch;
+    telemetry.setPitwallState({ ...frame('18446744073709551615', {}), session: null, drivers: [] });
+    expect(useRaceMetaStore.getState().epoch).toBeGreaterThan(epoch);
+    expect(useRaceMetaStore.getState().grid).toEqual({});
+    expect(useLapHistoryStore.getState().history.size).toBe(0);
+    expect(useTelemetryStore.getState().raceControlNotifications).toEqual([]);
+    telemetry.setPitwallState(frame('18446744073709551615', { position: 0 }));
+    expect(useRaceMetaStore.getState().gridStatus).toBe('empty');
+    telemetry.setPitwallState(frame('18446744073709551615', { position: 2 }));
+    expect(useRaceMetaStore.getState().grid).toEqual({ 0: 2 });
+    const currentEpoch = useRaceMetaStore.getState().epoch;
+    telemetry.setConnectionState('reconnecting');
+    telemetry.setPitwallState(null);
+    telemetry.setPitwallState(frame('18446744073709551615', { position: 3 }));
+    expect(useRaceMetaStore.getState().epoch).toBe(currentEpoch);
+    expect(useRaceMetaStore.getState().grid).toEqual({ 0: 2 });
+  });
+
   it('clears Alice history, grid, notification tags and ingest baselines before Bob joins the same track and lap', () => {
     startRoom();
     const telemetry = useTelemetryStore.getState();

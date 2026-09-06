@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useReducer } from 'react';
 import type { DriverInfo } from '../types/telemetry';
 
 // ── Types ──
@@ -29,6 +29,7 @@ export const INITIAL_STATE: QualifyingState = {
 // ── Snapshot for edge detection ──
 
 export interface Frame {
+  driverStatus?: number;
   pitStatus: number;
   currentLapNum: number;
   currentSector: number;
@@ -39,6 +40,7 @@ export interface Frame {
 
 function extractFrame(driver: DriverInfo, lapInvalid: boolean): Frame {
   return {
+    driverStatus: driver.driverStatus ?? 0,
     pitStatus: driver.pitStatus,
     currentLapNum: driver.currentLapNum,
     currentSector: driver.currentSector,
@@ -86,7 +88,7 @@ export function processFrame(
   const next = { ...state };
 
   // Session reset detection (lap number rewind)
-  if (curr.currentLapNum < prev.currentLapNum - 1) {
+  if (curr.currentLapNum < prev.currentLapNum) {
     return { ...INITIAL_STATE };
   }
 
@@ -172,17 +174,24 @@ export function processFrame(
 
 // ── Reducer ──
 
-type Action =
-  | { type: 'TICK'; prev: Frame | null; curr: Frame }
-  | { type: 'RESET' };
+interface HookState {
+  key: string;
+  value: QualifyingState;
+  previous: Frame | null;
+}
 
-function reducer(state: QualifyingState, action: Action): QualifyingState {
-  switch (action.type) {
-    case 'TICK':
-      return processFrame(action.prev, action.curr, state);
-    case 'RESET':
-      return INITIAL_STATE;
-  }
+function initialFrameState(frame: Frame | null): QualifyingState {
+  return { ...INITIAL_STATE, phase: frame?.pitStatus ? 'PIT' : frame?.driverStatus === 0 ? 'GARAGE' : 'UNKNOWN' };
+}
+
+function reducer(state: HookState, action: { key: string; current: Frame | null }): HookState {
+  const reset = state.key !== action.key || !action.current || !state.previous ||
+    action.current.currentLapNum < state.previous.currentLapNum;
+  return {
+    key: action.key,
+    previous: action.current,
+    value: reset ? initialFrameState(action.current) : processFrame(state.previous, action.current!, state.value),
+  };
 }
 
 // ── Hook ──
@@ -191,26 +200,16 @@ export function useQualifyingState(
   driver: DriverInfo | null,
   lapInvalid: boolean,
   isQualifying: boolean,
+  sessionKey: string,
 ): QualifyingState {
-  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
-  const prevFrameRef = useRef<Frame | null>(null);
+  const key = `${sessionKey}|${isQualifying}|${driver?.index ?? ''}|${driver?.name ?? ''}|${driver?.teamId ?? ''}`;
+  const [state, dispatch] = useReducer(reducer, { key: '', value: INITIAL_STATE, previous: null });
 
   useEffect(() => {
-    if (!isQualifying || !driver) {
-      prevFrameRef.current = null;
-      dispatch({ type: 'RESET' });
-      return;
-    }
+    dispatch({ key, current: isQualifying && driver ? extractFrame(driver, lapInvalid) : null });
+  }, [driver, lapInvalid, isQualifying, key]);
 
-    const curr = extractFrame(driver, lapInvalid);
-    const prev = prevFrameRef.current;
-
-    // Dispatch with captured prev — ref is NOT mutated inside reducer
-    dispatch({ type: 'TICK', prev, curr });
-
-    // Advance ref AFTER dispatch, outside the reducer
-    prevFrameRef.current = curr;
-  }, [driver, lapInvalid, isQualifying]);
-
-  return state;
+  // A new identity must never render the previous participant's attempt while
+  // waiting for its effect to run.
+  return state.key === key ? state.value : initialFrameState(isQualifying && driver ? extractFrame(driver, lapInvalid) : null);
 }

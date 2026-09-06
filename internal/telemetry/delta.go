@@ -36,10 +36,16 @@ type DeltaCalculator struct {
 	currentLapData []TelemetryPoint // Current lap telemetry points
 
 	// Track state
-	lastLapNum   uint8
-	lastDistance float32
-	sessionUID   uint64
-	trackID      int8
+	lastLapNum       uint8
+	lastDistance     float32
+	sessionUID       uint64
+	playerIndex      int
+	trackID          int8
+	generation       uint64
+	lapInvalid       bool
+	lapStartObserved bool
+	sector1MS        uint32
+	sector2MS        uint32
 
 	// Minimum distance interval between samples (in metres)
 	minSampleInterval float32
@@ -59,6 +65,8 @@ const (
 // NewDeltaCalculator creates a new delta calculator
 func NewDeltaCalculator() *DeltaCalculator {
 	return &DeltaCalculator{
+		trackID:           -1,
+		playerIndex:       -1,
 		bestLapTimes:      make(map[int]uint32),
 		currentLapTimes:   make(map[int]uint32),
 		currentLapData:    make([]TelemetryPoint, 0, 1000),
@@ -74,179 +82,158 @@ func (d *DeltaCalculator) SetStorageCallbacks(onSave SaveCallback, onLoad LoadCa
 	d.onLoad = onLoad
 }
 
-// LoadBestLapFromStorage loads the best lap for the current track from storage
-// This should be called after setting the trackID via SetTrackID
+// LoadBestLapFromStorage runs disk I/O outside the calculator lock and only
+// applies a result to the same session/track generation that requested it.
 func (d *DeltaCalculator) LoadBestLapFromStorage() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if d.onLoad == nil {
+	d.mu.RLock()
+	load, trackID, generation := d.onLoad, d.trackID, d.generation
+	d.mu.RUnlock()
+	if load == nil || trackID < 0 {
 		return nil
 	}
-
-	if d.trackID == 0 {
-		return nil
-	}
-
-	lap, err := d.onLoad(d.trackID)
+	lap, err := load(trackID)
 	if err != nil {
 		return err
 	}
-
-	if lap == nil {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if generation != d.generation || trackID != d.trackID || lap == nil || lap.TrackID != trackID || lap.LapTimeMS == 0 {
 		return nil
 	}
-
-	// Set the loaded best lap data
 	d.bestLapData = lap
 	d.bestLapTimeMS = lap.LapTimeMS
-
-	// Reconstruct bucket-based times from telemetry points for backward compatibility
-	if len(lap.DataPoints) > 0 {
-		d.bestLapTimes = make(map[int]uint32)
-		for _, point := range lap.DataPoints {
-			bucket := int(point.LapDistance / distanceBucketSize)
-			d.bestLapTimes[bucket] = point.LapTime
-		}
+	d.bestLapTimes = make(map[int]uint32)
+	for _, point := range lap.DataPoints {
+		d.bestLapTimes[int(point.LapDistance/distanceBucketSize)] = point.LapTime
 	}
-
 	return nil
 }
 
-// Reset clears all stored data (call when session changes)
+func (d *DeltaCalculator) resetLapLocked() {
+	d.currentLapTimes = make(map[int]uint32)
+	d.currentLapData = nil
+	d.lastLapNum, d.lastDistance = 0, 0
+	d.lapInvalid, d.lapStartObserved = false, false
+	d.sector1MS, d.sector2MS = 0, 0
+}
+
+func (d *DeltaCalculator) resetLocked() {
+	d.generation++
+	d.bestLapTimes = make(map[int]uint32)
+	d.bestLapData, d.bestLapTimeMS = nil, 0
+	d.trackID = -1 // Australia is track 0.
+	d.playerIndex = -1
+	d.resetLapLocked()
+}
+
 func (d *DeltaCalculator) Reset() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	d.bestLapTimes = make(map[int]uint32)
-	d.currentLapTimes = make(map[int]uint32)
-	d.bestLapTimeMS = 0
-	d.bestLapData = nil
-	d.currentLapData = make([]TelemetryPoint, 0, 1000)
-	d.lastLapNum = 0
-	d.lastDistance = 0
+	d.resetLocked()
 	d.sessionUID = 0
-	d.trackID = 0
 }
 
-// SetTrackID sets the current track ID and attempts to load best lap from storage
-func (d *DeltaCalculator) SetTrackID(trackID int8) {
-	d.mu.Lock()
-	oldTrackID := d.trackID
-	d.trackID = trackID
-	onLoad := d.onLoad
-	d.mu.Unlock()
-
-	// If track changed and we have a load callback, try to load best lap
-	if trackID != oldTrackID && trackID != 0 && onLoad != nil {
-		lap, err := onLoad(trackID)
-		if err == nil && lap != nil {
-			d.mu.Lock()
-			d.bestLapData = lap
-			d.bestLapTimeMS = lap.LapTimeMS
-			// Reconstruct bucket-based times
-			if len(lap.DataPoints) > 0 {
-				d.bestLapTimes = make(map[int]uint32)
-				for _, point := range lap.DataPoints {
-					bucket := int(point.LapDistance / distanceBucketSize)
-					d.bestLapTimes[bucket] = point.LapTime
-				}
-			}
-			d.mu.Unlock()
-		}
-	}
-}
-
-// Update updates the calculator with new lap data and returns the delta to personal best
-func (d *DeltaCalculator) Update(header *packets.PacketHeader, lapData *packets.LapData) int32 {
-	if lapData == nil || header == nil {
-		return 0
-	}
-
+// ObserveSession must precede SetTrackID and lap ingestion at the packet boundary.
+func (d *DeltaCalculator) ObserveSession(uid uint64) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	// Check for session change
-	if header.SessionUID != d.sessionUID {
-		d.bestLapTimes = make(map[int]uint32)
-		d.currentLapTimes = make(map[int]uint32)
-		d.bestLapTimeMS = 0
-		d.bestLapData = nil
-		d.currentLapData = make([]TelemetryPoint, 0, 1000)
-		d.lastLapNum = 0
-		d.lastDistance = 0
-		d.sessionUID = header.SessionUID
+	if uid != 0 && uid != d.sessionUID {
+		d.resetLocked()
+		d.sessionUID = uid
 	}
+}
 
-	// Check for new lap
-	if lapData.CurrentLapNum != d.lastLapNum && d.lastLapNum > 0 {
-		// Lap completed, check if it's a personal best
-		if lapData.LastLapTimeInMS > 0 {
-			if d.bestLapTimeMS == 0 || lapData.LastLapTimeInMS < d.bestLapTimeMS {
-				d.bestLapTimeMS = lapData.LastLapTimeInMS
-				// Copy current lap times to best lap times (legacy)
-				d.bestLapTimes = make(map[int]uint32)
-				maps.Copy(d.bestLapTimes, d.currentLapTimes)
+// ObservePlayer discards an incomplete trace before another player's packets
+// can complete it. The saved reference for this track remains available.
+func (d *DeltaCalculator) ObservePlayer(index uint8) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.playerIndex != int(index) {
+		d.resetLapLocked()
+		d.playerIndex = int(index)
+	}
+}
 
-				// Store full telemetry data
-				d.bestLapData = NewLapTelemetry(d.trackID)
-				// Calculate sector 3 from total lap time - sector1 - sector2
-				sector3MS := uint16(0)
-				totalSectors := uint32(lapData.Sector1TimeInMS) + uint32(lapData.Sector2TimeInMS)
-				if lapData.LastLapTimeInMS > totalSectors {
-					sector3MS = uint16(lapData.LastLapTimeInMS - totalSectors)
-				}
-				d.bestLapData.SetLapTimes(
-					lapData.LastLapTimeInMS,
-					lapData.Sector1TimeInMS,
-					lapData.Sector2TimeInMS,
-					sector3MS,
-				)
-				d.bestLapData.DataPoints = make([]TelemetryPoint, len(d.currentLapData))
-				copy(d.bestLapData.DataPoints, d.currentLapData)
+func (d *DeltaCalculator) SetTrackID(trackID int8) {
+	d.mu.Lock()
+	if trackID == d.trackID {
+		d.mu.Unlock()
+		return
+	}
+	d.resetLocked()
+	d.trackID = trackID
+	d.mu.Unlock()
+	_ = d.LoadBestLapFromStorage()
+}
 
-				// Persist to storage if callback is set
-				if d.onSave != nil && d.trackID != 0 {
-					// Run in goroutine to avoid blocking telemetry processing
-					lapCopy := &LapTelemetry{
-						TrackID:    d.bestLapData.TrackID,
-						LapTimeMS:  d.bestLapData.LapTimeMS,
-						Sector1MS:  d.bestLapData.Sector1MS,
-						Sector2MS:  d.bestLapData.Sector2MS,
-						Sector3MS:  d.bestLapData.Sector3MS,
-						CreatedAt:  d.bestLapData.CreatedAt,
-						DataPoints: make([]TelemetryPoint, len(d.bestLapData.DataPoints)),
-					}
-					copy(lapCopy.DataPoints, d.bestLapData.DataPoints)
-					go d.onSave(d.trackID, lapCopy)
-				}
+// Update observes EVERY lap packet, independently of dashboard throttling.
+// Validity and completed sectors belong to the previous lap snapshot.
+func (d *DeltaCalculator) Update(header *packets.PacketHeader, lap *packets.LapData) int32 {
+	if lap == nil || header == nil {
+		return 0
+	}
+	d.ObserveSession(header.SessionUID)
+	d.ObservePlayer(header.PlayerCarIndex)
+	d.mu.Lock()
+	var saved *LapTelemetry
+	save, trackID := d.onSave, d.trackID
+	if lap.CurrentLapNum != d.lastLapNum && d.lastLapNum > 0 {
+		if lap.CurrentLapNum == d.lastLapNum+1 && !d.lapInvalid && d.lapStartObserved && lap.LastLapTimeInMS > 0 &&
+			(d.bestLapTimeMS == 0 || lap.LastLapTimeInMS < d.bestLapTimeMS) {
+			d.bestLapTimeMS = lap.LastLapTimeInMS
+			d.bestLapTimes = maps.Clone(d.currentLapTimes)
+			best := NewLapTelemetry(d.trackID)
+			var sector3 uint32
+			if d.sector1MS > 0 && d.sector2MS > 0 && lap.LastLapTimeInMS > d.sector1MS+d.sector2MS {
+				sector3 = lap.LastLapTimeInMS - d.sector1MS - d.sector2MS
 			}
+			best.SetLapTimes(lap.LastLapTimeInMS, d.sector1MS, d.sector2MS, sector3)
+			best.DataPoints = append([]TelemetryPoint(nil), d.currentLapData...)
+			d.bestLapData = best
+			copy := *best
+			copy.DataPoints = append([]TelemetryPoint(nil), best.DataPoints...)
+			saved = &copy
 		}
-		// Clear current lap data for new lap
-		d.currentLapTimes = make(map[int]uint32)
-		d.currentLapData = d.currentLapData[:0] // Reuse underlying array
+		d.resetLapLocked()
 	}
-
-	d.lastLapNum = lapData.CurrentLapNum
-
-	// Handle lap distance wrap-around (new lap starts at 0)
-	distance := lapData.LapDistance
-	if distance < 0 {
-		distance = 0
+	if d.lastLapNum == 0 {
+		d.lapStartObserved = lap.LapDistance >= 0 && lap.LapDistance < 50 && lap.CurrentLapTimeInMS < 5000
 	}
-
-	// Store current lap time at this distance bucket (legacy)
-	bucket := int(distance / distanceBucketSize)
-	d.currentLapTimes[bucket] = lapData.CurrentLapTimeInMS
+	// A same-lap flashback invalidates the captured trace until the next full lap.
+	if lap.CurrentLapNum == d.lastLapNum && lap.LapDistance < d.lastDistance {
+		d.lapStartObserved = false
+	}
+	d.lastLapNum = lap.CurrentLapNum
+	d.lapInvalid = d.lapInvalid || lap.CurrentLapInvalid != 0
+	d.sector1MS = uint32(lap.Sector1TimeMinutes)*60000 + uint32(lap.Sector1TimeInMS)
+	d.sector2MS = uint32(lap.Sector2TimeMinutes)*60000 + uint32(lap.Sector2TimeInMS)
+	distance := max(0, sanitizeF32(lap.LapDistance))
+	d.currentLapTimes[int(distance/distanceBucketSize)] = lap.CurrentLapTimeInMS
 	d.lastDistance = distance
-
-	// Calculate delta using precise interpolation if available
-	if d.bestLapData != nil && len(d.bestLapData.DataPoints) >= 2 {
-		return d.calculatePreciseDelta(distance, lapData.CurrentLapTimeInMS)
+	delta := d.deltaLocked(distance, lap.CurrentLapTimeInMS)
+	d.mu.Unlock()
+	// One completed best per lap, ordered by the processor. Callback I/O must not
+	// hold d.mu, and an older asynchronous save must not overwrite a newer best.
+	if saved != nil && save != nil && trackID >= 0 {
+		_ = save(trackID, saved)
 	}
+	return delta
+}
 
-	// Fallback to bucket-based delta
-	return d.calculateBucketDelta(bucket, lapData.CurrentLapTimeInMS)
+func (d *DeltaCalculator) deltaLocked(distance float32, lapTime uint32) int32 {
+	if d.bestLapData != nil && len(d.bestLapData.DataPoints) >= 2 {
+		return d.calculatePreciseDelta(distance, lapTime)
+	}
+	return d.calculateBucketDelta(int(distance/distanceBucketSize), lapTime)
+}
+
+func (d *DeltaCalculator) DeltaAt(lap *packets.LapData) int32 {
+	if lap == nil {
+		return 0
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.deltaLocked(max(0, sanitizeF32(lap.LapDistance)), lap.CurrentLapTimeInMS)
 }
 
 // UpdateWithTelemetry updates with both lap data and telemetry data for full precision
@@ -299,7 +286,7 @@ func (d *DeltaCalculator) addTelemetryPoint(
 	}
 
 	point := TelemetryPoint{
-		LapDistance:  sanitizeF32(distance),
+		LapDistance: sanitizeF32(distance),
 		SessionTime: sanitizeF32(header.SessionTime),
 		LapTime:     lapData.CurrentLapTimeInMS,
 		Speed:       telemetry.Speed,

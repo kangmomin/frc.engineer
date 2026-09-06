@@ -3,8 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { NavTabs } from '../../shell/NavTabs';
 import { TelemetryWaitingActions } from '../../shell/TelemetryWaitingActions';
 import type { ShellControls } from '../../shell/types';
-import { useLapHistoryStore } from '../../store/lapHistoryStore';
-import { useRaceMetaStore } from '../../store/raceMetaStore';
+import { useDisplayedLapHistory, useDisplayedSourceKey } from '../../store/replayDerivedStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { cornersFor, nextCornerNumber } from '../../constants/trackCorners';
 import { deriveDriverCodes } from '../../utils/driverCodes';
@@ -60,29 +59,31 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
   // ── 드라이버 상세 모달 (OPEN 버튼) ── openDriverIdx는 driver.index(안정 car index) 저장.
-  const lapHistory = useLapHistoryStore((s) => s.history);
-  const epoch = useRaceMetaStore((s) => s.epoch);
-  const [openDriverIdx, setOpenDriverIdx] = useState<number | null>(null);
+  const lapHistory = useDisplayedLapHistory((s) => s.history);
+  const sourceKey = useDisplayedSourceKey();
+  const [selection, setSelection] = useState<{ sourceKey: string; index: number } | null>(null);
+  const openDriverIdx = selection?.sourceKey === sourceKey ? selection.index : null;
   const openTriggerRef = useRef<HTMLElement | null>(null);
   const openDriver = openDriverIdx !== null ? (drivers.find((d) => d.index === openDriverIdx) ?? null) : null;
 
   function openDriverDetail(index: number, triggerEl: HTMLElement) {
     openTriggerRef.current = triggerEl;
-    setOpenDriverIdx(index);
+    setSelection({ sourceKey, index });
   }
   function closeDriverDetail() {
-    setOpenDriverIdx(null);
+    setSelection(null);
     // 행 재정렬로 트리거가 사라졌을 수 있다 — 연결된 경우에만 포커스 복귀.
     if (openTriggerRef.current?.isConnected) openTriggerRef.current.focus();
     openTriggerRef.current = null;
   }
-  // 세션 리스타트(epoch)나 드라이버 소멸 시 같은 index가 다른 참가자를 가리키지 않도록 자동 닫기.
+  // 표시 출처 변경이나 드라이버 소멸 시 같은 index가 다른 참가자를 가리키지 않도록 닫기.
   useEffect(() => {
-    setOpenDriverIdx(null);
-  }, [epoch]);
+    setSelection(null);
+    openTriggerRef.current = null;
+  }, [sourceKey]);
   useEffect(() => {
     if (openDriverIdx !== null && !drivers.some((d) => d.index === openDriverIdx)) {
-      setOpenDriverIdx(null);
+      setSelection(null);
     }
   }, [openDriverIdx, drivers]);
   // 팝오버를 닫을 때(Escape/× 클릭 모두) 트리거 버튼으로 포커스를 되돌린다(FIX-6, 비-모달

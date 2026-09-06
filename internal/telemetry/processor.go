@@ -80,11 +80,13 @@ type Processor struct {
 	noDropStreak    int           // consecutive broadcasts without drops
 
 	// Latest data cache
-	mu              sync.RWMutex
-	latestTelemetry *packets.CarTelemetryData
-	latestLapData   *packets.LapData
-	latestHeader    *packets.PacketHeader
-	latestPlayerCT2 *packets.CarTelemetry2Data // 2026 Season Pack: 플레이어 Overtake/Active Aero 상태
+	mu               sync.RWMutex
+	latestTelemetry  *packets.CarTelemetryData
+	latestLapData    *packets.LapData
+	latestHeader     *packets.PacketHeader
+	cacheSessionUID  uint64
+	cachePlayerIndex uint8
+	latestPlayerCT2  *packets.CarTelemetry2Data // 2026 Season Pack: 플레이어 Overtake/Active Aero 상태
 
 	// Race summary persistence state
 	raceSummaryMu                sync.Mutex
@@ -437,9 +439,21 @@ func (p *Processor) processPacket(data []byte) {
 		// never resume, so its last observed state is final.
 		p.maybeFinalizePreviousSession(parsed.Header.SessionUID)
 	}
+	p.mu.Lock()
+	if uid := parsed.Header.SessionUID; (uid != 0 && uid != p.cacheSessionUID) || parsed.Header.PlayerCarIndex != p.cachePlayerIndex {
+		if uid != 0 {
+			p.cacheSessionUID = uid
+		}
+		p.cachePlayerIndex = parsed.Header.PlayerCarIndex
+		p.latestTelemetry, p.latestLapData, p.latestHeader, p.latestPlayerCT2 = nil, nil, nil, nil
+	}
+	p.mu.Unlock()
+	p.deltaCalculator.ObserveSession(parsed.Header.SessionUID)
+	p.deltaCalculator.ObservePlayer(parsed.Header.PlayerCarIndex)
 	p.observeSessionUID(parsed.Header.SessionUID)
 	p.observeReplaySession(parsed.Header.SessionUID)
 	p.incidents.observeSession(parsed.Header.SessionUID)
+	p.pitwallManager.ObserveSession(parsed.Header)
 
 	// Feed pitwall manager with all packet types first, so ban evaluation and
 	// every downstream broadcast observe the latest participants / player index.
@@ -488,6 +502,10 @@ func (p *Processor) processPacket(data []byte) {
 		return
 	}
 
+	if parsed.Session != nil {
+		p.deltaCalculator.SetTrackID(parsed.Session.TrackID)
+	}
+
 	// Incident recorder feed: full-grid latest caches + ~20Hz motion sampling.
 	// Deliberately after the ban gate — a banned sender must not capture.
 	if parsed.Telemetry != nil {
@@ -532,6 +550,12 @@ func (p *Processor) processPacket(data []byte) {
 	if parsed.LapData != nil {
 		playerLapData := p.parser.GetPlayerLapData(parsed)
 		if playerLapData != nil {
+			// The processor owns packet ordering; do not lose a validity edge or
+			// rollover merely because the dashboard broadcast is rate limited.
+			telemetry := p.latestTelemetry
+			p.mu.Unlock()
+			p.deltaCalculator.UpdateWithTelemetry(parsed.Header, playerLapData, telemetry)
+			p.mu.Lock()
 			p.latestLapData = playerLapData
 			p.latestHeader = parsed.Header
 		}
@@ -623,10 +647,8 @@ func (p *Processor) processPacket(data []byte) {
 func (p *Processor) buildDashboardData() *dto.Dashboard {
 	tel := p.latestTelemetry
 	lap := p.latestLapData
-	header := p.latestHeader
-
 	// Calculate delta to personal best with full telemetry data for precise interpolation
-	deltaPersonalBest := p.deltaCalculator.UpdateWithTelemetry(header, lap, tel)
+	deltaPersonalBest := p.deltaCalculator.DeltaAt(lap)
 
 	return &dto.Dashboard{
 		Speed:             tel.Speed,
@@ -1056,37 +1078,11 @@ func copyPitwallForReplay(src *dto.PitwallState) *dto.PitwallState {
 		return nil
 	}
 
-	out := &dto.PitwallState{
-		PlayerIndex:          src.PlayerIndex,
-		GameFormat:           src.GameFormat,
-		TrackMap:             nil,
-		ERSEstimateEnabled:   src.ERSEstimateEnabled,
-		ERSComparisonEnabled: src.ERSComparisonEnabled,
-	}
-
-	if src.Session != nil {
-		out.Session = &dto.SessionInfo{
-			Weather:                src.Session.Weather,
-			TrackTemp:              src.Session.TrackTemp,
-			AirTemp:                src.Session.AirTemp,
-			SafetyCar:              src.Session.SafetyCar,
-			SessionType:            src.Session.SessionType,
-			TotalLaps:              src.Session.TotalLaps,
-			TrackID:                src.Session.TrackID,
-			TrackName:              src.Session.TrackName,
-			TrackLength:            src.Session.TrackLength,
-			PitStopWindowIdealLap:  src.Session.PitStopWindowIdealLap,
-			PitStopWindowLatestLap: src.Session.PitStopWindowLatestLap,
-			PitStopRejoinPosition:  src.Session.PitStopRejoinPosition,
-			CrossoverPrediction:    copyCrossoverPrediction(src.Session.CrossoverPrediction),
-		}
-		if len(src.Session.MarshalZones) > 0 {
-			out.Session.MarshalZones = append([]dto.MarshalZoneDTO(nil), src.Session.MarshalZones...)
-		}
-		if len(src.Session.WeatherForecast) > 0 {
-			out.Session.WeatherForecast = append([]dto.WeatherForecastDTO(nil), src.Session.WeatherForecast...)
-		}
-	}
+	copied := *src
+	out := &copied
+	out.TrackMap = nil
+	out.SenderState = nil
+	out.Session = copySessionInfo(src.Session)
 
 	if len(src.Positions) > 0 {
 		out.Positions = append([]dto.CarPosition(nil), src.Positions...)
@@ -1117,21 +1113,10 @@ func copySessionInfo(src *dto.SessionInfo) *dto.SessionInfo {
 		return nil
 	}
 
-	out := &dto.SessionInfo{
-		Weather:                src.Weather,
-		TrackTemp:              src.TrackTemp,
-		AirTemp:                src.AirTemp,
-		SafetyCar:              src.SafetyCar,
-		SessionType:            src.SessionType,
-		TotalLaps:              src.TotalLaps,
-		TrackID:                src.TrackID,
-		TrackName:              src.TrackName,
-		TrackLength:            src.TrackLength,
-		PitStopWindowIdealLap:  src.PitStopWindowIdealLap,
-		PitStopWindowLatestLap: src.PitStopWindowLatestLap,
-		PitStopRejoinPosition:  src.PitStopRejoinPosition,
-		CrossoverPrediction:    copyCrossoverPrediction(src.CrossoverPrediction),
-	}
+	copied := *src
+	out := &copied
+	out.CrossoverPrediction = copyCrossoverPrediction(src.CrossoverPrediction)
+
 	if len(src.MarshalZones) > 0 {
 		out.MarshalZones = append([]dto.MarshalZoneDTO(nil), src.MarshalZones...)
 	}

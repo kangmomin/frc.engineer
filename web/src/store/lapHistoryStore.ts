@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { DriverInfo, PitwallState } from '../types/telemetry';
 import { useRaceMetaStore } from './raceMetaStore';
 import { useTelemetryStore } from './telemetryStore';
+import { sessionIdentity } from './sessionIdentity';
 
 /**
  * 드라이버별 랩 히스토리 축적 스토어 (Pit Wall 드라이버 상세 모달의 데이터 근간).
@@ -37,7 +38,7 @@ export interface LapRecord {
 
 const MAX_RECORDS_PER_DRIVER = 40;
 
-interface LapHistoryState {
+export interface LapHistoryState {
   /** driver.index(안정 car index) → 랩 오름차순 레코드. */
   history: Map<number, LapRecord[]>;
 }
@@ -245,11 +246,11 @@ export function startLapHistoryTracker(): void {
       lastReplayState = pitwallState;
       return;
     }
-    if (!pitwallState?.session) return;
+    if (!pitwallState || (!pitwallState.session && !pitwallState.sessionUid)) return;
     if (pitwallState === lastReplayState) return;
     lastReplayState = null;
     const epoch = useRaceMetaStore.getState().epoch;
-    const key = `${pitwallState.session.trackId}|${pitwallState.session.sessionType}|${epoch}`;
+    const key = `${sessionIdentity(pitwallState.session, pitwallState.sessionUid)}|${epoch}`;
     const prev = useLapHistoryStore.getState().history;
     const next = ingestor.ingest(pitwallState.drivers, key, prev);
     if (next) useLapHistoryStore.setState({ history: next });

@@ -64,7 +64,7 @@ describe('sortQualifyingDrivers', () => {
       makeDriver({ index: 0, position: 16, bestLapTime: 81_000 }),
       makeDriver({ index: 1, position: 15, bestLapTime: 82_500 }),
       makeDriver({ index: 2, position: 3, bestLapTime: 80_500 }),
-    ], 'Q2');
+    ], 'Q2', { formula: 0, qualifyingGridSize: 20 });
 
     expect(sorted.map((driver) => driver.position)).toEqual([3, 15, 16]);
   });
@@ -75,20 +75,20 @@ describe('sortQualifyingDrivers', () => {
       makeDriver({ index: 1, position: 10, bestLapTime: 81_300 }),
       makeDriver({ index: 2, position: 17, bestLapTime: 79_900 }),
       makeDriver({ index: 3, position: 4, bestLapTime: 79_800 }),
-    ], 'Q3');
+    ], 'Q3', { formula: 0, qualifyingGridSize: 20 });
 
     expect(sorted.map((driver) => driver.position)).toEqual([4, 10, 12, 17]);
   });
 
-  it('pushes drivers with unknown best laps to the very bottom', () => {
+  it('keeps advancing drivers without a lap ahead of eliminated drivers', () => {
     const sorted = sortQualifyingDrivers([
       makeDriver({ index: 0, position: 16, bestLapTime: 81_000 }),
       makeDriver({ index: 1, position: 8, bestLapTime: 0 }),
       makeDriver({ index: 2, position: 10, bestLapTime: 80_700 }),
       makeDriver({ index: 3, position: 17, bestLapTime: 79_900 }),
-    ], 'Q2');
+    ], 'Q2', { formula: 0, qualifyingGridSize: 20 });
 
-    expect(sorted.map((driver) => driver.position)).toEqual([10, 16, 17, 8]);
+    expect(sorted.map((driver) => driver.position)).toEqual([10, 8, 16, 17]);
   });
 
   it('falls back to best-lap ordering outside knockout sessions', () => {
@@ -96,18 +96,27 @@ describe('sortQualifyingDrivers', () => {
       makeDriver({ index: 0, position: 5, bestLapTime: 82_100 }),
       makeDriver({ index: 1, position: 18, bestLapTime: 81_400 }),
       makeDriver({ index: 2, position: 2, bestLapTime: 80_900 }),
-    ], 'Q1');
+    ], 'Q1', { formula: 0, qualifyingGridSize: 20 });
 
     expect(sorted.map((driver) => driver.position)).toEqual([2, 18, 5]);
   });
 
-  it('uses last lap as a temporary best when session history best is missing', () => {
+  it('keeps an unverified last lap out of the qualifying best classification', () => {
     const sorted = sortQualifyingDrivers([
       makeDriver({ index: 0, position: 8, bestLapTime: 0, lastLapTime: 81_500 }),
       makeDriver({ index: 1, position: 5, bestLapTime: 82_100, lastLapTime: 82_100 }),
       makeDriver({ index: 2, position: 2, bestLapTime: 80_900, lastLapTime: 81_200 }),
-    ], 'Q1');
+    ], 'Q1', { formula: 0, qualifyingGridSize: 20 });
 
-    expect(sorted.map((driver) => driver.position)).toEqual([2, 8, 5]);
+    expect(sorted.map((driver) => driver.position)).toEqual([2, 5, 8]);
   });
+});
+
+it.each([[20, 15], [22, 16], [24, 17]])('keeps untimed Q2 participants above previous Q1 laps for %i entries', (grid, cutoff) => {
+  const sorted = sortQualifyingDrivers([
+    makeDriver({ index: 0, position: cutoff + 1, bestLapTime: 70_000 }),
+    makeDriver({ index: 1, position: cutoff, bestLapTime: 0 }),
+    makeDriver({ index: 2, position: 1, bestLapTime: 80_000 }),
+  ], 'Q2', { formula: 13, qualifyingGridSize: grid });
+  expect(sorted.map((driver) => driver.index)).toEqual([2, 1, 0]);
 });

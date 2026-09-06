@@ -36,6 +36,7 @@ type PacketSessionData struct {
 	TrackLength               uint16 // Track length (meters)
 	SessionType               uint8  // 0=unknown, 1=P1, 2=P2, 3=P3, 4=Short P, 5=Q1, 6=Q2, 7=Q3, 8=Short Q, 9=OSQ, 10=R, 11=R2, 12=R3, 13=Time Trial
 	TrackID                   int8   // -1=unknown. 항상 F1 25 canonical enum으로 정규화됨 (2026 wire 값은 파싱 시 변환)
+	Formula                   uint8  // 0=F1 Modern, 13=F1 26; other formulae use different qualifying formats
 	NumMarshalZones           uint8
 	MarshalZones              [21]MarshalZone
 	SafetyCarStatus           uint8 // 0=no safety car, 1=full, 2=virtual, 3=formation lap
@@ -50,13 +51,14 @@ type PacketSessionData struct {
 
 // Session packet field offsets (relative to start of packet)
 const (
-	sessionWeatherOffset                = PacketHeaderSize                 // 29
-	sessionTrackTempOffset              = PacketHeaderSize + 1             // 30
-	sessionAirTempOffset                = PacketHeaderSize + 2             // 31
-	sessionTotalLapsOffset              = PacketHeaderSize + 3             // 32
-	sessionTrackLengthOffset            = PacketHeaderSize + 4             // 33-34
-	sessionTypeOffset                   = PacketHeaderSize + 6             // 35
-	sessionTrackIDOffset                = PacketHeaderSize + 7             // 36
+	sessionWeatherOffset                = PacketHeaderSize     // 29
+	sessionTrackTempOffset              = PacketHeaderSize + 1 // 30
+	sessionAirTempOffset                = PacketHeaderSize + 2 // 31
+	sessionTotalLapsOffset              = PacketHeaderSize + 3 // 32
+	sessionTrackLengthOffset            = PacketHeaderSize + 4 // 33-34
+	sessionTypeOffset                   = PacketHeaderSize + 6 // 35
+	sessionTrackIDOffset                = PacketHeaderSize + 7 // 36
+	sessionFormulaOffset                = PacketHeaderSize + 8
 	sessionTimeLeftOffset               = PacketHeaderSize + 9             // 38-39
 	sessionDurationOffset               = PacketHeaderSize + 11            // 40-41
 	sessionNumMarshalZonesOffset        = PacketHeaderSize + 18            // 47
@@ -156,6 +158,7 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 		TrackLength:      binary.LittleEndian.Uint16(data[sessionTrackLengthOffset:]),
 		SessionType:      data[sessionTypeOffset],
 		TrackID:          CanonicalTrackID(header.PacketFormat, int8(data[sessionTrackIDOffset])),
+		Formula:          data[sessionFormulaOffset],
 		SessionTimeLeft:  binary.LittleEndian.Uint16(data[sessionTimeLeftOffset:]),
 		SessionDuration:  binary.LittleEndian.Uint16(data[sessionDurationOffset:]),
 		NumMarshalZones:  data[sessionNumMarshalZonesOffset],

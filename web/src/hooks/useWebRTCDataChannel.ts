@@ -102,6 +102,7 @@ type PendingRequest =
   }
   | {
     kind: 'stream';
+    cancelRemote?: () => void;
     doneType: string;
     onMessage: (response: WSResponse) => void;
     resolve: () => void;
@@ -471,6 +472,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       });
     }
     for (const [requestId, pending] of pendingRequestsRef.current.entries()) {
+      if (pending.kind === 'stream') pending.cancelRemote?.();
       clearPendingRequest(requestId);
       pending.reject(toError(message));
     }
@@ -494,6 +496,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         kind: active.kind,
         timeoutMs: active.timeoutMs,
       });
+      if (active.kind === 'stream') active.cancelRemote?.();
       clearPendingRequest(requestId);
       active.reject(toError('Timed out waiting for a P2P response.'));
     }, pending.timeoutMs);
@@ -768,6 +771,12 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     return new Promise<void>((resolve, reject) => {
       const pending: PendingRequest = {
         kind: 'stream',
+        cancelRemote: () => {
+          // Retain the channel generation that started this request.
+          if (nextRequest.type === 'getRaceReplay' && channel.readyState === 'open') {
+            try { channel.send(JSON.stringify({ type: 'cancelRaceReplay', requestId })); } catch { /* closed concurrently */ }
+          }
+        },
         doneType: options.doneType,
         onMessage: options.onMessage,
         resolve,
@@ -784,6 +793,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
             type: nextRequest.type,
             doneType: options.doneType,
           });
+          pending.cancelRemote?.();
           clearPendingRequest(requestId);
           reject(toError('P2P stream aborted.'));
         };
@@ -928,6 +938,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
       Date.now(),
     ).source;
     let selectedCandidateDiagnosticGeneration = 0;
+    let restartNegotiation: { generation: CandidateGeneration; answerSent: boolean } | null = null;
 
     const clearTurnRefreshTimers = () => {
       if (turnRefreshTimeoutRef.current) {
@@ -963,6 +974,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     };
 
     const completeRecoveryGrace = () => {
+      if (restartNegotiation && !restartNegotiation.answerSent) return;
       if (!restartGraceRef.current || restartProbeRef.current) return;
       if (!pingSeenRef.current) {
         clearRestartGrace();
@@ -1015,6 +1027,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
     };
 
     const closeCurrentPeer = () => {
+      restartNegotiation = null;
       const current = pcRef.current;
       if (current) {
         current.onconnectionstatechange = null;
@@ -1393,6 +1406,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         ));
         remoteDescriptionReady = false;
         beginLocalCandidateQueue(generation);
+        restartNegotiation = { generation, answerSent: false };
         enterRestartGrace();
         emitP2PDebug('info', 'signaling', 'Received ICE restart offer, renegotiating in place.', undefined, false);
         clearStageTimeout();
@@ -1409,6 +1423,9 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
               if (!sendViaWs({ type: 'answer', negotiationId: generation.signaling, payload: answer })) {
                 scheduleReconnect('Failed to send the ICE restart answer.');
                 return;
+              }
+              if (restartNegotiation && sameCandidateGeneration(restartNegotiation.generation, generation)) {
+                restartNegotiation.answerSent = true;
               }
               flushLocalDescriptionCandidates(pc, generation);
             }
@@ -1461,6 +1478,7 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
         // ICE/DTLS can connect before SCTP delivers the reliable channel. RPCs
         // and the selected-view effect must see a usable channel before ready.
         if (pc.connectionState !== 'connected' || dcRef.current?.readyState !== 'open') return;
+        if (restartNegotiation && (!restartNegotiation.answerSent || !isCurrentPeerGeneration(pc, restartNegotiation.generation))) return;
         hadConnectedRef.current = true;
         completeRecoveryGrace();
         setRtcState('connected');
@@ -1608,6 +1626,15 @@ export function useWebRTCDataChannel(options: UseWebRTCOptions | null): UseWebRT
           if (ping) {
             pingSeenRef.current = true;
             lastReliablePingAtRef.current = Date.now();
+            // In-place ICE can stay connected throughout renegotiation. A real
+            // reliable ping after our current answer proves the usable path even
+            // when Chrome emits no connection-state transition.
+            if (restartNegotiation?.answerSent && isCurrentPeerGeneration(pc, restartNegotiation.generation) &&
+              (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) {
+              restartNegotiation = null;
+              clearRestartGrace();
+              markConnected();
+            }
             if (restartProbeRef.current) {
               clearRestartGrace();
             }

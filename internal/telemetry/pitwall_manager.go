@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -164,6 +165,14 @@ func (pm *PitwallManager) ResendTrackMap() {
 	pm.mu.Unlock()
 }
 
+// ObserveSession observes the header even for events without a dedicated cache
+// update (SSTA/SEND, for example). Call after finalizing the previous session.
+func (pm *PitwallManager) ObserveSession(header *packets.PacketHeader) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.noteSessionLocked(header)
+}
+
 // UpdateSession stores the latest session packet
 func (pm *PitwallManager) UpdateSession(s *packets.PacketSessionData) {
 	pm.mu.Lock()
@@ -239,6 +248,10 @@ func (pm *PitwallManager) noteSessionLocked(header *packets.PacketHeader) {
 		return
 	}
 	pm.noteSessionUIDLocked(header.SessionUID)
+	if header.PacketFormat != 0 {
+		pm.noteFormatLocked(header.PacketFormat)
+	}
+	pm.playerIndex = header.PlayerCarIndex
 }
 
 // noteSessionUIDLocked is the SessionUID-keyed core of noteSessionLocked. Both the
@@ -253,6 +266,17 @@ func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
 		return
 	}
 	if pm.lastSessionUID != 0 && pm.lastSessionUID != uid {
+		pm.session = nil
+		pm.motion = nil
+		pm.telemetry = nil
+		pm.carTelemetry2 = nil
+		pm.carDamage = nil
+		pm.carSetups = nil
+		pm.motionEx = nil
+		pm.playerIndex = 0
+		pm.gameFormat = 0
+		pm.trackMapSendCount = 0
+		pm.ersEstimator = NewERSEstimator(pm.trackStore)
 		// Participants carries identity and per-car telemetry permission. It must
 		// never bridge a session boundary: Motion/Telemetry commonly arrive before
 		// the new Participants packet, and retaining this pointer would leak a
@@ -269,6 +293,7 @@ func (pm *PitwallManager) noteSessionUIDLocked(uid uint64) {
 		pm.lastTrackID = -1 // 다음 BuildState에서 트랙맵 재전송 트리거
 		pm.dynamicsAnalyzer.Reset()
 		pm.penaltyLog = [packets.MaxCars][]dto.PenaltyLogEntry{}
+		pm.penaltyLogAt = [packets.MaxCars]time.Time{}
 		pm.pitMeasure = [packets.MaxCars]pitMeasureState{}
 		pm.captureStartLap = 0
 		pm.lapDataObserved = false
@@ -287,6 +312,9 @@ func (pm *PitwallManager) UpdateParticipants(p *packets.PacketParticipantsData) 
 	pm.mu.Lock()
 	pm.noteSessionLocked(&p.Header)
 	pm.participants = p
+	if active := int(p.NumActiveCars); active > pm.peakActiveCars {
+		pm.peakActiveCars = active
+	}
 	pm.mu.Unlock()
 }
 
@@ -301,6 +329,7 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 	var rec *TrackRecorder
 	var trackID int8
 	var trackName string
+	var trackLength uint16
 	var lapDist float32
 	var lapNum uint8
 	var wx, wy, wz float32
@@ -315,6 +344,7 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 			rec = pm.recorder
 			trackID = pm.session.TrackID
 			trackName = tracks.TrackName(trackID)
+			trackLength = pm.session.TrackLength
 			lapDist = ld.LapDistance
 			lapNum = ld.CurrentLapNum
 			wx = car.WorldPositionX
@@ -348,7 +378,7 @@ func (pm *PitwallManager) UpdateMotion(m *packets.PacketMotionData, playerIndex 
 	pm.mu.Unlock()
 
 	if rec != nil {
-		rec.RecordPoint(trackID, trackName, lapDist, lapNum, wx, wy, wz, drs, sector)
+		rec.RecordPoint(m.Header.SessionUID, trackID, trackName, trackLength, lapDist, lapNum, wx, wy, wz, drs, sector)
 	}
 }
 
@@ -493,6 +523,9 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 		ERSEstimateEnabled:   true, // broadcaster filters per-peer via ViewERSEstimate
 		ERSComparisonEnabled: pm.ersCompareEnabled,
 	}
+	if pm.lastSessionUID != 0 {
+		state.SessionUID = strconv.FormatUint(pm.lastSessionUID, 10)
+	}
 	if pm.senderState != nil {
 		senderStateCopy := *pm.senderState
 		state.SenderState = &senderStateCopy
@@ -501,6 +534,8 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 	// Session info
 	if pm.session != nil {
 		si := &dto.SessionInfo{
+			Formula:                pm.session.Formula,
+			SessionUID:             state.SessionUID,
 			Weather:                weatherString(pm.session.Weather),
 			TrackTemp:              float32(pm.session.TrackTemperature),
 			AirTemp:                float32(pm.session.AirTemperature),
@@ -515,6 +550,14 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 			PitStopWindowIdealLap:  int(pm.session.PitStopWindowIdealLap),
 			PitStopWindowLatestLap: int(pm.session.PitStopWindowLatestLap),
 			PitStopRejoinPosition:  int(pm.session.PitStopRejoinPosition),
+		}
+		// A reduced Q2/Q3 field cannot establish the original roster. Only
+		// observed full standard F1 fields justify a knockout format.
+		if pm.session.Formula == 0 || pm.session.Formula == 13 {
+			switch pm.peakActiveCars {
+			case 20, 22, 24:
+				si.QualifyingGridSize = pm.peakActiveCars
+			}
 		}
 		numZones := int(pm.session.NumMarshalZones)
 		if numZones > 21 {
@@ -583,10 +626,6 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 		if mutate && int8(currentTrackID) != pm.lastTrackID {
 			pm.lastTrackID = int8(currentTrackID)
 			pm.trackMapSendCount = 8 // ~2 seconds at 4Hz
-			// Clear per-car caches on session change
-			pm.tyreSets = [packets.MaxCars]*packets.PacketTyreSetsData{}
-			pm.sessionHistory = [packets.MaxCars]*packets.PacketSessionHistoryData{}
-			pm.peakActiveCars = 0
 		}
 		if pm.trackMapSendCount > 0 {
 			if td := pm.trackStore.Get(currentTrackID); td != nil {
@@ -860,38 +899,11 @@ func (pm *PitwallManager) buildStateLocked(visibilityMode telemetryvisibility.Mo
 			}
 
 			if sh := pm.sessionHistory[i]; sh != nil {
-				numLaps := int(sh.NumLaps)
-				// Best lap time
-				blLap := int(sh.BestLapTimeLapNum)
-				if blLap > 0 && blLap <= numLaps && blLap <= packets.MaxNumLapsInHistory {
-					if t := sh.LapHistoryData[blLap-1].LapTimeInMS; t > 0 {
-						d.BestLapTime = float32(t)
-					}
-				}
-				// Best sector 1
-				s1Lap := int(sh.BestSector1LapNum)
-				if s1Lap > 0 && s1Lap <= numLaps && s1Lap <= packets.MaxNumLapsInHistory {
-					s1 := sh.LapHistoryData[s1Lap-1].Sector1Ms()
-					if s1 > 0 {
-						d.BestSector1Ms = &s1
-					}
-				}
-				// Best sector 2
-				s2Lap := int(sh.BestSector2LapNum)
-				if s2Lap > 0 && s2Lap <= numLaps && s2Lap <= packets.MaxNumLapsInHistory {
-					s2 := sh.LapHistoryData[s2Lap-1].Sector2Ms()
-					if s2 > 0 {
-						d.BestSector2Ms = &s2
-					}
-				}
-				// Best sector 3
-				s3Lap := int(sh.BestSector3LapNum)
-				if s3Lap > 0 && s3Lap <= numLaps && s3Lap <= packets.MaxNumLapsInHistory {
-					s3 := sh.LapHistoryData[s3Lap-1].Sector3Ms()
-					if s3 > 0 {
-						d.BestSector3Ms = &s3
-					}
-				}
+				d.SessionHistoryAvailable = true
+				d.BestLapTime = float32(sh.BestLapMS())
+				d.BestSector1Ms = sh.BestSectorMS(1)
+				d.BestSector2Ms = sh.BestSectorMS(2)
+				d.BestSector3Ms = sh.BestSectorMS(3)
 			}
 		}
 

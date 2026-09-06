@@ -77,6 +77,8 @@ export class IntercomRuntime {
   private adapterReady = false;
   private acknowledgedPrivateRevision = -1;
   private mediaOperation = 0;
+  private membershipOperation = 0;
+  private acceptUnsolicitedJoin = true;
   private deviceId = '';
   private chiefTargetSignature = '';
   private microphoneLive = false;
@@ -139,16 +141,19 @@ export class IntercomRuntime {
       this.failClosed();
       this.setState({ status: 'reconnecting' });
       if (this.resumeTimer) clearTimeout(this.resumeTimer);
+      const operation = this.membershipOperation;
       this.resumeTimer = setTimeout(() => {
         this.resumeTimer = null;
-        if (!this.joined || this.transportGeneration !== adapter.generation) {
-          void this.joinInternal(this.credentials!, this.resumeToken);
+        if (operation === this.membershipOperation && this.credentials
+          && (!this.joined || this.transportGeneration !== adapter.generation)) {
+          void this.joinInternal(this.credentials, this.resumeToken);
         }
       }, 250);
     }
   }
 
   async createGroup(displayName: string, password: string): Promise<void> {
+    const operation = ++this.membershipOperation;
     const credentials: JoinCredentials = { groupCode: '', password, role: 'driver', displayName };
     this.credentials = credentials;
     this.setState({ status: 'joining', error: '' });
@@ -156,13 +161,16 @@ export class IntercomRuntime {
       const response = await this.rpc.request<ServerIntercomEnvelope>(
         'intercom_group_create', { displayName, password }, 'intercom_joined',
       );
+      if (operation !== this.membershipOperation) return;
       await this.applyJoined(response.payload as IntercomJoinedPayload, credentials);
     } catch (error) {
+      if (operation !== this.membershipOperation) return;
       this.setState({ status: 'ready', error: errorMessage(error) });
     }
   }
 
   async join(credentials: JoinCredentials): Promise<void> {
+    ++this.membershipOperation;
     this.credentials = { ...credentials };
     this.setState({ status: 'joining', error: '' });
     await this.joinInternal(credentials, '');
@@ -170,6 +178,9 @@ export class IntercomRuntime {
 
   async leave(): Promise<void> {
     this.failClosed();
+    this.clearMembership();
+    this.setState({ ...INITIAL_STATE, status: isIntercomTransportReady(this.adapter) ? 'ready' : 'unavailable' });
+    const stopped = this.audio.stop();
     try {
       if (isIntercomTransportReady(this.adapter)) {
         await this.rpc.request<ServerIntercomEnvelope>('intercom_leave', {}, 'intercom_left', 4_000);
@@ -177,9 +188,7 @@ export class IntercomRuntime {
     } catch {
       // Local leave must complete even when the network is gone.
     }
-    await this.audio.stop();
-    this.clearMembership();
-    this.setState({ ...INITIAL_STATE, status: isIntercomTransportReady(this.adapter) ? 'ready' : 'unavailable' });
+    await stopped;
   }
 
   async retryMicrophone(deviceId = this.deviceId): Promise<void> {
@@ -216,6 +225,7 @@ export class IntercomRuntime {
         this.applyGates();
       } catch (error) {
         track.stop();
+        if (operation !== this.mediaOperation) return;
         this.audio.disableAll();
         this.setState({ mediaStatus: 'failed', error: errorMessage(error) });
       }
@@ -296,8 +306,9 @@ export class IntercomRuntime {
   }
 
   close(): void {
-    ++this.mediaOperation;
+    const wasJoined = Boolean(this.joined);
     this.failClosed();
+    this.clearMembership();
     if (this.resumeTimer) clearTimeout(this.resumeTimer);
     this.resumeTimer = null;
     if (this.privateReadyTimer) clearTimeout(this.privateReadyTimer);
@@ -306,7 +317,7 @@ export class IntercomRuntime {
     this.adapterUnsubscribe = null;
     this.adapterInvalidationUnsubscribe?.();
     this.adapterInvalidationUnsubscribe = null;
-    if (this.joined && isIntercomTransportReady(this.adapter)) {
+    if (wasJoined && isIntercomTransportReady(this.adapter)) {
       void this.rpc.request<ServerIntercomEnvelope>('intercom_leave', {}, 'intercom_left', 2_000).catch(() => {});
     }
     this.rpc.close();
@@ -315,6 +326,7 @@ export class IntercomRuntime {
   }
 
   private async joinInternal(credentials: JoinCredentials, resumeToken: string): Promise<void> {
+    const operation = this.membershipOperation;
     try {
       const response = await this.rpc.request<ServerIntercomEnvelope>(
         'intercom_join',
@@ -328,14 +340,17 @@ export class IntercomRuntime {
         },
         'intercom_joined',
       );
+      if (operation !== this.membershipOperation) return;
       await this.applyJoined(response.payload as IntercomJoinedPayload, credentials);
     } catch (error) {
+      if (operation !== this.membershipOperation) return;
       this.setState({ status: isIntercomTransportReady(this.adapter) ? 'ready' : 'unavailable', error: errorMessage(error) });
     }
   }
 
   private onTransportInvalidated(): void {
     this.adapterReady = false;
+    ++this.membershipOperation;
     ++this.mediaOperation;
     this.failClosed();
     this.microphoneLive = false;
@@ -378,7 +393,9 @@ export class IntercomRuntime {
       return;
     }
     if (message.type === 'intercom_joined') {
-      if (message.requestId && this.credentials) return;
+      // Correlated joins are applied by their awaiting operation only. A late
+      // bridge snapshot must not undo an explicit local Leave either.
+      if (message.requestId || !this.acceptUnsolicitedJoin) return;
       const payload = message.payload as IntercomJoinedPayload;
       const self = payload.snapshot.participants.find((participant) => participant.id === payload.participantId);
       const credentials = this.credentials ?? (self ? {
@@ -393,8 +410,8 @@ export class IntercomRuntime {
     if (message.type === 'intercom_left') {
       if (message.requestId) return;
       this.failClosed();
-      void this.audio.stop();
       this.clearMembership();
+      void this.audio.stop();
       this.setState({ ...INITIAL_STATE, status: isIntercomTransportReady(this.adapter) ? 'ready' : 'unavailable' });
       return;
     }
@@ -431,6 +448,7 @@ export class IntercomRuntime {
   }
 
   private async reconcileTopology(): Promise<void> {
+    const operation = this.mediaOperation;
     if (this.state.role === 'chief') {
       const signature = this.chiefDriverKeys().join('|');
       if (signature !== this.chiefTargetSignature) {
@@ -440,8 +458,10 @@ export class IntercomRuntime {
     }
     try {
       await this.audio.reconcileSubscriptions();
+      if (operation !== this.mediaOperation) return;
       this.applyGates();
     } catch (error) {
+      if (operation !== this.mediaOperation) return;
       if (this.scheduleBrokerRebuild(error)) return;
       this.failClosed(false);
       this.setState({ mediaStatus: 'failed', error: errorMessage(error) });
@@ -555,6 +575,9 @@ export class IntercomRuntime {
   }
 
   private clearMembership(): void {
+    ++this.membershipOperation;
+    ++this.mediaOperation;
+    this.acceptUnsolicitedJoin = false;
     this.joined = null;
     this.credentials = null;
     this.resumeToken = '';

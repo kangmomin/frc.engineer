@@ -80,6 +80,7 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
   const [replayError, setReplayError] = useState('');
   const [replayMeta, setReplayMeta] = useState<ReplayStreamMeta | null>(null);
   const [replayFrames, setReplayFrames] = useState<ReplayFrame[]>([]);
+  const [replaySourceId, setReplaySourceId] = useState('');
   const [replayMarkers, setReplayMarkers] = useState<ReplayMarker[]>([]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -236,12 +237,14 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
 
     source.loadReplay(selectedRace.id, controller.signal)
       .then(({ meta, frames }) => {
+        if (controller.signal.aborted) return;
         const mergedFrames = meta?.trackMap
           ? frames.map((frame) => mergeReplayTrackMap(frame, meta.trackMap))
           : frames;
 
         setReplayMeta(meta);
         setReplayFrames(mergedFrames);
+        setReplaySourceId(selectedRace.id);
         setReplayMarkers(buildReplayMarkers(mergedFrames));
         setFrameIndex(0);
 
@@ -253,7 +256,7 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
           applyReplayFrame({
             pitwall: mergedFrames[0].pitwall,
             raceControl: mergedFrames[0].raceControl,
-          });
+          }, { sourceId: selectedRace.id, frames: mergedFrames, index: 0 });
         } else {
           setPlaybackActive(false);
         }
@@ -280,7 +283,7 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
   }, [activeMode, applyReplayFrame, selectedRace, selectionFetchNonce, setPlaybackActive, source]);
 
   useEffect(() => {
-    if (replayFrames.length === 0 || activeMode !== 'replay') {
+    if (replayFrames.length === 0 || activeMode !== 'replay' || selectedRace?.id !== replaySourceId) {
       return;
     }
 
@@ -295,8 +298,8 @@ export function RaceArchiveDrawer({ onClose, dataSource }: RaceArchiveDrawerProp
     applyReplayFrame({
       pitwall: frame.pitwall,
       raceControl: frame.raceControl,
-    });
-  }, [activeMode, applyReplayFrame, frameIndex, replayFrames, setPlaybackActive]);
+    }, { sourceId: replaySourceId, frames: replayFrames, index: safeIndex });
+  }, [activeMode, applyReplayFrame, frameIndex, replayFrames, replaySourceId, selectedRace?.id, setPlaybackActive]);
 
   useEffect(() => {
     if (!playing || replayFrames.length === 0 || activeMode !== 'replay') {

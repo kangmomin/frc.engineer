@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // AnalysisResult is the top-level result returned by the API.
@@ -29,6 +29,13 @@ type LapSummary struct {
 	TireAge   int        `json:"tireAge"`
 	Valid     bool       `json:"valid"`
 	TireWear  [4]float64 `json:"tireWear"` // FL, FR, RL, RR
+
+	// Capture boundaries are internal: tyre age is not an absolute lap number.
+	endSessionTime  float32
+	endRecordedAt   time.Time
+	generationStart time.Time
+	generation      int
+	playerIndex     int
 }
 
 // StintAnalysis summarises one stint.
@@ -85,6 +92,10 @@ type lapDatum struct {
 	Sector2TimeInMS            uint16  `json:"Sector2TimeInMS"`
 	Sector1TimeMSPart          uint16  `json:"Sector1TimeMSPart"`
 	Sector2TimeMSPart          uint16  `json:"Sector2TimeMSPart"`
+	Sector1TimeMinutes         uint8   `json:"Sector1TimeMinutes"`
+	Sector2TimeMinutes         uint8   `json:"Sector2TimeMinutes"`
+	Sector1TimeMinPart         uint8   `json:"Sector1TimeMinPart"`
+	Sector2TimeMinPart         uint8   `json:"Sector2TimeMinPart"`
 	LapDistance                float32 `json:"LapDistance"`
 	CurrentLapNum              uint8   `json:"CurrentLapNum"`
 	CurrentLapInvalid          uint8   `json:"CurrentLapInvalid"`
@@ -192,14 +203,17 @@ func Analyze(dir string) (*AnalysisResult, error) {
 
 // parsedLapFrame holds one snapshot of a player's lap data
 type parsedLapFrame struct {
-	sessionTime float32
-	lapNum      uint8
-	lapTimeMs   uint32
-	sector1Ms   uint16
-	sector2Ms   uint16
-	lapDist     float32
-	invalid     bool
-	sector      uint8
+	recordedAt       time.Time
+	currentLapTimeMs uint32
+	playerIndex      int
+	sessionTime      float32
+	lapNum           uint8
+	lapTimeMs        uint32
+	sector1Ms        uint32
+	sector2Ms        uint32
+	lapDist          float32
+	invalid          bool
+	sector           uint8
 }
 
 func parseLapData(dir string) ([]LapSummary, error) {
@@ -228,67 +242,95 @@ func parseLapData(dir string) ([]LapSummary, error) {
 			continue
 		}
 		ld := pkt.LapData[idx]
+		recordedAt, _ := time.Parse(time.RFC3339Nano, env.TS)
+		s1 := uint32(ld.Sector1TimeMinutes)*60000 + uint32(ld.Sector1TimeInMS)
+		s2 := uint32(ld.Sector2TimeMinutes)*60000 + uint32(ld.Sector2TimeInMS)
+		if s1 == 0 {
+			s1 = uint32(ld.Sector1TimeMinPart)*60000 + uint32(ld.Sector1TimeMSPart)
+		}
+		if s2 == 0 {
+			s2 = uint32(ld.Sector2TimeMinPart)*60000 + uint32(ld.Sector2TimeMSPart)
+		}
 		frames = append(frames, parsedLapFrame{
-			sessionTime: env.SessionTime,
-			lapNum:      ld.CurrentLapNum,
-			lapTimeMs:   ld.LastLapTimeInMS,
-			sector1Ms:   ld.Sector1TimeInMS,
-			sector2Ms:   ld.Sector2TimeInMS,
-			lapDist:     ld.LapDistance,
-			invalid:     ld.CurrentLapInvalid != 0,
-			sector:      ld.Sector,
+			recordedAt:       recordedAt,
+			currentLapTimeMs: ld.CurrentLapTimeInMS,
+			playerIndex:      idx,
+			sessionTime:      env.SessionTime,
+			lapNum:           ld.CurrentLapNum,
+			lapTimeMs:        ld.LastLapTimeInMS,
+			sector1Ms:        s1,
+			sector2Ms:        s2,
+			lapDist:          ld.LapDistance,
+			invalid:          ld.CurrentLapInvalid != 0,
+			sector:           ld.Sector,
 		})
 	}
 
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
 	if len(frames) == 0 {
 		return nil, nil
 	}
 
-	// Build laps: detect when lapNum changes to extract the completed lap time
-	type completedLap struct {
-		lapNum    int
-		lapTimeMs uint32
-		sector1Ms uint32
-		sector2Ms uint32
-		sector3Ms uint32
-		valid     bool
+	var laps []LapSummary
+	previous := frames[0]
+	invalid := previous.invalid
+	var s1, s2 uint32
+	generation := 0
+	var generationStart time.Time
+	observeSectors := func(fr parsedLapFrame) {
+		if fr.sector >= 1 && fr.sector1Ms > 0 {
+			s1 = fr.sector1Ms
+		}
+		if fr.sector >= 2 && fr.sector2Ms > 0 {
+			s2 = fr.sector2Ms
+		}
 	}
-
-	var completed []completedLap
-	prevLapNum := int(frames[0].lapNum)
-
-	for _, fr := range frames {
-		curLap := int(fr.lapNum)
-		if curLap > prevLapNum && fr.lapTimeMs > 0 {
-			// The previous lap was completed
-			s1 := uint32(fr.sector1Ms)
-			s2 := uint32(fr.sector2Ms)
-			var s3 uint32
-			if fr.lapTimeMs > s1+s2 {
-				s3 = fr.lapTimeMs - s1 - s2
+	observeSectors(previous)
+	for _, fr := range frames[1:] {
+		playerChanged := fr.playerIndex != previous.playerIndex
+		rewound := fr.sessionTime < previous.sessionTime || fr.lapNum < previous.lapNum ||
+			(fr.lapNum == previous.lapNum && fr.lapDist < previous.lapDist-50)
+		if rewound || playerChanged {
+			// Discard abandoned completions and invalidate pre-flashback tyre
+			// observations. Same-lap rewinds also reset invalid/sector state.
+			for len(laps) > 0 && (playerChanged || laps[len(laps)-1].LapNum >= int(fr.lapNum)) {
+				laps = laps[:len(laps)-1]
 			}
-			completed = append(completed, completedLap{
-				lapNum:    prevLapNum,
-				lapTimeMs: fr.lapTimeMs,
-				sector1Ms: s1,
-				sector2Ms: s2,
-				sector3Ms: s3,
-				valid:     true, // we only know invalid for current lap
-			})
+			generation++
+			generationStart = fr.recordedAt
+			s1, s2, invalid = 0, 0, fr.invalid
+		} else if fr.lapNum != previous.lapNum {
+			if previous.lapNum > 0 && int(fr.lapNum) == int(previous.lapNum)+1 && fr.lapTimeMs > 0 {
+				// Prefer the completed lap's observations. Some legacy logs
+				// retain completed sectors in the first frame after the line.
+				if fr.sector == 0 && fr.currentLapTimeMs < 1000 {
+					if s1 == 0 {
+						s1 = fr.sector1Ms
+					}
+					if s2 == 0 {
+						s2 = fr.sector2Ms
+					}
+				}
+				var s3 uint32
+				if s1 > 0 && s2 > 0 && fr.lapTimeMs > s1+s2 {
+					s3 = fr.lapTimeMs - s1 - s2
+				}
+				laps = append(laps, LapSummary{
+					LapNum: int(previous.lapNum), LapTimeMs: fr.lapTimeMs,
+					Sector1Ms: s1, Sector2Ms: s2, Sector3Ms: s3, Valid: !invalid,
+					endSessionTime: fr.sessionTime - float32(fr.currentLapTimeMs)/1000,
+					endRecordedAt:  fr.recordedAt, generationStart: generationStart,
+					generation: generation, playerIndex: previous.playerIndex,
+				})
+			}
+			s1, s2, invalid = 0, 0, fr.invalid
+		} else {
+			invalid = invalid || fr.invalid
 		}
-		prevLapNum = curLap
-	}
-
-	laps := make([]LapSummary, len(completed))
-	for i, c := range completed {
-		laps[i] = LapSummary{
-			LapNum:    c.lapNum,
-			LapTimeMs: c.lapTimeMs,
-			Sector1Ms: c.sector1Ms,
-			Sector2Ms: c.sector2Ms,
-			Sector3Ms: c.sector3Ms,
-			Valid:     c.valid,
-		}
+		observeSectors(fr)
+		previous = fr
 	}
 
 	return laps, nil
@@ -297,6 +339,9 @@ func parseLapData(dir string) ([]LapSummary, error) {
 // ---- tire data ----
 
 type tireSnapshot struct {
+	recordedAt  time.Time
+	generation  int
+	playerIndex int
 	sessionTime float32
 	compound    string
 	visualComp  uint8
@@ -312,6 +357,7 @@ func parseTireData(dir string) ([]tireSnapshot, error) {
 	defer f.Close()
 
 	var snaps []tireSnapshot
+	generation := 0
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 
@@ -332,7 +378,12 @@ func parseTireData(dir string) ([]tireSnapshot, error) {
 		if cs.VisualTyreCompound == 0 {
 			continue
 		}
+		recordedAt, _ := time.Parse(time.RFC3339Nano, env.TS)
+		if len(snaps) > 0 && env.SessionTime < snaps[len(snaps)-1].sessionTime {
+			generation++
+		}
 		snaps = append(snaps, tireSnapshot{
+			recordedAt: recordedAt, generation: generation, playerIndex: idx,
 			sessionTime: env.SessionTime,
 			compound:    compoundName(cs.VisualTyreCompound),
 			visualComp:  cs.VisualTyreCompound,
@@ -340,33 +391,26 @@ func parseTireData(dir string) ([]tireSnapshot, error) {
 		})
 	}
 
-	return snaps, nil
+	return snaps, scanner.Err()
 }
 
 func mergeTireInfo(laps []LapSummary, snaps []tireSnapshot) {
-	if len(snaps) == 0 || len(laps) == 0 {
-		return
-	}
-	// For each lap, find the last snapshot with matching tire age
-	// Simple approach: use the last snapshot before compound changes
-	snapIdx := 0
 	for i := range laps {
-		// Find snapshot closest to this lap's tire age
-		bestAge := 0
-		bestComp := ""
-		for snapIdx < len(snaps) && snaps[snapIdx].age <= laps[i].LapNum {
-			bestAge = snaps[snapIdx].age
-			bestComp = snaps[snapIdx].compound
-			snapIdx++
-		}
-		if snapIdx > 0 {
-			snapIdx--
-		}
-		if bestComp != "" {
-			laps[i].Compound = bestComp
-			laps[i].TireAge = bestAge
-		} else if len(snaps) > 0 {
-			laps[i].Compound = snaps[0].compound
+		lap := &laps[i]
+		for _, snap := range snaps {
+			// A compound switched on the new lap belongs to that lap, even
+			// when both packets share a capture timestamp or a reset tyre age.
+			if snap.playerIndex != lap.playerIndex || snap.sessionTime >= lap.endSessionTime {
+				continue
+			}
+			if !snap.recordedAt.IsZero() && !lap.endRecordedAt.IsZero() {
+				if snap.recordedAt.After(lap.endRecordedAt) || snap.recordedAt.Before(lap.generationStart) {
+					continue
+				}
+			} else if snap.generation != lap.generation {
+				continue
+			}
+			lap.Compound, lap.TireAge = snap.compound, snap.age
 		}
 	}
 }
@@ -521,15 +565,7 @@ func parseSpeedData(dir string, laps []LapSummary) (*SpeedAnalysis, error) {
 		return nil, nil
 	}
 
-	// Find best lap
-	bestLapNum := 0
-	var bestLapTimeMs uint32 = math.MaxUint32
-	for _, l := range laps {
-		if l.LapTimeMs > 0 && l.LapTimeMs < bestLapTimeMs {
-			bestLapTimeMs = l.LapTimeMs
-			bestLapNum = l.LapNum
-		}
-	}
+	bestLapNum, _ := fastestLap(laps)
 
 	// Bucket by distance (50m bins)
 	const binSize = 50.0

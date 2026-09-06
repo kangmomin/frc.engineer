@@ -452,9 +452,21 @@ func convertSessionHistory(in map[uint8]*packets.PacketSessionHistoryData) map[u
 				LapValidBitFlags: lap.LapValidBitFlags,
 			}
 		}
-		history.BestSector1Ms = lapHistorySectorPtr(src, int(src.BestSector1LapNum), func(l packets.LapHistoryData) int { return l.Sector1Ms() })
-		history.BestSector2Ms = lapHistorySectorPtr(src, int(src.BestSector2LapNum), func(l packets.LapHistoryData) int { return l.Sector2Ms() })
-		history.BestSector3Ms = lapHistorySectorPtr(src, int(src.BestSector3LapNum), func(l packets.LapHistoryData) int { return l.Sector3Ms() })
+		if src.BestLapMS() == 0 {
+			history.BestLapTimeLapNum = 0
+		}
+		history.BestSector1Ms = src.BestSectorMS(1)
+		history.BestSector2Ms = src.BestSectorMS(2)
+		history.BestSector3Ms = src.BestSectorMS(3)
+		if history.BestSector1Ms == nil {
+			history.BestSector1LapNum = 0
+		}
+		if history.BestSector2Ms == nil {
+			history.BestSector2LapNum = 0
+		}
+		if history.BestSector3Ms == nil {
+			history.BestSector3LapNum = 0
+		}
 		out[carIndex] = history
 	}
 	return out
@@ -541,17 +553,6 @@ func convertSourceCars(snapshot Snapshot, carCount int) []extmodel.CarEnvelope {
 		out = append(out, car)
 	}
 	return out
-}
-
-func lapHistorySectorPtr(history *packets.PacketSessionHistoryData, lapNum int, selector func(packets.LapHistoryData) int) *int {
-	if history == nil || lapNum <= 0 || lapNum > int(history.NumLaps) || lapNum > packets.MaxNumLapsInHistory {
-		return nil
-	}
-	value := selector(history.LapHistoryData[lapNum-1])
-	if value <= 0 {
-		return nil
-	}
-	return &value
 }
 
 func statusAt(data *packets.PacketCarStatusData, carIndex int) *packets.CarStatusData {

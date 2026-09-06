@@ -5,7 +5,8 @@ import { getTyreColor, getTyreShortLabel } from '../../constants/tyreCompounds';
 import { NavTabs } from '../../shell/NavTabs';
 import { TelemetryWaitingActions } from '../../shell/TelemetryWaitingActions';
 import type { ShellControls } from '../../shell/types';
-import { moveVsStart, useRaceMetaStore } from '../../store/raceMetaStore';
+import { moveVsStart } from '../../store/raceMetaStore';
+import { useDisplayedRaceMeta, useDisplayedSourceKey } from '../../store/replayDerivedStore';
 import { useTelemetryStore } from '../../store/telemetryStore';
 import { codeFromDriverName, deriveDriverCodes } from '../../utils/driverCodes';
 import { formatLapTime } from '../../utils/formatters';
@@ -48,7 +49,7 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
       notifications: s.raceControlNotifications,
     })),
   );
-  const { grid, gridStatus, epoch, firstSeenLap, notificationLaps } = useRaceMetaStore(
+  const { grid, gridStatus, epoch, firstSeenLap, notificationLaps } = useDisplayedRaceMeta(
     useShallow((s) => ({
       grid: s.grid,
       gridStatus: s.gridStatus,
@@ -64,7 +65,7 @@ export function BroadcastView({ controls }: { controls: ShellControls }) {
     () => [...(driversRaw ?? [])].sort((a, b) => a.position - b.position),
     [driversRaw],
   );
-  const sessionKey = `${session?.trackId ?? ''}|${sessionType}|${session?.totalLaps ?? ''}`;
+  const sessionKey = useDisplayedSourceKey();
 
   const codes = useMemo(() => deriveDriverCodes(drivers), [drivers]);
   const battles = useBattleEngine(drivers, sessionKey, epoch, is2026, session?.safetyCar);

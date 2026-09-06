@@ -65,7 +65,7 @@ function makeQ1Field(): DriverInfo[] {
 
 describe('deriveCutoffWatch — no player car', () => {
   it('degrades honestly, no cutoff shown', () => {
-    const vm = deriveCutoffWatch(null, [], deriveQualiSegment('Q1'), 300, new Map());
+    const vm = deriveCutoffWatch(null, [], deriveQualiSegment('Q1', { formula: 0, qualifyingGridSize: 20 }), 300, new Map());
     expect(vm.hasPlayer).toBe(false);
     expect(vm.showCutoff).toBe(false);
     expect(vm.advice).toBe('No player car');
@@ -76,7 +76,7 @@ describe('deriveCutoffWatch — Q1 safe vs drop zone', () => {
   it('P15 (inside top 15) is provisionally through, margin "Safe by"', () => {
     const sorted = makeQ1Field();
     const player = sorted[14]; // P15
-    const vm = deriveCutoffWatch(player, sorted, deriveQualiSegment('Q1'), 300, new Map([[15, 'P16']]));
+    const vm = deriveCutoffWatch(player, sorted, deriveQualiSegment('Q1', { formula: 0, qualifyingGridSize: 20 }), 300, new Map([[15, 'P16']]));
     expect(vm.showCutoff).toBe(true);
     expect(vm.statusLabel).toBe('PROVISIONALLY THROUGH');
     expect(vm.statusColor).toBe('var(--accent-lime)');
@@ -87,12 +87,24 @@ describe('deriveCutoffWatch — Q1 safe vs drop zone', () => {
 
   it('P16 (first drop) is in the drop zone, margin "Need"', () => {
     const sorted = makeQ1Field();
-    const player = sorted[15]; // P16 — the cutoff driver itself
-    const vm = deriveCutoffWatch(player, sorted, deriveQualiSegment('Q1'), 300, new Map());
+    const player = sorted[15];
+    const vm = deriveCutoffWatch(player, sorted, deriveQualiSegment('Q1', { formula: 0, qualifyingGridSize: 20 }), 300, new Map([[14, 'P15']]));
     expect(vm.statusLabel).toBe('IN THE DROP ZONE');
     expect(vm.statusColor).toBe('var(--accent-red)');
-    // margin vs itself is 0 -> "Need 0.000s" (not fabricated, genuinely on the cutoff line)
-    expect(vm.marginText).toMatch(/^Need/);
+    expect(vm.marginText).toBe('Need 0.101s');
+    expect(vm.cutoffPosText).toBe('P15');
+    expect(vm.cutoffCodeText).toBe('P15');
+  });
+
+  it('requires a strictly faster time for a tie and does not classify position zero as safe', () => {
+    const sorted = makeQ1Field();
+    sorted[15].bestLapTime = sorted[14].bestLapTime;
+    expect(deriveCutoffWatch(sorted[15], sorted, deriveQualiSegment('Q1', { formula: 0, qualifyingGridSize: 20 }), 300, new Map()).marginText).toBe('Need 0.001s');
+    sorted[0].position = 0;
+    const unknown = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q1', { formula: 0, qualifyingGridSize: 20 }), 300, new Map());
+    expect(unknown.myPos).toBe('—');
+    expect(unknown.statusLabel).toBe('—');
+    expect(unknown.marginText).toBe('—');
   });
 
   it('margin tile: >0.3s apart is tertiary tone, otherwise secondary', () => {
@@ -108,7 +120,7 @@ describe('deriveCutoffWatch — Q1 safe vs drop zone', () => {
 describe('deriveCutoffWatch — Q3 (no cutoff, pole fight)', () => {
   it('shows "Fighting for pole" and hides cutoff-specific fields', () => {
     const sorted = [makeDriver(0, 1, 89_500), makeDriver(1, 2, 89_700)];
-    const vm = deriveCutoffWatch(sorted[1], sorted, deriveQualiSegment('Q3'), 300, new Map());
+    const vm = deriveCutoffWatch(sorted[1], sorted, deriveQualiSegment('Q3', { formula: 0, qualifyingGridSize: 20 }), 300, new Map());
     expect(vm.showCutoff).toBe(false);
     expect(vm.statusLabel).toBe('Fighting for pole');
     expect(vm.marginText).toBe('—');
@@ -117,7 +129,7 @@ describe('deriveCutoffWatch — Q3 (no cutoff, pole fight)', () => {
 
   it('SS3 mirrors Q3 and also shows "Fighting for pole"', () => {
     const sorted = [makeDriver(0, 1, 89_500)];
-    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('SS3'), 300, new Map());
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('SS3', { formula: 0, qualifyingGridSize: 20 }), 300, new Map());
     expect(vm.statusLabel).toBe('Fighting for pole');
   });
 });
@@ -125,7 +137,7 @@ describe('deriveCutoffWatch — Q3 (no cutoff, pole fight)', () => {
 describe('deriveCutoffWatch — non-standard noCutoff formats (Short Q/OSQ) never claim pole fight (scope L3)', () => {
   it('Short Q has noCutoff but is not a pole shootout — status/advice degrade honestly, not "Fighting for pole"', () => {
     const sorted = [makeDriver(0, 1, 89_500)];
-    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Short Q'), 300, new Map());
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Short Q', { formula: 0, qualifyingGridSize: 20 }), 300, new Map());
     expect(vm.showCutoff).toBe(false);
     expect(vm.statusLabel).toBe('—');
     expect(vm.advice).toBe('Clear track ahead');
@@ -133,7 +145,7 @@ describe('deriveCutoffWatch — non-standard noCutoff formats (Short Q/OSQ) neve
 
   it('OSQ still respects the clock-warning branch over the honest degrade', () => {
     const sorted = [makeDriver(0, 1, 89_500)];
-    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('OSQ'), 45, new Map());
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('OSQ', { formula: 0, qualifyingGridSize: 20 }), 45, new Map());
     expect(vm.advice).toBe("Under 90s — make sure you're on a lap");
   });
 });
@@ -141,25 +153,25 @@ describe('deriveCutoffWatch — non-standard noCutoff formats (Short Q/OSQ) neve
 describe('deriveCutoffWatch — advice priority (clock > segment > default)', () => {
   it('clock under 90s always wins, even in Q3', () => {
     const sorted = [makeDriver(0, 1, 89_500)];
-    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q3'), 45, new Map());
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q3', { formula: 0, qualifyingGridSize: 20 }), 45, new Map());
     expect(vm.advice).toBe("Under 90s — make sure you're on a lap");
   });
 
   it('Q3 with plenty of time shows the pole-fight message', () => {
     const sorted = [makeDriver(0, 1, 89_500)];
-    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q3'), 300, new Map());
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q3', { formula: 0, qualifyingGridSize: 20 }), 300, new Map());
     expect(vm.advice).toBe('Final runs — one lap for pole');
   });
 
   it('Q1 with plenty of time shows the default clear-track message', () => {
     const sorted = makeQ1Field();
-    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q1'), 300, new Map());
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q1', { formula: 0, qualifyingGridSize: 20 }), 300, new Map());
     expect(vm.advice).toBe('Clear track ahead');
   });
 
   it('unknown sessionTimeLeft (undefined) does not crash and skips the clock branch', () => {
     const sorted = makeQ1Field();
-    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q1'), undefined, new Map());
+    const vm = deriveCutoffWatch(sorted[0], sorted, deriveQualiSegment('Q1', { formula: 0, qualifyingGridSize: 20 }), undefined, new Map());
     expect(vm.advice).toBe('Clear track ahead');
   });
 });
