@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mexico 드라이버별 분석 · 2026-09-02</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0e13; --card:#141a23; --card2:#1a212c; --line:#26303d;
+  --tx:#e4e9f0; --tx2:#93a1b5; --tx3:#63718a;
+  --a:#4ade80; --b:#fbbf24; --r:#f87171; --i:#60a5fa;
+}
+body{background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+  line-height:1.7;-webkit-font-smoothing:antialiased;padding-bottom:70px}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px}
+
+.hero{padding:46px 0 30px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--tx3);text-transform:uppercase;font-weight:600}
+h1{font-size:29px;line-height:1.32;margin:12px 0 14px;letter-spacing:-.02em}
+.lede{color:var(--tx2);font-size:15px}
+.lede b{color:var(--tx)}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;
+  padding:5px 13px;font-size:12.5px;color:var(--tx2)}
+
+nav{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.94);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);margin-bottom:34px}
+nav .wrap{display:flex;gap:5px;overflow-x:auto;padding:11px 16px;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav a{color:var(--tx2);text-decoration:none;font-size:13px;white-space:nowrap;
+  padding:5px 11px;border-radius:7px;transition:.15s}
+nav a:hover{background:var(--card2);color:var(--tx)}
+
+section{margin:0 0 48px}
+h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em;scroll-margin-top:66px;
+  display:flex;align-items:center;gap:10px}
+h2 .rk{font-size:12px;font-weight:700;color:var(--bg);background:var(--tx2);
+  border-radius:6px;padding:1px 8px;letter-spacing:.02em}
+.sub{color:var(--tx3);font-size:13.5px;margin-bottom:20px}
+h3{font-size:15.5px;margin:26px 0 10px}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0}
+
+.note{border-left:3px solid var(--i);background:rgba(96,165,250,.07);
+  border-radius:0 10px 10px 0;padding:14px 16px;margin:14px 0;font-size:14px;color:var(--tx2)}
+.warn{border-left-color:var(--b);background:rgba(251,191,36,.07)}
+.bad{border-left-color:var(--r);background:rgba(248,113,113,.07)}
+.good{border-left-color:var(--a);background:rgba(74,222,128,.07)}
+.note b{color:var(--tx)}
+
+.key{background:linear-gradient(135deg,rgba(74,222,128,.1),rgba(96,165,250,.05));
+  border:1px solid rgba(74,222,128,.3);border-radius:14px;padding:22px;margin:18px 0}
+.key.amber{background:linear-gradient(135deg,rgba(251,191,36,.09),rgba(248,113,113,.04));
+  border-color:rgba(251,191,36,.3)}
+.key .k{font-size:11px;letter-spacing:.13em;color:var(--a);font-weight:700;text-transform:uppercase}
+.key.amber .k{color:var(--b)}
+.key p{margin-top:9px;font-size:15.5px;line-height:1.65}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}
+.stat .l{font-size:11.5px;color:var(--tx3);margin-bottom:5px}
+.stat .v{font-size:21px;font-weight:700;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.stat .d{font-size:11.5px;color:var(--tx3);margin-top:3px}
+.va{color:var(--a)}.vb{color:var(--b)}.vr{color:var(--r)}
+
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0;
+  border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:460px}
+th{background:var(--card2);color:var(--tx2);font-weight:600;text-align:left;
+  padding:11px 13px;font-size:12px;letter-spacing:.03em;white-space:nowrap}
+td{padding:10px 13px;border-top:1px solid var(--line);color:var(--tx2);vertical-align:top}
+td.n{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td strong{color:var(--tx)}
+tr.hl td{background:rgba(74,222,128,.06)}
+tr.hlr td{background:rgba(248,113,113,.06)}
+
+.led{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;
+  background:var(--card2);border:1px solid var(--line);border-radius:12px;
+  padding:16px;overflow-x:auto;line-height:2;white-space:pre;color:var(--tx2)}
+.led .tot{color:var(--tx);font-weight:700}
+.led .pos{color:var(--a)}.led .neg{color:var(--r)}.led .zero{color:var(--tx3)}
+
+ul.ck{list-style:none;margin:12px 0}
+ul.ck li{padding:8px 0 8px 28px;position:relative;font-size:14px;color:var(--tx2);
+  border-bottom:1px solid rgba(38,48,61,.55)}
+ul.ck li:last-child{border-bottom:none}
+ul.ck li::before{position:absolute;left:0;top:8px}
+ul.ck li.y::before{content:"✅"}
+ul.ck li.n::before{content:"❌"}
+ul.ck li.w::before{content:"⚠️"}
+ul.ck li.q::before{content:"❓"}
+ul.ck li b{color:var(--tx)}
+
+.bars{margin:14px 0}
+.bar{display:grid;grid-template-columns:96px 1fr 66px;align-items:center;gap:10px;margin:6px 0;font-size:12.5px}
+.bar .lb{color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .tr{background:var(--card2);border-radius:5px;height:16px;overflow:hidden;border:1px solid var(--line)}
+.bar .fl{height:100%;border-radius:4px 0 0 4px}
+.bar .vv{font-family:ui-monospace,Menlo,monospace;text-align:right;color:var(--tx2);font-variant-numeric:tabular-nums}
+
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.p-sg{background:rgba(248,113,113,.13);color:#fca5a5}
+.p-pen{background:rgba(251,191,36,.13);color:var(--b)}
+.p-cln{background:rgba(74,222,128,.13);color:var(--a)}
+.p-up{background:rgba(96,165,250,.14);color:var(--i)}
+.p-win{background:rgba(251,191,36,.16);color:var(--b)}
+
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;background:var(--card2);
+  padding:1.5px 6px;border-radius:5px;font-size:.88em;color:#a5d6ff;border:1px solid var(--line)}
+.foot{border-top:1px solid var(--line);margin-top:46px;padding-top:22px;color:var(--tx3);font-size:12.5px}
+@media(max-width:600px){
+  h1{font-size:24px} .hero{padding:32px 0 24px} h2{font-size:19px}
+  .stat .v{font-size:19px} .led{font-size:11px}
+  .bar{grid-template-columns:80px 1fr 58px}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Driver Reports · Autódromo Hermanos Rodríguez · 2026-09-02</div>
+  <h1>여섯 명, 여섯 개의 다른 레이스</h1>
+  <p class="lede">같은 25랩을 달렸고 세 번의 중립화를 똑같이 맞았다. 그런데 한 명은 <b>사고를 한 건도 만들지 않았고</b>,
+     한 명은 <b>가장 빠른데 스톱고로 44초를 냈고</b>, 한 명은 <b>22초 리드를 두 번의 스핀으로 날렸다</b>.
+     드라이버별로 각자의 손실 원장을 열어본다.</p>
+  <div class="meta">
+    <span class="chip">6계정 · 전원 25랩 완주</span>
+    <span class="chip">순서는 보정 후 기준</span>
+    <span class="chip">모든 원장 재조정 오차 0.000초</span>
+    <span class="chip">종합 리포트 별도</span>
+  </div>
+</header>
+</div>
+
+<nav><div class="wrap">
+  <a href="#ryul">1 · Ryul</a>
+  <a href="#hyunmin">2 · HYUNMIN_033</a>
+  <a href="#veon">3 · VEON</a>
+  <a href="#jae">4 · jaeseonchoi</a>
+  <a href="#nnio">5 · nNio</a>
+  <a href="#woojong">6 · WOOJONG</a>
+  <a href="#compare">한눈에</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- Ryul -->
+<section id="ryul">
+  <h2><span class="rk">1위</span>Ryul — 사고 없이, 가장 먼저 멈춰서</h2>
+  <p class="sub">보정 2115.377s · 원시 2112.377s(L25 추정 포함) · +3초 페널티</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">그린 기준랩</div><div class="v">79.262</div><div class="d">3위</div></div>
+    <div class="stat"><div class="l">S1</div><div class="v va">28.628</div><div class="d">6인 중 <b>1위</b></div></div>
+    <div class="stat"><div class="l">S2</div><div class="v vr">30.078</div><div class="d">6인 중 5위</div></div>
+    <div class="stat"><div class="l">그린 초과</div><div class="v">+3.8</div><div class="d">L12–25 누적</div></div>
+    <div class="stat"><div class="l">사고 클립</div><div class="v vb">—</div><div class="d">구버전 · 기록 없음</div></div>
+    <div class="stat"><div class="l">피트</div><div class="v">L6/7</div><div class="d">6인 중 최조기</div></div>
+  </div>
+
+  <div class="key">
+    <div class="k">그가 1위인 이유</div>
+    <p>Ryul은 그린 페이스가 3위(79.262)에 불과하고 S2는 5위다. 그런데 이겼다.
+      이유는 단순하다 — <b>L10·L11·그린 구간의 초과 합이 36.3초</b>로, WOOJONG(97.3)·nNio(91.2)의 절반도 안 된다.
+      스톱고도, 스핀도, 자기 사고로 인한 큰 손실도 없었다. <b>가장 빠르지 않았지만 가장 적게 잃었다.</b></p>
+  </div>
+
+  <div class="led"><span class="tot">Ryul</span>  25 × 79.262 = 1981.546  +  Σ초과 130.831  =  <span class="tot">2112.377</span>   재조정 오차 <span class="zero">0.000000</span>
+
+  L1 스타트 <span class="neg">+5.0</span>   N1(L5) <span class="neg">+13.3</span>   N2(L7)+피트 <span class="neg">+32.8</span>   L8 <span class="neg">+9.4</span>
+  N3(L9)   <span class="neg">+29.3</span>   L10    <span class="neg">+8.1</span>   L11 정체    <span class="neg">+24.4</span>   그린 L12–25 <span class="neg">+3.8</span></div>
+
+  <ul class="ck">
+    <li class="y"><b>최조기 피트(L6/7).</b> 여섯 명 중 유일하게 N2 중립화 <b>이전</b>에 S3를 통과해
+      직전 랩 S3 초과가 +3.17초로 가장 낮았다. 총 피트 비용 +28.44초.</li>
+    <li class="y"><b>가장 긴 하드 스틴트 19랩</b>, 마모 30%(1.58 %/랩). 컴파운드 관리에 문제 없음.</li>
+    <li class="w"><b>S1에서 벌고 S2에서 반납한다.</b> S1은 HYUNMIN보다 0.155초 빠른데 S2는 0.566초 느리다.
+      순 손실 0.4초 — 개선 여지가 S2에 집중돼 있다.</li>
+    <li class="w"><b>페널티</b>: L21에 코너컷 경고 3회 누적으로 3초 <span class="pill p-pen">3초</span>.
+      그의 유일한 피트(L6/7)보다 뒤에 나왔으므로 서빙 기회 없음 → 완주 시각 가산.</li>
+    <li class="q"><b>"무접촉"이라고 쓸 수 없다.</b> 그의 업로드는 구버전 sender라
+      <code>incidents</code> 블록 자체가 없다. 다른 사람의 클립에 충돌 상대로 등장하고
+      (nNio 클립 t=39.0s, L1), VEON 클라이언트는 L12에 Ryul의 collision 경고를 기록했다.
+      <b>데이터 없음이지 사고 없음이 아니다.</b></li>
+    <li class="q"><b>L25 랩 기록 누락.</b> 이벤트·스틴트는 25랩 완주를 확인해 준다.
+      최종 스틴트 평균 79.262초를 대입했고, 그가 1위를 잃으려면 실제 L25가 <b>84.266초</b>를 넘어야 하는데
+      최종 스틴트 최악 랩이 83.022초다 — <b>순위는 추정에 의존하지 않는다</b>.</li>
+  </ul>
+</section>
+
+<!-- HYUNMIN -->
+<section id="hyunmin">
+  <h2><span class="rk">2위</span>HYUNMIN_033 — 가장 빨랐고, 44초를 냈다</h2>
+  <p class="sub">보정 2120.381s · 원시 2120.381s · 페널티는 이미 랩타임으로 지불</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">그린 기준랩</div><div class="v va">78.625</div><div class="d">6인 중 <b>1위</b></div></div>
+    <div class="stat"><div class="l">S2</div><div class="v va">29.512</div><div class="d">1위</div></div>
+    <div class="stat"><div class="l">S3</div><div class="v va">20.329</div><div class="d">1위</div></div>
+    <div class="stat"><div class="l">최속랩</div><div class="v">77.805</div><div class="d">L13</div></div>
+    <div class="stat"><div class="l">스톱고 비용</div><div class="v vr">+44.1</div><div class="d">L10 서빙</div></div>
+    <div class="stat"><div class="l">사고 클립</div><div class="v">3</div><div class="d">L4 · L7 · L12</div></div>
+  </div>
+
+  <div class="key amber">
+    <div class="k">44.1초의 값</div>
+    <p>세 섹터 중 두 개에서 1위, 그린 기준랩 1위, 그린 초과 +1.4초로 사실상 실수 없음.
+      그런데 L10 스톱고 하나가 <b>+44.1초</b>다. 이게 없었다면 그는 Ryul을 <b>39초</b> 차로 이겼을 것이다.
+      <b>이 레이스에서 가장 빠른 드라이버가 2위인 이유는 전부 그 한 랩에 있다.</b></p>
+  </div>
+
+  <div class="led"><span class="tot">HYUNMIN_033</span>  25 × 78.625 = 1965.627  +  Σ초과 154.754  =  <span class="tot">2120.381</span>   재조정 오차 <span class="zero">0.000000</span>
+
+  L1 스타트 <span class="neg">+2.4</span>   N1(L5) <span class="neg">+15.2</span>   N2(L7)+피트 <span class="neg">+18.8</span>   L8 피트 <span class="neg">+27.5</span>
+  N3(L9)   <span class="neg">+36.9</span>   <span class="tot">L10 스톱고 +44.1</span>   L11 <span class="neg">+6.8</span>   그린 L12–25 <span class="neg">+1.4</span></div>
+
+  <ul class="ck">
+    <li class="y"><b>L1 스타트 초과가 +2.4초로 가장 낮다.</b> 여섯 명 중 스타트를 가장 잘 처리했고
+      L6 종료 시점에 Ryul보다 7.65초 앞서 있었다.</li>
+    <li class="n"><b>L7 접촉(t=506.2s) — Seo와.</b> 둘 다 ~150 km/h 브레이킹 중. Seo가 인사이드(우코너),
+      HYUNMIN이 아웃사이드이면서 1.2~3.0 m 뒤였다. <b>DSG-B 아웃사이드 권리 미성립</b> →
+      FIA 절차상 <b>HYUNMIN 주된 책임</b>. 브레이크가 0.35→0.03으로 풀렸다가 재적용된 흔적도 있다.
+      게임은 <b>양측 모두</b> 10초 스톱고를 부과했다.</li>
+    <li class="n"><b>L4 접촉(t=254.2s) — Lucy와.</b> 우코너 인사이드 다이브. Lucy 중심이 1.7~2.3 m 앞이라
+      미러 라인(<code>dLong ≥ −0.8 m</code> <span class="pill p-up">[추정]</span>) 미달 → <b>공간 권리 미성립</b>.
+      접촉 후 103 → 72 km/h로 속도를 잃었다. FIA 절차상 <b>HYUNMIN 주된 책임</b>. 게임 판정 없음.</li>
+    <li class="y"><b>타이어</b>: M ×7 → H ×18. 마모 22% / 32%. L10 스톱고가 하드 스틴트를 두 레코드로 쪼갰지만
+      타이어는 바꾸지 않았다(<code>stops = 2</code> = 타이어 1회 + 스톱고 1회).</li>
+    <li class="q"><b>스톱고 발부 시각이 접촉과 200초 어긋난다.</b> 상대(Seo)와 쌍방 처벌 형태는 t=506.2s와
+      정확히 맞는데, 랩 태그로 좁힌 발부 시각은 t ∈ [708.3, 810.0]이다.
+      그의 클립이 25랩에 3건뿐이라 <b>레코더가 놓친 두 번째 접촉</b> 가능성도 배제할 수 없다.</li>
+  </ul>
+</section>
+
+<!-- VEON -->
+<section id="veon">
+  <h2><span class="rk">3위</span>VEON — 1랩에서 두 번, 24랩 뒤에 청구서</h2>
+  <p class="sub">보정 2121.072s · 원시 2118.072s(<b>원시 2위</b>) · +3초 페널티로 3위</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">그린 기준랩</div><div class="v vr">79.813</div><div class="d">6인 중 6위</div></div>
+    <div class="stat"><div class="l">그린 초과</div><div class="v va">−0.6</div><div class="d">6인 중 <b>유일한 음수</b></div></div>
+    <div class="stat"><div class="l">S2</div><div class="v vr">30.295</div><div class="d">6위 · HYUNMIN 대비 +0.783</div></div>
+    <div class="stat"><div class="l">L11 회수</div><div class="v va">15.7</div><div class="d">한 랩에 Ryul 대비</div></div>
+    <div class="stat"><div class="l">스핀</div><div class="v">1</div><div class="d">L1 한 번뿐</div></div>
+    <div class="stat"><div class="l">사고 클립</div><div class="v">12</div><div class="d">L17–18에 6건 집중</div></div>
+  </div>
+
+  <div class="key amber">
+    <div class="k">0.691초</div>
+    <p>VEON은 원시 시간으로 HYUNMIN보다 <b>2.309초 앞</b>이었다. 코너컷 경고 3회 중 <b>두 번이 L1</b>에서 나왔고,
+      L17에 세 번째가 채워지자 3초가 떨어졌다. 최종 <b>0.691초</b> 차 3위.
+      그린 랩 초과가 −0.6초로 여섯 명 중 유일하게 음수인, <b>실수가 가장 적었던 드라이버</b>가
+      1랩의 코스 이탈 두 번으로 순위를 잃었다.</p>
+  </div>
+
+  <div class="led"><span class="tot">VEON</span>  25 × 79.813 = 1995.327  +  Σ초과 122.745  =  <span class="tot">2118.072</span>   재조정 오차 <span class="zero">0.000000</span>
+
+  L1 스타트 <span class="neg">+8.3</span>   N1(L5) <span class="neg">+13.0</span>   N2(L7)+피트 <span class="neg">+18.9</span>   L8 피트 <span class="neg">+31.9</span>
+  N3(L9)   <span class="neg">+34.3</span>   L10    <span class="neg">+11.1</span>   L11 <span class="neg">+8.2</span>   그린 L12–25 <span class="pos">−0.6</span></div>
+
+  <ul class="ck">
+    <li class="y"><b>일관성이 최고다.</b> 그린 14랩의 초과 합이 −0.6초 — 자기 기준랩보다 오히려 빨랐다.
+      스핀 1회(L1), 그린 구간 사고로 인한 손실 0.</li>
+    <li class="n"><b>대신 순수 페이스가 부족하다.</b> 기준랩 79.813으로 6인 중 최하위.
+      S1(28.815)·S3(20.701)은 중위권인데 <b>S2에서만 HYUNMIN 대비 0.783초</b>를 잃는다.
+      실수를 줄이는 것보다 중속 코너 페이스를 올리는 게 그의 개선 축이다.</li>
+    <li class="y"><b>L11에서 15.7초를 회수했다.</b> L10 종료 시 Ryul보다 18.0초 뒤였는데 L11 종료 시 2.3초 뒤.
+      선두 3인이 정체에 갇힌 구간을 <b>18초 늦게 도착해서</b> 통과했다. 실력이 아니라 타이밍이었다 —
+      하지만 그의 최종 순위는 이 한 랩 위에 서 있다.</li>
+    <li class="w"><b>L1 t=4.17s — jaeseonchoi에게 추돌당했다.</b> 그는 브레이크를 전혀 쓰지 않고
+      스로틀만 놓은 상태였고(Visacard 회피), 뒤에서 +24 km/h로 접근한 jaeseonchoi가 들이받았다.
+      <b>FIA 절차상 VEON에게 책임 없음.</b> 게임 판정도 없음.</li>
+    <li class="n"><b>L7 t=516.2s — ANDY_AD를 추돌했다.</b> 선행차가 dLat 0.0의 정후방 정렬 상태에서
+      브레이크 0.13 이하로 완만히 감속(109→85 km/h)하는 동안 VEON이 110→95로 따라가다 접촉.
+      <b>FIA 절차상 VEON 주된 책임.</b> 그런데 게임은 ANDY_AD만 처벌했다(매핑은 불확실).</li>
+    <li class="w"><b>L17–L18에 사고 클립 6건이 몰려 있다</b> — _MONAMI와의 지속 휠투휠 4건 포함.
+      dLat 1.8~2.4 m로 중첩 상태를 유지했고 양측 다 라인을 지켰다 → <b>레이싱 인시던트</b>.
+      다만 그의 L17(+0.8) · L18(+1.4) 랩타임 손실은 이 배틀의 대가다.</li>
+  </ul>
+</section>
+
+<!-- jaeseonchoi -->
+<section id="jae">
+  <h2><span class="rk">4위</span>jaeseonchoi — 스톱고를 내고도 nNio를 잡았다</h2>
+  <p class="sub">보정 2131.254s · 원시 2131.254s · 페널티는 이미 랩타임으로 지불</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">그린 기준랩</div><div class="v">79.119</div><div class="d">6인 중 2위</div></div>
+    <div class="stat"><div class="l">S2</div><div class="v va">29.431</div><div class="d">6인 중 <b>1위</b></div></div>
+    <div class="stat"><div class="l">그린 초과</div><div class="v va">+1.7</div><div class="d">3번째로 낮음</div></div>
+    <div class="stat"><div class="l">스톱고 비용</div><div class="v vr">+37.6</div><div class="d">L10 서빙</div></div>
+    <div class="stat"><div class="l">피트 비용</div><div class="v vr">+33.3</div><div class="d">6인 중 최고</div></div>
+    <div class="stat"><div class="l">사고 클립</div><div class="v">11</div><div class="d">L7에 3건</div></div>
+  </div>
+
+  <div class="key">
+    <div class="k">가장 조용한 종반</div>
+    <p>L10에 스톱고로 37.6초를 내고, 피트에서도 남들보다 5초를 더 쓴 드라이버가
+      <b>L11 이후 초과 합계 5.4초</b>로 레이스를 마쳤다. S2는 여섯 명 중 가장 빠르다(29.431).
+      원시로 0.026초 뒤졌던 nNio를 앞선 건 페널티 덕이지만, <b>그 0.026초까지 따라붙은 건 그의 종반 안정성</b>이다.</p>
+  </div>
+
+  <div class="led"><span class="tot">jaeseonchoi</span>  25 × 79.119 = 1977.963  +  Σ초과 153.291  =  <span class="tot">2131.254</span>   재조정 오차 <span class="zero">0.000000</span>
+
+  L1 스타트 <span class="neg">+11.0</span>   N1(L5) <span class="neg">+12.3</span>   N2(L7)+피트 <span class="neg">+19.7</span>   L8 피트 <span class="neg">+38.9</span>
+  N3(L9)    <span class="neg">+28.2</span>   <span class="tot">L10 스톱고 +37.6</span>   L11 <span class="pos">+3.7</span>   그린 L12–25 <span class="neg">+1.7</span></div>
+
+  <ul class="ck">
+    <li class="n"><b>L1 스타트에서 +11.0초 — 여섯 명 중 최악.</b> 그리고 t=4.17s에
+      <b>VEON을 정후방에서 추돌했다</b>. 간격 10.4 → 4.9 m, 접근 속도차 +24 km/h,
+      선행차 VEON은 브레이크 0.00. <b>FIA 절차상 jaeseonchoi 주된 책임(확신도 높음)</b>. 게임 판정 없음.</li>
+    <li class="n"><b>L7 t=581.8s — WOOJONG에게 추돌당했다.</b> 중립화 서행(60~84 km/h) 중.
+      이번엔 그가 피해자다. 역시 게임 판정 없음.</li>
+    <li class="n"><b>페널티</b>: L9에 <b>"Ignoring yellow flags"</b> 10초 스톱고 <span class="pill p-sg">스톱고</span>.
+      L10에 서빙(+37.6초). 이 사유 덕분에 <b>t ∈ [708.3, 810.0]에 옐로가 있었다는 사실이 증명됐다</b>(종합 §05 N3).</li>
+    <li class="w"><b>피트 스톱이 5초 비쌌다.</b> 같은 랩·같은 국면에 들어간 VEON(+19.54)·HYUNMIN(+19.04) 대비
+      스톱 랩 S1에서 <b>+25.11초</b>. 총 피트 비용 +33.3초로 6인 중 유일하게 30초를 넘겼다. 원인 미해명.</li>
+    <li class="y"><b>L24 t=1989.2s — Sticker와 병주.</b> 방향 전환 구간에서 중심간 최소 1.9~2.0 m까지 붙었지만
+      양측 다 라인을 지켰다 → <b>레이싱 인시던트</b>.</li>
+    <li class="y"><b>타이어</b>: M ×7 → H ×18, 마모 21% / 31%. HYUNMIN과 사실상 동일한 전략.</li>
+  </ul>
+</section>
+
+<!-- nNio -->
+<section id="nnio">
+  <h2><span class="rk">5위</span>nNio — 22초 리드를 두 번의 스핀에 놓쳤다</h2>
+  <p class="sub">보정 2134.228s · 원시 2131.228s(<b>jaeseonchoi보다 0.026초 앞</b>) · +3초로 역전당함</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">그린 기준랩</div><div class="v">79.273</div><div class="d">6인 중 4위</div></div>
+    <div class="stat"><div class="l">L22 시점 리드</div><div class="v va">22.24</div><div class="d">jaeseonchoi 대비</div></div>
+    <div class="stat"><div class="l">결승선 격차</div><div class="v vr">0.026</div><div class="d">원시 · 1.2 ppm</div></div>
+    <div class="stat"><div class="l">L23 스핀</div><div class="v vr">+12.7</div><div class="d">오버스티어 5.49%</div></div>
+    <div class="stat"><div class="l">L25 스핀</div><div class="v vr">+12.0</div><div class="d">오버스티어 5.43%</div></div>
+    <div class="stat"><div class="l">전략</div><div class="v">H→M</div><div class="d">6인 중 유일 (역순)</div></div>
+  </div>
+
+  <div class="key amber">
+    <div class="k">사라진 22초</div>
+    <p>L22 종료 시점에 nNio는 jaeseonchoi보다 <b>22.24초 앞</b>서 있었다.
+      L23에 스핀(+12.7초), L25에 다시 스핀(+12.0초). 결승선 통과 시점의 원시 격차는 <b>0.026초</b>였다.
+      그리고 L4에 받은 3초가 얹혀 순서가 뒤집혔다.
+      <b>25랩 2131초짜리 레이스가 마지막 세 랩에서 뒤집혔다.</b></p>
+  </div>
+
+  <div class="led"><span class="tot">nNio</span>  25 × 79.273 = 1981.819  +  Σ초과 149.409  =  <span class="tot">2131.228</span>   재조정 오차 <span class="zero">0.000000</span>
+
+  L1 스타트 <span class="neg">+6.6</span>   N1(L5) <span class="neg">+13.4</span>   N2(L7) <span class="neg">+14.8</span>   L8 <span class="neg">+5.2</span>
+  N3(L9)+피트 <span class="neg">+20.0</span>   L10 피트 <span class="neg">+34.1</span>   L11 정체 <span class="neg">+32.4</span>   <span class="tot">그린 L12–25 +24.7</span></div>
+
+  <ul class="ck">
+    <li class="y"><b>N3를 거의 피했다.</b> L9 S1을 t=672–705에 통과해 창이 열리기 직전에 빠져나갔다 —
+      다섯 명이 +10.7~27.4초를 잃을 때 그는 <b>+3.9초</b>만 냈다. 이 덕에 L9 종료 시점에 Ryul보다 <b>36.3초</b> 앞섰다.</li>
+    <li class="n"><b>그리고 L10·L11에 66.5초를 냈다.</b> L10은 그의 피트(+34.1), L11은 선두 3인 정체(+32.4).
+      L9의 이득이 두 랩 만에 사라졌다.</li>
+    <li class="n"><b>그린 초과 +24.7초 — 6인 중 2번째로 나쁘다.</b> 거의 전부가 L23·L25 두 번의 스핀이다.
+      오버스티어 지표도 두 랩 모두 5.4%대로 그의 평균(0~2%)을 크게 벗어난다.</li>
+    <li class="w"><b>전략은 여섯 명 중 유일한 역순</b>(H ×9 → M ×16). 마모 13% / 46%로
+      미디엄을 16랩 끌었고 마모율 2.88 %/랩. 그럼에도 종반 페이스 자체는 나쁘지 않았다
+      (L15 78.100은 그의 최속랩) — 문제는 마모가 아니라 두 번의 스핀이었다.</li>
+    <li class="w"><b>페널티</b>: L4에 코너컷 경고 3회 누적 3초 <span class="pill p-pen">3초</span>.
+      L9/10 피트에서 서빙되지 않았다 — 피트 비용(+28.67초)과 <code>stationary_ms</code>(2233 ms)가
+      서빙하지 않은 VEON·Ryul과 동일하다.</li>
+    <li class="y"><b>L12 t=1009.7s — Lucy와 Turn 1.</b> 328/335 km/h 진입, Lucy가 250 ms 먼저 제동,
+      간격 7.2 → 4.8 m. <b>레이싱 인시던트에 가깝되 후행차 책임 일부</b>(확신도 낮음~중간). 게임 판정 없음.</li>
+    <li class="q"><b>그의 클라이언트만 기록한 L2 경고가 있다.</b> 다른 다섯 계정은 놓쳤다 —
+      이것이 "÷계정수" 방식의 이벤트 중복 제거가 틀렸음을 보여준 증거다.</li>
+  </ul>
+</section>
+
+<!-- WOOJONG -->
+<section id="woojong">
+  <h2><span class="rk">6위</span>WOOJONG — 세션 최속랩을 갖고 꼴찌</h2>
+  <p class="sub">보정 2151.475s · 원시 2148.475s · +3초 페널티</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">세션 최속랩</div><div class="v vb">77.608</div><div class="d">L20 · 전 세션 1위</div></div>
+    <div class="stat"><div class="l">그린 기준랩</div><div class="v">79.301</div><div class="d">6인 중 5위</div></div>
+    <div class="stat"><div class="l">그린 초과</div><div class="v vr">+42.0</div><div class="d">6인 중 최악</div></div>
+    <div class="stat"><div class="l">L15 스핀</div><div class="v vr">+18.3</div><div class="d">스핀 2회</div></div>
+    <div class="stat"><div class="l">1스틴트</div><div class="v">17랩</div><div class="d">6인 중 최장</div></div>
+    <div class="stat"><div class="l">사고 클립</div><div class="v vr">17</div><div class="d">6인 중 최다</div></div>
+  </div>
+
+  <div class="key amber">
+    <div class="k">피크는 있고 일관성이 없다</div>
+    <p>WOOJONG의 <b>단일 최속랩은 세션 전체 1위</b>(77.608)이고 기준랩도 3위권 안에 든다.
+      그런데 그린 구간에서만 <b>+42.0초</b>를 잃었다 — 여섯 명 중 최악이고, Ryul(+3.8)의 11배다.
+      L15 스핀 2회(+18.3), L17–18 피트(+22.3), 그리고 클립 17건.
+      <b>속도가 없는 게 아니라, 속도를 25랩 유지하지 못했다.</b></p>
+  </div>
+
+  <div class="led"><span class="tot">WOOJONG</span>  25 × 79.301 = 1982.533  +  Σ초과 165.943  =  <span class="tot">2148.475</span>   재조정 오차 <span class="zero">0.000000</span>
+
+  L1 스타트 <span class="neg">+8.4</span>   N1(L5) <span class="neg">+14.6</span>   N2(L7) <span class="neg">+15.8</span>   L8 <span class="neg">+9.0</span>
+  N3(L9)   <span class="neg">+21.0</span>   L10    <span class="neg">+22.1</span>   L11 정체 <span class="neg">+33.2</span>   <span class="tot">그린 L12–25 +42.0</span>(피트 포함)</div>
+
+  <ul class="ck">
+    <li class="y"><b>최장 1스틴트 17랩(하드, 마모 27% = 1.59 %/랩).</b> 여섯 명 중 유일하게 중립화 국면을
+      전부 코스 위에서 보내고 L17/18에 피트했다. 그 덕에 피트 비용이 <b>+22.47초</b>로 가장 낮았다
+      (직전 랩 S3 초과가 +3.22초 — 그린 상태 진입).</li>
+    <li class="n"><b>L15에 스핀 2회, +18.3초.</b> 오버스티어 4.10%로 그의 평균(0~2%)을 벗어난다.
+      랩타임 97.630초.</li>
+    <li class="n"><b>L11 정체에서 +33.2초 — 6인 중 최악.</b> 선두 3인 중에서도 가장 앞에 있었고
+      S2 43.12초 / S3 31.71초로 가장 크게 갇혔다.</li>
+    <li class="n"><b>L7 t=581.8s — jaeseonchoi를 추돌했다.</b> 중립화 서행 60~84 km/h,
+      간격 7.2 → 4.5 m, 브레이크 0.37. <b>FIA 절차상 WOOJONG 주된 책임(확신도 높음)</b>. 게임 판정 없음.</li>
+    <li class="n"><b>L11 t=986.1s — HOLLIS를 추돌했다.</b> 정체 중 92 → 80 km/h,
+      간격 7.5 → 4.6 m. 선행차 HOLLIS는 74~79 km/h 관성 주행 중이었다.
+      <b>WOOJONG 주된 책임.</b> 게임 판정 없음. — 이 클립이 §L11 "정체" 해석의 핵심 증거이기도 하다.</li>
+    <li class="w"><b>클립 17건은 6인 중 최다</b>(HYUNMIN의 5.7배). L1에만 4건.
+      그의 손실 대부분이 접촉 자체보다 <b>접촉을 유발하는 근접 주행</b>에서 나온다.</li>
+    <li class="w"><b>페널티</b>: 코너컷 경고 3회 누적 3초 <span class="pill p-pen">3초</span>.
+      본인 클라이언트는 L24로, 다른 계정들은 L25로 태그했다(랩 태그는 각 업로더의 현재 랩).
+      L17/18 피트보다 뒤여서 서빙 기회 없음.</li>
+  </ul>
+</section>
+
+<!-- 비교 -->
+<section id="compare">
+  <h2>한눈에</h2>
+  <p class="sub">공통 손실을 걷어내면 남는 것.</p>
+
+  <h3>순위를 만든 세 열의 합 (L10 + L11 + 그린 L12–25)</h3>
+  <div class="bars">
+    <div class="bar"><span class="lb">VEON</span><span class="tr"><span class="fl" style="width:19%;background:#60a5fa"></span></span><span class="vv">+18.7</span></div>
+    <div class="bar"><span class="lb">Ryul</span><span class="tr"><span class="fl" style="width:37%;background:#4ade80"></span></span><span class="vv">+36.3</span></div>
+    <div class="bar"><span class="lb">jaeseonchoi</span><span class="tr"><span class="fl" style="width:44%;background:#f87171"></span></span><span class="vv">+43.0</span></div>
+    <div class="bar"><span class="lb">HYUNMIN_033</span><span class="tr"><span class="fl" style="width:53%;background:#fbbf24"></span></span><span class="vv">+52.3</span></div>
+    <div class="bar"><span class="lb">nNio</span><span class="tr"><span class="fl" style="width:94%;background:#c084fc"></span></span><span class="vv">+91.2</span></div>
+    <div class="bar"><span class="lb">WOOJONG</span><span class="tr"><span class="fl" style="width:100%;background:#94a3b8"></span></span><span class="vv">+97.3</span></div>
+  </div>
+  <p class="sub">최종 보정 순서(Ryul → HYUNMIN → VEON → jaeseonchoi → nNio → WOOJONG)와
+     이 막대의 순서가 완전히 일치하지 않는 이유는, HYUNMIN의 +52.3이 거의 전부 <b>스톱고 한 건</b>이고
+     VEON의 +18.7에는 <b>L11의 행운</b>이 들어 있기 때문이다. 순위는 이 한 장으로 환원되지 않는다.</p>
+
+  <h3>공통 중립화 손실 (N1 + N2 + N3) — 순위를 만들지 못한 부분</h3>
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>N1 (L5)</th><th>N2 (L7)</th><th>N3 (L9)</th><th>합</th><th>비고</th></tr>
+    <tr><td><strong>VEON</strong></td><td class="n">+13.0</td><td class="n">+18.9<sup>P</sup></td><td class="n">+34.3</td><td class="n">+66.2</td><td>N2에 피트 포함</td></tr>
+    <tr><td><strong>HYUNMIN_033</strong></td><td class="n">+15.2</td><td class="n">+18.8<sup>P</sup></td><td class="n">+36.9</td><td class="n">+70.9</td><td>N2에 피트 포함</td></tr>
+    <tr><td><strong>jaeseonchoi</strong></td><td class="n">+12.3</td><td class="n">+19.7<sup>P</sup></td><td class="n">+28.2</td><td class="n">+60.2</td><td>N2에 피트 포함</td></tr>
+    <tr><td><strong>Ryul</strong></td><td class="n">+13.3</td><td class="n">+32.8<sup>P</sup></td><td class="n">+29.3</td><td class="n">+75.4</td><td>N2에 피트 포함</td></tr>
+    <tr><td><strong>WOOJONG</strong></td><td class="n">+14.6</td><td class="n">+15.8</td><td class="n">+21.0</td><td class="n">+51.4</td><td>피트 없음(L17까지 주행)</td></tr>
+    <tr><td><strong>nNio</strong></td><td class="n">+13.4</td><td class="n">+14.8</td><td class="n">+20.0<sup>P</sup></td><td class="n">+48.2</td><td>N3 직전 통과 + 피트</td></tr>
+  </table></div>
+  <p class="sub"><sup>P</sup> 피트 스톱 포함. <b>N1만 보면 12.3~15.2초로 편차 2.9초</b> —
+     피트가 섞이지 않은 유일한 열이고, 여섯 명이 똑같이 당했음을 가장 깨끗하게 보여준다.</p>
+
+  <div class="note"><b>이 리포트의 규율.</b> 모든 손실 원장은 <code>25 × 기준랩 + Σ초과 = 실측 총합</code>으로
+     재조정했고 여섯 명 전원 오차 <b>0.000000초</b>다. 추정에는 <span class="pill p-up">[추정]</span>을 붙였다.
+     방법론 한계와 답하지 못한 질문은 종합 리포트의 §12·§13에 정리했다.</div>
+</section>
+
+<div class="foot">
+  <p>세션 UID <code>63383627963211948</code> · Autódromo Hermanos Rodríguez · F1 26 · 25랩 · 6개 계정.
+     비업로더가 이들 사이에 있었으므로 <b>절대 순위가 아니라 여섯 명 사이의 순서</b>다. 세션 우승자는 Lucy.</p>
+  <p>과실 판정 절차: <code>.claude/skills/race-analysis/references/fia-driving-standards.md</code> §3.
+     게임 판정은 병기만 했고 FIA 판정의 근거로 쓰지 않았다. 셋업 데이터는 사용하지 않았다.</p>
+</div>
+
+</div>
+</body>
+</html>
