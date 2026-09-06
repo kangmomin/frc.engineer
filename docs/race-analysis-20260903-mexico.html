@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mexico 종합 분석 · 2026-09-03</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0e13; --card:#141a23; --card2:#1a212c; --line:#26303d;
+  --tx:#e4e9f0; --tx2:#93a1b5; --tx3:#63718a;
+  --a:#4ade80; --b:#fbbf24; --r:#f87171; --i:#60a5fa;
+}
+body{background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+  line-height:1.7;-webkit-font-smoothing:antialiased;padding-bottom:70px}
+.wrap{max-width:860px;margin:0 auto;padding:0 16px}
+.hero{padding:46px 0 30px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--tx3);text-transform:uppercase;font-weight:600}
+h1{font-size:29px;line-height:1.32;margin:12px 0 14px;letter-spacing:-.02em}
+.lede{color:var(--tx2);font-size:15px}
+.lede b{color:var(--tx)}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.chip{background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:5px 13px;font-size:12.5px;color:var(--tx2)}
+nav{position:sticky;top:0;z-index:20;background:rgba(11,14,19,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);margin-bottom:34px}
+nav .wrap{display:flex;gap:5px;overflow-x:auto;padding:11px 16px;scrollbar-width:none}
+nav .wrap::-webkit-scrollbar{display:none}
+nav a{color:var(--tx2);text-decoration:none;font-size:13px;white-space:nowrap;padding:5px 11px;border-radius:7px;transition:.15s}
+nav a:hover{background:var(--card2);color:var(--tx)}
+section{margin:0 0 48px}
+h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em;scroll-margin-top:66px}
+h2 .num{color:var(--tx3);font-size:14px;font-weight:600;margin-right:9px}
+.sub{color:var(--tx3);font-size:13.5px;margin-bottom:20px}
+h3{font-size:15.5px;margin:28px 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin:14px 0}
+.note{border-left:3px solid var(--i);background:rgba(96,165,250,.07);border-radius:0 10px 10px 0;padding:14px 16px;margin:14px 0;font-size:14px;color:var(--tx2)}
+.warn{border-left-color:var(--b);background:rgba(251,191,36,.07)}
+.bad{border-left-color:var(--r);background:rgba(248,113,113,.07)}
+.good{border-left-color:var(--a);background:rgba(74,222,128,.07)}
+.note b{color:var(--tx)}
+.key{background:linear-gradient(135deg,rgba(74,222,128,.1),rgba(96,165,250,.05));border:1px solid rgba(74,222,128,.3);border-radius:14px;padding:22px;margin:18px 0}
+.key.amber{background:linear-gradient(135deg,rgba(251,191,36,.09),rgba(248,113,113,.04));border-color:rgba(251,191,36,.3)}
+.key .k{font-size:11px;letter-spacing:.13em;color:var(--a);font-weight:700;text-transform:uppercase}
+.key.amber .k{color:var(--b)}
+.key p{margin-top:9px;font-size:15.5px;line-height:1.65}
+.key p+p{margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(142px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}
+.stat .l{font-size:11.5px;color:var(--tx3);margin-bottom:5px}
+.stat .v{font-size:21px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.stat .d{font-size:11.5px;color:var(--tx3);margin-top:3px}
+.va{color:var(--a)}.vb{color:var(--b)}.vr{color:var(--r)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0;border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:460px}
+th{background:var(--card2);color:var(--tx2);font-weight:600;text-align:left;padding:11px 13px;font-size:12px;letter-spacing:.03em;white-space:nowrap}
+td{padding:10px 13px;border-top:1px solid var(--line);color:var(--tx2);vertical-align:top}
+td.n{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td strong{color:var(--tx)}
+tr.hl td{background:rgba(74,222,128,.06)}
+tr.hlr td{background:rgba(248,113,113,.06)}
+.dv{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--tx)}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.led{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:16px;overflow-x:auto;line-height:2;white-space:pre;color:var(--tx2)}
+.led .pos{color:var(--a)}.led .neg{color:var(--r)}.led .zero{color:var(--tx3)}.led .tot{color:var(--tx);font-weight:700}
+ul.ck{list-style:none;margin:12px 0}
+ul.ck li{padding:8px 0 8px 28px;position:relative;font-size:14px;color:var(--tx2);border-bottom:1px solid rgba(38,48,61,.55)}
+ul.ck li:last-child{border-bottom:none}
+ul.ck li::before{position:absolute;left:0;top:8px}
+ul.ck li.y::before{content:"✅"} ul.ck li.n::before{content:"❌"} ul.ck li.w::before{content:"⚠️"} ul.ck li.q::before{content:"❓"}
+ul.ck li b{color:var(--tx)}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 8px 10px;margin:14px 0}
+.legend{display:flex;gap:15px;justify-content:center;flex-wrap:wrap;font-size:12.5px;color:var(--tx2);margin-bottom:10px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.p-dsq{background:rgba(248,113,113,.16);color:var(--r)}
+.p-win{background:rgba(251,191,36,.16);color:var(--b)}
+.p-sg{background:rgba(248,113,113,.13);color:#fca5a5}
+.p-pen{background:rgba(251,191,36,.13);color:var(--b)}
+.p-cln{background:rgba(74,222,128,.13);color:var(--a)}
+.p-up{background:rgba(96,165,250,.14);color:var(--i)}
+.inc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:12px 0;font-size:13.5px;color:var(--tx2)}
+.inc h4{font-size:14.5px;color:var(--tx);margin-bottom:8px}
+.inc ul{margin:6px 0 0 18px}
+.inc li{margin:3px 0}
+.inc b{color:var(--tx)}
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace;background:var(--card2);padding:1.5px 6px;border-radius:5px;font-size:.88em;color:#a5d6ff;border:1px solid var(--line)}
+.foot{border-top:1px solid var(--line);margin-top:46px;padding-top:22px;color:var(--tx3);font-size:12.5px}
+.foot a{color:var(--i)}
+@media(max-width:600px){h1{font-size:24px}.hero{padding:32px 0 24px}h2{font-size:19px}.stat .v{font-size:19px}.led{font-size:11px}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Race Analysis · Autódromo Hermanos Rodríguez</div>
+  <h1>세이프티카가 세 번 리셋했다.<br>36랩의 승부는 마지막 5랩이었다</h1>
+  <p class="lede">2026-09-03 멕시코 36랩, 22인 전원 사람 로비. 6개 계정이 같은 세션을 올렸다.
+     L31이 끝났을 때 완주한 네 명은 <b>4.1초 안에</b> 있었다. 최종 격차 <b>11.6 / 17.6 / 21.3초</b>는
+     전부 L32–36 다섯 랩에서 벌어졌다(재조정 오차 0.000초). 그 앞의 31랩에서 벌어진 최대 37초의 격차는
+     세이프티카 세 번이 전부 지웠다. 그리고 체커기를 먼저 받은 Jinseo에게는 <b>서빙되지 않은 3초 페널티</b>가
+     남아 있었고, hannul은 라인에서 약 0.3초 뒤에 있었다 — <b>최종 우승자는 데이터로 확정할 수 없다</b>.</p>
+  <div class="meta">
+    <span class="chip">F1 26 · 36랩 · 22인 로비</span>
+    <span class="chip">KST 09-03 22:27 → 23:19</span>
+    <span class="chip">완주 4 · 이탈 1 · 리타이어 1</span>
+    <span class="chip">이벤트 101건 / 22명 확인</span>
+    <span class="chip">SC 3회 · 재출발 3회 모두 T1 접촉</span>
+    <span class="chip">사고 클립 89건 / 84국면</span>
+    <span class="chip">국면 재조정 오차 0.000초</span>
+  </div>
+</header>
+</div>
+
+<nav><div class="wrap">
+  <a href="#result">결과</a>
+  <a href="#last5">마지막 5랩</a>
+  <a href="#reset">리셋 3회</a>
+  <a href="#winner">우승자 미확정</a>
+  <a href="#phase">국면·페이스</a>
+  <a href="#tyre">전략·피트</a>
+  <a href="#rule">페널티 산수</a>
+  <a href="#incident">사고·과실</a>
+  <a href="#dyn">다이내믹스</a>
+  <a href="#integrity">데이터 무결성</a>
+  <a href="#limit">해석 한계</a>
+  <a href="#open">미해명</a>
+</div></nav>
+
+<div class="wrap">
+
+<!-- 01 결과 -->
+<section id="result">
+  <h2><span class="num">01</span>결과 — 네 명의 완주, 하나의 미확정</h2>
+  <p class="sub">업로더 6계정 · 누적 랩타임 재구성 · 게임 이벤트 대조</p>
+  <div class="key">
+    <div class="k">핵심 결론 · 세 층위</div>
+    <p><b>① 31랩 동안의 격차는 순위를 만들지 못했다.</b> L15 종료 시점 Jinseo는 Thor를 30.2초, amy1207을 36.7초,
+       HOJUN을 15.8초 앞섰다. SC2가 이것을 2.0 / 3.3 / 1.4초로 만들었다. L28에 다시 벌어진 격차(1.3 / 16.8 / 4.4초)는
+       SC3가 0.6 / 4.1 / 2.9초로 만들었다. 리더가 잃고, 뒤가 얻는 산수다.</p>
+    <p><b>② 순위는 SC3 재출발 뒤 다섯 랩이 정했다.</b> L31 갭 + L32–36 델타 = 최종 갭이 세 명 모두 0.00초 오차로 맞는다.
+       Thor는 L33 한 랩에 <b>15.4초</b>(접촉 7건·스핀 2), HOJUN은 L36에 <b>8.2초</b>(kelly_c 접촉 2건)와 L34 스핀,
+       amy는 L33 스핀 <b>6.1초</b>. 페이스 차이가 아니라 사고가 갈랐다.</p>
+    <p><b>③ 그리고 페널티 3초가 우승을 미확정으로 남겼다.</b> Jinseo는 hannul의 압박 속에 L32에서 세 번째 코너컷 경고를 받아
+       3초 페널티가 확정됐다(접촉 2.4초 전). 이 페널티는 마지막 피트(L15→16) 뒤에 나와 <b>서빙되지 않았다</b>.
+       결승선 직후 프레임으로 역산한 hannul의 라인 간격은 <b>0.2~0.4초 [추정]</b>. 3초를 얹으면 순서가 바뀐다.</p>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="l">완주 랩</div><div class="v">36</div><div class="d">4인 완주 · uno L16 이탈 · wowbox L2 리타이어</div></div>
+    <div class="stat"><div class="l">세션 최속랩 (업로더)</div><div class="v vb">76.703</div><div class="d">Jinseo · L22 · 2위와 0.94초 차</div></div>
+    <div class="stat"><div class="l">그린 중위 랩</div><div class="v va">78.604</div><div class="d">Jinseo · 23랩 기준</div></div>
+    <div class="stat"><div class="l">3초 페널티</div><div class="v vr">3 / 4</div><div class="d">Jinseo · HOJUN · amy1207 (Thor 0)</div></div>
+    <div class="stat"><div class="l">세이프티카</div><div class="v">3</div><div class="d">L2S3–5 · L15S3–18 · L28S3–31</div></div>
+    <div class="stat"><div class="l">사고 클립</div><div class="v">89</div><div class="d">계정 간 병합 후 84국면</div></div>
+  </div>
+
+  <h3>업로더 간 최종 순서 (누적 랩타임 재구성)</h3>
+  <div class="scroll"><table>
+    <tr><th>#</th><th>드라이버</th><th>원시 36랩</th><th>페널티</th><th>보정 후</th><th>앞차와 차</th><th>비고</th></tr>
+    <tr class="hl"><td>1</td><td><strong>Jinseo</strong></td><td class="n">3151.554</td><td class="n">+3 (L32, 미서빙)</td><td class="n"><strong>3154.554</strong></td><td class="n">—</td><td><span class="pill p-win">Race Winner 이벤트</span> hannul 라인 ~0.3초 뒤 <span class="pill p-up">[추정]</span> → §04</td></tr>
+    <tr><td>2</td><td><strong>amy1207</strong></td><td class="n">3163.122</td><td class="n">+3 (L34, 미서빙)</td><td class="n"><strong>3166.122</strong></td><td class="n">+11.568</td><td>3스톱(그린 1 · SC 2) · L33 스핀</td></tr>
+    <tr><td>3</td><td><strong>HOJUN</strong></td><td class="n">3169.176</td><td class="n">+3 (L19) → L29 정차 시 서빙 <span class="pill p-up">[추정]</span></td><td class="n"><strong>3169.176</strong> <span style="color:var(--tx3)">/ 미서빙이면 3172.176</span></td><td class="n">+3.054 <span style="color:var(--tx3)">/ +6.054</span></td><td>3스톱 · L34 스핀 · L36 접촉 2</td></tr>
+    <tr class="hlr"><td>4</td><td><strong>Thor</strong></td><td class="n">3172.903</td><td class="n">0</td><td class="n"><strong>3172.903</strong></td><td class="n">+3.727 <span style="color:var(--tx3)">/ +0.727</span></td><td>2스톱(SC 2) · L33 접촉 7 · 스핀 5회(세션 최다)</td></tr>
+    <tr><td>—</td><td><strong>uno</strong></td><td class="n">15랩 · 1329.265</td><td class="n">0</td><td class="n">—</td><td class="n">—</td><td><span class="pill p-dsq">DNF</span> SC2 직전 그린 피트 → L16 SC 중 세션 이탈</td></tr>
+    <tr><td>—</td><td><strong>wowbox</strong></td><td class="n">1랩 · 88.394</td><td class="n">0</td><td class="n">—</td><td class="n">—</td><td><span class="pill p-dsq">DNF</span> L2 Jihun 스핀 차량과 충돌 → terminally damaged → SC1 원인</td></tr>
+  </table></div>
+
+  <div class="note"><b>순서의 지위.</b> 여섯 명은 같은 스탠딩 스타트에서 출발했으므로 <b>완주 4명 사이의 상대 순서는 사실</b>이다
+     (HOJUN–Thor의 3.7초 / 0.7초는 HOJUN의 3초 서빙 여부에 따라 달라지지만 어느 쪽이든 순서는 같다).
+     그리드는 22명이었고 비업로더가 이들 사이에 끼어 있다 — <b>절대 순위는 알 수 없다</b>.
+     게임은 Jinseo를 Race Winner로 선언했다. 최종 분류(페널티 반영)는 업로드 데이터에 없다.</div>
+</section>
+
+<!-- 02 마지막 5랩 -->
+<section id="last5">
+  <h2><span class="num">02</span>마지막 5랩이 순위를 만들었다</h2>
+  <p class="sub">L31 종료 갭 + L32–36 랩별 델타 = 최종 갭. 세 명 모두 재조정 오차 0.000초.</p>
+
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>L31 갭</th><th>L32</th><th>L33</th><th>L34</th><th>L35</th><th>L36</th><th>5랩 합</th><th>최종 갭</th><th>검산</th></tr>
+    <tr><td><span class="dv"><i class="dot" style="background:#fbbf24"></i>amy1207</span></td><td class="n">4.13</td><td class="n">+0.54</td><td class="n"><strong>+6.10</strong></td><td class="n">+1.28</td><td class="n">−1.86</td><td class="n">+1.39</td><td class="n">+7.44</td><td class="n"><strong>11.57</strong></td><td class="n">4.13+7.44=11.57 ✓</td></tr>
+    <tr><td><span class="dv"><i class="dot" style="background:#60a5fa"></i>HOJUN</span></td><td class="n">2.94</td><td class="n">+1.11</td><td class="n">+1.64</td><td class="n"><strong>+2.90</strong></td><td class="n">+0.83</td><td class="n"><strong>+8.20</strong></td><td class="n">+14.68</td><td class="n"><strong>17.62</strong></td><td class="n">2.94+14.68=17.62 ✓</td></tr>
+    <tr><td><span class="dv"><i class="dot" style="background:#f87171"></i>Thor</span></td><td class="n">0.60</td><td class="n">+0.35</td><td class="n"><strong>+15.41</strong></td><td class="n">+2.36</td><td class="n">+1.45</td><td class="n">+1.19</td><td class="n">+20.75</td><td class="n"><strong>21.35</strong></td><td class="n">0.60+20.75=21.35 ✓</td></tr>
+  </table></div>
+
+  <h3>다섯 랩에서 무엇이 있었나</h3>
+  <ul class="ck">
+    <li class="n"><b>Thor L33 (+15.4초)</b> — SC3 재출발 다음 랩. S1 T2→T3 <span class="pill p-up">[추정]</span>에서 Sony와 접촉(2853.9s), S2에서 Ren_Gray·kelly_c·HOJUN(2874.9 / 2883.1s),
+        S3 스타디움에서 sumin07198에게 두 번(2902.1 / 2910.5s)·amy1207에게 한 번(2906.5s) 뒤에서 맞고 ggwakggwaki와 접촉(2912.6s).
+        스핀 2회. 섹터 28.9 / 34.3 / 30.8 = 같은 랩 Jinseo 대비 −0.1 / +4.9 / +10.6초. L31에 Jinseo 0.6초 뒤였던 차가 한 랩 뒤 16.4초 뒤가 됐다.</li>
+    <li class="n"><b>HOJUN L36 (+8.2초) · L34 (+2.9초)</b> — L34 S1 31.1초(스핀 1, 오버스티어 4.6%). L36 S3 27.3초: kelly_c와 두 번(3150.6 / 3154.6s) 접촉.
+        L34–36 YJHuman과의 6회 접촉 배틀 한가운데였다.</li>
+    <li class="n"><b>amy1207 L33 (+6.1초)</b> — S3 25.0초, 스핀 1. Thor의 스타디움 연쇄와 같은 국면(amy→Thor 2906.5s)이다. amy 본인 클립은 20건 상한에 걸려
+        L25에서 끊겨 있고, 이 접촉은 <b>Thor 측 클립으로만</b> 확인된다.</li>
+    <li class="y"><b>Jinseo</b> — 다섯 랩 79.5 / 78.7 / 78.6 / 81.0 / 79.4. hannul이 뒤에서 세 번(L32 · L34 · 결승선 직후) 부딪혔지만 자세를 잃지 않았다.
+        L35의 +2.4초(S3 22.1)는 원인 클립이 없다 → 미해명.</li>
+  </ul>
+
+  <div class="note good"><b>페이스가 아니라는 증거.</b> G2(L19–27) 그린 중위 랩은 Jinseo 78.09 · Thor 78.49 · HOJUN 78.61 · amy 79.47 —
+     Thor와 HOJUN은 Jinseo와 0.4~0.5초/랩 차이였고 G2 전체에서 Thor는 오히려 0.7초 <b>더 빨랐다</b>(L28 SC3 전개 위치 효과 포함).
+     이 페이스로 다섯 랩을 달렸다면 격차는 2~3초에 그쳤을 것이다.</div>
+</section>
+
+<!-- 03 리셋 3회 -->
+<section id="reset">
+  <h2><span class="num">03</span>세 번의 세이프티카, 세 번의 리셋</h2>
+  <p class="sub">Jinseo 대비 누적 갭(초). 양수 = Jinseo보다 뒤. SC 밴드는 SC가 걸린 완전 랩(전개는 각각 직전 랩 S3).</p>
+
+  <div class="chart">
+    <div class="legend"><span><i style="background:#4ade80"></i>Jinseo (기준)</span><span><i style="background:#fbbf24"></i>amy1207</span><span><i style="background:#60a5fa"></i>HOJUN</span><span><i style="background:#f87171"></i>Thor</span><span><i style="background:#c084fc"></i>uno</span></div>
+    <div id="chart2"></div>
+  </div>
+
+  <div class="scroll"><table>
+    <tr><th>Jinseo 대비 갭</th><th>L2</th><th>L5 (SC1 끝)</th><th>L15</th><th>L18 (SC2 끝)</th><th>L28</th><th>L31 (SC3 끝)</th><th>L36</th></tr>
+    <tr><td><strong>Thor</strong></td><td class="n">0.95</td><td class="n">4.67</td><td class="n"><strong>30.16</strong></td><td class="n">2.00</td><td class="n">1.31</td><td class="n">0.60</td><td class="n">21.35</td></tr>
+    <tr><td><strong>HOJUN</strong></td><td class="n">8.42</td><td class="n">6.59</td><td class="n"><strong>15.76</strong></td><td class="n">1.38</td><td class="n">4.39</td><td class="n">2.94</td><td class="n">17.62</td></tr>
+    <tr><td><strong>amy1207</strong></td><td class="n">6.69</td><td class="n">2.25</td><td class="n"><strong>36.66</strong></td><td class="n">3.26</td><td class="n"><strong>16.83</strong></td><td class="n">4.13</td><td class="n">11.57</td></tr>
+    <tr><td><strong>uno</strong></td><td class="n">1.22</td><td class="n">0.77</td><td class="n">41.85</td><td class="n" colspan="4" style="color:var(--tx3)">L16 SC2 중 세션 이탈</td></tr>
+  </table></div>
+
+  <h3>세 번 모두 비업로더의 리타이어가 원인이었다</h3>
+  <div class="scroll"><table>
+    <tr><th>SC</th><th>전개 시각 (세션)</th><th>원인</th><th>기록</th><th>재출발</th></tr>
+    <tr><td><strong>SC1</strong></td><td class="n">L2 S3 · ~140–151s</td><td>wowbox 차량 terminally damaged</td><td>Jihun이 스핀 상태로 라인을 가로질렀고 wowbox가 301 km/h로 충돌(146.8s). Jihun Stop-Go 10s(170.0s), wowbox Retired(151.0s)</td><td>L6 T1: amy–Sony(511.9s) · uno–sumin07198(510.6s) 접촉</td></tr>
+    <tr><td><strong>SC2</strong></td><td class="n">L15 S3 · ~1262–1277s</td><td>ANT gami 차량 terminally damaged</td><td>Retired 1276.8s. 원인 클립 없음(업로더 반경 밖). 같은 국면에 uno→Sony(1282.5s), CELIO Drive-Through(SC 페이스), sumin07198 Stop-Go(옐로 무시)</td><td>L19 T1: Jinseo–ggwakggwaki(1649.5s) · amy–Jihun/JEJUDOLPHIN(1648.0 / 1655.0s) · HOJUN–Sony/Dokkaebi(1666.6s)</td></tr>
+    <tr><td><strong>SC3</strong></td><td class="n">L28 S3 · ~2395–2416s</td><td>D.Dd 차량 정지 → DSQ "Parked for too long"</td><td>DSQ 2415.5s. 정차 원인 클립 없음</td><td>L32 T1: Thor–hannul ×2(2769.9 / 2775.8s) → L33 Thor 연쇄 7건</td></tr>
+  </table></div>
+
+  <div class="note"><b>왜 리더가 가장 많이 잃는가.</b> SC 중 피트 스톱은 누적 시간상 거의 공짜다 — 트레인을 다시 따라잡으면 회수된다(§06).
+     하지만 트레인이 뭉치면 리더가 쌓아둔 격차는 통째로 사라진다. Jinseo는 SC2에서 Thor에게 <b>28.2초</b>, amy에게 <b>33.4초</b>를 "잃었다".
+     반대로 Thor는 SC2 국면에서 Jinseo 대비 −28.2초 — 이 음수는 Thor가 빨라서가 아니라 <b>트레인 앞쪽에 붙었기 때문</b>이다.
+     국면표(§05)의 SC 열이 전부 음수인 이유다.</div>
+
+  <div class="note warn"><b>재출발 세 번 모두 T1에서 접촉이 났다.</b> L6 두 건, L19 다섯 건(세 계정), L32 두 건 + L33 여덟 건.
+     특히 L18 S3에는 amy–Ren_Gray(1627.5s)와 HOJUN–Sony(1628.0s)가 <b>0.5초 간격</b>으로 따로 부딪혔다 — 재출발 직전 트레인 아코디언이다.</div>
+</section>
+
+<!-- 04 우승자 -->
+<section id="winner">
+  <h2><span class="num">04</span>체커기를 먼저 받은 사람과 우승자는 다를 수 있다</h2>
+  <p class="sub">Jinseo의 L32 3초 페널티 · hannul의 라인 간격 · 게임 판정의 의미</p>
+
+  <div class="key amber">
+    <div class="k">사실 → 추정 → 결론의 경계</div>
+    <p><b>사실 1.</b> Jinseo는 코너컷 경고를 L11(×2)·L32·L36에 받았다. 세 번째 경고(L32, 세션 2790.9s)에 "Time Penalty: Multiple warnings (3s)"가 붙었다.
+       이 규칙은 이 세션에서 10명·11건 예외 없이 성립한다(§07).</p>
+    <p><b>사실 2.</b> Jinseo의 유일한 피트 스톱은 L15→16이다. 페널티는 그 뒤에 나왔으므로 <b>피트에서 서빙될 기회가 없었다</b>.</p>
+    <p><b>사실 3.</b> 결승선 직후 클립(t0 3153.9s): Jinseo 232 km/h·스로틀 0.40 고정, hannul 263 km/h·스로틀 0.38 고정 — 두 대 모두
+       완주 후 자동 주행 패턴 <span class="pill p-up">[추정]</span>. 3152.92s에 hannul은 12.5m 뒤, 접근 속도 8.4 m/s. 5.1m에서 hannul이 풀브레이크(1.00)했으나 노즈-투-테일 접촉.</p>
+    <p><b>추정.</b> 이 접근 속도를 라인 통과 시점으로 되돌리면 hannul의 라인 간격은 <b>0.2~0.4초</b>다(세션 클록 기준점 ±2초 불확실성을 포함한 범위).
+       hannul의 경고는 코너컷 2건(L2·L11)+충돌 1건(L11) → 3초 규칙 미해당 → 페널티 없음.</p>
+    <p><b>결론.</b> 최종 분류에서 Jinseo에게 +3초가 적용되면 <b>hannul이 약 2.6~2.8초 앞선다</b>. 게임 이벤트 "Race Winner"는 라인 통과 시점에 발생했고
+       페널티 반영 여부를 담지 않는다. <b>우승자는 미확정</b>이다 — hannul의 랩 수·최종 분류 패킷이 없기 때문이다.</p>
+  </div>
+
+  <h3>결승선 직후 프레임 (Jinseo 기준 좌표, 100ms 간격)</h3>
+  <div class="scroll"><table>
+    <tr><th>세션 t (s)</th><th>Jinseo km/h</th><th>hannul km/h</th><th>dLong (m)</th><th>dLat (m)</th><th>Jinseo 스로틀/브레이크</th><th>hannul 스로틀/브레이크</th></tr>
+    <tr><td class="n">3152.921</td><td class="n">233</td><td class="n">263</td><td class="n">−12.5</td><td class="n">+1.1</td><td class="n">0.40 / 0</td><td class="n">0.38 / 0</td></tr>
+    <tr><td class="n">3153.355</td><td class="n">232</td><td class="n">263</td><td class="n">−8.9</td><td class="n">+1.0</td><td class="n">0.40 / 0</td><td class="n">0.38 / 0</td></tr>
+    <tr><td class="n">3153.758</td><td class="n">232</td><td class="n">261</td><td class="n">−5.5</td><td class="n">+0.9</td><td class="n">0.40 / 0</td><td class="n">0.38 / 0</td></tr>
+    <tr class="hlr"><td class="n">3153.860</td><td class="n">231</td><td class="n">245</td><td class="n">−5.1</td><td class="n">+0.9</td><td class="n">0.40 / 0</td><td class="n"><strong>0 / 1.00</strong></td></tr>
+    <tr><td class="n">3154.070</td><td class="n">232</td><td class="n">213</td><td class="n">−5.7</td><td class="n">+0.8</td><td class="n">0.40 / 0</td><td class="n">0 / 1.00</td></tr>
+    <tr><td class="n">3154.470</td><td class="n">231</td><td class="n">214</td><td class="n">−7.4</td><td class="n">+0.6</td><td class="n">0.40 / 0</td><td class="n">0.38 / 0</td></tr>
+  </table></div>
+
+  <div class="note"><b>hannul이 같은 랩이었다는 근거.</b> L32(2793.3s)·L34(2944.2s)·L36 결승선 직후, 다섯 랩 내내 hannul은 Jinseo <b>바로 뒤에서</b> 세 번 부딪혔다
+     (세 번 모두 hannul이 후방). 랩 다운 차량이 리더의 기어박스에 다섯 랩을 붙어 공격하는 상황은 부자연스럽다.
+     다만 hannul의 랩 수 자체는 데이터에 없다 <span class="pill p-up">[추정]</span>.</div>
+
+  <div class="note bad"><b>페널티는 압박 속에서 나왔다.</b> L32 S2, 2790.9s에 Jinseo의 세 번째 코너컷 경고. 2.4초 뒤 2793.3s에 hannul이 뒤에서 접촉.
+     hannul은 L34에도 같은 방식으로 접촉했고 그 뒤 하프 스핀(조향 0.97, 54 km/h)으로 떨어졌다가 L36에 다시 붙었다.
+     FIA 기준으로 두 접촉 모두 hannul predominantly to blame(§08 #10)이지만, 게임은 어느 쪽에도 경고를 주지 않았다.
+     경고를 받은 쪽은 압박당하며 트랙을 벗어난 Jinseo다.</div>
+</section>
+
+<!-- 05 국면·페이스 -->
+<section id="phase">
+  <h2><span class="num">05</span>국면부터 쪼개야 랩타임이 읽힌다</h2>
+  <p class="sub">일곱 국면(P0 · SC1 · G1 · SC2 · G2 · SC3 · G3). 국면 델타의 합 = 총 갭.</p>
+
+  <div class="chart">
+    <div class="legend"><span><i style="background:#4ade80"></i>Jinseo</span><span><i style="background:#fbbf24"></i>amy1207</span><span><i style="background:#60a5fa"></i>HOJUN</span><span><i style="background:#f87171"></i>Thor</span><span><i style="background:#c084fc"></i>uno</span></div>
+    <div id="chart1"></div>
+  </div>
+
+  <h3>국면 원장 — Jinseo 대비 델타 (초)</h3>
+  <div class="scroll"><table>
+    <tr><th>국면</th><th>Jinseo 합</th><th>amy1207 Δ</th><th>HOJUN Δ</th><th>Thor Δ</th><th>무엇이 있었나</th></tr>
+    <tr><td><strong>P0</strong> L1–2</td><td class="n">164.000</td><td class="n">+6.694</td><td class="n">+8.419</td><td class="n">+0.951</td><td>L1 T1 팩(§08 #1–3). HOJUN L2 S3 29.6 = 피트 진입 + SC1 전개 정체</td></tr>
+    <tr><td><strong>SC1</strong> L3–5</td><td class="n">327.132</td><td class="n">−4.449</td><td class="n">−1.826</td><td class="n">+3.721</td><td>Thor·HOJUN 피트(L2→3). 트레인 위치 재배치</td></tr>
+    <tr><td><strong>G1</strong> L6–15</td><td class="n">796.284</td><td class="n"><strong>+34.411</strong></td><td class="n">+9.165</td><td class="n"><strong>+25.491</strong></td><td>Thor L8 +8.0(스핀 2) · L11 +9.5(Jihun 접촉 스핀) · L15 +7.3(SC2 전개 위치). amy L8–10 uno 배틀 +9.1 · L11 그린 피트 +17.9 · L15 +8.2</td></tr>
+    <tr><td><strong>SC2</strong> L16–18</td><td class="n">347.002</td><td class="n">−33.398</td><td class="n">−14.375</td><td class="n">−28.160</td><td>전원 피트(L15→16). 리더 Jinseo의 격차 소멸</td></tr>
+    <tr><td><strong>G2</strong> L19–28</td><td class="n">792.731</td><td class="n">+13.573</td><td class="n">+3.004</td><td class="n">−0.695</td><td>순수 페이스 국면. amy 1.4초/랩 열세(트래픽 배틀 6건)</td></tr>
+    <tr><td><strong>SC3</strong> L29–31</td><td class="n">327.329</td><td class="n">−12.703</td><td class="n">−1.443</td><td class="n">−0.711</td><td>amy·HOJUN 피트(L28→29)</td></tr>
+    <tr><td><strong>G3</strong> L32–36</td><td class="n">397.076</td><td class="n">+7.440</td><td class="n">+14.678</td><td class="n">+20.752</td><td>§02</td></tr>
+    <tr class="hl"><td><strong>합</strong></td><td class="n"><strong>3151.554</strong></td><td class="n"><strong>+11.568</strong></td><td class="n"><strong>+17.622</strong></td><td class="n"><strong>+21.349</strong></td><td>총 갭과 일치 (오차 0.000)</td></tr>
+  </table></div>
+
+  <h3>그린 페이스 — 국면 안에서만 비교</h3>
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>G1 L6–14 중위</th><th>타이어</th><th>G2 L19–27 중위</th><th>G3 L32–36 중위</th><th>그린 전체 중위*</th><th>베스트랩</th><th>이상 랩(섹터 합)</th></tr>
+    <tr class="hl"><td><strong>Jinseo</strong></td><td class="n">79.377</td><td>M</td><td class="n"><strong>78.085</strong></td><td class="n"><strong>79.379</strong></td><td class="n"><strong>78.604</strong> (23)</td><td class="n"><strong>76.703</strong> L22</td><td class="n">76.564</td></tr>
+    <tr><td><strong>Thor</strong></td><td class="n">79.465</td><td>H</td><td class="n">78.494</td><td class="n">80.962</td><td class="n">78.867 (20)</td><td class="n">77.787 L20</td><td class="n">77.639</td></tr>
+    <tr><td><strong>HOJUN</strong></td><td class="n">79.706</td><td>H</td><td class="n">78.613</td><td class="n">81.508</td><td class="n">79.589 (22)</td><td class="n">77.641 L20</td><td class="n">77.603</td></tr>
+    <tr><td><strong>amy1207</strong></td><td class="n">79.440</td><td>M→H</td><td class="n">79.467</td><td class="n">80.000</td><td class="n">79.520 (22)</td><td class="n">78.234 L20</td><td class="n">77.678</td></tr>
+    <tr><td><strong>uno</strong></td><td class="n">80.121</td><td>M</td><td class="n" colspan="2" style="color:var(--tx3)">—</td><td class="n">80.121 (9)</td><td class="n">78.780 L7</td><td class="n">78.198</td></tr>
+  </table></div>
+  <p class="sub">* 그린 랩(L6–14, 19–27, 32–36) 중 85초 미만 랩. 괄호는 랩 수.</p>
+
+  <h3>섹터 중위 (그린 랩)</h3>
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>S1</th><th>S2</th><th>S3</th><th>합</th><th>읽기</th></tr>
+    <tr><td><strong>Jinseo</strong></td><td class="n">29.012 <span style="color:var(--r)">(최하)</span></td><td class="n"><strong>29.433</strong></td><td class="n"><strong>20.242</strong></td><td class="n">78.687</td><td>S1 최하위, S2·S3 최상위. 선두 주행 = 메인 스트레이트 DRS 없음 <span class="pill p-up">[추정]</span></td></tr>
+    <tr><td><strong>Thor</strong></td><td class="n">28.768</td><td class="n">29.884</td><td class="n">20.339</td><td class="n">78.991</td><td>S2에서 Jinseo에 0.45 열세</td></tr>
+    <tr><td><strong>HOJUN</strong></td><td class="n"><strong>28.630</strong></td><td class="n">30.196</td><td class="n">20.477</td><td class="n">79.303</td><td>S1 최상위, S2 0.76 열세 — 트래픽 속 직선은 빠르고 코너는 잃는 패턴</td></tr>
+    <tr><td><strong>amy1207</strong></td><td class="n">28.939</td><td class="n">29.995</td><td class="n">20.424</td><td class="n">79.358</td><td></td></tr>
+    <tr><td><strong>uno</strong></td><td class="n">28.959</td><td class="n">30.317</td><td class="n">20.844</td><td class="n">80.120</td><td>9랩 표본</td></tr>
+  </table></div>
+
+  <div class="note"><b>컴파운드 효과는 작았다.</b> G1에서 미디엄(Jinseo·amy) 79.38 / 79.44 vs 하드(Thor·HOJUN) 79.47 / 79.71 — 0.1~0.3초/랩.
+     Jinseo가 15랩을 미디엄으로 달려 60% 마모까지 간 선택은 "빠른 타이어"보다 <b>SC가 오면 공짜로 바꿀 수 있는 위치</b>를 확보한 것으로 읽어야 한다.
+     실제로 SC2가 L15 S3에 왔다.</div>
+</section>
+
+<!-- 06 전략·피트 -->
+<section id="tyre">
+  <h2><span class="num">06</span>타이어 전략과 피트 — 공짜 스톱과 22초 스톱</h2>
+  <p class="sub">스틴트는 laps.tyre + 섹터 시그니처(인랩 S3·아웃랩 S1)로 재구성. 마모(%)는 스틴트 종료 시 피크.</p>
+
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>스틴트</th><th>스톱</th><th>스톱 조건</th><th>마지막 스톱 레인 / 정지</th></tr>
+    <tr class="hl"><td><strong>Jinseo</strong></td><td>M L1–15 (60%) → H L16–36 (42%)</td><td class="n">1</td><td>SC2</td><td class="n">23.299 / 2.233</td></tr>
+    <tr><td><strong>Thor</strong></td><td>M L1–2 (9%) → H L3–15 (25%) → H L16–36 (36%)</td><td class="n">2</td><td>SC1 · SC2</td><td class="n">22.210 / 2.228</td></tr>
+    <tr><td><strong>HOJUN</strong></td><td>M L1–2 (9%) → H L3–15 (26%) → H L16–36 (41%)</td><td class="n">3</td><td>SC1 · SC2 · SC3(L28→29, 교체 미기록 → §12)</td><td class="n"><strong>28.764 / 7.432</strong></td></tr>
+    <tr><td><strong>amy1207</strong></td><td>M L1–10 (33%) → H L11–15 (12%) → H L16–28 (28%) → H L29–36 (27%)</td><td class="n">3</td><td><strong>그린(L10→11)</strong> · SC2 · SC3</td><td class="n">22.266 / 2.249</td></tr>
+    <tr><td><strong>uno</strong></td><td>M L1–14 (52%) → H L15– (1%)</td><td class="n">1</td><td><strong>그린(L14→15)</strong>, SC2 전개 30~50초 전</td><td class="n">22.299 / 2.249</td></tr>
+    <tr><td><strong>wowbox</strong></td><td>S L1–2</td><td class="n">0</td><td>—</td><td class="n">—</td></tr>
+  </table></div>
+
+  <h3>스톱 비용 — 인랩 S3 + 아웃랩 S1</h3>
+  <div class="scroll"><table>
+    <tr><th>스톱</th><th>조건</th><th>S3 + S1</th><th>같은 랩 비피트 기준</th><th>비용</th></tr>
+    <tr class="hlr"><td>amy1207 L10→11</td><td>그린</td><td class="n">24.085 + 47.701 = 71.786</td><td class="n">≈ 20.3 + 28.9 = 49.2</td><td class="n"><strong>+22.6</strong></td></tr>
+    <tr class="hlr"><td>uno L14→15</td><td>그린</td><td class="n">23.765 + 47.627 = 71.392</td><td class="n">≈ 49.2</td><td class="n"><strong>+22.2</strong></td></tr>
+    <tr><td>Thor L2→3</td><td>SC1</td><td class="n">24.969 + 51.075 = 76.044</td><td class="n">비피트 L3 S1 37.8~40.6</td><td class="n">+11~13 (S1), 트레인 추격으로 회수</td></tr>
+    <tr><td>HOJUN L2→3</td><td>SC1</td><td class="n">29.607 + 50.685 = 80.292</td><td class="n">〃</td><td class="n">+13 (S1) + S3 정체 5</td></tr>
+    <tr><td>Jinseo L15→16</td><td>SC2</td><td class="n">25.113 + 52.183 = 77.296</td><td class="n">비피트 없음(4명 전원 피트)</td><td class="n">—</td></tr>
+    <tr><td>Thor / amy L15→16</td><td>SC2</td><td class="n">79.958 / 78.929</td><td class="n">〃</td><td class="n">—</td></tr>
+    <tr><td>HOJUN L15→16</td><td>SC2</td><td class="n">28.417 + 56.874 = <strong>85.291</strong></td><td class="n">Thor 79.958</td><td class="n">Thor 대비 <strong>+5.3</strong> (페널티 전, 원인 불명)</td></tr>
+    <tr><td>amy1207 L28→29</td><td>SC3</td><td class="n">27.346 + 49.967 = 77.313</td><td class="n">비피트 L29 S1 34.2~34.5</td><td class="n">+15.5 (S1), L29 S2–S3에서 −16 회수</td></tr>
+    <tr><td>HOJUN L28→29</td><td>SC3</td><td class="n">29.690 + 56.853 = <strong>86.543</strong></td><td class="n">amy 77.313</td><td class="n">amy 대비 <strong>+9.2</strong></td></tr>
+  </table></div>
+
+  <div class="note good"><b>SC 스톱은 누적 시간상 공짜다.</b> amy의 L28→29: 피트 레인에서 S1 +15.5초를 잃고 L29 S2·S3에서 트레인을 따라잡으며 16초를 되찾았다(31.5 / 21.8 vs 비피트 42.0 / 27.4).
+     그린 스톱은 22초를 그대로 낸다. amy는 둘 다 했고(L10→11 그린), 그 22.6초가 G1 델타 +34.4의 절반이다.
+     uno는 SC2 전개 <b>30~50초 전</b>에 그린 스톱을 했다 — 다음 랩 모두가 공짜 스톱을 하는 동안 우노만 22초를 냈고, L16 SC 중에 세션을 떠났다.</div>
+
+  <div class="note warn"><b>HOJUN의 두 스톱은 남들보다 5~9초 길었다.</b> L15→16은 페널티 이전(3초 페널티는 L19)인데도 Thor보다 5.3초 길었다.
+     L28→29는 정지 7.4초·레인 28.8초(타 계정 2.2 / 22.2~23.3)로 3초 서빙 + 작업 2.3초 ≈ 5.3초와도 2초가 남는다.
+     그리고 스틴트 트래커는 이 스톱에서 <b>타이어 교체를 기록하지 않았다</b>(같은 컴파운드라도 타이어 나이 리셋으로 감지하는 로직). 최종 스틴트 마모 41%는 같은 랩 수의 Thor(36%)보다 높다 — 교체가 없었다는 쪽을 가리킨다. §12로 넘긴다.</div>
+</section>
+
+<!-- 07 페널티 산수 -->
+<section id="rule">
+  <h2><span class="num">07</span>코너컷 경고 3회 = 3초 — 이번에도 예외가 없었다</h2>
+  <p class="sub">101건 이벤트 전수. 랩은 Thor 계정 로그의 현재 랩(업로더 랩 태그 규칙에 따라 ±1 랩).</p>
+
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>코너컷 경고 랩</th><th>3초 발생</th><th>충돌 경고(미산입)</th><th>일치</th></tr>
+    <tr><td>YJHuman</td><td class="n">L1 · L6 · <strong>L11</strong> · L23 ×2</td><td class="n">L11</td><td class="n">L35 · L36</td><td>✓</td></tr>
+    <tr><td>D.Dd</td><td class="n">L2 · L10 · <strong>L12</strong></td><td class="n">L12</td><td class="n">L1 · L8</td><td>✓ (충돌 경고 2건이 산입됐다면 L10에 발생했어야 함)</td></tr>
+    <tr><td>Ren_Gray</td><td class="n">L2 · L7 · <strong>L12</strong> · L20 · L35</td><td class="n">L12</td><td class="n">—</td><td>✓</td></tr>
+    <tr><td>Sony</td><td class="n">L2 · L6 · <strong>L14</strong> / L33 · L35 · <strong>L36</strong></td><td class="n">L14 · <strong>L36</strong></td><td class="n">L33</td><td>✓ 두 번째 3초까지 규칙대로</td></tr>
+    <tr><td>kelly_c</td><td class="n">L10 · L12 · <strong>L18</strong></td><td class="n">L18</td><td class="n">L36</td><td>✓</td></tr>
+    <tr class="hl"><td><strong>HOJUN</strong></td><td class="n">L11 · L13 · <strong>L19</strong> · L36</td><td class="n">L19</td><td class="n">L33 · L35 ×2</td><td>✓</td></tr>
+    <tr><td>CELIO</td><td class="n">L2 · L7 · <strong>L19</strong> · L20 · L34</td><td class="n">L19</td><td class="n">L1 ×2</td><td>✓</td></tr>
+    <tr><td>soundplay04</td><td class="n">L10 · L14 · <strong>L27</strong></td><td class="n">L27</td><td class="n">L8 · L33</td><td>✓</td></tr>
+    <tr class="hl"><td><strong>Jinseo</strong></td><td class="n">L11 · L11 · <strong>L32</strong> · L36</td><td class="n">L32</td><td class="n">L1</td><td>✓ 4번째(L36)는 다음 3회 카운트</td></tr>
+    <tr class="hl"><td><strong>amy1207</strong></td><td class="n">L24 · L24 · <strong>L34</strong> · L35 · L36</td><td class="n">L34</td><td class="n">L33</td><td>✓</td></tr>
+    <tr><td>hannul</td><td class="n">L2 · L11</td><td class="n">—</td><td class="n">L11</td><td>✓ 2회 → 없음</td></tr>
+    <tr><td>Jihun</td><td class="n">L4 · L35</td><td class="n">—</td><td class="n">L1 · L8 · L11 · L20 · L34</td><td>✓ 충돌 경고 5건은 무관</td></tr>
+  </table></div>
+
+  <div class="key amber">
+    <div class="k">규칙과 서빙</div>
+    <p>10명·11건 전부 <b>코너컷 경고 3회째에 정확히 3초</b>(굵은 랩). 3회 이후 카운트는 다시 시작한다 — Sony는 6회째(L36)에 두 번째 3초를 받았고, 4~5회에 머문 여섯 명(YJHuman·Ren_Gray·CELIO·amy·HOJUN·Jinseo)은 추가 페널티가 없다. 충돌 경고는 카운트에 들어가지 않는다(D.Dd·Jihun·hannul이 반증).
+       업로더 중 세 명이 받았다: HOJUN(L19) · Jinseo(L32) · amy1207(L34). Thor는 경고 1건(L33 충돌)뿐.</p>
+    <p><b>서빙 여부가 갈린다.</b> HOJUN은 L19 페널티 뒤 L28→29에 피트에 들어갔다 — 정지 7.4초는 3초 홀드를 포함한 값으로 읽힌다 <span class="pill p-up">[추정]</span>.
+       Jinseo와 amy는 페널티 뒤 피트가 없었다 → <b>최종 분류에 가산</b>. 이것이 §04의 전제다.</p>
+  </div>
+
+  <h3>그 밖의 판정 (전원 비업로더)</h3>
+  <div class="scroll"><table>
+    <tr><th>세션 t</th><th>드라이버</th><th>판정</th><th>사유</th></tr>
+    <tr><td class="n">151.0s</td><td>wowbox</td><td><span class="pill p-dsq">Retired</span></td><td>terminally damaged (§08 #4)</td></tr>
+    <tr><td class="n">170.0s</td><td>Jihun</td><td><span class="pill p-sg">Stop-Go 10s</span></td><td>Big collision</td></tr>
+    <tr><td class="n">191.8s</td><td>kelly_c</td><td><span class="pill p-sg">Stop-Go 10s</span></td><td>Big collision — 상대 미상(업로더 클립 없음)</td></tr>
+    <tr><td class="n">822.8s</td><td>FREAK</td><td><span class="pill p-dsq">DSQ</span></td><td>Blocking by wrong way driving (7초 전 충돌 경고)</td></tr>
+    <tr><td class="n">1276.8s</td><td>ANT gami</td><td><span class="pill p-dsq">Retired</span></td><td>terminally damaged → SC2</td></tr>
+    <tr><td class="n">1307.9s</td><td>CELIO</td><td><span class="pill p-pen">Drive Through</span></td><td>Safety car exceeding allowed pace</td></tr>
+    <tr><td class="n">1326.9s</td><td>sumin07198</td><td><span class="pill p-sg">Stop-Go 10s</span></td><td>Ignoring yellow flags</td></tr>
+    <tr><td class="n">2415.5s</td><td>D.Dd</td><td><span class="pill p-dsq">DSQ</span></td><td>Parked for too long → SC3</td></tr>
+  </table></div>
+</section>
+
+<!-- 08 사고·과실 -->
+<section id="incident">
+  <h2><span class="num">08</span>사고 클립 89건과 FIA 과실 판정</h2>
+  <p class="sub">2026 F1 Driving Standards Guidelines v01 · Penalty Guidelines v01 · Appendix L 2026(6월판) 기준. 게임 판정과 병기. 시뮬레이션 참고 판정이다.</p>
+
+  <div class="grid">
+    <div class="stat"><div class="l">클립 수</div><div class="v">89</div><div class="d">Thor 20 · amy 20 · HOJUN 20 · uno 12 · Jinseo 10 · wowbox 7</div></div>
+    <div class="stat"><div class="l">계정 간 병합</div><div class="v">84</div><div class="d">amy↔uno 4 · Thor↔HOJUN 1 (t0 Δ ≤0.77s)</div></div>
+    <div class="stat"><div class="l">20건 상한 도달</div><div class="v vr">3</div><div class="d">Thor(L35) · amy(L25) · HOJUN(L36)</div></div>
+    <div class="stat"><div class="l">프레임 판정</div><div class="v">13</div><div class="d">국면 · 나머지는 메타 요약</div></div>
+  </div>
+
+  <h3>좌표계 규약 (판정의 전제)</h3>
+  <div class="note">지면 평면 x–z, 헤딩 (sin yaw, cos yaw). <code>dLong</code> + = 상대가 기준차보다 앞, <code>dLat</code> + = 기준차의 <b>우측</b>
+     (조향 + = 우회전 = yaw 증가: T1이 우회전인 Mexico L1 클립에서 양측 조향 부호가 +로 확인). 중심 간 거리 ≈2.0m = 측면 접촉,
+     ≈5.0~5.6m = 노즈-투-테일 접촉 <span class="pill p-up">[추정 전장 5.6m]</span>. 미러 라인 ≈ dLong ≥ −0.8m <span class="pill p-up">[추정]</span>.
+     <code>minDistM</code>은 중심 간 3D 거리라 "&gt;0 = 무접촉"이 아니다.</div>
+
+  <h3>판정 블록</h3>
+
+  <div class="inc"><h4>#1 · L1 T1 접근 직선 · Jinseo–Jihun (t0 12.9s)</h4>
+    <ul><li><b>상황</b>: 양측 289–293 km/h 풀스로틀, 제동 전. Jihun이 Jinseo 우측 후방(dLong −2.6~−3.1, dLat +2.5→+1.8). 접촉 = 측면 겹침.</li>
+    <li><b>우선권</b>: 직선 → DSG-A/B 비적용. APXL-2b 크라우딩 검사: Jinseo 조향 +0.01~0.03, Jihun 0.03→0.00 — 방향 전환 없음. 상대 헤딩차 −0.02 rad(≈1°, Jihun이 Jinseo 쪽) — 노이즈 수준.</li>
+    <li><b>FIA</b>: <b>racing incident</b> (low severity) — 수렴 0.7m/0.9s, 양측 의도적 무브 없음. 확신도 중간.</li>
+    <li><b>게임</b>: Jihun·Jinseo 양측 Small collision 경고(16.8s) → 게임도 과실 미배분. 참고: "kiss" 수준 → 무페널티 가능 [PEN].</li></ul></div>
+
+  <div class="inc"><h4>#2 · L1 T1 · Thor–Jihun (t0 18.2s, 2차 24.8s)</h4>
+    <ul><li><b>상황</b>: 우회전 T1, Jihun 우측 = 인사이드, 윈도우 시작 +0.9m(사실상 나란히). dLat 3.9→2.0 수렴, Thor 조향 0.11→0.39(턴인), Jihun 조향 0.09→0.84·브레이크 0.44→0 릴리스.</li>
+    <li><b>우선권</b>: DSG-A(i) Jihun 충족(dLong≈0). (ii) 조향 0.84는 언더스티어 보정 가능(DSG-CAV 2). (iii) 판정 불가(§5).</li>
+    <li><b>FIA</b>: <b>racing incident</b>, Thor 측 기여 우세 — 인사이드에 완전히 나란한 차 있는 상태의 턴인(DSG-PRI 회피 책임)이나 L1 T1 팩·저강도(양측 속도 유지). 확신도 낮음.</li>
+    <li><b>게임</b>: 판정 없음.</li></ul></div>
+
+  <div class="inc"><h4>#3 · L1 T1 · amy1207 3-wide (t0 18.6s · ANT gami 좌 · Sony 우)</h4>
+    <ul><li><b>상황</b>: amy 가운데(조향 0.05~0.11 거의 직진). ANT gami 좌측(아웃사이드) +1.8→0m, 조향 0.44~0.63으로 amy 쪽 턴인 → dLat −3.4→−2.0 접촉(18.5–18.9s). Sony 우측(인사이드) +1.5→−2.2m, dLat +4.2→+1.7 → 2차 접촉(≈19.0s).</li>
+    <li><b>FIA</b>: ANT gami 접촉 — <b>ANT gami predominantly</b>(amy 인사이드 완전 나란함 → DSG-A(i) 충족, 아웃사이드 차 턴인). Sony 접촉 — Sony(인사이드, 앞) 라인 우선·amy DSG-B(i) 미충족이나 좌측에서 밀린 상황(DSG-CAV 1) → <b>racing incident</b>. 확신도 중간.</li>
+    <li><b>게임</b>: 세 명 모두 판정 없음.</li></ul></div>
+
+  <div class="inc"><h4>#4 · L2 · Jihun→wowbox (t0 146.8s) — SC1의 원인</h4>
+    <ul><li><b>상황</b>: wowbox 291→301 km/h 풀스로틀 직진. Jihun 135→101 km/h, 조향 −0.38→−0.91, 상대 요 −0.23→−4.13 rad = <b>스핀 중</b>. 클로징 ~160 km/h, 51.5m→접촉 0.9초. wowbox 브레이크 0.00(접촉까지), 접촉 후 301→130 km/h·측방 17m 이탈.</li>
+    <li><b>FIA</b>: <b>Jihun predominantly to blame</b> — 레이싱 라인 위 제어 상실(APXL-2d "appearance of a lack of control", APXL-2e). wowbox 무브레이크는 반응 창 &lt;1.2초(DSG-CAV 3) → 경감. 확신도 중상.</li>
+    <li><b>게임</b>: Jihun Stop-Go 10s "Big collision"(170.0s) → <b>일치</b>. 참고: 충돌 유발 기본 10s [PEN]. wowbox Retired(151.0s) → SC1.</li></ul></div>
+
+  <div class="inc"><h4>#5 · L8 · amy1207–uno (t0 705.6s · 양측 클립 Δ0.04s)</h4>
+    <ul><li><b>교차 검증</b>: amy 시점 dLat(uno) +2.0 ↔ uno 시점 dLat(amy) −2.0, dLong −1.4 ↔ +1.6 — 부호 반전 일치(오차 ≤0.2m). L9 ×2·L10 접촉도 양측 t0 Δ0.05~0.77s로 일치.</li>
+    <li><b>상황</b>: 장주기 우회전 곡선 200–225 km/h. uno 우측(인사이드) 후방에서 +14 km/h 클로징 → 나란히 <b>1.2초 도어투도어</b>(dist 2.0 유지). amy 조향 +0.24~0.32, uno +0.13~0.38.</li>
+    <li><b>우선권</b>: uno DSG-A(i) 충족(dLong≈0). DSG-B Note 장주기 곡선 → 개별 판단.</li>
+    <li><b>FIA</b>: <b>racing incident</b> — 양측 나란히, 수렴 0.4m, 저강도. 확신도 중간.</li>
+    <li><b>게임</b>: uno "Corner cutting (ran wide)" 경고(706.7s). 인사이드 차가 안쪽으로 밀려난 정황이면 DSG-D 'forced off' 예외 → FIA 기준 경고 부당 가능 <span class="pill p-up">[추정]</span>.</li></ul></div>
+
+  <div class="inc"><h4>#6 · L11 T1–T3 · Jihun→Thor (t0 918.6s)</h4>
+    <ul><li><b>상황</b>: 우회전(Thor 조향 +0.24→+0.38), Jihun 좌측 후방 = 아웃사이드(dLong −3.0~−4.3, dLat −2.2~−3.5). Jihun 조향 0.06→<b>0.72</b>(Thor 쪽 급전환) → dist 3.7 접촉 = Thor 리어-레프트. Thor L11 S1 +9.0초, 스핀 1(오버스티어 6.7%). Jihun 이후 카운터스티어 −0.81.</li>
+    <li><b>우선권</b>: DSG-B(i) Jihun 미충족(프런트 액슬 뒤). NOTES ii(optimistic).</li>
+    <li><b>FIA</b>: <b>Jihun predominantly to blame</b>. 확신도 중간(에이펙스: Thor 조향 상승 중 = 에이펙스 전).</li>
+    <li><b>게임</b>: Jihun Small collision 경고(924.9s) → 방향 일치, 수위 상이(경고 vs 기본 10s [PEN]).</li></ul></div>
+
+  <div class="inc"><h4>#7 · L15 · uno→Sony (t0 1282.5s) — SC2 전개 중</h4>
+    <ul><li><b>상황</b>: uno 204→84 km/h(브레이크 0.44→0.79), Sony 138→94 km/h 감속 중. 클로징 66 km/h, 20.2m→접촉 1.0초, 노즈-투-테일(dLong 4.3, dLat 2.4). ANT gami 리타이어 1276.8s, 타 계정 L15 S3 SC 페이스 → 옐로/SC 국면 <span class="pill p-up">[추정]</span>.</li>
+    <li><b>FIA</b>: <b>uno predominantly to blame</b> — 옐로 구간 미감속(DSG-L; Sony 감속 중, uno는 66 km/h 빠르게 도착). 확신도 중간(옐로 표출 위치 추정).</li>
+    <li><b>게임</b>: 판정 없음(같은 국면의 CELIO DT·sumin07198 SG는 별건). uno는 다음 랩 세션 이탈.</li></ul></div>
+
+  <div class="inc"><h4>#8 · L19 T1 · ggwakggwaki–Jinseo (t0 1649.5s) — SC2 재출발 첫 코너</h4>
+    <ul><li><b>상황</b>: ggwak 좌측(아웃사이드) 나란히→후퇴(dLong +0.1→−3.6), 양측 제동(Jinseo 0.79→0.07, ggwak 0.88→0.13). 접촉 대각(dLat −2.1, dLong −3.6, 요차 0.11 rad).</li>
+    <li><b>우선권</b>: DSG-B(i) ggwak 미충족(에이펙스 시점 액슬 뒤).</li>
+    <li><b>FIA</b>: <b>ggwakggwaki predominantly</b> — 아웃사이드 홀드 시도 중 후퇴 상태 접촉(NOTES ii). 확신도 중간.</li>
+    <li><b>게임</b>: 판정 없음. 이 쌍은 L20·L25·L26 ×2·L33까지 <b>6회</b> 접촉 — 세션 최다 반복 쌍.</li></ul></div>
+
+  <div class="inc"><h4>#9 · L32 T1 · Thor–hannul (t0 2769.9s, 2차 2775.8s) — SC3 재출발 첫 코너</h4>
+    <ul><li><b>상황</b>: hannul 우측 = 인사이드, 완전 나란히(dLong −0.4~−1.3), 양측 제동 198→110 km/h. dLat 2.6→1.8 수렴, Thor 조향 0.03→0.17→0.41(턴인). Jinseo 17.8m 앞.</li>
+    <li><b>우선권</b>: hannul DSG-A(i) 충족, (ii) 윈도우 시작부터 나란함 = 다이브인 아님.</li>
+    <li><b>FIA</b>: <b>Thor predominantly to blame</b> — 인사이드 차 존재 상태 턴인(DSG-PRI). 저강도(양측 지속). 확신도 중간.</li>
+    <li><b>게임</b>: 판정 없음.</li></ul></div>
+
+  <div class="inc"><h4>#10 · L32 S2 / L34 S2 · hannul→Jinseo (t0 2793.3s / 2944.2s)</h4>
+    <ul><li><b>상황</b>: 두 건 모두 hannul 후방(dLong −5.8→−5.1 / −9.1→−5.0), 제동 구간 노즈-투-테일. Jinseo 브레이크 램프 0.14→0.43 / 0.4초(정상), 조향 0.10→0.30 매끈 → DSG-H 위반 없음. L34: 접촉 뒤 hannul 조향 0.97·54 km/h(하프 스핀), Jinseo 스로틀 0.6으로 이탈.</li>
+    <li><b>FIA</b>: <b>hannul predominantly to blame ×2</b> — 추종차 리어 접촉(APXL-2d), 방어차 erratic 없음. 확신도 중간(윈도우 밖 선행 맥락 없음).</li>
+    <li><b>게임</b>: 판정 없음 ×2. 맥락: L32 접촉 2.4초 전(2790.9s) Jinseo 코너컷 경고 → 3초 확정(§04).</li></ul></div>
+
+  <div class="inc"><h4>#11 · L33 · Thor 연쇄 7건 (2853.9 → 2912.6s)</h4>
+    <ul><li><b>(a) 2853.9s S1 T2→T3 [추정] Sony</b>: Sony 좌측(아웃사이드) +1.1~1.9m 앞, Thor 인사이드 조향 0.13→0.40. Sony DSG-B(i) 충족(액슬 앞). FIA: <b>Thor predominantly</b>, 확신도 낮음(S자 DSG-C·팩). 게임 없음.</li>
+    <li><b>(b) 2874.9s Ren_Gray</b>(kelly_c 2.1m): 프레임 미분석.</li>
+    <li><b>(c) 2883.1s HOJUN</b>(HOJUN 클립 Δ38ms, dLat ±2.6 일치): 직선 245 km/h, HOJUN 좌측 추월 중 나란히(dLong −1.2). 상대 헤딩 +0.03 rad = HOJUN이 Thor 쪽 1.7° → HOJUN 수렴, 제동 개시 순간 dLat 1.9 접촉. FIA: <b>HOJUN predominantly</b>(측면 이동, 저강도), 확신도 중간. 게임: Thor·HOJUN 양측 경고(2887.0s).</li>
+    <li><b>(d) 2902.1s 스타디움 sumin07198→Thor</b>: sumin 후방 9.6m, 25 km/h 빠르게 접근, 브레이크 0.69→0.19 조기 릴리스 → 노즈-투-테일. Thor 브레이크 0.58→0 정상 릴리스, 조향 0.1→0.4 정상. FIA: <b>sumin07198 predominantly</b>. 게임 없음.</li>
+    <li><b>(e) 2906.5s amy1207→Thor</b>: Thor 130→67 km/h(직전 (d)로 저속), amy 154→78 브레이크 0.69, 5.0m 접촉. FIA: <b>amy predominantly</b>(추종차), 경감: 선행차 비정상 저속. 게임: amy Small collision 경고(2917.9s) → 일치.</li>
+    <li><b>(f) 2910.5s sumin 재접촉 · (g) 2912.6s Thor→ggwakggwaki</b>: 프레임 미분석. Thor S3 +10.6초·스핀 2.</li></ul></div>
+
+  <div class="inc"><h4>#12 · L35 T1 / L36 S2 · YJHuman↔HOJUN (t0 3013.0s / 3121.8s)</h4>
+    <ul><li><b>L35 T1</b>: 339→161 km/h 제동. YJHuman 우측(인사이드) 후방 4.7→1.2m — HOJUN 3012.28s 제동, YJHuman 3012.59s 제동 1.00(늦고 강함). HOJUN 조향 0.00~0.02 → DSG-H 준수. YJHuman DSG-A(i) 미충족(다이브, NOTES i). FIA: <b>YJHuman predominantly</b>, 확신도 중간. 게임: 판정 없음(3049.6s 양측 경고는 3045.7s 접촉에 매핑).</li>
+    <li><b>L36 S2</b>: 저속 우회전(81–98 km/h). YJHuman 좌측(아웃사이드) +0.5~0.9 앞 → DSG-B(i) 충족; HOJUN 인사이드 dLong≈0 → DSG-A(i) 충족. 양측 공간 권리. FIA: <b>racing incident</b>, 확신도 중간. 게임 없음. 이 쌍 L34–36 <b>6회</b> 접촉.</li></ul></div>
+
+  <div class="inc"><h4>#13 · 결승선 직후 · hannul→Jinseo (t0 3153.9s)</h4>
+    <ul><li>양측 스로틀 상수(0.40 / 0.38) = 완주 후 자동 주행 <span class="pill p-up">[추정]</span>. hannul 263 vs 232 km/h, 12.5→5.1m, 풀브레이크 후 노즈-투-테일. <b>FIA 판정 대상 아님</b>(레이스 종료 후). 라인 간격 역산의 근거(§04).</li></ul></div>
+
+  <h3>나머지 국면 (계정별 · 랩 · 상대)</h3>
+  <div class="scroll"><table>
+    <tr><th>계정</th><th>클립</th><th>접촉 상대 (랩)</th></tr>
+    <tr><td><strong>Thor</strong></td><td class="n">20</td><td>Jihun L1 ×2 · JEJUDOLPHIN L7 · ggwakggwaki L7 · Dokkaebi L8(노즈-투-테일 5.1m, 이후 스핀 2 · Thor 과실, 게임 없음) · Jihun L11 · kelly_c L11 · kelly_c L12 · YJHuman L12 · Sony L25 · hannul L32 ×2 · Sony·Ren_Gray·HOJUN·sumin07198 ×2·amy1207·ggwakggwaki L33 · soundplay04 L35 — <b>상한 도달</b></td></tr>
+    <tr><td><strong>amy1207</strong></td><td class="n">20</td><td>ANT gami·Sony L1 ×3 · Sony L2 · Sony L6(SC1 재출발 T1) · uno L8 · uno L9 ×2(Sony 포함) · uno L10 · hannul L14 ×2 · Ren_Gray L18(SC 트레인) · Jihun L19 ×2 · JEJUDOLPHIN L19 · JEJUDOLPHIN L20 ×2 · Dokkaebi L22 · soundplay04 L24 · soundplay04 L25 — <b>상한 도달, L33 접촉은 Thor 클립으로만</b></td></tr>
+    <tr><td><strong>HOJUN</strong></td><td class="n">20</td><td>amy1207 L1 · FREAK L5(SC1 중) · JEJUDOLPHIN L8 ×2 · Dokkaebi L10 ×2 · iPC324 L14 · iPC324 L15 · Sony L18(SC 트레인) · Sony·Dokkaebi L19 · Thor L33 · YJHuman L34 · YJHuman L35 ×3 · Ren_Gray L35 · YJHuman L36 ×2 · kelly_c L36 ×2 — <b>상한 도달</b></td></tr>
+    <tr><td><strong>Jinseo</strong></td><td class="n">10</td><td>Jihun L1 · ggwakggwaki L19 · L20 · L25 · L26 ×2 · hannul L32 · ggwakggwaki L33 · hannul L34 · hannul 결승 직후</td></tr>
+    <tr><td><strong>uno</strong></td><td class="n">12</td><td>hannul·FREAK L1 · sumin07198 L6(SC1 재출발 T1) · hannul L7 · hannul L8 ×2 · ANT gami L8 ×2 · amy1207 L8 · amy1207 L9 ×2 · amy1207 L10 · Sony L15</td></tr>
+    <tr><td><strong>wowbox</strong></td><td class="n">7</td><td>kelly_c L1 · D.Dd L1 · JEJUDOLPHIN L1 ×2 · soundplay04 L1 · iPC324 L2 · Jihun L2(리타이어 원인)</td></tr>
+  </table></div>
+</section>
+
+<!-- 09 다이내믹스 -->
+<section id="dyn">
+  <h2><span class="num">09</span>다이내믹스 — 스핀은 랩 손실과 맞고, 락업 카운트는 SC에서 깨진다</h2>
+  <p class="sub">랩별 언더/오버스티어·락업·스핀 (dynamics). 스핀은 사고 랩과 일치; 락업은 SC 랩에서 아티팩트.</p>
+
+  <div class="scroll"><table>
+    <tr><th>드라이버</th><th>스핀 랩 (횟수)</th><th>해당 랩 손실 (Jinseo 대비)</th><th>오버스티어 피크</th><th>그린 락업/랩</th><th>언더스티어 범위</th></tr>
+    <tr class="hlr"><td><strong>Thor</strong></td><td class="n">L8(2) · L11(1) · L33(2)</td><td class="n">+8.0 · +9.5 · +15.4</td><td class="n">L11 6.7% · L33 3.2% · L8 2.7%</td><td class="n">0–3</td><td class="n">40–58%</td></tr>
+    <tr><td><strong>HOJUN</strong></td><td class="n">L34(1)</td><td class="n">+2.9</td><td class="n">L34 4.6% · L36 3.3%</td><td class="n">0–4 (L36 9)</td><td class="n">38–55%</td></tr>
+    <tr><td><strong>amy1207</strong></td><td class="n">L1(1) · L33(1)</td><td class="n">+4.2 · +6.1</td><td class="n">L2 3.3%</td><td class="n">1–6</td><td class="n">40–61%</td></tr>
+    <tr><td><strong>Jinseo</strong></td><td class="n">L1(1)*</td><td class="n">L1은 전원 중 최속 → 아티팩트</td><td class="n">L26 3.8% · L8 3.4% (손실 없음)</td><td class="n">2–5</td><td class="n">24–56%</td></tr>
+    <tr><td><strong>uno</strong></td><td class="n">—</td><td class="n">—</td><td class="n">L14 3.4%</td><td class="n">0–6</td><td class="n">36–49%</td></tr>
+    <tr><td><strong>wowbox</strong></td><td class="n">L2(1)</td><td class="n">충돌(§08 #4)</td><td class="n">L2 2.3%</td><td class="n">2</td><td class="n">44–50%</td></tr>
+  </table></div>
+
+  <div class="note warn"><b>락업 카운트는 SC 랩에서 신뢰할 수 없다.</b> L17 락업: HOJUN 32 · Thor 21 · Jinseo 20, L18: Thor 24 · HOJUN 12 — 그린 랩의 0~6과 자릿수가 다르다.
+     SC 트레인의 저속 아코디언에서 감지기가 반복 트리거된 것으로 본다 <span class="pill p-up">[추정]</span>. 그린 랩만 놓으면 락업과 랩타임 상관은 나오지 않는다(Jinseo 그린 락업 2~5회 유지하며 최속).</div>
+  <div class="note"><b>언더스티어%는 판별력이 없다.</b> 전원·전 랩 24~61%로 평탄하고 랩타임과 무관하다. 오버스티어% 스파이크(&gt;3%)는 스핀 랩과 7/9 일치하지만 Jinseo L8·L26처럼 손실 없는 스파이크도 있다.</div>
+</section>
+
+<!-- 10 무결성 -->
+<section id="integrity">
+  <h2><span class="num">10</span>데이터 무결성 소견</h2>
+  <ul class="ck">
+    <li class="y"><b>이벤트 로그는 전수다.</b> 완주 4계정 모두 101건·동일 집합(업로드 상한 200). 비완주 uno 54건·wowbox 17건은 이탈 시점까지의 접두.</li>
+    <li class="y"><b>재조정 3중 검증 통과.</b> ① 7국면 델타 합 = 총 갭(3명, 오차 0.000) ② L31 갭 + G3 델타 = 최종 갭(오차 0.00) ③ 섹터 합 = 랩타임 ±2ms(반올림).</li>
+    <li class="y"><b>계정 간 클립 교차 검증 통과.</b> amy↔uno 4국면 t0 Δ0.04~0.77s, dLat 부호 반전 일치(≤0.2m). Thor↔HOJUN L33 Δ38ms, dLat ±2.6 일치.</li>
+    <li class="w"><b>클립 감지는 비대칭이다.</b> HOJUN의 L1 amy1207 접촉(53.4s)은 amy 클립에 없다(amy는 상한 전). 같은 접촉이라도 한쪽 레코더만 기록할 수 있으므로 "클립 없음 = 접촉 없음"이 아니다.</li>
+    <li class="w"><b>이벤트 타임스탬프는 클라이언트 벽시계다.</b> 같은 이벤트가 계정 간 최대 ~7초 어긋난다(Race Winner 기준 세션 원점: Thor 22:26:52.2 · Jinseo 22:26:53.4 · amy 22:26:57.7 · HOJUN 22:26:59.0 KST). 본 리포트의 세션 시각은 <b>Thor 로그 원점</b> 기준이며 클립 t0와의 정렬 오차 ±2초를 가정한다.</li>
+    <li class="w"><b>사고 클립 20건 상한.</b> Thor(L35)·amy(L25)·HOJUN(L36) 도달. amy의 L33 스핀 원인 접촉은 본인 클립에 없다.</li>
+    <li class="w"><b>스틴트 트래커의 유령 첫 엔트리.</b> Thor·Jinseo·amy·uno의 "soft, startLap 1"은 프리레이스 개러지 타이어가 스타트 컴파운드 변경 시점에 1랩 스틴트로 기록된 것(<code>strategy_manager.go</code>: 컴파운드 변경 시 이전 스틴트 push). laps.tyre의 L1(및 L2~3) 'Soft'도 같은 오염 — 본 리포트의 스틴트는 이를 제거했다.</li>
+    <li class="w"><b>이벤트 랩 태그 = 업로더의 현재 랩.</b> 같은 경고가 Thor 로그 L10, Jinseo 로그 L11로 찍힌다. 비업로더의 랩은 ±1.</li>
+    <li class="w"><b>race_pit_loss는 마지막 스톱 값.</b> 레인·정지 시간 모두 마지막 계측(uint16). 스톱 수와 무관.</li>
+    <li class="n"><b>HOJUN 3번째 피트 방문의 타이어 교체 여부가 데이터 안에서 모순된다.</b> stops=3·정지 7.4초 vs 스틴트 미분할·마모 41%. §12.</li>
+    <li class="q"><b>uno의 dynamics·stints는 L16을 포함</b>하지만 laps는 L15까지다 — L16 도중 세션 이탈(finalizeTrigger SEND)의 부분 랩.</li>
+    <li class="y"><b>플레이어 idx 0~21, 22명 전원이 이벤트에 등장</b> — AI 없는 사람 로비. 포지션·그리드 정보는 없다.</li>
+  </ul>
+</section>
+
+<!-- 11 해석 한계 -->
+<section id="limit">
+  <h2><span class="num">11</span>해석 한계</h2>
+  <ul class="ck">
+    <li class="w"><b>절대 순위 없음.</b> 22명 중 6명의 데이터. 업로더 간 상대 순서는 사실이지만 hannul·ggwakggwaki·Sony 등 비업로더가 사이에 끼어 있다.</li>
+    <li class="w"><b>최종 분류 패킷 없음.</b> 3초 페널티의 적용·서빙 여부는 게임 규칙에 대한 추론이다. §04의 결론은 "미확정"까지다.</li>
+    <li class="w"><b>세션 클록 원점 ±2초.</b> 결승선 간격 0.2~0.4초의 범위는 여기서 나온다. 벽시계 이벤트와 클립 t0의 매핑도 같은 오차를 가진다.</li>
+    <li class="w"><b>트랙 경계 데이터 없음.</b> DSG-A/B (iii)·크라우딩·트랙 리밋은 판정 불가. 코너 위치는 랩 진입 시각과 속도로 추정(T1만 확정적).</li>
+    <li class="w"><b>클립 윈도우 ±1초.</b> 배틀의 선행 맥락(NOTES i)은 대부분 윈도우 밖. 에이펙스 판단은 조향 기울기로 근사.</li>
+    <li class="w"><b>기하 임계값 일부 [추정].</b> 전장 5.6m, 미러 라인 −0.8m, 브레이크 0.2. 차폭 2.0m·좌표 기준점은 선례 세션에서 검증됨.</li>
+    <li class="w"><b>참가자는 플레이어 반경 내 최대 10대.</b> 제3차의 개입 누락 가능(SC2 원인 ANT gami 사고는 어느 클립에도 없다).</li>
+    <li class="w"><b>본 판정은 시뮬레이션 참고 판정</b>이며 실제 FIA 스튜어드 판정의 재현이 아니다. 게임 물리와 실차 물리의 차이를 흡수하지 않는다.</li>
+    <li class="w"><b>셋업 연결 없음.</b> DB 셋업은 마켓 자산으로 비공개, 로컬 요약 없음.</li>
+  </ul>
+</section>
+
+<!-- 12 미해명 -->
+<section id="open">
+  <h2><span class="num">12</span>미해명 항목</h2>
+  <ul class="ck">
+    <li class="q"><b>최종 우승자.</b> Jinseo +3초 적용 시 hannul이 앞설 확률이 높으나, hannul의 랩 수·페널티 서빙 규칙·최종 분류가 데이터에 없다.</li>
+    <li class="q"><b>HOJUN의 L28→29 피트 방문.</b> 정지 7.4초·레인 28.8초, 스틴트 미분할, 마모 41%. 3초 서빙(5.3초)으로도 2초가 남고, 타이어 교체 없는 정차는 게임 규칙상 설명이 필요하다. HOJUN의 L15→16 스톱도 페널티 전인데 Thor보다 5.3초 길었다 — 피트 진입/정차 습관인지, 크루 지연인지 불명.</li>
+    <li class="q"><b>SC2·SC3의 원인 사고.</b> ANT gami의 terminally damaged(1276.8s), D.Dd의 정차(≈2395s) 모두 업로더 반경 밖. kelly_c의 Stop-Go(191.8s) 상대도 미상.</li>
+    <li class="q"><b>Jinseo L35 +2.4초</b>(S3 22.1). 클립·이벤트 없음. hannul 배틀 중 방어 손실로 보이나 근거 없음.</li>
+    <li class="q"><b>amy L15 S2 35.7 (+5.5초).</b> SC2 전개 시점의 정체인지 접촉인지 — amy 클립 상한 전이지만 L15 클립이 없다 → 접촉은 아니었을 가능성이 높으나 미확정.</li>
+    <li class="q"><b>HOJUN L2 S3 29.6초.</b> 같은 랩에 피트 진입한 Thor(25.0)보다 4.6초 길다. 스핀 없음(spin 0). 피트 진입 정체 또는 SC1 전개 지점 직후 정체 [추정].</li>
+    <li class="q"><b>uno의 세션 이탈 사유.</b> SC2 20~50초 전 그린 피트, 이어 Sony 접촉(1282.5s), 그리고 L16 SC 중 SEND. 연결은 시간 순서뿐이다.</li>
+    <li class="q"><b>Jinseo의 L1 spinCount 1.</b> L1이 업로더 중 최속(81.158)이라 실제 스핀일 수 없다. 스타트 휠스핀의 오검출 [추정].</li>
+  </ul>
+
+  <div class="foot">
+    <p>세션 UID <code>9776353495177073270</code> · Autódromo Hermanos Rodríguez · F1 26 · 36랩 · 22인 · KST 2026-09-03 22:26:5x → 23:19:24.
+       race_id: Jinseo <code>b7276fd5</code> · amy1207 <code>34ddbec5</code> · HOJUN <code>6e3e6c13</code> · Thor <code>7c757703</code> · uno <code>36afef27</code> · wowbox <code>09f87bd4</code>.
+       소스: platform.laps · race_detail(stints/dynamics/events/incidents) · race_pit_loss. 규정: 2026 F1 DSG v01 · Penalty Guidelines v01 · Appendix L 2026-06-23.
+       드라이버별 리포트: <a href="race-drivers-20260903-mexico.html">race-drivers-20260903-mexico.html</a>.</p>
+  </div>
+</section>
+
+</div>
+
+<script>
+const LT={"Jinseo":[81.158,82.842,106.389,108.677,112.066,78.58,77.932,78.906,78.251,79.635,79.537,79.377,79.851,79.931,84.284,122.064,108.925,116.013,77.907,78.522,77.471,76.703,78.212,77.717,79.028,78.539,78.085,90.547,104.395,108.187,114.747,79.462,78.661,78.604,80.97,79.379],"amy1207":[85.344,85.35,102.596,109.448,110.639,79.44,78.682,80.496,81.399,83.998,97.457,78.852,79.085,78.802,92.484,105.174,95.14,113.29,80.022,78.234,78.699,79.423,78.539,79.761,81.017,79.467,79.574,91.568,103.315,97.81,113.501,80.0,84.764,79.883,79.105,80.764],"HOJUN":[85.076,87.343,105.875,109.351,110.08,78.703,80.477,79.68,79.113,79.815,79.917,81.123,79.706,79.498,87.417,110.505,108.184,113.938,80.169,77.641,77.874,78.317,78.074,78.613,78.724,79.183,78.751,88.389,110.037,102.175,113.674,80.571,80.298,81.508,81.802,87.575],"Thor":[81.811,83.14,111.698,109.841,109.314,79.465,79.717,86.948,78.194,78.932,89.005,80.158,78.962,78.788,91.606,102.498,102.192,114.152,78.725,77.787,77.952,78.16,78.423,78.545,78.801,79.162,78.494,85.987,103.544,108.361,114.713,79.812,94.068,80.962,82.42,80.566],"uno":[83.16,82.064,106.234,108.822,111.626,79.286,78.78,82.302,81.689,80.706,79.384,80.121,79.896,83.491,111.704]};
+const GAP={"Jinseo":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"amy1207":[4.19,6.69,2.9,3.67,2.25,3.1,3.85,5.45,8.59,12.96,30.88,30.35,29.59,28.46,36.66,19.77,5.98,3.26,5.37,5.08,6.31,9.03,9.36,11.4,13.39,14.32,15.81,16.83,15.75,5.37,4.13,4.67,10.77,12.05,10.18,11.57],"HOJUN":[3.92,8.42,7.91,8.58,6.59,6.72,9.26,10.04,10.9,11.08,11.46,13.2,13.06,12.62,15.76,4.2,3.46,1.38,3.65,2.76,3.17,4.78,4.64,5.54,5.24,5.88,6.54,4.39,10.03,4.02,2.94,4.05,5.69,8.59,9.43,17.62],"Thor":[0.65,0.95,6.26,7.42,4.67,5.56,7.34,15.38,15.33,14.62,24.09,24.87,23.98,22.84,30.16,10.6,3.86,2.0,2.82,2.09,2.57,4.02,4.24,5.06,4.84,5.46,5.87,1.31,0.46,0.63,0.6,0.95,16.35,18.71,20.16,21.35],"uno":[2.0,1.22,1.07,1.21,0.77,1.48,2.33,5.72,9.16,10.23,10.08,10.82,10.87,14.43,41.85]};
+const COL={Jinseo:'#4ade80',amy1207:'#fbbf24',HOJUN:'#60a5fa',Thor:'#f87171',uno:'#c084fc'};
+(function(){
+  const N=36;
+  function draw(el,data,ymin,ymax,ticks,bands,zero,unit){
+    const W=760,H=300,PL=46,PR=14,PT=14,PB=28;
+    const x=i=>PL+(W-PL-PR)*i/(N-1), y=v=>PT+(H-PT-PB)*(1-(v-ymin)/(ymax-ymin));
+    let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:340px;display:block">`;
+    bands.forEach(b=>{s+=`<rect x="${x(b[0]-1.5).toFixed(1)}" y="${PT}" width="${(x(b[1]-0.5)-x(b[0]-1.5)).toFixed(1)}" height="${H-PT-PB}" fill="#63718a" opacity=".10"/>`;});
+    bands.forEach(b=>{s+=`<text x="${((x(b[0]-1.5)+x(b[1]-0.5))/2).toFixed(1)}" y="${PT+12}" fill="#63718a" font-size="10" text-anchor="middle">${b[2]}</text>`;});
+    ticks.forEach(t=>{s+=`<line x1="${PL}" y1="${y(t).toFixed(1)}" x2="${W-PR}" y2="${y(t).toFixed(1)}" stroke="#26303d" stroke-width="1"/>`+
+      `<text x="${PL-7}" y="${(y(t)+3.5).toFixed(1)}" fill="#63718a" font-size="10.5" text-anchor="end">${t}${unit}</text>`;});
+    if(zero!==null){s+=`<line x1="${PL}" y1="${y(0).toFixed(1)}" x2="${W-PR}" y2="${y(0).toFixed(1)}" stroke="#4ade80" stroke-width="1.2" opacity=".5" stroke-dasharray="4 3"/>`;}
+    [1,5,10,15,20,25,30,36].forEach(l=>{s+=`<text x="${x(l-1).toFixed(1)}" y="${H-9}" fill="#63718a" font-size="10.5" text-anchor="middle">L${l}</text>`;});
+    Object.keys(data).forEach(k=>{
+      const p=data[k].map((v,i)=>`${i?'L':'M'}${x(i).toFixed(1)} ${y(Math.max(ymin,Math.min(ymax,v))).toFixed(1)}`).join(' ');
+      s+=`<path d="${p}" fill="none" stroke="${COL[k]}" stroke-width="1.9" stroke-linejoin="round" opacity=".92"/>`;
+    });
+    s+='</svg>'; el.innerHTML=s;
+  }
+  const bands=[[3,5,'SC1'],[16,18,'SC2'],[29,31,'SC3']];
+  draw(document.getElementById('chart1'),LT,75,125,[80,90,100,110,120],bands,null,'s');
+  draw(document.getElementById('chart2'),GAP,-5,45,[0,10,20,30,40],bands,0,'s');
+})();
+</script>
+
+</body>
+</html>
