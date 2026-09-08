@@ -149,6 +149,7 @@ func main() {
 	mux.HandleFunc("GET /me/race-analyses", srv.handleMyRaceAnalyses)
 	mux.HandleFunc("GET /me/race-analyses/{id}", srv.handleMyRaceAnalysis)
 	mux.HandleFunc("GET /me/race-analyses/{id}/incidents/{index}", srv.handleMyRaceAnalysisIncident)
+	registerRaceAnalysisShareRoutes(mux, srv)
 	mux.HandleFunc("GET /me/setups", srv.handleMySetups)
 	mux.HandleFunc("GET /me/setups/{id}", srv.handleMySetup)
 	mux.HandleFunc("POST /me/setups/{id}", srv.handleUpdateMySetup)
@@ -212,13 +213,14 @@ type server struct {
 	frontendURL   string
 	secureCookies bool
 	// These narrow seams keep owner-analysis auth/404 behavior testable without
-	// a disposable database. Production leaves both nil and uses store directly.
+	// a disposable database. Production leaves these nil and uses store directly.
 	raceAnalysisReader  raceAnalysisReader
+	raceAnalysisShares  raceAnalysisShareStore
 	authenticateForTest func(context.Context, *http.Request) (platformsvc.Principal, error)
 }
 
 type raceAnalysisReader interface {
-	ListMyRaceAnalyses(context.Context, string, int, int) (*platformsvc.RaceAnalysisListResponse, error)
+	ListMyRaceAnalyses(context.Context, string, int, int, ...platformsvc.RaceAnalysisFilters) (*platformsvc.RaceAnalysisListResponse, error)
 	GetMyRaceAnalysis(context.Context, string, string) (*platformsvc.RaceAnalysisDetail, error)
 	GetMyRaceAnalysisIncident(context.Context, string, string, int) (*platformsvc.RaceAnalysisIncidentReplay, error)
 }
@@ -865,7 +867,12 @@ func (s *server) handleMyRaceAnalyses(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	response, err := s.analysisReader().ListMyRaceAnalyses(ctx, p.AccountID, limit, offset)
+	filters, ok := raceAnalysisFilters(r)
+	if !ok {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	response, err := s.analysisReader().ListMyRaceAnalyses(ctx, p.AccountID, limit, offset, filters)
 	if err != nil {
 		if s.log != nil {
 			s.log.Error("list race analyses", "error", err)
@@ -940,7 +947,7 @@ func (s *server) handleMyRaceAnalysisIncident(w http.ResponseWriter, r *http.Req
 func raceAnalysisPagination(r *http.Request) (limit, offset int, ok bool) {
 	query := r.URL.Query()
 	for key, values := range query {
-		if key != "limit" && key != "offset" {
+		if key != "limit" && key != "offset" && key != "search" && key != "gameFormat" && key != "sessionType" && key != "from" && key != "before" {
 			return 0, 0, false
 		}
 		if len(values) != 1 {
@@ -2160,7 +2167,7 @@ func withCORS(allowed map[string]struct{}, next http.Handler) http.Handler {
 				w.Header().Set("Vary", "Origin")
 			}
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

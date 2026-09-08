@@ -26,7 +26,7 @@ type raceAnalysisReaderStub struct {
 	incidentIndex     int
 }
 
-func (s *raceAnalysisReaderStub) ListMyRaceAnalyses(_ context.Context, accountID string, limit, offset int) (*platformsvc.RaceAnalysisListResponse, error) {
+func (s *raceAnalysisReaderStub) ListMyRaceAnalyses(_ context.Context, accountID string, limit, offset int, _ ...platformsvc.RaceAnalysisFilters) (*platformsvc.RaceAnalysisListResponse, error) {
 	s.calls++
 	s.listAccountID = accountID
 	s.listLimit = limit

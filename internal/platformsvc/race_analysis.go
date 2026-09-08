@@ -53,6 +53,14 @@ type RaceAnalysisListResponse struct {
 	NextOffset *int                   `json:"nextOffset"`
 }
 
+type RaceAnalysisFilters struct {
+	Search      string
+	GameFormat  string
+	SessionType string
+	From        *time.Time
+	Before      *time.Time
+}
+
 type RaceAnalysisLap struct {
 	LapNumber int     `json:"lapNumber"`
 	LapMs     int     `json:"lapMs"`
@@ -228,7 +236,11 @@ type raceAnalysisRecord struct {
 
 // ListMyRaceAnalyses lists every owner race, not just plausible marketplace
 // races. It uses the fixed product ordering and limit+1 pagination contract.
-func (s *Store) ListMyRaceAnalyses(ctx context.Context, accountID string, limit, offset int) (*RaceAnalysisListResponse, error) {
+func (s *Store) ListMyRaceAnalyses(ctx context.Context, accountID string, limit, offset int, filters ...RaceAnalysisFilters) (*RaceAnalysisListResponse, error) {
+	var filter RaceAnalysisFilters
+	if len(filters) > 0 {
+		filter = filters[0]
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.id::text, r.track_id, r.track_name, r.session_type, r.game_format,
 		       r.recorded_at, r.uploaded_at, r.finish_position, r.completed_laps, r.best_lap_ms,
@@ -237,8 +249,14 @@ func (s *Store) ListMyRaceAnalyses(ctx context.Context, accountID string, limit,
 		FROM platform.races r
 		LEFT JOIN platform.race_detail rd ON rd.race_id = r.id
 		WHERE r.account_id = $1
+		  AND ($4 = '' OR strpos(lower(r.track_name), lower($4)) > 0)
+		  AND ($5 = '' OR r.game_format = $5)
+		  AND ($6 = '' OR r.session_type = $6)
+		  AND ($7::timestamptz IS NULL OR COALESCE(r.recorded_at, r.uploaded_at) >= $7)
+		  AND ($8::timestamptz IS NULL OR COALESCE(r.recorded_at, r.uploaded_at) < $8)
 		ORDER BY r.recorded_at DESC NULLS LAST, r.uploaded_at DESC, r.id DESC
-		LIMIT $2 OFFSET $3`, accountID, limit+1, offset)
+		LIMIT $2 OFFSET $3`, accountID, limit+1, offset,
+		filter.Search, filter.GameFormat, filter.SessionType, filter.From, filter.Before)
 	if err != nil {
 		return nil, fmt.Errorf("platformsvc: list race analyses: %w", err)
 	}
