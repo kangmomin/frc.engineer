@@ -1,0 +1,346 @@
+{
+  "candidates": {
+    "P02": "complete",
+    "P04": "implemented_validation_limited"
+  },
+  "baselineCommit": "c7595e5378bbfc0cd51701d83e9fc3cb446ca849",
+  "baselineScope": "P02 comparison starts after ranking and trace changes; original research baseline was 902360 bytes, this implementation baseline was 904567 bytes",
+  "hubInitialJavaScript": {
+    "before": {
+      "rawBytes": 904567,
+      "gzipBytes": 218213,
+      "readyMedianMs": 771.9
+    },
+    "after": {
+      "rawBytes": 203755,
+      "gzipBytes": 67681,
+      "readyMedianMs": 458.6
+    },
+    "gzipReductionPercent": 68.98,
+    "rawReductionPercent": 77.47,
+    "controlledReadyMedianReductionPercent": 40.59
+  },
+  "productionBrowser": {
+    "status": "PASS",
+    "checks": [
+      "Production Hub initial JS excludes live/secondary screens and is less than half of baseline",
+      "Cold Rankings loads its chunk; warm revisit reuses it and navigation remains usable",
+      "Direct remote entry keeps room picker and excludes Hub, setup and all inactive live views",
+      "roomId, roomCode, signalingUrl and view deep-link surface routing preserved",
+      "Tab child token overrides remote deep-link before telemetry chunk loads (routing-only fixture)",
+      "Lazy Broadcast/Pitwall/Qualifying navigation preserves active parent 250ms feed without remount",
+      "Failed lazy chunk keeps Hub shell, permits return to Guide and succeeds after explicit reload"
+    ],
+    "count": 7,
+    "measurements": [
+      {
+        "build": "before",
+        "path": "/",
+        "readyMs": 771.9,
+        "assets": [
+          {
+            "file": "index-CGm7FLY7.js",
+            "rawBytes": 904567,
+            "gzipBytes": 218213
+          }
+        ],
+        "rawBytes": 904567,
+        "gzipBytes": 218213
+      },
+      {
+        "build": "before",
+        "path": "/",
+        "readyMs": 737.3,
+        "assets": [
+          {
+            "file": "index-CGm7FLY7.js",
+            "rawBytes": 904567,
+            "gzipBytes": 218213
+          }
+        ],
+        "rawBytes": 904567,
+        "gzipBytes": 218213
+      },
+      {
+        "build": "before",
+        "path": "/",
+        "readyMs": 804.7,
+        "assets": [
+          {
+            "file": "index-CGm7FLY7.js",
+            "rawBytes": 904567,
+            "gzipBytes": 218213
+          }
+        ],
+        "rawBytes": 904567,
+        "gzipBytes": 218213
+      },
+      {
+        "build": "after",
+        "path": "/",
+        "readyMs": 458.6,
+        "assets": [
+          {
+            "file": "index-BKD_dRuM.js",
+            "rawBytes": 149089,
+            "gzipBytes": 48464
+          },
+          {
+            "file": "HubApp-BrD84ivz.js",
+            "rawBytes": 54666,
+            "gzipBytes": 19217
+          }
+        ],
+        "rawBytes": 203755,
+        "gzipBytes": 67681
+      },
+      {
+        "build": "after",
+        "path": "/",
+        "readyMs": 367.3,
+        "assets": [
+          {
+            "file": "index-BKD_dRuM.js",
+            "rawBytes": 149089,
+            "gzipBytes": 48464
+          },
+          {
+            "file": "HubApp-BrD84ivz.js",
+            "rawBytes": 54666,
+            "gzipBytes": 19217
+          }
+        ],
+        "rawBytes": 203755,
+        "gzipBytes": 67681
+      },
+      {
+        "build": "after",
+        "path": "/",
+        "readyMs": 515,
+        "assets": [
+          {
+            "file": "index-BKD_dRuM.js",
+            "rawBytes": 149089,
+            "gzipBytes": 48464
+          },
+          {
+            "file": "HubApp-BrD84ivz.js",
+            "rawBytes": 54666,
+            "gzipBytes": 19217
+          }
+        ],
+        "rawBytes": 203755,
+        "gzipBytes": 67681
+      },
+      {
+        "build": "before",
+        "path": "/?remote=1",
+        "readyMs": 689.8,
+        "assets": [
+          {
+            "file": "index-CGm7FLY7.js",
+            "rawBytes": 904567,
+            "gzipBytes": 218213
+          }
+        ],
+        "rawBytes": 904567,
+        "gzipBytes": 218213
+      },
+      {
+        "build": "after",
+        "path": "/?remote=1",
+        "readyMs": 470.8,
+        "assets": [
+          {
+            "file": "index-BKD_dRuM.js",
+            "rawBytes": 149089,
+            "gzipBytes": 48464
+          },
+          {
+            "file": "AppShell-97W__qHu.js",
+            "rawBytes": 172708,
+            "gzipBytes": 52676
+          }
+        ],
+        "rawBytes": 321797,
+        "gzipBytes": 101140
+      },
+      {
+        "build": "after",
+        "path": "/?remote=1&test-view-as=1",
+        "readyMs": 452.2,
+        "assets": [
+          {
+            "file": "index-BKD_dRuM.js",
+            "rawBytes": 149089,
+            "gzipBytes": 48464
+          },
+          {
+            "file": "HubApp-BrD84ivz.js",
+            "rawBytes": 54666,
+            "gzipBytes": 19217
+          }
+        ],
+        "rawBytes": 203755,
+        "gzipBytes": 67681
+      },
+      {
+        "build": "after",
+        "path": "/?mock=quali&view=broadcast",
+        "readyMs": 573.8,
+        "assets": [
+          {
+            "file": "index-BKD_dRuM.js",
+            "rawBytes": 149089,
+            "gzipBytes": 48464
+          },
+          {
+            "file": "AppShell-97W__qHu.js",
+            "rawBytes": 172708,
+            "gzipBytes": 52676
+          },
+          {
+            "file": "BroadcastView-DHIFiZ-9.js",
+            "rawBytes": 24797,
+            "gzipBytes": 6882
+          },
+          {
+            "file": "WeatherIcon-Da9myG9z.js",
+            "rawBytes": 6417,
+            "gzipBytes": 2733
+          },
+          {
+            "file": "teamColors-D5wlpQWQ.js",
+            "rawBytes": 980,
+            "gzipBytes": 492
+          },
+          {
+            "file": "fieldDerivations-COx6E8jM.js",
+            "rawBytes": 1737,
+            "gzipBytes": 954
+          }
+        ],
+        "rawBytes": 355728,
+        "gzipBytes": 112201
+      },
+      {
+        "build": "after",
+        "path": "/",
+        "readyMs": 485.5,
+        "assets": [
+          {
+            "file": "index-BKD_dRuM.js",
+            "rawBytes": 149089,
+            "gzipBytes": 48464
+          },
+          {
+            "file": "HubApp-BrD84ivz.js",
+            "rawBytes": 54666,
+            "gzipBytes": 19217
+          }
+        ],
+        "rawBytes": 203755,
+        "gzipBytes": 67681
+      }
+    ],
+    "navigation": {
+      "coldRankingsMs": 94,
+      "warmRankingsMs": 8,
+      "addedAssets": [
+        {
+          "file": "Rankings-DGFpB3LQ.js",
+          "rawBytes": 8261,
+          "gzipBytes": 3426
+        },
+        {
+          "file": "SelectChip-De96hNDv.js",
+          "rawBytes": 717,
+          "gzipBytes": 438
+        }
+      ]
+    },
+    "runtimeErrors": [],
+    "conditions": {
+      "network": "Chrome emulation60ms latency,500000bytes/sec; staticgzip; fonts blocked equally",
+      "repetitions": 3,
+      "scope": "Local controlled browser measurements, not production internet or device results",
+      "mock": "Existing declared quali feed checks lifecycle; WebRTC suites are separate"
+    }
+  },
+  "rankingProductionBrowser": {
+    "status": "PASS",
+    "checks": [
+      "Chrome shows public population260 and off-page ownrank201",
+      "Own-neighborhood176..225 → cursornext226 with keyboard focus preserved",
+      "TT excludes Race user201 and shows130 otherentrants with explicit own-unranked state",
+      "Overview remains PB201 after activeTT unranked; local-session copy is factual",
+      "Pace displays0.632sec populationSD and100% inclusive one-second band",
+      "390px page has no horizontal overflow; wide table has focusable internal scroll",
+      "Simulated503 renders error and actualAPI retry restoresPB",
+      "LateTT response ignored after returningPB even when transport cancellation ignored",
+      "Real ViewAs switch during pending parent response keeps childPB11 and correctYOU marker"
+    ],
+    "count": 9,
+    "runtimeErrors": [],
+    "networkFailures": [],
+    "notes": [
+      "Production React build in actual Chrome, with actual platform HTTP/PostgreSQL read paths",
+      "Only localdesktopOverview is stubbed;503 and response delivery delays are deliberate clientfault injection"
+    ]
+  },
+  "senderMicrobenchmark": {
+    "workload": "Actual parser/processor with synthetic F1 25 wire telemetry; steady packet work between independent 4 Hz Pitwall ticks; MessagePack sink counts output instead of network sending",
+    "command": "go test ./internal/telemetry -run '^$' -bench '^BenchmarkProcessorDashboard$' -benchmem -benchtime=500ms -count=3",
+    "enabled": {
+      "nsPerOp": [
+        3935,
+        4049,
+        4153
+      ],
+      "bytesAllocatedPerOp": 2632,
+      "allocationsPerOp": 12,
+      "dashboardMessagesPerOp": 1,
+      "dashboardPayloadBytesPerOp": 251
+    },
+    "disabled": {
+      "nsPerOp": [
+        2320,
+        2284,
+        2468
+      ],
+      "bytesAllocatedPerOp": 1960,
+      "allocationsPerOp": 5,
+      "dashboardMessagesPerOp": 0,
+      "dashboardPayloadBytesPerOp": 0
+    },
+    "limits": [
+      "Synthetic packet microbenchmark; not total Sender CPU, real-game load or network bytes/sec",
+      "Unknown external legacy peers and runtime capability negotiation were not verified or implemented"
+    ]
+  },
+  "verification": {
+    "web": "60 test files / 639 tests; full ESLint; TypeScript and production builds in remote and local modes: PASS",
+    "go": "PLATFORM_TEST_DATABASE_URL=<isolated local PostgreSQL> go test -p 1 ./...; go build ./...; go vet ./...: PASS",
+    "senderWindows": "GOOS=windows GOARCH=amd64 go build -ldflags \"-H windowsgui\" ./cmd/sender: PASS; cross-compile only, not Windows runtime or installer verification",
+    "race": "go test -race ./internal/telemetry ./internal/rtc ./cmd/sender: PASS; analysis/analysishttp race run separately also PASS",
+    "webRTC": "npm run test:browser: PASS; real Chrome/React RTC lifecycle and RPCs, replay ownership/order/retry, intercom native RTP leave, qualifying/replay/view selection",
+    "senderBehavior": "Actual JSON/MessagePack Dashboard opt-out, preserved typed Pitwall observer, fast X/Z positions, race-control event, saved PB, default zero-rate and positive-rate behavior: PASS",
+    "payload": "Existing TestBuildState24CarPayloadSize included in telemetry test runs: PASS; 24 cars and 2000-point map; no live DTO expansion; existing 128 KiB backpressure and 256 KiB message guards unchanged",
+    "databaseLimit": "Destructive upgrade test requires its own PLATFORM_UPGRADE_TEST_DATABASE_URL and was not enabled; normal platform integration used an isolated PostgreSQL 17 database",
+    "ciAnalysis": "Added existing-dependency install with scripts disabled and explicit 19-test analysis command to the web CI job. Exact test command and CI YAML parse passed locally; hosted CI was not run."
+  },
+  "independentReview": {
+    "preliminary": "P02/P04 source and plan review completed independently before implementation",
+    "additional": "Two additional reviewers failed before execution with an agent usage-limit error; no additional approval or post-implementation independent review claimed",
+    "final": "Orchestrator reviewed import and account/RTC/intercom ownership, default dashboard semantics, narrower guard, tests and output limits"
+  },
+  "observations": [
+    "One source-browser run and one production-browser run had transient net::ERR_ABORTED requests during View As entry. No source fix was made for those failures. Subsequent source verification and seven consecutive production runs passed. The final run had no unexpected network failures; the earlier abort cause was not isolated."
+  ],
+  "limits": [
+    "Controlled local Chrome measurements, not real internet or hardware performance guarantees",
+    "Sender explicit opt-out targets current in-repository consumers; generic constructor remains legacy-compatible",
+    "Manual driving validation and release/deployment were outside this verification run"
+  ],
+  "cleanup": "Owned platform and analysis servers stopped gracefully, isolated PostgreSQL stopped, Chrome processes closed; temporary tokens, synthetic fixtures, binaries and build directories removed after evidence was preserved."
+}

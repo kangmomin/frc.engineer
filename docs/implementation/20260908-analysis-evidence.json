@@ -1,0 +1,249 @@
+{
+  "status": "PASS",
+  "scope": [
+    "A01",
+    "A02",
+    "A04",
+    "A06",
+    "A19"
+  ],
+  "implementedWithValidationLimits": [
+    "A03",
+    "B01"
+  ],
+  "partial": [
+    "A13"
+  ],
+  "fixture": {
+    "baseline": {
+      "directory": "1_20260101_000000",
+      "counts": {
+        "session": 1,
+        "lap_data": 1801,
+        "telemetry": 5400,
+        "motion": 5400,
+        "car_status": 180
+      },
+      "officialMs": 90000
+    },
+    "compare": {
+      "directory": "2_20260101_000001",
+      "counts": {
+        "session": 1,
+        "lap_data": 1821,
+        "telemetry": 5460,
+        "motion": 5460,
+        "car_status": 182
+      },
+      "officialMs": 91000
+    },
+    "expected": {
+      "trackLengthM": 5200.0,
+      "finalDeltaMs": 1000,
+      "isolatedBrakePulseFrame": 302,
+      "clockHz": 20,
+      "controlsHz": 60,
+      "motionHz": 60,
+      "statusHz": 2
+    },
+    "note": "Synthetic declared fixture, not real game capture; actual JSONL parsing and API will be exercised."
+  },
+  "http": {
+    "status": "PASS",
+    "checks": [
+      "Native20Hzclock/60Hzcontrols+motion/2Hzstatus preserved; official finish separate from timing rows",
+      "Actual lap clock gives expected piecewise Δt0/600/1000ms at500/1500/4500m",
+      "Isolated16.67ms brake pulse retained; final unbracketed native samples remain null-distance",
+      "Ranged API retains pulse, inclusive aligned bounds and full capture counts with smaller payload",
+      "Requiredlap, bounds, duplicate/unknown query and finite paired window errors use400 structured contract",
+      "GET-only405 and structured missing-session/lap404 are distinct",
+      "Encoded traversal/backslash and actual symlink escape are rejected without reading outside fixture root",
+      "Optional streams and absent session metadata yield200 empty arrays/null context with real header provenance retained"
+    ],
+    "count": 8,
+    "measurements": [
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1",
+        "method": "GET",
+        "status": 200,
+        "bytes": 2011966,
+        "durationMs": 577.19
+      },
+      {
+        "path": "/api/sessions/2_20260101_000001/trace?lap=1",
+        "method": "GET",
+        "status": 200,
+        "bytes": 2034421,
+        "durationMs": 569.04
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1&fromM=250&toM=330",
+        "method": "GET",
+        "status": 200,
+        "bytes": 31725,
+        "durationMs": 485.34
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 9.48
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=0",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 8.24
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=256",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 6.76
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1&lap=2",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 10.81
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1&fromM=1",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 7.54
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1&fromM=NaN&toM=20",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 6.36
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1&fromM=10&toM=10",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 6.03
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1&extra=x",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 6.04
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1&fromM=0&toM=5201",
+        "method": "GET",
+        "status": 400,
+        "bytes": 127,
+        "durationMs": 52.11
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=1",
+        "method": "POST",
+        "status": 405,
+        "bytes": 61,
+        "durationMs": 6.63
+      },
+      {
+        "path": "/api/sessions/does-not-exist/trace?lap=1",
+        "method": "GET",
+        "status": 404,
+        "bytes": 83,
+        "durationMs": 8.57
+      },
+      {
+        "path": "/api/sessions/1_20260101_000000/trace?lap=3",
+        "method": "GET",
+        "status": 404,
+        "bytes": 68,
+        "durationMs": 51.66
+      },
+      {
+        "path": "/api/sessions/bad%5cdirectory/trace?lap=1",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 8.71
+      },
+      {
+        "path": "/api/sessions/.%2e/trace?lap=1",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 6.92
+      },
+      {
+        "path": "/api/sessions/escape/trace?lap=1",
+        "method": "GET",
+        "status": 400,
+        "bytes": 99,
+        "durationMs": 6.25
+      },
+      {
+        "path": "/api/sessions/partial/trace?lap=1",
+        "method": "GET",
+        "status": 200,
+        "bytes": 188621,
+        "durationMs": 75.35
+      }
+    ],
+    "notes": [
+      "Actualcurl through cmd/server; syntheticdeclared JSONL fixtures, not a realgame capture",
+      "HTTP payload only; noDataChannelDTO expansion"
+    ]
+  },
+  "browser": {
+    "status": "PASS",
+    "checks": [
+      "Real React and Go JSONL API render separate official finish delta +1s",
+      "1500m cursor yields measured +0.600s and matching baseline/compare recorded X/Z",
+      "Range slider and numeric cursor stay synchronized across charts and map",
+      "80m HTTP zoom preserves one 60Hz brake pulse between 20Hz clock anchors",
+      "Selectable steering, integer step gear, RPM, fuel kg and ERS joules render native observations",
+      "End-of-recording gap leaves clock/map unavailable while official finish stays visible",
+      "Plain legacy404 explicitly falls back to five existing coarse graphs",
+      "Structured missing-lap404 remains distinct from unsupported API",
+      "413 cap response offers explicit smaller window and succeeds against real API",
+      "Delayed old trace delivery after refresh cannot replace active generation",
+      "390px component has no page overflow"
+    ],
+    "count": 11,
+    "runtimeErrors": [],
+    "notes": [
+      "Synthetic declared JSONL data through actual Go cmd/server and React component",
+      "Only explicit legacy404/structured404/413 responses and delayed transport delivery are fault injections"
+    ]
+  },
+  "verification": {
+    "go": "go test ./internal/analysis ./internal/analysishttp ./cmd/sender ./cmd/server -count=1: PASS",
+    "race": "go test -race ./internal/analysis ./internal/analysishttp: PASS",
+    "vet": "go vet ./internal/analysis ./internal/analysishttp ./cmd/sender ./cmd/server: PASS",
+    "frontend": "19 focused trace tests +20 existing Electron tests +typecheck: PASS",
+    "build": "setup renderer production build: PASS",
+    "ci": "Web CI now runs node web/node_modules/vitest/vitest.mjs run --config apps/setup-manager/analysis.vitest.config.mjs after installing existing app dependencies with --ignore-scripts. Exact command passes 19 tests locally."
+  },
+  "independentReview": {
+    "frontend": "APPROVE after fixing ambiguous Δt coverage, fragmented trace complexity, paired native X/Z map fidelity; reviewer rechecked100 randomized overlap cases and10k singleton segments",
+    "backend": "APPROVE after fixing missing-distance false rewind and duplicate whole-recording indices across laps"
+  },
+  "performanceFixtures": {
+    "fragmentedDelta": "10,000 singleton segments retained; independent helper measurement18ms, implementation measurement33.72ms; syntheticNode results, not realgame timing",
+    "coarseIndex": "108001 recordingframes at15vs60completedlaps retained108001global+216000attemptindexentries,11.42vs11.59MB/op; no L×N globalindex duplication"
+  },
+  "limits": [
+    "Syntheticfixtures do not prove actualgame accuracy or re-drive benefit",
+    "Automaticphases use explicit .1/.05/.8 threshold and100ms persistence; manualphase annotation comparison remains unavailable",
+    "A13labelsandunsupportedsetupadvice corrected; truewheel-lockupdetector remains incomplete",
+    "Range shrinks HTTPpayload but input still scanned; no claim of equivalent CPU reduction",
+    "No newDataChannelDTO or denseall-lapcache; historicalmetadata staysunknown"
+  ]
+}

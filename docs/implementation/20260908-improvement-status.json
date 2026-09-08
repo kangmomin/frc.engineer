@@ -1,0 +1,1255 @@
+{
+  "scope": "[Assumption] Researched candidates implemented in dependency order; only verified items marked complete.",
+  "items": [
+    {
+      "id": "A01",
+      "category": "주행 분석",
+      "title": "거리별 누적 시간차",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/lap-traces.md",
+        "docs/implementation/20260908-analysis-evidence.json"
+      ]
+    },
+    {
+      "id": "A02",
+      "category": "주행 분석",
+      "title": "제동 구간의 분석 해상도",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/lap-traces.md",
+        "docs/implementation/20260908-analysis-evidence.json"
+      ]
+    },
+    {
+      "id": "A03",
+      "category": "주행 분석",
+      "title": "코너 단계별 손실 설명",
+      "priority": 1,
+      "status": "implemented_validation_limited",
+      "evidence": [
+        "docs/api/lap-traces.md",
+        "docs/implementation/20260908-analysis-evidence.json"
+      ],
+      "remaining": "Manual phase labels and real re-drive effectiveness validation"
+    },
+    {
+      "id": "A04",
+      "category": "주행 분석",
+      "title": "차트와 트랙맵의 동기 탐색",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/lap-traces.md",
+        "docs/implementation/20260908-analysis-evidence.json"
+      ]
+    },
+    {
+      "id": "A05",
+      "category": "주행 분석",
+      "title": "주행 라인 겹쳐보기",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A06",
+      "category": "주행 분석",
+      "title": "분석 채널 선택",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/lap-traces.md",
+        "docs/implementation/20260908-analysis-evidence.json"
+      ]
+    },
+    {
+      "id": "A07",
+      "category": "주행 분석",
+      "title": "동의받은 타인 기준 랩",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A08",
+      "category": "주행 분석",
+      "title": "대표 랩 자동 선택",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A09",
+      "category": "주행 분석",
+      "title": "여러 랩의 분산 밴드",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A10",
+      "category": "주행 분석",
+      "title": "이론 최고 랩과 실현 가능성",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A11",
+      "category": "주행 분석",
+      "title": "클린 랩 분류",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A12",
+      "category": "주행 분석",
+      "title": "연료·타이어를 고려한 페이스",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A13",
+      "category": "주행 분석",
+      "title": "Lockup의 의미와 실제 휠 신호",
+      "priority": 1,
+      "status": "partial",
+      "evidence": [
+        "docs/api/lap-traces.md"
+      ],
+      "remaining": "Actual wheel-lockup detector and signal validation"
+    },
+    {
+      "id": "A14",
+      "category": "주행 분석",
+      "title": "언더·오버스티어 진단 보정",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A15",
+      "category": "주행 분석",
+      "title": "코너별 타이어 열·압력 분석",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A16",
+      "category": "주행 분석",
+      "title": "서스펜션·차고 분포",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A17",
+      "category": "주행 분석",
+      "title": "G-G·트랙션 사용 분석",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A18",
+      "category": "주행 분석",
+      "title": "기록 품질 타임라인",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "A19",
+      "category": "주행 분석",
+      "title": "샘플 결합의 시간 정합성",
+      "priority": 2,
+      "status": "complete",
+      "evidence": [
+        "docs/api/lap-traces.md",
+        "docs/implementation/20260908-analysis-evidence.json"
+      ]
+    },
+    {
+      "id": "A20",
+      "category": "주행 분석",
+      "title": "표준 trace 내보내기",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B01",
+      "category": "코칭·성장",
+      "title": "다음 주행의 개선 과제 3개",
+      "priority": 1,
+      "status": "implemented_validation_limited",
+      "evidence": [
+        "docs/api/lap-traces.md",
+        "docs/implementation/20260908-analysis-evidence.json"
+      ],
+      "remaining": "Manual phase labels and real re-drive effectiveness validation"
+    },
+    {
+      "id": "B02",
+      "category": "코칭·성장",
+      "title": "조금 빠른 기준 랩 추천",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B03",
+      "category": "코칭·성장",
+      "title": "목표 기반 연습 계획",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B04",
+      "category": "코칭·성장",
+      "title": "장기 성장 곡선",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B05",
+      "category": "코칭·성장",
+      "title": "일관성 연습 모드",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B06",
+      "category": "코칭·성장",
+      "title": "트랙 리밋 재발 구간 연습",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B07",
+      "category": "코칭·성장",
+      "title": "브레이크 해제·가속 재개 훈련",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B08",
+      "category": "코칭·성장",
+      "title": "코너 설명과 트랙 가이드",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B09",
+      "category": "코칭·성장",
+      "title": "라이브 기준 페달 오버레이",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B10",
+      "category": "코칭·성장",
+      "title": "짧은 한국어 음성 코칭",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B11",
+      "category": "코칭·성장",
+      "title": "주행 영상과 telemetry 동기화",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "B12",
+      "category": "코칭·성장",
+      "title": "F1 AI 난이도 보정",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C01",
+      "category": "전략·엔지니어",
+      "title": "피트 전략 시나리오 비교",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C02",
+      "category": "전략·엔지니어",
+      "title": "타이어 열화와 절벽 구간",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C03",
+      "category": "전략·엔지니어",
+      "title": "연료 절약의 시간 비용",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C04",
+      "category": "전략·엔지니어",
+      "title": "언더컷·오버컷 계산",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C05",
+      "category": "전략·엔지니어",
+      "title": "교통을 반영한 피트 복귀 예측",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C06",
+      "category": "전략·엔지니어",
+      "title": "SC·VSC 상황별 피트 비용",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C07",
+      "category": "전략·엔지니어",
+      "title": "크로스오버 신뢰도",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C08",
+      "category": "전략·엔지니어",
+      "title": "인터·풀웨트 구분과 교체 안정성",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C09",
+      "category": "전략·엔지니어",
+      "title": "손상 수리의 손익 계산",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C10",
+      "category": "전략·엔지니어",
+      "title": "보유 타이어를 쓰는 실행 가능한 전략",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C11",
+      "category": "전략·엔지니어",
+      "title": "ERS 배분과 회수 계획",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C12",
+      "category": "전략·엔지니어",
+      "title": "2026 Active Aero·Overtake 효율",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C13",
+      "category": "전략·엔지니어",
+      "title": "완주 연료 범위와 여유량",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C14",
+      "category": "전략·엔지니어",
+      "title": "예선 출차 시점 추천",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C15",
+      "category": "전략·엔지니어",
+      "title": "예선 통과 전망",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C16",
+      "category": "전략·엔지니어",
+      "title": "엔지니어 지시와 드라이버 확인",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C17",
+      "category": "전략·엔지니어",
+      "title": "상황별 알림 우선순위",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C18",
+      "category": "전략·엔지니어",
+      "title": "현재 상태 음성 질의",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C19",
+      "category": "전략·엔지니어",
+      "title": "레이스 후 전략 복기",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "C20",
+      "category": "전략·엔지니어",
+      "title": "내구 레이스 스틴트·교대 계획",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R01",
+      "category": "랭킹·신뢰",
+      "title": "Race Pace 집계의 표본 정의",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R02",
+      "category": "랭킹·신뢰",
+      "title": "Time Trial의 출처 분리",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/leaderboard-records.md",
+        "docs/implementation/20260908-ranking-evidence.json"
+      ]
+    },
+    {
+      "id": "R03",
+      "category": "랭킹·신뢰",
+      "title": "어시스트·성능 조건 저장",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R04",
+      "category": "랭킹·신뢰",
+      "title": "날씨·연료·타이어 필터",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R05",
+      "category": "랭킹·신뢰",
+      "title": "패치·시즌별 기록판",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R06",
+      "category": "랭킹·신뢰",
+      "title": "표본 수와 잠정 순위",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R07",
+      "category": "랭킹·신뢰",
+      "title": "중앙 페이스·대표 스틴트 순위",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R08",
+      "category": "랭킹·신뢰",
+      "title": "해석 가능한 일관성 지표",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/leaderboard-records.md",
+        "docs/implementation/20260908-ranking-evidence.json"
+      ]
+    },
+    {
+      "id": "R09",
+      "category": "랭킹·신뢰",
+      "title": "내 주변 순위와 200위 이후",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/leaderboard-records.md",
+        "docs/implementation/20260908-ranking-evidence.json"
+      ]
+    },
+    {
+      "id": "R10",
+      "category": "랭킹·신뢰",
+      "title": "백분위와 페이스 분포",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R11",
+      "category": "랭킹·신뢰",
+      "title": "친구·팀·리그 순위판",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R12",
+      "category": "랭킹·신뢰",
+      "title": "경기 결과 기반 실력 평점",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R13",
+      "category": "랭킹·신뢰",
+      "title": "별도의 안전·클린 주행 평점",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R14",
+      "category": "랭킹·신뢰",
+      "title": "라이선스·디비전 자격",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R15",
+      "category": "랭킹·신뢰",
+      "title": "기록 신뢰 수준을 정확히 표시",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/api/leaderboard-records.md",
+        "docs/implementation/20260908-ranking-evidence.json"
+      ]
+    },
+    {
+      "id": "R16",
+      "category": "랭킹·신뢰",
+      "title": "의심 기록의 격리·재검토",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R17",
+      "category": "랭킹·신뢰",
+      "title": "여러 업로드를 같은 경기로 연결",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R18",
+      "category": "랭킹·신뢰",
+      "title": "순위·점수 변경 내역",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R19",
+      "category": "랭킹·신뢰",
+      "title": "조건이 고정된 주간 챌린지",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "R20",
+      "category": "랭킹·신뢰",
+      "title": "드라이버의 다면 프로필",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L01",
+      "category": "리그·심사",
+      "title": "공식 마감 결과 수집",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L02",
+      "category": "리그·심사",
+      "title": "리그 일정·참가 확인",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L03",
+      "category": "리그·심사",
+      "title": "엔트리·예비 드라이버·승급 관리",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L04",
+      "category": "리그·심사",
+      "title": "리그별 점수 규칙",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L05",
+      "category": "리그·심사",
+      "title": "팀·컨스트럭터 챔피언십",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L06",
+      "category": "리그·심사",
+      "title": "스프린트·복수 레이스·드롭 라운드",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L07",
+      "category": "리그·심사",
+      "title": "사건 접수와 심사 작업함",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L08",
+      "category": "리그·심사",
+      "title": "사건 전후 맥락 확보",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L09",
+      "category": "리그·심사",
+      "title": "여러 시점의 사고 증거 비교",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L10",
+      "category": "리그·심사",
+      "title": "심사 증거 묶음",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L11",
+      "category": "리그·심사",
+      "title": "판정 사유·규칙·이의 제기 이력",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L12",
+      "category": "리그·심사",
+      "title": "잠정 결과에서 확정 결과로",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L13",
+      "category": "리그·심사",
+      "title": "위반 누적과 출전 제재",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L14",
+      "category": "리그·심사",
+      "title": "결과·순위·라인업 이미지 생성",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L15",
+      "category": "리그·심사",
+      "title": "레이스 운영 능력 분석",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "L16",
+      "category": "리그·심사",
+      "title": "대회 준비 상태 보드",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S01",
+      "category": "세팅·마켓",
+      "title": "세팅 버전과 계보",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S02",
+      "category": "세팅·마켓",
+      "title": "세팅 파라미터 차이 설명",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S03",
+      "category": "세팅·마켓",
+      "title": "조건을 맞춘 A/B 세팅 실험",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S04",
+      "category": "세팅·마켓",
+      "title": "세팅·기준 랩·설명 묶음",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S05",
+      "category": "세팅·마켓",
+      "title": "운전 성향별 추천",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S06",
+      "category": "세팅·마켓",
+      "title": "증상·코너 단계 기반 피드백",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S07",
+      "category": "세팅·마켓",
+      "title": "세팅 검색 조건 확장",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S08",
+      "category": "세팅·마켓",
+      "title": "구매 후기의 주행 조건",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S09",
+      "category": "세팅·마켓",
+      "title": "제작자 품질 이력",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S10",
+      "category": "세팅·마켓",
+      "title": "세팅 값 복사·호환 내보내기",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S11",
+      "category": "세팅·마켓",
+      "title": "개인·팀 세팅 컬렉션",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "S12",
+      "category": "세팅·마켓",
+      "title": "패치 이후 세팅 갱신 알림",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V01",
+      "category": "중계·협업",
+      "title": "OBS용 독립 중계 화면",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V02",
+      "category": "중계·협업",
+      "title": "배틀 추천과 수동 고정",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V03",
+      "category": "중계·협업",
+      "title": "드라이버 소개·리그 브랜딩",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V04",
+      "category": "중계·협업",
+      "title": "중계용 두 드라이버 비교",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V05",
+      "category": "중계·협업",
+      "title": "공동 분석 커서·주석",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V06",
+      "category": "중계·협업",
+      "title": "팀 전략 작업 공간",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V07",
+      "category": "중계·협업",
+      "title": "방 안의 역할별 데이터 공개",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V08",
+      "category": "중계·협업",
+      "title": "동의 기반 라디오 복기",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V09",
+      "category": "중계·협업",
+      "title": "관전자 지연 모드",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "V10",
+      "category": "중계·협업",
+      "title": "사건·랩 구간 공유 링크",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U01",
+      "category": "사용성·연동",
+      "title": "상태별 연결 진단",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U02",
+      "category": "사용성·연동",
+      "title": "목적별 기록 모드 선택",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U03",
+      "category": "사용성·연동",
+      "title": "라이브 값의 신선도·출처",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U04",
+      "category": "사용성·연동",
+      "title": "현재 세션에서 분석으로 이동",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U05",
+      "category": "사용성·연동",
+      "title": "모바일·태블릿 표시 밀도",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U06",
+      "category": "사용성·연동",
+      "title": "색 외의 상태 구분과 키보드 접근",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U07",
+      "category": "사용성·연동",
+      "title": "언어·단위·용어 통일",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U08",
+      "category": "사용성·연동",
+      "title": "오프라인·업로드 상태의 설명",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U09",
+      "category": "사용성·연동",
+      "title": "기록 보관량·핀·정리 정책",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U10",
+      "category": "사용성·연동",
+      "title": "세션 태그·메모·통합 검색",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U11",
+      "category": "사용성·연동",
+      "title": "게임별 기능 가용성 어댑터",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "U12",
+      "category": "사용성·연동",
+      "title": "하드웨어 버튼·디스플레이 연동",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P01",
+      "category": "성능",
+      "title": "서비스별 성능 기준선",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P02",
+      "category": "성능",
+      "title": "초기 화면 코드 분할",
+      "priority": 1,
+      "status": "complete",
+      "evidence": [
+        "docs/implementation/20260908-performance-evidence.json"
+      ]
+    },
+    {
+      "id": "P03",
+      "category": "성능",
+      "title": "트랙·세팅 정적 자산 필요 시 로딩",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P04",
+      "category": "성능",
+      "title": "사용하지 않는 telemetry 송신 생략",
+      "priority": 1,
+      "status": "implemented_validation_limited",
+      "evidence": [
+        "docs/implementation/20260908-performance-evidence.json"
+      ],
+      "implementedScope": "Explicit Sender opt-out for unused bare Dashboard; existing generic processor default and typed data paths preserved",
+      "remaining": "Unknown external legacy peer compatibility and dynamic capability negotiation; real-game process/network measurements"
+    },
+    {
+      "id": "P05",
+      "category": "성능",
+      "title": "화면별 필요한 필드·빈도 구독",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P06",
+      "category": "성능",
+      "title": "느린 peer만 송신 빈도 조절",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P07",
+      "category": "성능",
+      "title": "트랙맵 버전·확인 응답",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P08",
+      "category": "성능",
+      "title": "고빈도 위치 데이터의 작은 표현",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P09",
+      "category": "성능",
+      "title": "인코딩 버퍼 재사용",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P10",
+      "category": "성능",
+      "title": "디코딩 작업의 화면 thread 부담 감소",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P11",
+      "category": "성능",
+      "title": "부분 수신 즉시 리플레이 재생",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P12",
+      "category": "성능",
+      "title": "장시간 리플레이 메모리 제한",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P13",
+      "category": "성능",
+      "title": "큰 JSON 저장·덮어쓰기 비용 감소",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P14",
+      "category": "성능",
+      "title": "live/replay 공통 계산 재사용",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P15",
+      "category": "성능",
+      "title": "원시 기록을 패킷 처리에서 분리",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P16",
+      "category": "성능",
+      "title": "로그 쓰기 묶음과 중복 인코딩 절감",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P17",
+      "category": "성능",
+      "title": "UDP 버퍼 소유권과 큐 정책",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P18",
+      "category": "성능",
+      "title": "과부하 로그 집계",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P19",
+      "category": "성능",
+      "title": "분석 중복 실행·동시성·취소 제한",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P20",
+      "category": "성능",
+      "title": "분석 cache 크기·정합성",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P21",
+      "category": "성능",
+      "title": "세션 분석의 한 번 읽기·구간 인덱스",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P22",
+      "category": "성능",
+      "title": "로컬 아카이브 인덱스·페이지 조회",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P23",
+      "category": "성능",
+      "title": "랭킹 증분 집계·공유 cache",
+      "priority": 1,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P24",
+      "category": "성능",
+      "title": "프로필 순위 계산 재사용",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P25",
+      "category": "성능",
+      "title": "랩 업로드의 묶음 INSERT",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P26",
+      "category": "성능",
+      "title": "큰 목록의 커서 페이지",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P27",
+      "category": "성능",
+      "title": "검색 인덱스의 실제 실행 계획",
+      "priority": 2,
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "P28",
+      "category": "성능",
+      "title": "대규모 관전자 데이터 중계",
+      "priority": 3,
+      "status": "pending",
+      "evidence": []
+    }
+  ],
+  "counts": {
+    "complete": 10,
+    "implemented_validation_limited": 3,
+    "pending": 136,
+    "partial": 1
+  }
+}

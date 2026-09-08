@@ -1,0 +1,93 @@
+{
+  "batch": "R02/R08/R09/R15",
+  "status": "PASS",
+  "baseline": "c7595e5378bbfc0cd51701d83e9fc3cb446ca849",
+  "database": "PostgreSQL17 disposable local DB; no production DB touched",
+  "backend": {
+    "commands": [
+      "PLATFORM_TEST_DATABASE_URL=<disposable local DB> go test -p 1 ./internal/platformsvc ./cmd/platform",
+      "go vet ./internal/platformsvc ./cmd/platform"
+    ],
+    "status": "PASS",
+    "reviewFix": "Cursor UUID canonicalization with unit and actualHTTP/PG URN/wrapper regressions"
+  },
+  "frontend": {
+    "commands": [
+      "npm test",
+      "scoped eslint",
+      "npm run build:remote -- --outDir <scratch>"
+    ],
+    "testFiles": 60,
+    "tests": 638,
+    "status": "PASS",
+    "subsequentCopyFix": "LocalOverview labels;7focusedSSRtests andscopedlintPASS"
+  },
+  "http": {
+    "status": "PASS",
+    "api": "http://127.0.0.1:53337",
+    "fixture": "Disposable PostgreSQL17 database only;260 eligible plus3 excluded users",
+    "checks": [
+      "Public records return total260 and off-page authenticated viewer rank201 with Vary Authorization",
+      "All260 ranks traversed through6 pages without duplicates or omissions and same cutoff",
+      "Previous cursor returns201..250 ascending",
+      "Own-neighborhood centers201; next uses cursor alone and starts226",
+      "Public target neighborhood is distinct from authenticated viewer",
+      "Race-only viewer is unranked in130-entrant actualTT board",
+      "Pace5-lap statistics preserve inclusive1000ms band and populationSD",
+      "Rank11 tied with10 has gap0;3-entrant board has gapnull;emptyTT stays empty",
+      "Missing explicit target keeps factual global/viewer metadata",
+      "ProfilePB agrees with records rank201; both legacy APIs retain200-row arrays",
+      "10 bad-query variants400, anonymous aroundme401, invalidcredential401,POST405",
+      "URN/wrapped UUID cursor normalizes and returns same next page",
+      "Real ViewAs child sees subject11 while parent remains201"
+    ],
+    "count": 13,
+    "note": "Records are seeded for read-path integration; this run does not claim ingestion or production performance coverage."
+  },
+  "browser": {
+    "status": "PASS",
+    "checks": [
+      "Chrome shows public population260 and off-page ownrank201",
+      "Own-neighborhood176..225 → cursornext226 with keyboard focus preserved",
+      "TT excludes Race user201 and shows130 otherentrants with explicit own-unranked state",
+      "Overview remains PB201 after activeTT unranked; local-session copy is factual",
+      "Pace displays0.632sec populationSD and100% inclusive one-second band",
+      "390px page has no horizontal overflow; wide table has focusable internal scroll",
+      "Simulated503 renders error and actualAPI retry restoresPB",
+      "LateTT response ignored after returningPB even when transport cancellation ignored",
+      "Real ViewAs switch during pending parent response keeps childPB11 and correctYOU marker"
+    ],
+    "count": 9,
+    "runtimeErrors": [],
+    "notes": [
+      "RealChrome/React source and actualplatform HTTP/PG read paths",
+      "Only localdesktopOverview is stubbed;503 and response delivery delays are deliberate clientfault injection"
+    ]
+  },
+  "limitations": [
+    "Browser uses actualChrome andplatformAPI, with a localOverview fixture andexplicit503/late-response clientfaultinjection.",
+    "NoSteamthirdpartyauth,realgamecapture,productionloadorpublicdeploymentperformed.",
+    "NoWebRTCDTOormigrationchangeinthisbatch."
+  ],
+  "finalAfterCodeSplitting": {
+    "status": "PASS",
+    "checks": [
+      "Chrome shows public population260 and off-page ownrank201",
+      "Own-neighborhood176..225 → cursornext226 with keyboard focus preserved",
+      "TT excludes Race user201 and shows130 otherentrants with explicit own-unranked state",
+      "Overview remains PB201 after activeTT unranked; local-session copy is factual",
+      "Pace displays0.632sec populationSD and100% inclusive one-second band",
+      "390px page has no horizontal overflow; wide table has focusable internal scroll",
+      "Simulated503 renders error and actualAPI retry restoresPB",
+      "LateTT response ignored after returningPB even when transport cancellation ignored",
+      "Real ViewAs switch during pending parent response keeps childPB11 and correctYOU marker"
+    ],
+    "count": 9,
+    "runtimeErrors": [],
+    "networkFailures": [],
+    "notes": [
+      "Production React build in actual Chrome, with actual platform HTTP/PostgreSQL read paths",
+      "Only localdesktopOverview is stubbed;503 and response delivery delays are deliberate clientfault injection"
+    ]
+  }
+}
