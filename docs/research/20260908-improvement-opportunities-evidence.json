@@ -1,0 +1,514 @@
+{
+  "review_date": "2026-09-08",
+  "timezone": "Asia/Seoul",
+  "repository": "kangmomin/frc.engineer",
+  "source_commit": "c7595e5378bbfc0cd51701d83e9fc3cb446ca849",
+  "application_version": "4.54.0",
+  "scope": "150-opportunity research plus a follow-up Go Docker builder version fix. No implementation of the proposed application features.",
+  "inventory": {
+    "total": 150,
+    "functional": 122,
+    "performance": 28,
+    "categories": {
+      "주행 분석": 20,
+      "코칭·성장": 12,
+      "전략·엔지니어": 20,
+      "랭킹·신뢰": 20,
+      "리그·심사": 16,
+      "세팅·마켓": 12,
+      "중계·협업": 10,
+      "사용성·연동": 12,
+      "성능": 28
+    },
+    "priorities": {
+      "1": 47,
+      "2": 87,
+      "3": 16
+    },
+    "states": {
+      "확장": 70,
+      "신규": 47,
+      "교정": 5,
+      "검증기반": 1,
+      "실측후보": 1,
+      "정적후보": 25,
+      "조건부후보": 1
+    }
+  },
+  "tools": {
+    "go": "go1.26.7 linux/amd64",
+    "node": "v24.11.0"
+  },
+  "measurements": [
+    {
+      "name": "24-car MessagePack fixture",
+      "command": "go test ./internal/telemetry -run '^TestBuildState24CarPayloadSize$' -count=1 -v",
+      "cwd": "/workspace/frc.engineer",
+      "exit_code": 0,
+      "with_2000_point_track_map_bytes": 91674,
+      "steady_state_bytes": 35598,
+      "message_guard_bytes": 262144,
+      "buffered_amount_guard_bytes": 131072,
+      "limitations": "Synthetic fixture only; not a universal worst case, live traffic measurement, or browser latency test. Track-store fixture warnings present; generated track-map assertions passed.",
+      "output_tail": [
+        "2026/09/08 08:23:32 INFO track store initialized loaded=0",
+        "2026/09/08 08:23:32 INFO loaded recorded track trackID=42 points=8000",
+        "[DEBUG] Session: type=15 timeLeft=0 duration=0",
+        "    pitwall_manager_test.go:309: 24-car + 2000-pt trackmap payload: 91674 bytes",
+        "    pitwall_manager_test.go:332: 24-car steady payload: 35598 bytes",
+        "--- PASS: TestBuildState24CarPayloadSize (0.02s)",
+        "PASS",
+        "ok  \tfrc.engineer/internal/telemetry\t0.023s"
+      ]
+    },
+    {
+      "name": "Web Vite production bundle",
+      "command": "npm exec vite build -- --outDir /tmp/frc-improvement-review-20260908/web-dist",
+      "cwd": "/workspace/frc.engineer/web",
+      "exit_code": 0,
+      "modules": 232,
+      "build_seconds": 1.82,
+      "js_bytes": 902360,
+      "js_sha256": "af8c58f18f2fe007b52beea240e2ac06a23a7ff887e61a28ae93b9e7fcf761c9",
+      "vite_reported_js_gzip_kB_decimal": 216.49,
+      "css_bytes": 48399,
+      "css_sha256": "965c0e9030173cc7e0375d40028d798c02766943a5fd472a436d9d766c08c546",
+      "vite_reported_css_gzip_kB_decimal": 10.38,
+      "limitations": "Single Vite build; not tsc, full frontend tests, loading latency, or runtime rendering measurement. Vite emitted a chunk-size warning."
+    }
+  ],
+  "derived_hypotheses": [
+    {
+      "name": "steady pitwall payload uplink at 4Hz",
+      "bytes_per_state": 35598,
+      "hertz": 4,
+      "mbit_per_second_per_peer": 1.139136,
+      "four_peers_mbit_per_second": 4.556544,
+      "sixteen_peers_mbit_per_second": 18.226176,
+      "basis": "[Assumption] fixture payload size held constant; excludes positions, dashboard telemetry, audio, headers, map bursts and TURN effects; not measured traffic."
+    }
+  ],
+  "not_executed": [
+    "live F1 gameplay",
+    "Windows runtime",
+    "browser live rendering performance",
+    "operational database EXPLAIN/load benchmark",
+    "end-to-end NAT/TURN test",
+    "full repository test suite"
+  ],
+  "official_sources": [
+    {
+      "id": "X01",
+      "name": "Track Titan",
+      "links": [
+        {
+          "title": "RTO",
+          "url": "https://www.tracktitan.io/rto"
+        },
+        {
+          "title": "Telemetry analysis guide",
+          "url": "https://www.tracktitan.io/post/how-to-analyse-telemetry-for-sim-racing"
+        }
+      ]
+    },
+    {
+      "id": "X02",
+      "name": "Popometer",
+      "links": [
+        {
+          "title": "공식 사용 가이드",
+          "url": "https://popometer.io/p/popoguide"
+        }
+      ]
+    },
+    {
+      "id": "X03",
+      "name": "VRS",
+      "links": [
+        {
+          "title": "Academy",
+          "url": "https://vrs.racing/us/academy"
+        },
+        {
+          "title": "Setups와 지원 예정 게임",
+          "url": "https://vrs.racing/setups"
+        },
+        {
+          "title": "Data packs FAQ",
+          "url": "https://vrs.racing/faq"
+        }
+      ]
+    },
+    {
+      "id": "X04",
+      "name": "Garage61",
+      "links": [
+        {
+          "title": "Filtering",
+          "url": "https://garage61.net/docs/usage/filtering"
+        },
+        {
+          "title": "Ghosts",
+          "url": "https://garage61.net/docs/usage/ghosts"
+        },
+        {
+          "title": "Pro",
+          "url": "https://garage61.net/pro"
+        }
+      ]
+    },
+    {
+      "id": "X05",
+      "name": "trophi.ai",
+      "links": [
+        {
+          "title": "공식 기능 소개",
+          "url": "https://www.trophi.ai/sim-racing-expo"
+        },
+        {
+          "title": "1.91.0 업데이트, 2026-04-01",
+          "url": "https://www.trophi.ai/updates/1-91-0"
+        }
+      ]
+    },
+    {
+      "id": "X06",
+      "name": "Sim Racing Telemetry",
+      "links": [
+        {
+          "title": "제품 기능",
+          "url": "https://simracingtelemetry.com/"
+        },
+        {
+          "title": "지원 도움말",
+          "url": "https://www.simracingtelemetry.com/help.html"
+        },
+        {
+          "title": "F1 25 연결",
+          "url": "https://www.simracingtelemetry.com/games/F12025/"
+        }
+      ]
+    },
+    {
+      "id": "X07",
+      "name": "Telemetry Tool",
+      "links": [
+        {
+          "title": "공식 기능·게임 목록",
+          "url": "https://telemetrytool.com/"
+        }
+      ]
+    },
+    {
+      "id": "X08",
+      "name": "Crew Chief",
+      "links": [
+        {
+          "title": "공식 저장소와 기능 설명",
+          "url": "https://github.com/mrbelowski/CrewChiefV4"
+        }
+      ]
+    },
+    {
+      "id": "X09",
+      "name": "SimHub",
+      "links": [
+        {
+          "title": "제품 소개",
+          "url": "https://www.simhubdash.com/"
+        },
+        {
+          "title": "공식 변경 기록",
+          "url": "https://www.simhubdash.com/download-2/"
+        }
+      ]
+    },
+    {
+      "id": "X10",
+      "name": "RaceLab",
+      "links": [
+        {
+          "title": "F1 기능",
+          "url": "https://racelab.app/formula1/"
+        },
+        {
+          "title": "Stream Deck, 2026-02-23",
+          "url": "https://garage.racelab.app/news/2026/02/23/2026/stream-deck-plugin/"
+        }
+      ]
+    },
+    {
+      "id": "X11",
+      "name": "EA Racenet",
+      "links": [
+        {
+          "title": "F1 24 Racenet 공식 소개",
+          "url": "https://www.ea.com/nl/games/f1/news/f1-24-racenet"
+        }
+      ]
+    },
+    {
+      "id": "X12",
+      "name": "F1Laps",
+      "links": [
+        {
+          "title": "공식 기능 FAQ",
+          "url": "https://www.f1laps.com/faqs/free-trial-whats-included/"
+        },
+        {
+          "title": "F1 25",
+          "url": "https://www.f1laps.com/f1-25/"
+        },
+        {
+          "title": "F1 26",
+          "url": "https://www.f1laps.com/f1-26/"
+        }
+      ]
+    },
+    {
+      "id": "X13",
+      "name": "iRacing",
+      "links": [
+        {
+          "title": "iRating",
+          "url": "https://support.iracing.com/support/solutions/articles/31000133523-what-is-irating"
+        },
+        {
+          "title": "Safety Rating, 2026-07-15 수정",
+          "url": "https://support.iracing.com/support/solutions/articles/31000156960-iracing-how-to-safety-rating"
+        },
+        {
+          "title": "Championship points",
+          "url": "https://support.iracing.com/support/solutions/articles/31000173795-championship-points"
+        }
+      ]
+    },
+    {
+      "id": "X14",
+      "name": "Low Fuel Motorsport",
+      "links": [
+        {
+          "title": "Legacy 시즌 규칙",
+          "url": "https://legacy.lowfuelmotorsport.com/seasonsv2/rules"
+        },
+        {
+          "title": "Legacy 심사 규칙",
+          "url": "https://legacy.lowfuelmotorsport.com/seasonsv2/penalties"
+        },
+        {
+          "title": "Legacy hotlaps",
+          "url": "https://legacy.lowfuelmotorsport.com/hotlaps"
+        }
+      ]
+    },
+    {
+      "id": "X15",
+      "name": "SimGrid",
+      "links": [
+        {
+          "title": "Community 기능",
+          "url": "https://www.thesimgrid.com/communities/join"
+        },
+        {
+          "title": "공동 운영, 2026-03-12",
+          "url": "https://pits.thesimgrid.com/announcements/community-collabs-is-here/"
+        }
+      ]
+    },
+    {
+      "id": "X16",
+      "name": "Simracing.GP",
+      "links": [
+        {
+          "title": "공식 제품 안내",
+          "url": "https://simracing.gp/?trk=public_post_main-feed-card-text"
+        },
+        {
+          "title": "Championship vs Series",
+          "url": "https://simracing.gp/tutorials/championship-vs-series/"
+        },
+        {
+          "title": "Event page",
+          "url": "https://simracing.gp/tutorials/event-page-guide/"
+        }
+      ]
+    },
+    {
+      "id": "X17",
+      "name": "Racing League Tools",
+      "links": [
+        {
+          "title": "공식 기능",
+          "url": "https://racingleaguetools.com/Features"
+        },
+        {
+          "title": "고급 기능",
+          "url": "https://racingleaguetools.com/AdvancedFeatures"
+        }
+      ]
+    },
+    {
+      "id": "X18",
+      "name": "Coach Dave Delta",
+      "links": [
+        {
+          "title": "Delta 기능",
+          "url": "https://coachdaveacademy.com/delta/"
+        },
+        {
+          "title": "Setup IQ, 2026-07-09",
+          "url": "https://coachdaveacademy.com/announcements/setup-iq-tailor-made-setups/"
+        }
+      ]
+    },
+    {
+      "id": "X19",
+      "name": "Second Monitor",
+      "links": [
+        {
+          "title": "공식 릴리스",
+          "url": "https://github.com/Winzarten/SecondMonitor/releases"
+        }
+      ]
+    },
+    {
+      "id": "X20",
+      "name": "iRacePlan",
+      "links": [
+        {
+          "title": "Stint Planner, 2025-03-19",
+          "url": "https://iraceplan.com/blog/introducing-the-stint-planner-revolutionize-your-race-strategy-with-iraceplan-s-most-powerful-tool-yet"
+        },
+        {
+          "title": "Stint Preferences, 2025-06-20",
+          "url": "https://iraceplan.com/blog/introducing-stint-preferences-smarter-driver-assignment-for-endurance-racing"
+        }
+      ]
+    },
+    {
+      "id": "XT01",
+      "name": "WebRTC 표준",
+      "links": [
+        {
+          "title": "W3C WebRTC",
+          "url": "https://www.w3.org/TR/webrtc/"
+        }
+      ]
+    },
+    {
+      "id": "XT02",
+      "name": "PostgreSQL 17",
+      "links": [
+        {
+          "title": "Using EXPLAIN",
+          "url": "https://www.postgresql.org/docs/17/using-explain.html"
+        }
+      ]
+    },
+    {
+      "id": "XT03",
+      "name": "React",
+      "links": [
+        {
+          "title": "lazy",
+          "url": "https://react.dev/reference/react/lazy"
+        },
+        {
+          "title": "Build a React app from scratch",
+          "url": "https://react.dev/learn/build-a-react-app-from-scratch"
+        }
+      ]
+    }
+  ],
+  "deployment_check": {
+    "reported_failure_at": "2026-09-06T14:25:31.732847997Z",
+    "root_cause": "go.mod requires >=1.26.7 while cmd/platform/Dockerfile uses golang:1.25-alpine (Go1.25.14 in the supplied log) with GOTOOLCHAIN=local.",
+    "related_issue": "cmd/signaling/Dockerfile used golang:1.24-alpine and shares the same go.mod.",
+    "changed_files": {
+      "cmd/platform/Dockerfile": "golang:1.25-alpine -> golang:1.26.7-alpine",
+      "cmd/signaling/Dockerfile": "golang:1.24-alpine -> golang:1.26.7-alpine"
+    },
+    "image_manifest": {
+      "image": "golang:1.26.7-alpine",
+      "registry": "registry-1.docker.io/library/golang",
+      "index_digest": "sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468",
+      "linux_amd64_available": true,
+      "verified_date": "2026-09-08"
+    },
+    "module_download": {
+      "exit_code": 0,
+      "toolchain": "Go1.26.7",
+      "GOTOOLCHAIN": "local"
+    },
+    "binary_builds": [
+      {
+        "name": "platform",
+        "exit_code": 0,
+        "build_metadata": [
+          "/tmp/frc-improvement-review-20260908/platform: go1.26.7",
+          "build\tCGO_ENABLED=0",
+          "build\tGOARCH=amd64",
+          "build\tGOOS=linux"
+        ],
+        "file": "/tmp/frc-improvement-review-20260908/platform: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, Go BuildID=idHdVYCTA1aHa3FO0MhC/dUhKrk7FkzP4pQE2D4Hh/3QXsTBHwIb5cZX8kBK8S/x16Eo6G4rMusP_DxyKc7, BuildID[sha1]=647eed326c89e2a3cf04cde327a4a3cd491fca54, with debug_info, not stripped",
+        "sha256": "1b0dd264478311a1ecc85d6663ca608f25c75ca023cfa5630301ced22d8eb64a"
+      },
+      {
+        "name": "signaling",
+        "exit_code": 0,
+        "build_metadata": [
+          "/tmp/frc-improvement-review-20260908/signaling: go1.26.7",
+          "build\tCGO_ENABLED=0",
+          "build\tGOARCH=amd64",
+          "build\tGOOS=linux"
+        ],
+        "file": "/tmp/frc-improvement-review-20260908/signaling: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, Go BuildID=UVQR4fEsXAmRHmMg_mJx/LqAnTIi5gpUKXLzTkzLE/9Mu0vC5rPV_BX1nZD6e-/Pi3X4N8iteAaCIRKp1mr, BuildID[sha1]=fae27360ca73c222ee737e01ddfb1126a0defe62, with debug_info, not stripped",
+        "sha256": "517ea9e74fb10c208b432344e97bf29fda7d6c0e7066933002daf70c0cb0038d"
+      }
+    ],
+    "web_remote_build": {
+      "command": "npm run build:remote -- --outDir /tmp/frc-improvement-review-20260908/web-remote-dist",
+      "exit_code": 0,
+      "includes_typescript_check": true,
+      "vite_seconds": 2.19,
+      "chunk_warning": true
+    },
+    "verification_environment": "The default launcher is Go1.26.2 with GOROOT=/usr/local/go. Its strict-local module command fails the minimum version check. Successful binary checks explicitly selected both the installed Go1.26.7 binary and its matching GOROOT, with GOTOOLCHAIN=local. No persistent toolchain setting was changed.",
+    "not_executed": [
+      "full Docker image build: Docker/Podman/Buildah unavailable in this environment",
+      "Railway production redeployment",
+      "Git commit or push"
+    ],
+    "review": "Independent reviewer confirmed the two-line change, API service role and separate Vercel build path.",
+    "source_urls": [
+      "https://go.dev/doc/toolchain",
+      "https://raw.githubusercontent.com/docker-library/official-images/master/library/golang"
+    ]
+  },
+  "artifact_validation": {
+    "result": "PASS",
+    "checks": [
+      "150 initial rows",
+      "category and priority filters",
+      "ID and vendor search",
+      "empty result state",
+      "D2 and category combined filter",
+      "reset",
+      "expand/collapse",
+      "390px viewport without horizontal overflow",
+      "filtered CSV download",
+      "no browser JS exceptions"
+    ],
+    "performancePriorityOne": 11,
+    "vendorMatches": 21,
+    "d2Matches": 98
+  },
+  "independent_review": "Fresh-context internal reviewer; plan review and opportunity/code spotcheck. Corrections incorporated: existing profile ranks, MotionEx rawHex prerequisites, dashboard intent mismatch, shared-task cancellation, session ordering, shared foundations, MySetups baseline battle heuristic semantics, Time Trial session_type availability and tyre internal-temperature terminology. Final report reviewed without a remaining material misclassification or overclaim.",
+  "cleanup": {
+    "temporary_builds_and_work_files_removed": true,
+    "browser_session_closed": true,
+    "research_artifacts_retained": 4,
+    "application_change_scope": "Two Dockerfile FROM lines; no proposed feature implementation.",
+    "commit_push_or_redeploy_performed": false
+  }
+}
