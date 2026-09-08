@@ -1,0 +1,4 @@
+interface:
+  display_name: "업데이트 로그 게시"
+  short_description: "frc.engineer 변경사항을 요약해 키 인증 API로 업데이트 공지 게시"
+  default_prompt: "$publish-update-log로 이번 변경사항을 정리하고 지정한 플랫폼에 업데이트 로그를 게시해줘."
