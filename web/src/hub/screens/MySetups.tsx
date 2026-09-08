@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
+import { SETUP_FIELDS } from '../data/setupFields';
 import { ListingError, PlatformMarket, type PlatformMySetupDetail, type PlatformMySetupParams, type PlatformMySetupSummary, type UpdateMySetupResult } from '../data/platform';
 import { canEditMySetups, canReadMySetups } from '../data/permissions';
 import { reduceMySetupsSelection, replaceMySetupDraftText, resolveMySetupsRefreshOutcome, type MySetupDraft } from './mySetupsState';
@@ -306,15 +307,6 @@ function MetadataEditor({ t, draft, disabled, onDraft, onSave, onCancel }: {
     <div style={{ display: 'flex', gap: 8 }}><button type="button" disabled={disabled} onClick={onSave} style={button(t)}>저장</button><button type="button" disabled={disabled} onClick={onCancel} style={button(t)}>취소</button></div>
   </div>;
 }
-
-const SETUP_FIELDS: ReadonlyArray<{ key: keyof PlatformMySetupParams; label: string; unit?: string }> = [
-  { key: 'frontWing', label: 'Front Wing' }, { key: 'rearWing', label: 'Rear Wing' }, { key: 'onThrottle', label: 'On Throttle', unit: '%' }, { key: 'offThrottle', label: 'Off Throttle', unit: '%' },
-  { key: 'frontCamber', label: 'Front Camber', unit: '°' }, { key: 'rearCamber', label: 'Rear Camber', unit: '°' }, { key: 'frontToe', label: 'Front Toe', unit: '°' }, { key: 'rearToe', label: 'Rear Toe', unit: '°' },
-  { key: 'frontSuspension', label: 'Front Suspension' }, { key: 'rearSuspension', label: 'Rear Suspension' }, { key: 'frontAntiRollBar', label: 'Front ARB' }, { key: 'rearAntiRollBar', label: 'Rear ARB' },
-  { key: 'frontSuspensionHeight', label: 'Front Ride Height' }, { key: 'rearSuspensionHeight', label: 'Rear Ride Height' }, { key: 'brakePressure', label: 'Brake Pressure', unit: '%' }, { key: 'brakeBias', label: 'Brake Bias', unit: '%' }, { key: 'engineBraking', label: 'Engine Braking', unit: '%' },
-  { key: 'rearLeftTyrePressure', label: 'RL Tyre Pressure', unit: 'PSI' }, { key: 'rearRightTyrePressure', label: 'RR Tyre Pressure', unit: 'PSI' }, { key: 'frontLeftTyrePressure', label: 'FL Tyre Pressure', unit: 'PSI' }, { key: 'frontRightTyrePressure', label: 'FR Tyre Pressure', unit: 'PSI' },
-  { key: 'ballast', label: 'Ballast' }, { key: 'fuelLoad', label: 'Fuel Load', unit: 'kg' },
-];
 
 function SetupParams({ t, params }: { t: HubTheme; params: PlatformMySetupParams }) {
   return <div style={{ marginTop: 22 }}><div style={{ fontSize: 13, fontWeight: 700 }}>셋업 값</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(145px,1fr))', gap: 7, marginTop: 9 }}>

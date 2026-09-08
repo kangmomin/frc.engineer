@@ -1,6 +1,18 @@
 // Mirror of the owner race-analysis read contract in internal/platformsvc.
 // Keep this hand-written module wire-shaped: the service is the schema owner
 // and this client deliberately does not add inferred fields.
+import type { PlatformMySetupParams } from './platform';
+
+export interface RaceAnalysisShare {
+  token: string;
+  includeSetup: boolean;
+}
+
+export interface SharedRaceAnalysis {
+  detail: RaceAnalysisDetail;
+  includeSetup: boolean;
+  setup?: PlatformMySetupParams;
+}
 
 export type Availability = 'complete' | 'partial' | 'unavailable' | 'unknown';
 

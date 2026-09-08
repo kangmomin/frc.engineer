@@ -422,6 +422,46 @@ describe('analysis reports', () => {
 });
 
 describe('owner race analysis API', () => {
+  it('sends filters to the server together with pagination and preserves literal search characters', async () => {
+    vi.stubGlobal('window', fakeWindow('token'));
+    const fetchMock = vi.fn().mockResolvedValue(res(200, { items: [], nextOffset: null }));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.listRaceAnalyses({ search: 'Spa & Monza', gameFormat: 'F1 26', sessionType: 'Race 2', from: '2026-09-01T00:00:00Z', before: '2026-09-02T00:00:00Z', offset: 50 });
+    const query = new URL(fetchMock.mock.calls[0][0]).searchParams;
+    expect(Object.fromEntries(query)).toEqual({ search: 'Spa & Monza', gameFormat: 'F1 26', sessionType: 'Race 2', from: '2026-09-01T00:00:00Z', before: '2026-09-02T00:00:00Z', offset: '50', limit: '50' });
+  });
+
+  it('keeps public share detail and incident reads anonymous even with a View As session', async () => {
+    vi.stubGlobal('window', fakeWindow('parent', 'child'));
+    const fetchMock = vi.fn().mockResolvedValue(res(200, {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    await mkt.getSharedRaceAnalysis('opaque/token', controller.signal);
+    await mkt.getSharedRaceAnalysisIncident('opaque/token', 3, controller.signal);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://platform.test/shared/race-analyses/opaque%2Ftoken');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://platform.test/shared/race-analyses/opaque%2Ftoken/incidents/3');
+    for (const [, init] of fetchMock.mock.calls) expect(init).toMatchObject({ cache: 'no-store', headers: {}, credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal });
+  });
+
+  it('sends explicit setup consent, revokes through DELETE and blocks View As mutations', async () => {
+    vi.stubGlobal('window', fakeWindow('owner'));
+    const fetchMock = vi.fn().mockResolvedValue(res(200, { token: 'share', includeSetup: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.setRaceAnalysisShare('race/a', false);
+    await mkt.deleteRaceAnalysisShare('race/a');
+    expect(fetchMock.mock.calls[0]).toEqual(['https://platform.test/me/race-analyses/race%2Fa/share', expect.objectContaining({ method: 'POST', body: '{"includeSetup":false}', cache: 'no-store', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' } })]);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE', cache: 'no-store' });
+    vi.stubGlobal('window', fakeWindow('owner', 'child'));
+    await expect(mkt.setRaceAnalysisShare('race/a', true)).rejects.toMatchObject({ reason: 'view-as-read-only' });
+    await expect(mkt.deleteRaceAnalysisShare('race/a')).rejects.toMatchObject({ reason: 'view-as-read-only' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves cancellation for public share reads', async () => {
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
+    await expect(mkt.getSharedRaceAnalysis('token')).rejects.toBe(abort);
+  });
   it('keeps the backend-owned v2 golden fixture aligned on tuple, nullable team, freshness and completeness facts', () => {
     const fixture = JSON.parse(raceAnalysisV2Fixture) as {
       schemaVersion: number;

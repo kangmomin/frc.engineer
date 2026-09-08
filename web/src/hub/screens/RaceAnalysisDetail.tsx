@@ -1,4 +1,8 @@
+import { useId, useState } from 'react';
+import type { ReactNode } from 'react';
 import { msToTime } from '../format';
+import type { PlatformMySetupParams } from '../data/platform';
+import { SETUP_FIELDS } from '../data/setupFields';
 import type { HubTheme } from '../theme';
 import type {
   RaceAnalysisDetail as RaceAnalysisDetailValue,
@@ -13,21 +17,50 @@ interface Props {
   detail: RaceAnalysisDetailValue;
   selectedIncidentIndex: number | null;
   onSelectIncident: (index: number) => void;
+  incidentPanel?: ReactNode;
+  actions?: ReactNode;
+  setup?: PlatformMySetupParams;
 }
 
-export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectIncident }: Props) {
+const TABS = [
+  { id: 'laps', label: '랩 / 섹터' }, { id: 'tyres', label: '스틴트 / 타이어' },
+  { id: 'dynamics', label: '주행 분석' }, { id: 'events', label: '페널티 / 이벤트' },
+  { id: 'pit', label: '피트' }, { id: 'incidents', label: '사고 리플레이' },
+];
+
+export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectIncident, incidentPanel, actions, setup }: Props) {
+  const [activeTab, setActiveTab] = useState('laps');
+  const prefix = useId();
+  const tabs = setup ? [...TABS, { id: 'setup', label: '셋업' }] : TABS;
+  const incidentCount = ['unknown', 'unavailable'].includes(detail.sectionCompleteness.incidents.status) ? '—' : detail.incidents.length;
+  const panelProps = (id: string) => ({ id: `${prefix}-panel-${id}`, labelledBy: `${prefix}-tab-${id}`, hidden: activeTab !== id });
   return (
     <article className={styles.detail} aria-labelledby="race-analysis-detail-title" style={{ color: t.t1 }}>
       <div className={styles.detailHeader}>
         <div>
           <h2 id="race-analysis-detail-title">{detail.track.name} · {detail.sessionType}</h2>
-          <p className={styles.meta}>{detail.gameFormat} · {detail.completedLaps === null ? 'laps unknown' : `${detail.completedLaps} laps`} · {detail.bestLapMs === null ? 'best lap —' : `best ${msToTime(detail.bestLapMs)}`}</p>
+          <p className={styles.meta}>{detail.gameFormat} · {new Date(detail.recordedAt ?? detail.uploadedAt).toLocaleString('ko-KR')}{detail.recordedAt === null ? ' 업로드' : ''}</p>
         </div>
-        <span className={styles.badge}>schema {detail.schemaVersion ?? 'legacy'}</span>
+        {actions}
       </div>
-
-      <div className={styles.sectionGrid}>
-        <AnalysisSection title="Lap / sector" notices={[
+      <dl className={styles.summaryMetrics}>
+        <div><dt>FINISH POSITION</dt><dd>{detail.finishPosition === null ? '—' : `P${detail.finishPosition}`}</dd></div>
+        <div><dt>COMPLETED LAPS</dt><dd>{detail.completedLaps ?? '—'}</dd></div>
+        <div><dt>BEST LAP</dt><dd>{detail.bestLapMs === null ? '—' : msToTime(detail.bestLapMs)}</dd></div>
+        <div><dt>INCIDENTS</dt><dd>{incidentCount}</dd></div>
+      </dl>
+      <div className={styles.tabs} role="tablist" aria-label="레이스 분석 데이터" onKeyDown={(event) => {
+        const index = tabs.findIndex((tab) => tab.id === activeTab);
+        const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+        if (next === null) return;
+        event.preventDefault();
+        setActiveTab(tabs[next].id);
+        document.getElementById(`${prefix}-tab-${tabs[next].id}`)?.focus();
+      }}>
+        {tabs.map((tab) => <button key={tab.id} type="button" role="tab" id={`${prefix}-tab-${tab.id}`} aria-controls={`${prefix}-panel-${tab.id}`} aria-selected={activeTab === tab.id} tabIndex={activeTab === tab.id ? 0 : -1} onClick={() => setActiveTab(tab.id)}>{tab.label}{tab.id === 'incidents' && <span>{incidentCount}</span>}</button>)}
+      </div>
+      <div className={styles.tabContent}>
+        <AnalysisSection title="Lap / sector" {...panelProps('laps')} notices={[
           { label: 'Laps', completeness: detail.sectionCompleteness.laps, dataCount: detail.laps.length },
           { label: 'Sectors', completeness: detail.sectionCompleteness.sectors, dataCount: detail.laps.filter((lap) => lap.s1Ms !== null && lap.s2Ms !== null && lap.s3Ms !== null).length },
         ]}>
@@ -43,7 +76,7 @@ export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectI
           )}
         </AnalysisSection>
 
-        <AnalysisSection title="Stints / tyres" notices={[
+        <AnalysisSection title="Stints / tyres" {...panelProps('tyres')} notices={[
           { label: 'Stints', completeness: detail.sectionCompleteness.stints, dataCount: detail.stints.length },
           { label: 'Tyres', completeness: detail.sectionCompleteness.tyres, dataCount: detail.tyres ? 1 : 0 },
         ]}>
@@ -64,7 +97,7 @@ export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectI
           ]} />}
         </AnalysisSection>
 
-        <AnalysisSection title="Dynamics" notices={[
+        <AnalysisSection title="Dynamics" {...panelProps('dynamics')} notices={[
           { label: 'Dynamics', completeness: detail.sectionCompleteness.dynamics, dataCount: detail.dynamics.length },
         ]}>
           {detail.dynamics.length === 0 ? <Empty>다이내믹스 데이터가 없습니다.</Empty> : (
@@ -72,19 +105,19 @@ export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectI
               <table className={styles.table}>
                 <thead><tr><th>Lap</th><th>Understeer</th><th>Oversteer</th><th title="Brake >90% above 80 km/h; wheel lockup unconfirmed">Heavy braking (lockup unconfirmed)</th><th>Spins</th></tr></thead>
                 <tbody>{detail.dynamics.map((row) => <tr key={row.lapNumber}>
-                  <td>{row.lapNumber}</td><td>{row.understeerPct}%</td><td>{row.oversteerPct}%</td><td>{row.lockupCount}</td><td>{row.spinCount}</td>
+                  <td>{row.lapNumber}</td><td>{percentOrDash(row.understeerPct)}</td><td>{percentOrDash(row.oversteerPct)}</td><td>{row.lockupCount}</td><td>{row.spinCount}</td>
                 </tr>)}</tbody>
               </table>
             </div>
           )}
         </AnalysisSection>
 
-        <AnalysisSection title="Penalties / events" notices={[
+        <AnalysisSection title="Penalties / events" {...panelProps('events')} notices={[
           { label: 'Penalties', completeness: detail.sectionCompleteness.penalties, dataCount: detail.penalties ? 1 : 0 },
           { label: 'Events', completeness: detail.sectionCompleteness.events, dataCount: detail.events.length },
         ]}>
           {detail.penalties ? <KeyValues values={[
-            ['Time penalty', `${detail.penalties.timePenaltySeconds}s`], ['Warnings', String(detail.penalties.warnings)],
+            ['Time penalty', `${detail.penalties.timePenaltySeconds.toFixed(3)}s`], ['Warnings', String(detail.penalties.warnings)],
             ['Corner-cut warnings', String(detail.penalties.cornerCutWarnings)], ['Unserved drive-through', String(detail.penalties.unservedDriveThrough)],
             ['Unserved stop-go', String(detail.penalties.unservedStopGo)],
           ]} /> : <Empty>페널티 요약이 없습니다.</Empty>}
@@ -100,7 +133,7 @@ export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectI
           )}
         </AnalysisSection>
 
-        <AnalysisSection title="Measured pit time" notices={[
+        <AnalysisSection title="Measured pit time" {...panelProps('pit')} notices={[
           { label: 'Pit', completeness: detail.sectionCompleteness.pit, dataCount: detail.pitMeasurement ? 1 : 0 },
         ]}>
           {detail.pitMeasurement ? <KeyValues values={[
@@ -110,7 +143,7 @@ export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectI
           ]} /> : <Empty>측정된 피트 시간은 없습니다. 순 레이스 손실을 추정하지 않습니다.</Empty>}
         </AnalysisSection>
 
-        <AnalysisSection title="Incidents" wide notices={[
+        <AnalysisSection title="Incidents" {...panelProps('incidents')} notices={[
           { label: 'Incidents', completeness: detail.sectionCompleteness.incidents, dataCount: detail.incidents.length },
           { label: 'Track outline', completeness: detail.sectionCompleteness.trackOutline, dataCount: detail.trackOutline?.points.length ?? 0 },
         ]}>
@@ -127,20 +160,26 @@ export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectI
               })}
             </ul>
           )}
+          {activeTab === 'incidents' && incidentPanel}
         </AnalysisSection>
+        {setup && <AnalysisSection title="Shared setup" {...panelProps('setup')} notices={[]}>
+          <KeyValues values={SETUP_FIELDS.map((field) => [field.label, `${Number.isInteger(setup[field.key]) ? setup[field.key] : setup[field.key].toFixed(3)}${field.unit ? ` ${field.unit}` : ''}`])} />
+        </AnalysisSection>}
       </div>
     </article>
   );
 }
 
-function AnalysisSection({ title, notices, wide = false, children }: {
+function AnalysisSection({ title, notices, id, labelledBy, hidden, children }: {
   title: string;
   notices: Array<{ label: string; completeness: SectionCompleteness; dataCount: number }>;
-  wide?: boolean;
+  id: string;
+  labelledBy: string;
+  hidden: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${styles.section} ${wide ? styles.sectionWide : ''}`}>
+    <section className={styles.section} role="tabpanel" id={id} aria-labelledby={labelledBy} hidden={hidden} tabIndex={0}>
       <div className={styles.sectionHeader}><h3>{title}</h3></div>
       {notices.map(({ label, completeness, dataCount }) => <CompletenessNotice key={label} section={label} completeness={completeness} dataCount={dataCount} />)}
       {children}
@@ -197,7 +236,7 @@ function numberOrDash(value: number | null): string {
 }
 
 function percentOrDash(value: number | null): string {
-  return value === null ? '—' : `${value.toFixed(1)}%`;
+  return value === null ? '—' : `${value.toFixed(3)}%`;
 }
 
 function relativeIncidentTime(sessionTimeMs: number): string {

@@ -2,10 +2,22 @@ import { describe, expect, it } from 'vitest';
 import type { RaceAnalysisListResponse, SectionCompleteness } from '../data/raceAnalysisTypes';
 import {
   appendAnalysisPage,
+  analysisFilterQuery,
+  EMPTY_ANALYSIS_FILTERS,
   incidentFailureTransition,
   isCurrentRaceAnalysisGeneration,
   sectionPresentation,
 } from './raceAnalysisState';
+
+describe('analysis date filters', () => {
+  it('uses local midnight and an exclusive next day to include the entire last day', () => {
+    const query = analysisFilterQuery({ ...EMPTY_ANALYSIS_FILTERS, search: '  Monza  ', dateFrom: '2026-09-04', dateTo: '2026-09-04' });
+    expect(query.search).toBe('Monza');
+    expect(query.from).toBe(new Date(2026, 8, 4).toISOString());
+    expect(query.before).toBe(new Date(2026, 8, 5).toISOString());
+    expect(analysisFilterQuery(EMPTY_ANALYSIS_FILTERS)).toMatchObject({ from: undefined, before: undefined });
+  });
+});
 
 const complete: SectionCompleteness = { status: 'complete', reasons: [], capturedCount: 0, storedCount: 0 };
 const partial: SectionCompleteness = { status: 'partial', reasons: ['late-capture'], capturedCount: 10, storedCount: 5 };

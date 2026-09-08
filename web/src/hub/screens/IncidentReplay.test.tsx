@@ -41,7 +41,9 @@ describe('IncidentReplay', () => {
 
   it('keeps v2 zero values visible but suppresses all legacy speed/input values', () => {
     const v2Html = renderToStaticMarkup(<IncidentReplay t={t} replay={replay} trackOutline={null} />);
-    expect(v2Html).toContain('0 km/h');
+    expect(v2Html).toContain('>0.000 km/h<');
+    expect(v2Html).toContain('>100.000%<');
+    expect(v2Html).toContain('>-0.500<');
     const legacy = { ...replay, schemaVersion: 1, frames: [{ ...replay.frames[0], telemetryUnavailable: null }] };
     const legacyHtml = renderToStaticMarkup(<IncidentReplay t={t} replay={legacy} trackOutline={null} />);
     expect(legacyHtml).toContain('legacy freshness unknown');

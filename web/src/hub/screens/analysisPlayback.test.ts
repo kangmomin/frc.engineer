@@ -15,6 +15,8 @@ import {
   sortedReplayFrames,
   teamIdentity,
   telemetryFreshness,
+  INITIAL_REPLAY_CAMERA,
+  zoomReplayCamera,
 } from './analysisPlayback';
 
 function replay(overrides: Partial<IncidentReplay> = {}): IncidentReplay {
@@ -108,6 +110,9 @@ describe('analysis replay projection helpers', () => {
 });
 
 describe('measured timestamp playback reducer', () => {
+  it('cannot play a clip whose frames all have the same timestamp', () => {
+    expect(reducePlayback(createPlaybackState([100, 100]), { type: 'play' }).playing).toBe(false);
+  });
   it('toggles and pauses without advancing the measured playhead', () => {
     let state = createPlaybackState([100, 200], 1);
     state = reducePlayback(state, { type: 'toggle' });
@@ -149,5 +154,27 @@ describe('measured timestamp playback reducer', () => {
     expect(playbackActionForKey('Escape')).toBeNull();
     expect(playbackActionForFocusedRegion('ArrowRight', false)).toBeNull();
     expect(playbackActionForFocusedRegion('ArrowRight', true)).toEqual({ type: 'next-frame' });
+  });
+});
+
+describe('replay camera', () => {
+  it('keeps the cursor world point fixed and clamps extreme zoom factors', () => {
+    const anchor = { x: 125, y: 80 };
+    const camera = zoomReplayCamera(INITIAL_REPLAY_CAMERA, 2, anchor);
+    expect(camera).toEqual({ zoom: 2, x: -125, y: -80 });
+    expect(anchor.x * camera.zoom + camera.x).toBe(anchor.x);
+    expect(anchor.y * camera.zoom + camera.y).toBe(anchor.y);
+    expect(zoomReplayCamera(camera, 1e6, anchor).zoom).toBe(16);
+    expect(zoomReplayCamera(camera, 1e-6, anchor).zoom).toBe(0.5);
+    expect(zoomReplayCamera(camera, 0.5, anchor)).toEqual(INITIAL_REPLAY_CAMERA);
+  });
+
+  it('fits incident positions independently of a distant full-track outline', () => {
+    const outline = { points: [[-10_000, -10_000], [10_000, 10_000]] as Array<[number, number]>, bounds: { minX: -10_000, maxX: 10_000, minZ: -10_000, maxZ: 10_000 } };
+    const full = makeReplayMap(replay(), outline, 'track');
+    const focused = makeReplayMap(replay(), outline, 'incident');
+    expect(focused.kind).toBe('outline');
+    expect(focused.bounds.maxX - focused.bounds.minX).toBeLessThan(100);
+    expect(full.bounds.maxX - full.bounds.minX).toBeGreaterThan(20_000);
   });
 });

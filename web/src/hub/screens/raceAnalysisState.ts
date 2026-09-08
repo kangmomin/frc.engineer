@@ -1,3 +1,4 @@
+import type { RaceAnalysisListOptions } from '../data/platform';
 import type { RaceAnalysisListResponse, SectionCompleteness } from '../data/raceAnalysisTypes';
 
 export type RaceAnalysisFailureReason = 'unauthorized' | 'forbidden' | 'not-found' | 'bad-input' | 'network';
@@ -64,4 +65,26 @@ export function completenessReasonText(reasons: readonly string[]): string {
     'pit-measurement-unavailable': 'measured pit time is unavailable',
   };
   return reasons.map((reason) => labels[reason] ?? reason).join('; ');
+}
+
+export interface AnalysisFilterValues {
+  search: string;
+  gameFormat: string;
+  sessionType: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+export const EMPTY_ANALYSIS_FILTERS: AnalysisFilterValues = { search: '', gameFormat: '', sessionType: '', dateFrom: '', dateTo: '' };
+
+export function analysisFilterQuery(values: AnalysisFilterValues): RaceAnalysisListOptions {
+  // Date inputs use the viewer's local day. The API receives explicit instants
+  // with an exclusive next-day end, including the entire selected last day.
+  const from = values.dateFrom ? new Date(`${values.dateFrom}T00:00:00`) : null;
+  const before = values.dateTo ? new Date(`${values.dateTo}T00:00:00`) : null;
+  if (before) before.setDate(before.getDate() + 1);
+  return {
+    search: values.search.trim(), gameFormat: values.gameFormat, sessionType: values.sessionType.trim(),
+    from: from?.toISOString(), before: before?.toISOString(),
+  };
 }

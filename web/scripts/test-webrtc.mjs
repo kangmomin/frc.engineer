@@ -74,7 +74,8 @@ async function runBrowser() {
   });
   await call('Page.navigate', { url: `${server.resolvedUrls.local[0]}__webrtc-test` });
   await loaded;
-  for (const suite of ['/src/hooks/useWebRTCDataChannel.browser.tsx', '/src/components/archiveRemote.browser.tsx', '/src/intercom/runtime.browser.ts', '/src/views/qualifying/qualifying.browser.tsx']) {
+  const suites = process.argv.slice(2);
+  for (const suite of suites.length ? suites : ['/src/hooks/useWebRTCDataChannel.browser.tsx', '/src/components/archiveRemote.browser.tsx', '/src/intercom/runtime.browser.ts', '/src/views/qualifying/qualifying.browser.tsx']) {
     const result = await call('Runtime.evaluate', {
       expression: `import(${JSON.stringify(suite)}).then(m => m.run())`,
       awaitPromise: true, returnByValue: true,

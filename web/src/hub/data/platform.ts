@@ -10,7 +10,7 @@
 import { getPlatformUrl, isPlatformConfigured } from './platformBase';
 import { getActiveSessionToken, getViewAsToken, notifySessionUnauthorized } from './session';
 import type { LeaderboardPage, LeaderboardQuery } from './types';
-import type { IncidentReplay, RaceAnalysisDetail, RaceAnalysisListResponse } from './raceAnalysisTypes';
+import type { IncidentReplay, RaceAnalysisDetail, RaceAnalysisListResponse, RaceAnalysisShare, SharedRaceAnalysis } from './raceAnalysisTypes';
 
 export type ListingKind = 'setup' | 'strategy';
 
@@ -358,6 +358,11 @@ export interface RaceAnalysisListOptions {
   limit?: number;
   offset?: number;
   signal?: AbortSignal;
+  search?: string;
+  gameFormat?: string;
+  sessionType?: string;
+  from?: string;
+  before?: string;
 }
 
 async function pfetch(path: string, init?: RequestInit): Promise<Response> {
@@ -412,7 +417,8 @@ async function pfetchAnonymous(path: string, init?: RequestInit): Promise<Respon
   if (!isPlatformConfigured()) throw new ListingError('network', '플랫폼이 구성되지 않았습니다');
   try {
     return await fetch(getPlatformUrl(path), { ...init, headers: { ...(init?.headers ?? {}) } });
-  } catch {
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError') throw error;
     throw new ListingError('network', '네트워크 오류');
   }
 }
@@ -542,8 +548,12 @@ export class PlatformMarket {
       : optionsOrLimit;
     const limit = options.limit ?? 50;
     const offset = options.offset ?? 0;
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    for (const key of ['search', 'gameFormat', 'sessionType', 'from', 'before'] as const) {
+      if (options[key]) query.set(key, options[key]);
+    }
     return ownerRaceAnalysisJson<RaceAnalysisListResponse>(
-      `/me/race-analyses?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+      `/me/race-analyses?${query}`,
       options.signal,
     );
   }
@@ -557,6 +567,35 @@ export class PlatformMarket {
       `/me/race-analyses/${encodeURIComponent(raceId)}/incidents/${encodeURIComponent(String(index))}`,
       signal,
     );
+  }
+
+  async getRaceAnalysisShare(raceId: string, signal?: AbortSignal): Promise<RaceAnalysisShare | null> {
+    return ownerRaceAnalysisJson(`/me/race-analyses/${encodeURIComponent(raceId)}/share`, signal);
+  }
+
+  async setRaceAnalysisShare(raceId: string, includeSetup: boolean): Promise<RaceAnalysisShare> {
+    const response = await pfetch(`/me/race-analyses/${encodeURIComponent(raceId)}/share`, {
+      method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ includeSetup }),
+    });
+    if (!response.ok) throw raceAnalysisErrorForStatus(response.status, '공유 설정');
+    return response.json() as Promise<RaceAnalysisShare>;
+  }
+
+  async deleteRaceAnalysisShare(raceId: string): Promise<void> {
+    const response = await pfetch(`/me/race-analyses/${encodeURIComponent(raceId)}/share`, { method: 'DELETE', cache: 'no-store' });
+    if (!response.ok) throw raceAnalysisErrorForStatus(response.status, '공유 중단');
+  }
+
+  async getSharedRaceAnalysis(token: string, signal?: AbortSignal): Promise<SharedRaceAnalysis> {
+    const response = await pfetchAnonymous(`/shared/race-analyses/${encodeURIComponent(token)}`, { signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (!response.ok) throw raceAnalysisErrorForStatus(response.status, '공유 레이스');
+    return response.json() as Promise<SharedRaceAnalysis>;
+  }
+
+  async getSharedRaceAnalysisIncident(token: string, index: number, signal?: AbortSignal): Promise<IncidentReplay> {
+    const response = await pfetchAnonymous(`/shared/race-analyses/${encodeURIComponent(token)}/incidents/${index}`, { signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (!response.ok) throw raceAnalysisErrorForStatus(response.status, '공유 사고');
+    return response.json() as Promise<IncidentReplay>;
   }
 
   // --- My Setups (owner-only history) ---

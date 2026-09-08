@@ -154,7 +154,7 @@ export function localGridLinePositions(width: number, height: number, padding: n
   return { vertical: positionsFor(width), horizontal: positionsFor(height) };
 }
 
-export function makeReplayMap(incident: IncidentReplay, outline: RaceAnalysisTrackOutline | null): ReplayMap {
+export function makeReplayMap(incident: IncidentReplay, outline: RaceAnalysisTrackOutline | null, focus: 'track' | 'incident' = 'track'): ReplayMap {
   const positions: Array<[number, number]> = [];
   for (const frame of incident.frames) {
     for (const tuple of frame.cars) {
@@ -163,7 +163,7 @@ export function makeReplayMap(incident: IncidentReplay, outline: RaceAnalysisTra
     }
   }
   if (outline?.points.length) {
-    return { kind: 'outline', label: 'Recorded track centreline', bounds: boundsForPoints([...outline.points, ...positions]) };
+    return { kind: 'outline', label: 'Recorded track centreline', bounds: boundsForPoints(focus === 'incident' && positions.length ? positions : [...outline.points, ...positions]) };
   }
   return { kind: 'local-grid', label: 'Incident-local metre grid', bounds: boundsForPoints(positions) };
 }
@@ -205,7 +205,7 @@ function clampPlayhead(timestamps: readonly number[], value: number): number {
 }
 
 function resume(state: PlaybackState): PlaybackState {
-  if (state.timestamps.length < 2) return { ...state, playing: false };
+  if (state.timestamps.length < 2 || state.timestamps[0] === state.timestamps[state.timestamps.length - 1]) return { ...state, playing: false };
   const atEnd = state.playheadMs >= state.timestamps[state.timestamps.length - 1];
   return { ...state, playheadMs: atEnd ? state.timestamps[0] : state.playheadMs, playing: true };
 }
@@ -273,4 +273,14 @@ export function playbackActionForKey(key: string): PlaybackAction | null {
 // focused, keeping Space/arrows from affecting another UI element.
 export function playbackActionForFocusedRegion(key: string, regionFocused: boolean): PlaybackAction | null {
   return regionFocused ? playbackActionForKey(key) : null;
+}
+
+export interface ReplayCamera { zoom: number; x: number; y: number }
+export const INITIAL_REPLAY_CAMERA: ReplayCamera = { zoom: 1, x: 0, y: 0 };
+
+// Zoom around the cursor (or viewport centre), keeping its world point fixed.
+export function zoomReplayCamera(camera: ReplayCamera, factor: number, anchor: ScreenVector): ReplayCamera {
+  const zoom = Math.max(0.5, Math.min(16, camera.zoom * factor));
+  const ratio = zoom / camera.zoom;
+  return { zoom, x: anchor.x - (anchor.x - camera.x) * ratio, y: anchor.y - (anchor.y - camera.y) * ratio };
 }

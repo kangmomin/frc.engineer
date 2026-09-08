@@ -1,10 +1,11 @@
-import { lazy, useState } from 'react';
+import { lazy, useEffect, useState } from 'react';
 import { ScreenBoundary } from './components/ScreenBoundary';
 import './styles/theme.css';
 import { getViewAsToken } from './hub/data/session';
 
 const HubApp = lazy(() => import('./hub/HubApp').then(module => ({ default: module.HubApp })));
 const AppShell = lazy(() => import('./shell/AppShell').then(module => ({ default: module.AppShell })));
+const SharedRaceAnalysis = lazy(() => import('./hub/screens/SharedRaceAnalysis').then(module => ({ default: module.SharedRaceAnalysis })));
 
 type Surface = 'hub' | 'telemetry';
 
@@ -24,6 +25,15 @@ function initialSurface(): Surface {
 
 function App() {
   const [surface, setSurface] = useState<Surface>(initialSurface);
+  const [shareToken, setShareToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('raceShare'));
+
+  useEffect(() => {
+    const update = () => setShareToken(new URLSearchParams(window.location.hash.slice(1)).get('raceShare'));
+    window.addEventListener('hashchange', update);
+    return () => window.removeEventListener('hashchange', update);
+  }, []);
+
+  if (shareToken !== null) return <ScreenBoundary resetKey={shareToken}><SharedRaceAnalysis key={shareToken} token={shareToken} /></ScreenBoundary>;
 
   return (
     <ScreenBoundary resetKey={surface} onBack={surface === 'telemetry' ? () => setSurface('hub') : undefined}>
