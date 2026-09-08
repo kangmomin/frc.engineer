@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { HubApp } from './hub/HubApp';
-import { AppShell } from './shell/AppShell';
+import { lazy, useState } from 'react';
+import { ScreenBoundary } from './components/ScreenBoundary';
 import './styles/theme.css';
 import { getViewAsToken } from './hub/data/session';
+
+const HubApp = lazy(() => import('./hub/HubApp').then(module => ({ default: module.HubApp })));
+const AppShell = lazy(() => import('./shell/AppShell').then(module => ({ default: module.AppShell })));
 
 type Surface = 'hub' | 'telemetry';
 
@@ -23,10 +25,13 @@ function initialSurface(): Surface {
 function App() {
   const [surface, setSurface] = useState<Surface>(initialSurface);
 
-  if (surface === 'telemetry') {
-    return <AppShell onExitToHub={() => setSurface('hub')} />;
-  }
-  return <HubApp onLaunchLive={() => setSurface('telemetry')} />;
+  return (
+    <ScreenBoundary resetKey={surface} onBack={surface === 'telemetry' ? () => setSurface('hub') : undefined}>
+      {surface === 'telemetry'
+        ? <AppShell onExitToHub={() => setSurface('hub')} />
+        : <HubApp onLaunchLive={() => setSurface('telemetry')} />}
+    </ScreenBoundary>
+  );
 }
 
 export default App;

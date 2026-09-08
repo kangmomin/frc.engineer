@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ScreenBoundary } from '../components/ScreenBoundary';
 import { isIntercomTransportReady, type IntercomSignalingAdapter } from '../intercom/core';
 import { PostRaceDebrief } from '../components/debrief/PostRaceDebrief';
 import { RaceArchiveDrawer } from '../components/races/RaceArchiveDrawer';
 import type { RaceArchiveDataSource } from '../components/races/replayArchive';
 import { RemoteConnect } from '../components/remote/RemoteConnect';
 import { IntercomDock } from '../components/intercom/IntercomDock';
-import { F1SetupManager } from '../components/setup/F1SetupManager';
 import { useMockTelemetry } from '../hooks/useMockTelemetry';
 import { useWebRTCDataChannel } from '../hooks/useWebRTCDataChannel';
 import { isMockMode, mockScenario } from '../runtimeFlags';
@@ -20,14 +20,16 @@ import type {
   ReplayStreamMeta,
 } from '../types/telemetry';
 import { getConnectionDetail, isConnectionFailure } from '../utils/connectionStatus';
-import { BroadcastView } from '../views/broadcast/BroadcastView';
-import { PitWallView } from '../views/pitwall/PitWallView';
 import type { RequestFn } from '../views/pitwall/useStrategyGuide';
-import { QualifyingView } from '../views/qualifying/QualifyingView';
 import '../styles/theme.css';
 import { Stage } from './Stage';
 import type { ShellControls } from './types';
 import { persistView, readInitialView, viewToSenderView, type ViewId } from './viewNav';
+
+const F1SetupManager = lazy(() => import('../components/setup/F1SetupManager').then(module => ({ default: module.F1SetupManager })));
+const BroadcastView = lazy(() => import('../views/broadcast/BroadcastView').then(module => ({ default: module.BroadcastView })));
+const PitWallView = lazy(() => import('../views/pitwall/PitWallView').then(module => ({ default: module.PitWallView })));
+const QualifyingView = lazy(() => import('../views/qualifying/QualifyingView').then(module => ({ default: module.QualifyingView })));
 
 const RACE_ARCHIVE_LIST_TIMEOUT_MS = 60_000;
 const RACE_SUMMARY_TIMEOUT_MS = 60_000;
@@ -253,7 +255,9 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
   if (setupOpen) {
     return (
       <AppShellWithIntercom transport={intercom}>
-        <F1SetupManager onBack={() => setSetupOpen(false)} />
+        <ScreenBoundary resetKey="setup" onBack={() => setSetupOpen(false)}>
+          <F1SetupManager onBack={() => setSetupOpen(false)} />
+        </ScreenBoundary>
       </AppShellWithIntercom>
     );
   }
@@ -307,7 +311,11 @@ export function AppShell({ onExitToHub }: AppShellProps = {}) {
   return (
     <AppShellWithIntercom transport={intercom}>
       <>
-        <Stage>{renderView(controls, request)}</Stage>
+        <Stage>
+          <ScreenBoundary resetKey={view} onBack={goToMainScreen}>
+            {renderView(controls, request)}
+          </ScreenBoundary>
+        </Stage>
         {archiveOpen ? (
           <RaceArchiveDrawer onClose={() => setArchiveOpen(false)} dataSource={raceArchiveDataSource} />
         ) : null}

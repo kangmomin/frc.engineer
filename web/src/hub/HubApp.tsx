@@ -2,7 +2,8 @@
 // threads the shared track context into the leaderboard and marketplace. Data
 // is real: own telemetry (OwnHubDataSource), platform leaderboards, wallet, and
 // the hosted marketplace. Screens render explicit empty states, not demo data.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ScreenBoundary } from '../components/ScreenBoundary';
 import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
 import { relativeTime } from './format';
@@ -32,19 +33,18 @@ import type { PlatformAccount } from './data/session';
 import { canDeleteAdminAnalysisReports, canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canViewFeedbackInbox } from './data/permissions';
 import { isCurrentSessionSnapshot, isParentStorageChange, parentRevalidationFailureAction, resolveBootstrapIdentity, sessionSubtreeKey, sessionUnauthorizedAction, viewAsEntryFailureAction } from './data/sessionState';
 
-import { Overview } from './screens/Overview';
-import { Rankings } from './screens/Rankings';
-import { MarketManage } from './screens/MarketManage';
-import { Profile } from './screens/Profile';
-import { Feedback } from './screens/Feedback';
-import { FeedbackInbox } from './screens/FeedbackInbox';
-import { Analysis } from './screens/Analysis';
-import { Access } from './screens/Access';
-import { DriverProfile } from './screens/DriverProfile';
-import { MySetups } from './screens/MySetups';
-
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
 
+const Overview = lazy(() => import('./screens/Overview').then(module => ({ default: module.Overview })));
+const Rankings = lazy(() => import('./screens/Rankings').then(module => ({ default: module.Rankings })));
+const MarketManage = lazy(() => import('./screens/MarketManage').then(module => ({ default: module.MarketManage })));
+const Profile = lazy(() => import('./screens/Profile').then(module => ({ default: module.Profile })));
+const Feedback = lazy(() => import('./screens/Feedback').then(module => ({ default: module.Feedback })));
+const FeedbackInbox = lazy(() => import('./screens/FeedbackInbox').then(module => ({ default: module.FeedbackInbox })));
+const Analysis = lazy(() => import('./screens/Analysis').then(module => ({ default: module.Analysis })));
+const Access = lazy(() => import('./screens/Access').then(module => ({ default: module.Access })));
+const DriverProfile = lazy(() => import('./screens/DriverProfile').then(module => ({ default: module.DriverProfile })));
+const MySetups = lazy(() => import('./screens/MySetups').then(module => ({ default: module.MySetups })));
 
 export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const t = useMemo(() => buildTheme('#e0a83d', 'light'), []);
@@ -422,6 +422,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
         <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} walletInitialized={realWallet?.initialized} search={platformSearch} onSearchSelect={selectSearchResult} />
         {viewAs && platformAccount && <ViewAsBanner t={t} subject={platformAccount} actorPersona={viewAs.actor.persona} expiresAt={viewAs.expiresAt} busy={sessionBusy} onExit={handleExitViewAs} />}
         <main key={sessionSubtreeKey(viewOnly ? 'view-as' : 'normal', platformAccount?.id ?? null, sessionEpoch)} style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
+          <ScreenBoundary resetKey={active} onBack={() => setActive('guide')}>
           {active === 'guide' && <Guide t={t} onLaunchLive={onLaunchLive} onGoOverview={() => setActive('overview')} viewOnly={viewOnly} />}
 
           {active === 'overview' && (viewOnly ? (
@@ -528,6 +529,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
               <Placeholder t={t} title="ACCESS" note="권한 관리는 rbac 권한이 있는 계정에서만 열립니다." />
             )
           )}
+          </ScreenBoundary>
         </main>
       </div>
     </div>
