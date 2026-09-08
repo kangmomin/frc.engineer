@@ -18,7 +18,7 @@
 .root [hidden] { display: none !important; }
 .root button:disabled { opacity: .45; cursor: default; }
 .root :is(button, input, select, summary, a, [tabindex]):focus-visible { outline: 2px solid var(--analysis-accent); outline-offset: 3px; }
-.sharedPage { min-height: 100vh; padding: clamp(16px, 4vw, 48px); background: #f4f5f7; }
+.sharedPage { height: 100vh; height: 100dvh; overflow-y: auto; padding: clamp(16px, 4vw, 48px); background: #f4f5f7; }
 .gate, .card, .detailSurface { border: 1px solid var(--analysis-line); border-radius: 16px; background: var(--analysis-panel); }
 .gate { padding: 24px; color: var(--analysis-sub); line-height: 1.65; }
 .gate h1, .gate h2 { margin: 0 0 6px; color: var(--analysis-text); font-size: 21px; }
