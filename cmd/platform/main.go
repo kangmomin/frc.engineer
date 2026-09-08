@@ -35,6 +35,11 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	automation, err := parseUpdateLogAutomationConfig(os.Getenv("PLATFORM_UPDATE_LOG_API_KEY_SHA256"), os.Getenv("PLATFORM_UPDATE_LOG_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		logger.Error("invalid automation configuration", "error", err)
+		os.Exit(1)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -104,7 +109,7 @@ func main() {
 	)
 	secureCookies := strings.HasPrefix(baseURL, "https://")
 
-	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies}
+	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies, updateLogAutomation: automation}
 
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
 
@@ -171,6 +176,7 @@ func main() {
 	mux.HandleFunc("GET /update-logs", srv.handleUpdateLogs)
 	mux.HandleFunc("POST /update-logs", srv.handleCreateUpdateLog)
 	mux.HandleFunc("POST /me/update-logs/seen", srv.handleUpdateLogsSeen)
+	mux.HandleFunc("POST /automation/update-logs", srv.handleAutomationUpdateLog)
 	mux.HandleFunc("POST /analysis", srv.handleCreateAnalysis)
 	mux.HandleFunc("GET /analysis", srv.handleListAnalyses)
 	mux.HandleFunc("GET /analysis/{id}", srv.handleGetAnalysis)
@@ -210,11 +216,12 @@ func main() {
 
 // server holds shared handler dependencies.
 type server struct {
-	store         *platformsvc.Store
-	steam         *platformsvc.SteamAuth
-	log           *slog.Logger
-	frontendURL   string
-	secureCookies bool
+	store               *platformsvc.Store
+	steam               *platformsvc.SteamAuth
+	log                 *slog.Logger
+	frontendURL         string
+	secureCookies       bool
+	updateLogAutomation *updateLogAutomationConfig
 	// These narrow seams keep owner-analysis auth/404 behavior testable without
 	// a disposable database. Production leaves these nil and uses store directly.
 	raceAnalysisReader  raceAnalysisReader

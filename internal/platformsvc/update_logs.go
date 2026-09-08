@@ -3,10 +3,14 @@ package platformsvc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const updateLogPageSize = 20
@@ -30,6 +34,26 @@ type CreateUpdateLogRequest struct {
 	Body  string `json:"body"`
 }
 
+type PublishUpdateLogRequest struct {
+	ReleaseKey string `json:"releaseKey"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+}
+
+type UpdateLogPublication struct {
+	Entry    *UpdateLog `json:"entry"`
+	Replayed bool       `json:"replayed"`
+}
+
+var updateLogReleaseKey = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$`)
+
+func (s *Store) PublishUpdateLog(ctx context.Context, req PublishUpdateLogRequest) (*UpdateLogPublication, error) {
+	if !updateLogReleaseKey.MatchString(req.ReleaseKey) {
+		return nil, ErrBadUpload
+	}
+	return s.createUpdateLog(ctx, CreateUpdateLogRequest{Title: req.Title, Body: req.Body}, req.ReleaseKey)
+}
+
 func (r *CreateUpdateLogRequest) validate() error {
 	r.Title, r.Body = strings.TrimSpace(r.Title), strings.TrimSpace(r.Body)
 	if r.Title == "" || len([]rune(r.Title)) > 120 || hasControlChar(r.Title) ||
@@ -42,6 +66,14 @@ func (r *CreateUpdateLogRequest) validate() error {
 // Publications are immutable. Serialize before allocating an identity so a
 // delayed commit cannot publish a lower ID behind an acknowledged higher ID.
 func (s *Store) CreateUpdateLog(ctx context.Context, req CreateUpdateLogRequest) (*UpdateLog, error) {
+	publication, err := s.createUpdateLog(ctx, req, "")
+	if err != nil {
+		return nil, err
+	}
+	return publication.Entry, nil
+}
+
+func (s *Store) createUpdateLog(ctx context.Context, req CreateUpdateLogRequest, releaseKey string) (*UpdateLogPublication, error) {
 	if err := req.validate(); err != nil {
 		return nil, err
 	}
@@ -55,15 +87,30 @@ func (s *Store) CreateUpdateLog(ctx context.Context, req CreateUpdateLogRequest)
 	}
 	entry := &UpdateLog{Title: req.Title, Body: req.Body}
 	var published time.Time
-	if err := tx.QueryRow(ctx, `INSERT INTO platform.update_logs (title, body)
-		VALUES ($1, $2) RETURNING id::text, published_at`, req.Title, req.Body).Scan(&entry.ID, &published); err != nil {
+	if releaseKey != "" {
+		err := tx.QueryRow(ctx, `SELECT id::text, title, body, published_at
+			FROM platform.update_logs WHERE release_key = $1`, releaseKey).
+			Scan(&entry.ID, &entry.Title, &entry.Body, &published)
+		if err == nil {
+			if entry.Title != req.Title || entry.Body != req.Body {
+				return nil, ErrConflict
+			}
+			entry.PublishedAt = published.UTC().Format(time.RFC3339Nano)
+			return &UpdateLogPublication{Entry: entry, Replayed: true}, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("platformsvc: find publication: %w", err)
+		}
+	}
+	if err := tx.QueryRow(ctx, `INSERT INTO platform.update_logs (title, body, release_key)
+		VALUES ($1, $2, NULLIF($3, '')) RETURNING id::text, published_at`, req.Title, req.Body, releaseKey).Scan(&entry.ID, &published); err != nil {
 		return nil, fmt.Errorf("platformsvc: publish update log: %w", err)
 	}
 	entry.PublishedAt = published.UTC().Format(time.RFC3339Nano)
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("platformsvc: publish commit: %w", err)
 	}
-	return entry, nil
+	return &UpdateLogPublication{Entry: entry}, nil
 }
 
 // One statement keeps the latest revision, seen state, and entries in the
