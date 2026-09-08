@@ -22,6 +22,7 @@ import (
 	"github.com/skip2/go-qrcode"
 
 	"frc.engineer/internal/analysis"
+	"frc.engineer/internal/analysishttp"
 	"frc.engineer/internal/banlist"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
@@ -1620,6 +1621,8 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(result)
 	})
+
+	mux.Handle("/api/sessions/{dir}/trace", analysishttp.TraceHandler(packetLogDir))
 
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

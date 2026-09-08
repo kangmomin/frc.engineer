@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"frc.engineer/internal/analysis"
+	"frc.engineer/internal/analysishttp"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/platform"
@@ -450,6 +451,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(trackStore.ListRecordedFiles())
 	})
+
+	mux.Handle("/api/sessions/{dir}/trace", analysishttp.TraceHandler(cfg.PacketLogDir))
 
 	// REST API: GET /api/sessions
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {

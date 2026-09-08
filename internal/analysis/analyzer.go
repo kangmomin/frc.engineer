@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -31,11 +32,12 @@ type LapSummary struct {
 	TireWear  [4]float64 `json:"tireWear"` // FL, FR, RL, RR
 
 	// Capture boundaries are internal: tyre age is not an absolute lap number.
-	endSessionTime  float32
-	endRecordedAt   time.Time
-	generationStart time.Time
-	generation      int
-	playerIndex     int
+	endSessionTime           float32
+	endRecordedAt            time.Time
+	generationStart          time.Time
+	generation               int
+	playerIndex              int
+	startOrdinal, endOrdinal int
 }
 
 // StintAnalysis summarises one stint.
@@ -103,20 +105,6 @@ type lapDatum struct {
 	BestOverallSector1TimeInMS uint32  `json:"BestOverallSector1TimeInMS"`
 	BestOverallSector2TimeInMS uint32  `json:"BestOverallSector2TimeInMS"`
 	BestOverallSector3TimeInMS uint32  `json:"BestOverallSector3TimeInMS"`
-}
-
-// telemetry.jsonl
-type telemetryPacket struct {
-	Header           packetHeader   `json:"Header"`
-	CarTelemetryData []carTelemetry `json:"CarTelemetryData"`
-}
-
-type carTelemetry struct {
-	Speed    uint16  `json:"Speed"`
-	Throttle float32 `json:"Throttle"`
-	Steer    float32 `json:"Steer"`
-	Brake    float32 `json:"Brake"`
-	Gear     int8    `json:"Gear"`
 }
 
 // car_status.jsonl
@@ -189,11 +177,6 @@ func Analyze(dir string) (*AnalysisResult, error) {
 	if err == nil {
 		result.Comparison = comparison
 		result.Speed = speed
-	} else {
-		speed, err = parseSpeedData(dir, laps)
-		if err == nil && speed != nil {
-			result.Speed = speed
-		}
 	}
 
 	return result, nil
@@ -203,74 +186,32 @@ func Analyze(dir string) (*AnalysisResult, error) {
 
 // parsedLapFrame holds one snapshot of a player's lap data
 type parsedLapFrame struct {
-	recordedAt       time.Time
-	currentLapTimeMs uint32
-	playerIndex      int
-	sessionTime      float32
-	lapNum           uint8
-	lapTimeMs        uint32
-	sector1Ms        uint32
-	sector2Ms        uint32
-	lapDist          float32
-	invalid          bool
-	sector           uint8
+	recordedAt        time.Time
+	identity          captureIdentity
+	distance, elapsed *float64
+	currentLapTimeMs  uint32
+	playerIndex       int
+	sessionTime       float32
+	lapNum            uint8
+	lapTimeMs         uint32
+	sector1Ms         uint32
+	sector2Ms         uint32
+	lapDist           float32
+	invalid           bool
+	sector            uint8
 }
 
 func parseLapData(dir string) ([]LapSummary, error) {
-	path := filepath.Join(dir, "lap_data.jsonl")
-	f, err := os.Open(path)
+	frames, err := readLapTimeline(context.Background(), dir, -1)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	return summarizeLapFrames(frames), nil
+}
 
-	var frames []parsedLapFrame
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-
-	for scanner.Scan() {
-		var env packetEnvelope
-		if err := json.Unmarshal(scanner.Bytes(), &env); err != nil {
-			continue
-		}
-		var pkt lapDataPacket
-		if err := json.Unmarshal(env.Data, &pkt); err != nil {
-			continue
-		}
-		idx := pkt.Header.PlayerCarIndex
-		if idx < 0 || idx >= len(pkt.LapData) {
-			continue
-		}
-		ld := pkt.LapData[idx]
-		recordedAt, _ := time.Parse(time.RFC3339Nano, env.TS)
-		s1 := uint32(ld.Sector1TimeMinutes)*60000 + uint32(ld.Sector1TimeInMS)
-		s2 := uint32(ld.Sector2TimeMinutes)*60000 + uint32(ld.Sector2TimeInMS)
-		if s1 == 0 {
-			s1 = uint32(ld.Sector1TimeMinPart)*60000 + uint32(ld.Sector1TimeMSPart)
-		}
-		if s2 == 0 {
-			s2 = uint32(ld.Sector2TimeMinPart)*60000 + uint32(ld.Sector2TimeMSPart)
-		}
-		frames = append(frames, parsedLapFrame{
-			recordedAt:       recordedAt,
-			currentLapTimeMs: ld.CurrentLapTimeInMS,
-			playerIndex:      idx,
-			sessionTime:      env.SessionTime,
-			lapNum:           ld.CurrentLapNum,
-			lapTimeMs:        ld.LastLapTimeInMS,
-			sector1Ms:        s1,
-			sector2Ms:        s2,
-			lapDist:          ld.LapDistance,
-			invalid:          ld.CurrentLapInvalid != 0,
-			sector:           ld.Sector,
-		})
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
+func summarizeLapFrames(frames []parsedLapFrame) []LapSummary {
 	if len(frames) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	var laps []LapSummary
@@ -288,16 +229,18 @@ func parseLapData(dir string) ([]LapSummary, error) {
 		}
 	}
 	observeSectors(previous)
-	for _, fr := range frames[1:] {
-		playerChanged := fr.playerIndex != previous.playerIndex
-		rewound := fr.sessionTime < previous.sessionTime || fr.lapNum < previous.lapNum ||
-			(fr.lapNum == previous.lapNum && fr.lapDist < previous.lapDist-50)
+	startOrdinal := 0
+	for i, fr := range frames[1:] {
+		ordinal := i + 1
+		playerChanged := fr.playerIndex != previous.playerIndex || !sameUID(fr.identity, previous.identity)
+		rewound := lapRewound(fr, previous)
 		if rewound || playerChanged {
 			// Discard abandoned completions and invalidate pre-flashback tyre
 			// observations. Same-lap rewinds also reset invalid/sector state.
 			for len(laps) > 0 && (playerChanged || laps[len(laps)-1].LapNum >= int(fr.lapNum)) {
 				laps = laps[:len(laps)-1]
 			}
+			startOrdinal = ordinal
 			generation++
 			generationStart = fr.recordedAt
 			s1, s2, invalid = 0, 0, fr.invalid
@@ -323,8 +266,10 @@ func parseLapData(dir string) ([]LapSummary, error) {
 					endSessionTime: fr.sessionTime - float32(fr.currentLapTimeMs)/1000,
 					endRecordedAt:  fr.recordedAt, generationStart: generationStart,
 					generation: generation, playerIndex: previous.playerIndex,
+					startOrdinal: startOrdinal, endOrdinal: ordinal,
 				})
 			}
+			startOrdinal = ordinal
 			s1, s2, invalid = 0, 0, fr.invalid
 		} else {
 			invalid = invalid || fr.invalid
@@ -333,7 +278,7 @@ func parseLapData(dir string) ([]LapSummary, error) {
 		previous = fr
 	}
 
-	return laps, nil
+	return laps
 }
 
 // ---- tire data ----
@@ -464,217 +409,4 @@ func calcWearRate(s *StintAnalysis) {
 	for i := 0; i < 4; i++ {
 		s.WearRate[i] = (s.WearEnd[i] - s.WearStart[i]) / float64(s.Laps)
 	}
-}
-
-// ---- speed analysis ----
-
-type speedFrame struct {
-	lapDist float32
-	speed   uint16
-	lapNum  uint8
-}
-
-func parseSpeedData(dir string, laps []LapSummary) (*SpeedAnalysis, error) {
-	// We need both lap_data (for lapDist+lapNum) and telemetry (for speed)
-	// They are separate packets at different frames. We correlate by frame.
-
-	type frameData struct {
-		lapDist float32
-		speed   uint16
-		lapNum  uint8
-	}
-
-	// Build frame→lapDist map from lap_data
-	lapFrames := make(map[uint32]parsedLapFrame)
-	{
-		path := filepath.Join(dir, "lap_data.jsonl")
-		f, err := os.Open(path)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-		for scanner.Scan() {
-			var env packetEnvelope
-			if err := json.Unmarshal(scanner.Bytes(), &env); err != nil {
-				continue
-			}
-			var pkt lapDataPacket
-			if err := json.Unmarshal(env.Data, &pkt); err != nil {
-				continue
-			}
-			idx := pkt.Header.PlayerCarIndex
-			if idx < 0 || idx >= len(pkt.LapData) {
-				continue
-			}
-			ld := pkt.LapData[idx]
-			lapFrames[env.Frame] = parsedLapFrame{
-				lapNum:  ld.CurrentLapNum,
-				lapDist: ld.LapDistance,
-			}
-		}
-	}
-
-	// Build frame→speed map from telemetry
-	telFrames := make(map[uint32]uint16)
-	{
-		path := filepath.Join(dir, "telemetry.jsonl")
-		f, err := os.Open(path)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-		for scanner.Scan() {
-			var env packetEnvelope
-			if err := json.Unmarshal(scanner.Bytes(), &env); err != nil {
-				continue
-			}
-			var pkt telemetryPacket
-			if err := json.Unmarshal(env.Data, &pkt); err != nil {
-				continue
-			}
-			idx := pkt.Header.PlayerCarIndex
-			if idx < 0 || idx >= len(pkt.CarTelemetryData) {
-				continue
-			}
-			telFrames[env.Frame] = pkt.CarTelemetryData[idx].Speed
-		}
-	}
-
-	// Merge by frame
-	var merged []speedFrame
-	for frame, lf := range lapFrames {
-		speed, ok := telFrames[frame]
-		if !ok {
-			continue
-		}
-		if lf.lapDist < 0 {
-			continue
-		}
-		merged = append(merged, speedFrame{
-			lapDist: lf.lapDist,
-			speed:   speed,
-			lapNum:  lf.lapNum,
-		})
-	}
-
-	if len(merged) == 0 {
-		return nil, nil
-	}
-
-	bestLapNum, _ := fastestLap(laps)
-
-	// Bucket by distance (50m bins)
-	const binSize = 50.0
-	// Find max distance
-	var maxDist float32
-	for _, sf := range merged {
-		if sf.lapDist > maxDist {
-			maxDist = sf.lapDist
-		}
-	}
-	numBins := int(maxDist/binSize) + 1
-	if numBins <= 0 || numBins > 200 {
-		// Cap at 200 bins (~10km track)
-		if numBins > 200 {
-			numBins = 200
-		} else {
-			return nil, nil
-		}
-	}
-
-	type binData struct {
-		totalSpeed float64
-		count      int
-	}
-
-	bestBins := make([]binData, numBins)
-	avgBins := make([]binData, numBins)
-
-	for _, sf := range merged {
-		bin := int(sf.lapDist / binSize)
-		if bin < 0 || bin >= numBins {
-			continue
-		}
-		spd := float64(sf.speed)
-		avgBins[bin].totalSpeed += spd
-		avgBins[bin].count++
-		if int(sf.lapNum) == bestLapNum {
-			bestBins[bin].totalSpeed += spd
-			bestBins[bin].count++
-		}
-	}
-
-	distances := make([]float64, numBins)
-	bestSpeed := make([]float64, numBins)
-	avgSpeed := make([]float64, numBins)
-
-	for i := 0; i < numBins; i++ {
-		distances[i] = float64(i)*binSize + binSize/2
-		if bestBins[i].count > 0 {
-			bestSpeed[i] = bestBins[i].totalSpeed / float64(bestBins[i].count)
-		}
-		if avgBins[i].count > 0 {
-			avgSpeed[i] = avgBins[i].totalSpeed / float64(avgBins[i].count)
-		}
-	}
-
-	// Identify slow zones: where avg speed < 80% of overall avg
-	overallAvg := 0.0
-	count := 0
-	for _, s := range avgSpeed {
-		if s > 0 {
-			overallAvg += s
-			count++
-		}
-	}
-	if count > 0 {
-		overallAvg /= float64(count)
-	}
-
-	threshold := overallAvg * 0.7
-	var slowZones []SlowZone
-	inSlow := false
-	var currentZone SlowZone
-
-	for i, s := range avgSpeed {
-		if s > 0 && s < threshold {
-			if !inSlow {
-				inSlow = true
-				currentZone = SlowZone{
-					DistanceStart: distances[i] - binSize/2,
-				}
-			}
-			currentZone.AvgSpeed += s
-			if bestSpeed[i] > currentZone.BestSpeed {
-				currentZone.BestSpeed = bestSpeed[i]
-			}
-		} else if inSlow {
-			currentZone.DistanceEnd = distances[i-1] + binSize/2
-			bins := int((currentZone.DistanceEnd - currentZone.DistanceStart) / binSize)
-			if bins > 0 {
-				currentZone.AvgSpeed /= float64(bins)
-			}
-			slowZones = append(slowZones, currentZone)
-			inSlow = false
-		}
-	}
-	if inSlow {
-		currentZone.DistanceEnd = distances[len(distances)-1] + binSize/2
-		bins := int((currentZone.DistanceEnd - currentZone.DistanceStart) / binSize)
-		if bins > 0 {
-			currentZone.AvgSpeed /= float64(bins)
-		}
-		slowZones = append(slowZones, currentZone)
-	}
-
-	return &SpeedAnalysis{
-		Distances: distances,
-		BestSpeed: bestSpeed,
-		AvgSpeed:  avgSpeed,
-		SlowZones: slowZones,
-	}, nil
 }

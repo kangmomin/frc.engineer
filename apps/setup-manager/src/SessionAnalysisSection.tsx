@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   buildConditionMismatch,
@@ -21,6 +21,7 @@ import {
   type SessionAnalysisResult,
 } from "./sessionAnalysis";
 import { fetchJsonWithSenderDebug } from "./senderDebug";
+import { AnalysisTraceExplorer } from "./AnalysisTraceExplorer";
 
 interface DriverPackTheme {
   bg: string;
@@ -42,10 +43,13 @@ interface SessionAnalysisSectionProps {
   analysisUrl: string;
 }
 
-export function SessionAnalysisSection({
-  theme,
-  analysisUrl,
-}: SessionAnalysisSectionProps) {
+export function SessionAnalysisSection(props: SessionAnalysisSectionProps) {
+  const [generation, setGeneration] = useState(0);
+  const url = normalizeAnalysisServerUrl(props.analysisUrl);
+  return <SessionAnalysisBody key={JSON.stringify([url, generation])} {...props} analysisUrl={url} generation={generation} onReload={() => setGeneration(n => n + 1)} />;
+}
+
+function SessionAnalysisBody({ theme, analysisUrl, generation, onReload }: SessionAnalysisSectionProps & { generation: number; onReload: () => void }) {
   const [sessions, setSessions] = useState<AnalysisSessionInfo[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -56,25 +60,23 @@ export function SessionAnalysisSection({
   const [comparisonDir, setComparisonDir] = useState<string | null>(null);
   const [baselineLapNum, setBaselineLapNum] = useState<number | null>(null);
   const [comparisonLapNum, setComparisonLapNum] = useState<number | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
-
+  const requests = useRef(new Map<string, AbortController>());
+  const alive = useRef(true);
   useEffect(() => {
-    setAnalysisCache({});
-    setAnalysisLoading({});
-    setAnalysisErrors({});
-    setBaselineLapNum(null);
-    setComparisonLapNum(null);
-  }, [analysisUrl]);
+    alive.current = true;
+    return () => { alive.current = false; for (const controller of requests.current.values()) controller.abort(); requests.current.clear(); };
+  }, []);
 
   useEffect(() => {
     const normalized = normalizeAnalysisServerUrl(analysisUrl);
     let active = true;
+    const controller = new AbortController();
 
     const loadSessions = async () => {
       setSessionsLoading(true);
       setSessionsError(null);
       try {
-        const { data } = await fetchJsonWithSenderDebug<unknown[]>(normalized, "/api/sessions", "session-list");
+        const { data } = await fetchJsonWithSenderDebug<unknown[]>(normalized, "/api/sessions", "session-list", { init: { signal: controller.signal } });
         const nextSessions = normalizeSessionList(data);
         if (!active) {
           return;
@@ -96,8 +98,9 @@ export function SessionAnalysisSection({
     void loadSessions();
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [analysisUrl, reloadNonce]);
+  }, [analysisUrl]);
 
   useEffect(() => {
     if (!sessions.length) {
@@ -106,7 +109,7 @@ export function SessionAnalysisSection({
       return;
     }
 
-    const available = sessions.filter((session) => session.analysisAvailable);
+    const available = sessions.filter((session) => session.hasLapData);
     const preferred = available.length ? available : sessions;
 
     if (!baselineDir || !sessions.some((session) => session.directory === baselineDir)) {
@@ -119,11 +122,11 @@ export function SessionAnalysisSection({
 
   useEffect(() => {
     void loadAnalysis(baselineDir);
-  }, [baselineDir, analysisUrl, reloadNonce]);
+  }, [baselineDir, analysisUrl, sessions]);
 
   useEffect(() => {
     void loadAnalysis(comparisonDir);
-  }, [comparisonDir, analysisUrl, reloadNonce]);
+  }, [comparisonDir, analysisUrl, sessions]);
 
   const baselineResult = baselineDir ? analysisCache[baselineDir] ?? null : null;
   const comparisonResult = comparisonDir ? analysisCache[comparisonDir] ?? null : null;
@@ -157,7 +160,9 @@ export function SessionAnalysisSection({
 
   const baselineLap = findComparisonLap(baselineResult, baselineLapNum);
   const comparisonLap = findComparisonLap(comparisonResult, comparisonLapNum);
-  const mismatchWarning = buildConditionMismatch(baselineResult, comparisonResult);
+  const conditionWarning = buildConditionMismatch(baselineResult, comparisonResult);
+  const tyreWarning = baselineLap && comparisonLap && ((baselineLap.compound && comparisonLap.compound && baselineLap.compound !== comparisonLap.compound) || (baselineLap.tireAge !== null && comparisonLap.tireAge !== null && baselineLap.tireAge !== comparisonLap.tireAge)) ? "Tyre compound or age differs; consider this when interpreting the comparison." : null;
+  const mismatchWarning = [conditionWarning, tyreWarning].filter(Boolean).join(' ') || null;
 
   const summaryTiles = useMemo(() => {
     const baselineTopSpeed = maxTrace(baselineLap?.trace.speed ?? []);
@@ -180,24 +185,20 @@ export function SessionAnalysisSection({
     ];
   }, [baselineLap, comparisonLap]);
 
-  const distanceAxis = baselineResult?.comparison?.distances ?? comparisonResult?.comparison?.distances ?? [];
+  const distanceAxis = baselineResult?.comparison?.distances ?? [];
+  const comparisonAxis = comparisonResult?.comparison?.distances ?? [];
 
   return (
     <>
       <Panel theme={theme} title="SESSION ANALYSIS">
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontSize: 11, color: theme.muted, lineHeight: 1.6 }}>
-            Compare stored sessions and laps with the sender-embedded analysis API. The screen is optimized to show where time is lost and whether the delta comes from entry, braking, or balance.
+            Compare locally recorded laps by physical distance. Observed time differences and inputs can guide practice; they do not prove the cause of a slower lap.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-            <input value={analysisUrl} readOnly style={inputStyle(theme)} />
+            <input aria-label="Analysis server URL" value={analysisUrl} readOnly style={inputStyle(theme)} />
             <button
-              onClick={() => {
-                setAnalysisCache({});
-                setAnalysisLoading({});
-                setAnalysisErrors({});
-                setReloadNonce((current) => current + 1);
-              }}
+              onClick={onReload}
               style={secondaryButton(theme)}
             >
               REFRESH
@@ -249,7 +250,7 @@ export function SessionAnalysisSection({
         </Banner>
       ) : null}
 
-      <Panel theme={theme} title="WHY SLOWER">
+      <Panel theme={theme} title="LAP COMPARISON">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
           {summaryTiles.map((tile) => (
             <DeltaTile key={tile.label} theme={theme} label={tile.label} delta={tile.delta} />
@@ -261,13 +262,20 @@ export function SessionAnalysisSection({
         </div>
       </Panel>
 
-      <Panel theme={theme} title="TRACE OVERLAYS">
+      <Panel theme={theme} title="NATIVE TRACE EXPLORER">
+        <AnalysisTraceExplorer key={JSON.stringify([analysisUrl, generation, baselineDir, baselineLapNum, comparisonDir, comparisonLapNum])}
+          theme={theme} url={analysisUrl} generation={generation} baselineDir={baselineDir} baselineLap={baselineLapNum}
+          comparisonDir={comparisonDir} comparisonLap={comparisonLapNum} />
+      </Panel>
+      <Panel theme={theme} title="COARSE TRACES">
+        <p style={{ color: theme.muted, fontSize: 11 }}>Binned averages: baseline {baselineResult?.comparison?.distanceBinM ?? '—'} m; compare {comparisonResult?.comparison?.distanceBinM ?? '—'} m. Fine input peaks may be absent.</p>
         {baselineLap && comparisonLap && distanceAxis.length ? (
           <div style={{ display: "grid", gap: 12 }}>
             <TraceOverlayChart
               theme={theme}
               title="Speed"
               distances={distanceAxis}
+              comparisonDistances={comparisonAxis}
               baseline={baselineLap.trace.speed}
               comparison={comparisonLap.trace.speed}
               baselineLabel="Baseline"
@@ -278,6 +286,7 @@ export function SessionAnalysisSection({
               theme={theme}
               title="Throttle"
               distances={distanceAxis}
+              comparisonDistances={comparisonAxis}
               baseline={toPercentSeries(baselineLap.trace.throttle)}
               comparison={toPercentSeries(comparisonLap.trace.throttle)}
               baselineLabel="Baseline"
@@ -290,6 +299,7 @@ export function SessionAnalysisSection({
               theme={theme}
               title="Brake"
               distances={distanceAxis}
+              comparisonDistances={comparisonAxis}
               baseline={toPercentSeries(baselineLap.trace.brake)}
               comparison={toPercentSeries(comparisonLap.trace.brake)}
               baselineLabel="Baseline"
@@ -302,6 +312,7 @@ export function SessionAnalysisSection({
               theme={theme}
               title="Understeer Trend"
               distances={distanceAxis}
+              comparisonDistances={comparisonAxis}
               baseline={baselineLap.trace.understeer}
               comparison={comparisonLap.trace.understeer}
               baselineLabel="Baseline"
@@ -313,6 +324,7 @@ export function SessionAnalysisSection({
               theme={theme}
               title="Oversteer Trend"
               distances={distanceAxis}
+              comparisonDistances={comparisonAxis}
               baseline={baselineLap.trace.oversteer}
               comparison={comparisonLap.trace.oversteer}
               baselineLabel="Baseline"
@@ -331,17 +343,20 @@ export function SessionAnalysisSection({
   );
 
   async function loadAnalysis(dir: string | null): Promise<void> {
-    if (!dir || analysisCache[dir] || analysisLoading[dir]) {
+    if (!dir || analysisCache[dir] || requests.current.has(dir)) {
       return;
     }
 
     const session = sessions.find((item) => item.directory === dir);
-    if (!session?.analysisAvailable) {
+    if (!session?.hasLapData) {
       setAnalysisErrors((current) => ({ ...current, [dir]: "This session is missing files required for lap comparison." }));
       return;
     }
 
     const normalized = normalizeAnalysisServerUrl(analysisUrl);
+    const controller = new AbortController();
+    requests.current.set(dir, controller);
+    const owns = () => alive.current && requests.current.get(dir) === controller;
     setAnalysisLoading((current) => ({ ...current, [dir]: true }));
     setAnalysisErrors((current) => ({ ...current, [dir]: null }));
 
@@ -350,16 +365,19 @@ export function SessionAnalysisSection({
         normalized,
         `/api/sessions/${encodeURIComponent(dir)}/analysis`,
         "session-analysis",
+        { init: { signal: controller.signal } },
       );
+      if (!owns()) return;
       const next = normalizeSessionAnalysisResult(data);
       setAnalysisCache((current) => ({ ...current, [dir]: next }));
     } catch (error) {
+      if (!owns()) return;
       setAnalysisErrors((current) => ({
         ...current,
         [dir]: error instanceof Error ? error.message : "Failed to load session analysis.",
       }));
     } finally {
-      setAnalysisLoading((current) => ({ ...current, [dir]: false }));
+      if (owns()) { requests.current.delete(dir); setAnalysisLoading((current) => ({ ...current, [dir]: false })); }
     }
   }
 }
@@ -394,6 +412,7 @@ function SessionSelectorCard({
     <div style={{ borderRadius: 4, background: theme.surface2, padding: 12, display: "grid", gap: 10 }}>
       <div style={{ fontSize: 11, fontFamily: theme.mono, fontWeight: 700 }}>{title}</div>
       <select
+        aria-label={`${title} session`}
         value={selectedDir ?? ""}
         onChange={(event) => onSessionChange(event.target.value || null)}
         style={selectStyle(theme)}
@@ -406,6 +425,7 @@ function SessionSelectorCard({
         ))}
       </select>
       <select
+        aria-label={`${title} lap`}
         value={selectedLapNum ?? ""}
         onChange={(event) => onLapChange(event.target.value ? Number(event.target.value) : null)}
         style={selectStyle(theme)}
@@ -459,6 +479,8 @@ function LapSummaryCard({
         <MiniStat theme={theme} label="S1" value={formatLapTime(lap?.sector1Ms)} />
         <MiniStat theme={theme} label="S2" value={formatLapTime(lap?.sector2Ms)} />
         <MiniStat theme={theme} label="S3" value={formatLapTime(lap?.sector3Ms)} />
+        <MiniStat theme={theme} label="Tyres / age" value={`${lap?.compound ?? "--"} / ${lap?.tireAge ?? "--"}`} />
+        <MiniStat theme={theme} label="Heavy braking (lockup unconfirmed)" value={lap?.lockupCount === null || lap?.lockupCount === undefined ? "--" : String(lap.lockupCount)} />
         <MiniStat theme={theme} label="Under" value={formatPercent(lap?.understeerPct)} />
         <MiniStat theme={theme} label="Over" value={formatPercent(lap?.oversteerPct)} />
       </div>
@@ -513,6 +535,7 @@ function TraceOverlayChart({
   theme,
   title,
   distances,
+  comparisonDistances,
   baseline,
   comparison,
   baselineLabel,
@@ -524,6 +547,7 @@ function TraceOverlayChart({
   theme: DriverPackTheme;
   title: string;
   distances: number[];
+  comparisonDistances: number[];
   baseline: Array<number | null>;
   comparison: Array<number | null>;
   baselineLabel: string;
@@ -538,8 +562,9 @@ function TraceOverlayChart({
   const minValue = typeof min === "number" ? min : allValues.length ? Math.min(...allValues) : 0;
   const maxValue = typeof max === "number" ? max : allValues.length ? Math.max(...allValues) : 1;
   const safeMax = maxValue <= minValue ? minValue + 1 : maxValue;
-  const baselinePath = buildSeriesPath(distances, baseline, width, height, minValue, safeMax);
-  const comparisonPath = buildSeriesPath(distances, comparison, width, height, minValue, safeMax);
+  const xMax = Math.max(...distances, ...comparisonDistances, 1);
+  const baselinePath = buildSeriesPath(distances, baseline, width, height, minValue, safeMax, xMax);
+  const comparisonPath = buildSeriesPath(comparisonDistances, comparison, width, height, minValue, safeMax, xMax);
 
   return (
     <div style={{ borderRadius: 4, background: theme.surface2, padding: 12 }}>
@@ -549,17 +574,17 @@ function TraceOverlayChart({
           <div style={{ fontSize: 10, color: theme.muted }}>{formatter(safeMax)} peak / {formatter(minValue)} floor</div>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 10, color: theme.muted }}>
-          <LegendSwatch color={theme.accent} label={baselineLabel} />
-          <LegendSwatch color={theme.accent2} label={comparisonLabel} />
+          <LegendSwatch color={theme.accent} label={`${baselineLabel} — solid`} />
+          <LegendSwatch color={theme.accent2} label={`${comparisonLabel} – dashed`} />
         </div>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
+      <svg role="img" aria-label={`${title} coarse distance trace`} viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
         <rect x="0" y="0" width={width} height={height} fill="transparent" />
         {[0.25, 0.5, 0.75].map((ratio) => (
           <line key={ratio} x1="0" x2={width} y1={height * ratio} y2={height * ratio} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
         ))}
         <path d={baselinePath} fill="none" stroke={theme.accent} strokeWidth="3" strokeLinecap="round" />
-        <path d={comparisonPath} fill="none" stroke={theme.accent2} strokeWidth="3" strokeLinecap="round" />
+        <path d={comparisonPath} fill="none" stroke={theme.accent2} strokeDasharray="8 5" strokeWidth="3" strokeLinecap="round" />
       </svg>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 10, color: theme.muted }}>
         <span>Start</span>
@@ -623,7 +648,6 @@ function inputStyle(theme: DriverPackTheme): CSSProperties {
     background: theme.surface2,
     color: theme.text,
     fontFamily: theme.mono,
-    outline: "none",
   };
 }
 
@@ -636,7 +660,6 @@ function selectStyle(theme: DriverPackTheme): CSSProperties {
     background: theme.bg,
     color: theme.text,
     fontFamily: theme.mono,
-    outline: "none",
   };
 }
 
@@ -675,12 +698,12 @@ function buildSeriesPath(
   height: number,
   minValue: number,
   maxValue: number,
+  xMax: number,
 ): string {
   if (!distances.length || !series.length) {
     return "";
   }
 
-  const xMax = distances[distances.length - 1] || 1;
   const valueRange = maxValue - minValue || 1;
   let path = "";
   let drawing = false;

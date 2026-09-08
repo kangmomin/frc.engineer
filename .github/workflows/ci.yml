@@ -95,6 +95,13 @@ jobs:
         run: npm test
         working-directory: web
 
+      - name: Install Driver Pack analysis test dependencies
+        run: npm ci --ignore-scripts
+        working-directory: apps/setup-manager
+
+      - name: Test Driver Pack analysis
+        run: node web/node_modules/vitest/vitest.mjs run --config apps/setup-manager/analysis.vitest.config.mjs
+
       - name: Browser lifecycle and native WebRTC regressions
         run: npm run test:browser
         working-directory: web

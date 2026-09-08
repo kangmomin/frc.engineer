@@ -414,7 +414,7 @@ export function PostRaceDebrief({
                         <th>Lap</th>
                         <th>Understeer</th>
                         <th>Oversteer</th>
-                        <th>Lockups</th>
+                        <th title="Brake >90% above 80 km/h; wheel lockup unconfirmed">Heavy braking (lockup unconfirmed)</th>
                         <th>Spins</th>
                       </tr>
                     </thead>

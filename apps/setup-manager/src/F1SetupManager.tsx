@@ -1038,7 +1038,7 @@ function buildSetupTips(snaps: TelemetrySnapshot[]): SetupTip[] {
   }
 
   if (dynamics?.lockupCount && dynamics.lockupCount > 2) {
-    tips.push({ issue: "Brake lockups", severity: dynamics.lockupCount > 4 ? "high" : "med", reason: `${dynamics.lockupCount} lockups in the latest lap sample.`, changes: ["Brake Pressure -2", "Brake Bias -1"] });
+    tips.push({ issue: "Heavy braking", severity: "med", reason: `${dynamics.lockupCount} heavy-braking episodes (brake >90%, speed >80 km/h). Wheel lockup is unconfirmed.`, changes: [] });
   }
 
   if (firstWear && wear && firstWear.length >= 4 && wear.length >= 4) {

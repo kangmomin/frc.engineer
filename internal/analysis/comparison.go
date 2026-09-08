@@ -1,21 +1,16 @@
 package analysis
 
 import (
-	"bufio"
-	"encoding/json"
 	"errors"
 	"math"
-	"os"
-	"path/filepath"
 	"sort"
 
 	"frc.engineer/internal/telemetry"
 )
 
 const (
-	comparisonBinSize        = 50.0
-	comparisonFrameTolerance = 2
-	maxComparisonBins        = 200
+	comparisonBinSize = 50.0
+	maxComparisonBins = 200
 )
 
 // ComparisonAnalysis contains lap-by-lap traces used by the driver pack analysis UI.
@@ -51,17 +46,6 @@ type LapTrace struct {
 	Brake      []*float64 `json:"brake"`
 	Understeer []*float64 `json:"understeer"`
 	Oversteer  []*float64 `json:"oversteer"`
-}
-
-type motionPacket struct {
-	Header        packetHeader `json:"Header"`
-	CarMotionData []carMotion  `json:"CarMotionData"`
-}
-
-type carMotion struct {
-	WorldVelocityX float32 `json:"WorldVelocityX"`
-	WorldVelocityZ float32 `json:"WorldVelocityZ"`
-	Yaw            float32 `json:"Yaw"`
 }
 
 type comparisonFrame struct {
@@ -118,21 +102,12 @@ func buildComparisonAnalysis(dir string, laps []LapSummary) (*ComparisonAnalysis
 		completed[lap.LapNum] = lap
 	}
 
-	frames, maxDist, err := readComparisonFrames(filepath.Join(dir, "lap_data.jsonl"), completed)
+	frames, maxDist, telemetryFrames, motionFrames, err := readSafeComparisonInputs(dir, completed)
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(frames) == 0 {
 		return nil, nil, errors.New("comparison frames unavailable")
-	}
-
-	telemetryFrames, err := readComparisonTelemetry(filepath.Join(dir, "telemetry.jsonl"))
-	if err != nil {
-		return nil, nil, err
-	}
-	motionFrames, err := readComparisonMotion(filepath.Join(dir, "motion.jsonl"))
-	if err != nil {
-		return nil, nil, err
 	}
 
 	if sessionMeta != nil && sessionMeta.TrackLengthM > 0 && float64(sessionMeta.TrackLengthM) > maxDist {
@@ -168,7 +143,7 @@ func buildComparisonAnalysis(dir string, laps []LapSummary) (*ComparisonAnalysis
 			aggregates[frame.lapNum] = agg
 		}
 
-		tel, hasTelemetry := lookupNearbyFrame(frame.frame, telemetryFrames)
+		tel, hasTelemetry := lookupExactFrame(frame.frame, telemetryFrames)
 		if hasTelemetry {
 			agg.bins[bin].speedSum += float64(tel.speed)
 			agg.bins[bin].speedCount++
@@ -181,7 +156,7 @@ func buildComparisonAnalysis(dir string, laps []LapSummary) (*ComparisonAnalysis
 			globalSpeed[bin].speedCount++
 		}
 
-		motion, hasMotion := lookupNearbyFrame(frame.frame, motionFrames)
+		motion, hasMotion := lookupExactFrame(frame.frame, motionFrames)
 		if hasTelemetry && hasMotion {
 			signal := telemetry.ClassifyDynamicsFrame(
 				motion.velX,
@@ -258,116 +233,11 @@ func buildComparisonAnalysis(dir string, laps []LapSummary) (*ComparisonAnalysis
 		comparison.Laps = append(comparison.Laps, entry)
 	}
 
-	return comparison, buildSpeedFromComparison(distances, globalSpeed, aggregates[bestLapNum]), nil
-}
-
-func readComparisonFrames(path string, completed map[int]LapSummary) ([]comparisonFrame, float64, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, 0, err
+	speed := buildSpeedFromComparison(distances, globalSpeed, aggregates[bestLapNum])
+	if motionFrames == nil {
+		return nil, speed, nil
 	}
-	defer f.Close()
-
-	var frames []comparisonFrame
-	var maxDist float64
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-	for scanner.Scan() {
-		var env packetEnvelope
-		if err := json.Unmarshal(scanner.Bytes(), &env); err != nil {
-			continue
-		}
-		var pkt lapDataPacket
-		if err := json.Unmarshal(env.Data, &pkt); err != nil {
-			continue
-		}
-		idx := pkt.Header.PlayerCarIndex
-		if idx < 0 || idx >= len(pkt.LapData) {
-			continue
-		}
-		ld := pkt.LapData[idx]
-		lapNum := int(ld.CurrentLapNum)
-		if _, ok := completed[lapNum]; !ok || ld.LapDistance < 0 {
-			continue
-		}
-		dist := float64(ld.LapDistance)
-		if dist > maxDist {
-			maxDist = dist
-		}
-		frames = append(frames, comparisonFrame{
-			frame:   env.Frame,
-			lapNum:  lapNum,
-			lapDist: dist,
-		})
-	}
-	return frames, maxDist, scanner.Err()
-}
-
-func readComparisonTelemetry(path string) (map[uint32]comparisonTelemetry, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	result := make(map[uint32]comparisonTelemetry)
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-	for scanner.Scan() {
-		var env packetEnvelope
-		if err := json.Unmarshal(scanner.Bytes(), &env); err != nil {
-			continue
-		}
-		var pkt telemetryPacket
-		if err := json.Unmarshal(env.Data, &pkt); err != nil {
-			continue
-		}
-		idx := pkt.Header.PlayerCarIndex
-		if idx < 0 || idx >= len(pkt.CarTelemetryData) {
-			continue
-		}
-		tel := pkt.CarTelemetryData[idx]
-		result[env.Frame] = comparisonTelemetry{
-			speed:    tel.Speed,
-			throttle: tel.Throttle,
-			steer:    tel.Steer,
-			brake:    tel.Brake,
-		}
-	}
-	return result, scanner.Err()
-}
-
-func readComparisonMotion(path string) (map[uint32]comparisonMotion, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	result := make(map[uint32]comparisonMotion)
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-	for scanner.Scan() {
-		var env packetEnvelope
-		if err := json.Unmarshal(scanner.Bytes(), &env); err != nil {
-			continue
-		}
-		var pkt motionPacket
-		if err := json.Unmarshal(env.Data, &pkt); err != nil {
-			continue
-		}
-		idx := pkt.Header.PlayerCarIndex
-		if idx < 0 || idx >= len(pkt.CarMotionData) {
-			continue
-		}
-		motion := pkt.CarMotionData[idx]
-		result[env.Frame] = comparisonMotion{
-			velX: motion.WorldVelocityX,
-			velZ: motion.WorldVelocityZ,
-			yaw:  motion.Yaw,
-		}
-	}
-	return result, scanner.Err()
+	return comparison, speed, nil
 }
 
 func buildSpeedFromComparison(
@@ -504,20 +374,7 @@ func float64Ptr(value float64) *float64 {
 	return &v
 }
 
-func lookupNearbyFrame[T any](frame uint32, values map[uint32]T) (T, bool) {
-	if value, ok := values[frame]; ok {
-		return value, true
-	}
-	for delta := uint32(1); delta <= comparisonFrameTolerance; delta++ {
-		if frame >= delta {
-			if value, ok := values[frame-delta]; ok {
-				return value, true
-			}
-		}
-		if value, ok := values[frame+delta]; ok {
-			return value, true
-		}
-	}
-	var zero T
-	return zero, false
+func lookupExactFrame[T any](frame uint32, values map[uint32]T) (T, bool) {
+	v, ok := values[frame]
+	return v, ok
 }

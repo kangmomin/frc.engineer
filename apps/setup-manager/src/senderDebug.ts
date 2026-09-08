@@ -11,6 +11,7 @@ interface SenderDebugEntry {
 interface FetchJsonWithSenderDebugOptions {
   init?: RequestInit;
   allowStatuses?: number[];
+  allowNonJsonStatuses?: number[];
   source?: string;
 }
 
@@ -89,6 +90,9 @@ export async function fetchJsonWithSenderDebug<T>(
         data: JSON.parse(raw) as T,
       };
     } catch {
+      if (options.allowNonJsonStatuses?.includes(response.status)) {
+        return { status: response.status, data: null };
+      }
       postSenderDebugLog(normalized, {
         source: options.source ?? "setup-manager",
         scope,
@@ -105,6 +109,7 @@ export async function fetchJsonWithSenderDebug<T>(
       throw new Error(`${scope} returned invalid JSON.`);
     }
   } catch (error) {
+    if (options.init?.signal?.aborted) throw error;
     const message = toErrorMessage(error);
     if (!message.includes("returned invalid JSON.") && !message.includes(" failed (")) {
       postSenderDebugLog(normalized, {

@@ -40,16 +40,16 @@ export interface LapTrace {
 export interface ComparisonLap {
   lapNum: number;
   valid: boolean;
-  lapTimeMs: number;
-  sector1Ms: number;
-  sector2Ms: number;
-  sector3Ms: number;
+  lapTimeMs: number | null;
+  sector1Ms: number | null;
+  sector2Ms: number | null;
+  sector3Ms: number | null;
   compound: string | null;
   tireAge: number | null;
-  understeerPct: number;
-  oversteerPct: number;
-  lockupCount: number;
-  spinCount: number;
+  understeerPct: number | null;
+  oversteerPct: number | null;
+  lockupCount: number | null;
+  spinCount: number | null;
   trace: LapTrace;
 }
 
@@ -96,7 +96,7 @@ export function normalizeSessionAnalysisResult(value: unknown): SessionAnalysisR
   const candidate = value as Record<string, unknown>;
   return {
     session: normalizeSessionMeta(candidate.session),
-    comparison: normalizeComparisonAnalysis(candidate.comparison),
+    comparison: normalizeComparisonAnalysis(candidate.comparison) ?? normalizeComparisonAnalysis({ laps: candidate.laps }),
   };
 }
 
@@ -327,16 +327,16 @@ function normalizeComparisonLap(value: unknown, traceLength: number): Comparison
   return {
     lapNum,
     valid: Boolean(candidate.valid),
-    lapTimeMs: typeof candidate.lapTimeMs === "number" ? candidate.lapTimeMs : 0,
-    sector1Ms: typeof candidate.sector1Ms === "number" ? candidate.sector1Ms : 0,
-    sector2Ms: typeof candidate.sector2Ms === "number" ? candidate.sector2Ms : 0,
-    sector3Ms: typeof candidate.sector3Ms === "number" ? candidate.sector3Ms : 0,
+    lapTimeMs: typeof candidate.lapTimeMs === "number" && candidate.lapTimeMs > 0 ? candidate.lapTimeMs : null,
+    sector1Ms: typeof candidate.sector1Ms === "number" && candidate.sector1Ms > 0 ? candidate.sector1Ms : null,
+    sector2Ms: typeof candidate.sector2Ms === "number" && candidate.sector2Ms > 0 ? candidate.sector2Ms : null,
+    sector3Ms: typeof candidate.sector3Ms === "number" && candidate.sector3Ms > 0 ? candidate.sector3Ms : null,
     compound: typeof candidate.compound === "string" && candidate.compound ? candidate.compound : null,
     tireAge: typeof candidate.tireAge === "number" ? candidate.tireAge : null,
-    understeerPct: typeof candidate.understeerPct === "number" ? candidate.understeerPct : 0,
-    oversteerPct: typeof candidate.oversteerPct === "number" ? candidate.oversteerPct : 0,
-    lockupCount: typeof candidate.lockupCount === "number" ? candidate.lockupCount : 0,
-    spinCount: typeof candidate.spinCount === "number" ? candidate.spinCount : 0,
+    understeerPct: typeof candidate.understeerPct === "number" ? candidate.understeerPct : null,
+    oversteerPct: typeof candidate.oversteerPct === "number" ? candidate.oversteerPct : null,
+    lockupCount: typeof candidate.lockupCount === "number" ? candidate.lockupCount : null,
+    spinCount: typeof candidate.spinCount === "number" ? candidate.spinCount : null,
     trace: normalizeLapTrace(candidate.trace, traceLength),
   };
 }

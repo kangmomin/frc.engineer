@@ -70,7 +70,7 @@ export function RaceAnalysisDetail({ t, detail, selectedIncidentIndex, onSelectI
           {detail.dynamics.length === 0 ? <Empty>다이내믹스 데이터가 없습니다.</Empty> : (
             <div className={styles.tableWrap} tabIndex={0}>
               <table className={styles.table}>
-                <thead><tr><th>Lap</th><th>Understeer</th><th>Oversteer</th><th>Lockups</th><th>Spins</th></tr></thead>
+                <thead><tr><th>Lap</th><th>Understeer</th><th>Oversteer</th><th title="Brake >90% above 80 km/h; wheel lockup unconfirmed">Heavy braking (lockup unconfirmed)</th><th>Spins</th></tr></thead>
                 <tbody>{detail.dynamics.map((row) => <tr key={row.lapNumber}>
                   <td>{row.lapNumber}</td><td>{row.understeerPct}%</td><td>{row.oversteerPct}%</td><td>{row.lockupCount}</td><td>{row.spinCount}</td>
                 </tr>)}</tbody>
