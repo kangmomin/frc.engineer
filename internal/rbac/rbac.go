@@ -48,6 +48,7 @@ const (
 	PermFeedbackCreate    = "pithub.feedback.create"
 	PermFeedbackRead      = "pithub.feedback.read"
 	PermFeedbackInboxRead = "pithub.feedback-inbox.read"
+	PermUpdateLogCreate   = "pithub.update-log.create"
 	PermViewAsCreate      = "pithub.view-as.create"
 	PermRBACCreate        = "pithub.rbac.create"
 	PermRBACRead          = "pithub.rbac.read"
@@ -74,6 +75,7 @@ var seedMids = []string{
 	"pithub.device", "pithub.race", "pithub.race-analyze", "pithub.market",
 	"pithub.wallet", "pithub.purchase", "pithub.review", "pithub.feedback",
 	"pithub.feedback-inbox", "pithub.view-as", "pithub.rbac", "pitwall.broadcast", "sender.setup",
+	"pithub.update-log",
 }
 
 var seedLeaves = []string{
@@ -83,6 +85,7 @@ var seedLeaves = []string{
 	PermWalletRead, PermPurchaseCreate, PermReviewCreate,
 	PermFeedbackCreate, PermFeedbackRead,
 	PermFeedbackInboxRead,
+	PermUpdateLogCreate,
 	PermViewAsCreate,
 	PermRBACCreate, PermRBACRead, PermRBACUpdate, PermRBACDelete,
 	PermBroadcastCreate, PermSetupRead,

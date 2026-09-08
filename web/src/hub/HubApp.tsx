@@ -19,6 +19,7 @@ import { useLeaderboard } from './data/useLeaderboard';
 import { leaderboardContextKey, leaderboardPosition } from './data/leaderboardState';
 import { Guide } from './screens/Guide';
 import { ViewAsBanner } from './components/ViewAsBanner';
+import { UpdateLogs } from './screens/UpdateLogs';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket, PlatformSearch } from './data/platform';
 import type { PlatformLedgerEntry, PlatformListingCard } from './data/platform';
@@ -422,6 +423,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
         <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} walletInitialized={realWallet?.initialized} search={platformSearch} onSearchSelect={selectSearchResult} />
         {viewAs && platformAccount && <ViewAsBanner t={t} subject={platformAccount} actorPersona={viewAs.actor.persona} expiresAt={viewAs.expiresAt} busy={sessionBusy} onExit={handleExitViewAs} />}
         <main key={sessionSubtreeKey(viewOnly ? 'view-as' : 'normal', platformAccount?.id ?? null, sessionEpoch)} style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto' }}>
+          <UpdateLogs t={t} active={active === 'updates'} configured={platformConfigured} account={platformAccount} ready={!platformLoading && !sessionBusy} market={platformMkt} viewOnly={viewOnly} />
           <ScreenBoundary resetKey={active} onBack={() => setActive('guide')}>
           {active === 'guide' && <Guide t={t} onLaunchLive={onLaunchLive} onGoOverview={() => setActive('overview')} viewOnly={viewOnly} />}
 
@@ -566,6 +568,7 @@ function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
     case 'analysis': return 'ANALYSIS';
     case 'profile': return 'PROFILE';
     case 'feedback': return 'FEEDBACK';
+    case 'updates': return 'UPDATES · 업데이트 로그';
     case 'feedback-inbox': return 'FEEDBACK INBOX';
     case 'access': return 'ACCESS · 권한 관리';
     case 'driver-profile': return 'DRIVER PROFILE';

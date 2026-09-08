@@ -41,7 +41,7 @@ func testStore(t *testing.T) *Store {
 		platform.account_bans, platform.races, platform.race_setup, platform.setup_groups, platform.laps,
 		platform.snapshots, platform.listings, platform.wallets,
 		platform.ledger_entries, platform.purchases, platform.reviews, platform.feedback,
-		platform.race_analysis, platform.account_roles
+		platform.race_analysis, platform.account_roles, platform.update_logs
 		RESTART IDENTITY CASCADE`)
 	if err != nil {
 		t.Fatalf("truncate: %v", err)

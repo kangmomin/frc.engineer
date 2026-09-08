@@ -61,6 +61,10 @@ export function canViewFeedbackInbox(account: PlatformAccount | null): boolean {
   return hasPermission(account.permissions, 'pithub.feedback-inbox.read');
 }
 
+export function canCreateUpdateLog(account: PlatformAccount | null): boolean {
+  return !!account?.permissions && !account.banned && hasPermission(account.permissions, 'pithub.update-log.create');
+}
+
 // My Setups is new enough that a legacy account response without `permissions`
 // must not optimistically call an endpoint an older server may not have.
 export function canReadMySetups(account: PlatformAccount | null): boolean {

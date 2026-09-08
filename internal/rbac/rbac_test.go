@@ -93,8 +93,8 @@ func TestValidRoleName(t *testing.T) {
 // themselves in the catalog (grantable at any level).
 func TestSeedCatalogIntegrity(t *testing.T) {
 	nodes := AllSeededNodes()
-	if len(nodes) != 39 {
-		t.Fatalf("AllSeededNodes() has %d nodes, want 39", len(nodes))
+	if len(nodes) != 41 {
+		t.Fatalf("AllSeededNodes() has %d nodes, want 41", len(nodes))
 	}
 	seen := make(map[string]bool, len(nodes))
 	for _, n := range nodes {
@@ -129,6 +129,9 @@ func TestSeedCatalogIntegrity(t *testing.T) {
 	}
 	if HasPermission(SeedUserGrants(), PermFeedbackInboxRead) {
 		t.Error("default user grants must not include feedback inbox access")
+	}
+	if HasPermission(SeedUserGrants(), PermUpdateLogCreate) || !HasPermission(SeedAdminGrants(), PermUpdateLogCreate) {
+		t.Error("update-log publication must be operator-only")
 	}
 	if HasPermission(SeedUserGrants(), PermViewAsCreate) {
 		t.Error("default user grants must not include view-as access")

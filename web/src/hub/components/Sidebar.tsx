@@ -3,7 +3,7 @@ import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
 import { canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canViewFeedbackInbox } from '../data/permissions';
 
-export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'feedback-inbox' | 'access' | 'driver-profile';
+export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'feedback-inbox' | 'access' | 'driver-profile' | 'updates';
 
 const MONO = "'JetBrains Mono',monospace";
 
@@ -20,6 +20,7 @@ const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean; nee
   { id: 'feedback', label: 'FEEDBACK', idx: '07' },
   { id: 'feedback-inbox', label: 'FEEDBACK INBOX', idx: '08', needsFeedbackInbox: true },
   { id: 'access', label: 'ACCESS', idx: '09', needsRBAC: true },
+  { id: 'updates', label: 'UPDATES', idx: '10' },
 ];
 
 interface Props {

@@ -204,6 +204,20 @@ export interface PlatformFeedbackEntry {
   createdAt: string;
 }
 
+export interface PlatformUpdateLog {
+  id: string;
+  title: string;
+  body: string;
+  publishedAt: string;
+}
+
+export interface PlatformUpdateLogPage {
+  items: PlatformUpdateLog[];
+  latestRevision: string;
+  hasUnseen: boolean;
+  nextBefore?: string;
+}
+
 // My Setups is an owner-only history surface. It deliberately has its own
 // payload types rather than reusing marketplace payloads: the server never
 // exposes a content hash or an equality oracle to the browser.
@@ -447,6 +461,17 @@ async function okJson<T>(res: Response, what: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function updateLogJSON<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const message = res.status === 401 ? '로그인이 필요합니다'
+      : res.status === 403 ? '업데이트 로그를 이용할 권한이 없습니다'
+        : res.status === 400 ? '제목은 120자, 내용은 10,000자 이내로 입력해주세요'
+          : `업데이트 로그 요청에 실패했습니다 (${res.status})`;
+    throw new ListingError(res.status === 401 ? 'unauthorized' : 'network', message);
+  }
+  return (await res.json()) as T;
+}
+
 function raceAnalysisErrorForStatus(status: number, what: string): RaceAnalysisError {
   switch (status) {
     case 400:
@@ -482,6 +507,24 @@ async function ownerRaceAnalysisJson<T>(path: string, signal?: AbortSignal): Pro
 
 // PlatformMarket is a thin, stateless client. Callers own loading/error UI state.
 export class PlatformMarket {
+  async listUpdateLogs(before?: string, signal?: AbortSignal): Promise<PlatformUpdateLogPage> {
+    const query = before ? `?before=${encodeURIComponent(before)}` : '';
+    return updateLogJSON(await pfetch(`/update-logs${query}`, { cache: 'no-store', signal }));
+  }
+
+  async createUpdateLog(input: { title: string; body: string }): Promise<PlatformUpdateLog> {
+    return updateLogJSON(await pfetch('/update-logs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
+    }));
+  }
+
+  async markUpdateLogsSeen(revision: string, signal?: AbortSignal): Promise<void> {
+    const res = await pfetch('/me/update-logs/seen', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision }), signal,
+    });
+    if (!res.ok) await updateLogJSON(res);
+  }
+
   async getDriverProfile(accountId: string, signal?: AbortSignal): Promise<PlatformDriverProfile> {
     const res = await pfetch(`/profiles/${encodeURIComponent(accountId)}`, { cache: 'no-store', signal });
     switch (res.status) {
