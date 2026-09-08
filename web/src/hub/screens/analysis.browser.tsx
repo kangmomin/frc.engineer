@@ -7,6 +7,7 @@ import type { IncidentReplay, RaceAnalysisDetail, RaceAnalysisListItem, RaceAnal
 import { SETUP_FIELDS } from '../data/setupFields';
 import { buildTheme } from '../theme';
 import { Analysis } from './Analysis';
+import { IncidentReplay as IncidentReplayView } from './IncidentReplay';
 
 const complete: SectionCompleteness = { status: 'complete', reasons: [], capturedCount: 1, storedCount: 1 };
 const participants: IncidentReplay['participants'] = [
@@ -64,6 +65,72 @@ async function type(input: HTMLInputElement, value: string) {
   await wait();
 }
 
+async function checkMapDrag(map: HTMLElement) {
+  const position = () => {
+    for (const element of map.querySelectorAll('path, rect, line, text, g')) {
+      check(!/NaN|Infinity/.test(`${element.getAttribute('d')} ${element.getAttribute('transform')}`), 'Dragging produced an invalid SVG path or transform');
+      for (const attribute of ['cx', 'cy', 'x1', 'y1', 'x2', 'y2', 'x', 'y']) {
+        const value = element.getAttribute(attribute);
+        check(value === null || Number.isFinite(Number(value)), `Dragging produced an invalid SVG ${attribute}: ${value}`);
+      }
+    }
+    return map.querySelector('[data-car-body]')!.getBoundingClientRect();
+  };
+  const rect = map.getBoundingClientRect();
+  const pointer = async (type: string, x: number, y: number) => {
+    map.dispatchEvent(new PointerEvent(type, {
+      pointerId: 1, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1,
+      clientX: rect.left + rect.width / 2 + x, clientY: rect.top + rect.height / 2 + y, bubbles: true,
+    }));
+    await wait();
+  };
+  // Synthetic events have no active native pointer to capture. Keep Chrome's
+  // real DOMPoint and SVG transforms, stubbing only the capture request.
+  const capture = Object.getOwnPropertyDescriptor(map, 'setPointerCapture');
+  Object.defineProperty(map, 'setPointerCapture', { configurable: true, value: () => {} });
+  try {
+    const before = position();
+    await pointer('pointerdown', 0, 0);
+    check(map.getAttribute('data-dragging') === 'true', 'Pointer down did not start dragging');
+    for (const [x, y] of [[18, 9], [45, 25]]) {
+      await pointer('pointermove', x, y);
+      const after = position();
+      check(Math.abs(after.x - before.x - x) < 0.1 && Math.abs(after.y - before.y - y) < 0.1, 'Map did not follow the pointer movement');
+    }
+    await pointer('pointerup', 45, 25);
+    check(map.getAttribute('data-dragging') === 'false', 'Pointer up did not stop dragging');
+    const released = position();
+    await pointer('pointermove', 60, 40);
+    const afterRelease = position();
+    check(afterRelease.x === released.x && afterRelease.y === released.y, 'Map kept moving after pointer release');
+  } finally {
+    if (capture) Object.defineProperty(map, 'setPointerCapture', capture);
+    else Reflect.deleteProperty(map, 'setPointerCapture');
+  }
+}
+
+async function carShapesFollowYaw() {
+  const directions = [
+    { yaw: 0, x: 0, y: -1 }, { yaw: Math.PI / 2, x: 1, y: 0 },
+    { yaw: Math.PI, x: 0, y: 1 }, { yaw: -Math.PI / 2, x: -1, y: 0 },
+  ];
+  const replay: IncidentReplay = {
+    ...clip, participants: directions.map((_, idx) => ({ ...participants[0], idx })),
+    frames: [{ ...clip.frames[0], cars: directions.map(({ yaw }, i) => [i * 10, 0, 0, 20, 0, 5, yaw, 0, 0, 120, 1, 0, 0, 4]) }],
+  };
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  try {
+    root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} />);
+    await until(() => host.querySelectorAll('[data-car-body]').length === 4, 'Car silhouettes did not render');
+    const bodies = host.querySelectorAll<SVGGElement>('[data-car-body]');
+    directions.forEach(({ x, y }, i) => {
+      const matrix = bodies[i].getScreenCTM()!;
+      const scale = Math.hypot(matrix.c, matrix.d);
+      check(Math.abs(-matrix.c / scale - x) < 0.001 && Math.abs(-matrix.d / scale - y) < 0.001, 'Car nose disagrees with recorded yaw');
+    });
+  } finally { root.unmount(); host.remove(); }
+}
+
 class TestMarket extends PlatformMarket {
   share: RaceAnalysisShare | null = null;
   incidentRequests = 0;
@@ -106,8 +173,12 @@ async function ownerNavigationAndReplay() {
     host.querySelector<HTMLButtonElement>('[class*=incidentButton]')!.click();
     await until(() => !!host.querySelector('input[type=range]'), 'Incident did not load');
     const slider = () => host.querySelector<HTMLInputElement>('input[type=range]')!;
-    const carX = () => host.querySelector('svg circle')!.getAttribute('cx');
+    const carX = () => host.querySelector('[data-car-body]')!.getBoundingClientRect().x;
     const initialX = carX();
+    const carBody = host.querySelector<SVGGElement>('[data-car-body]')!;
+    check(!host.querySelector('svg circle') && carBody.querySelectorAll('rect').length === 6, 'Replay is missing the car body, four tyres or wings');
+    const carMatrix = carBody.getScreenCTM()!;
+    check(carMatrix.b > 0 && Math.abs(carMatrix.a) < 0.001, 'Car body is not aligned with recorded yaw');
     check(host.textContent!.includes('120.123 km/h') && host.textContent!.includes('67.891%') && host.textContent!.includes('-0.235'), 'Telemetry precision is inconsistent');
     button(host, 'Play').click();
     await until(() => Number(slider().value) > 1_200, 'RAF playback did not advance measured time');
@@ -124,13 +195,17 @@ async function ownerNavigationAndReplay() {
     button(host, '끝').click(); await until(() => slider().value === '7000', 'End seek failed');
     button(host, 'Replay').click(); await until(() => Number(slider().value) < 4_000, 'Replay did not restart at beginning');
     button(host, 'Pause').click(); await wait();
-    const originalX = carX(); button(host, '확대').click(); await wait();
+    const originalX = carX(); const originalCarWidth = carBody.getBoundingClientRect().width;
+    button(host, '확대').click(); await wait();
     check(host.querySelector('output[aria-label="확대 배율"]')!.textContent === '1.500×' && carX() !== originalX, 'Zoom did not change camera');
+    check(Math.abs(carBody.getBoundingClientRect().width / originalCarWidth - 1.5) < 0.001, 'Car dimensions did not scale with the map');
     button(host, '사고 구간 맞춤').click(); await wait();
     check(host.querySelector('output[aria-label="확대 배율"]')!.textContent === '1.000×', 'Fit did not reset zoom');
     const map = host.querySelector<HTMLElement>('[class*=svgWrap]')!; const rect = map.getBoundingClientRect();
+    await checkMapDrag(map);
     map.dispatchEvent(new WheelEvent('wheel', { deltaY: -50, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, bubbles: true, cancelable: true })); await wait();
     check(host.querySelector('output[aria-label="확대 배율"]')!.textContent === '1.200×', 'Wheel zoom failed');
+    await checkMapDrag(map);
     button(host, '전체 트랙').click(); await wait(); check(carX() !== originalX, 'Track fit did not change projection');
     button(host, 'Play').click(); await wait(); tab(host, '랩 / 섹터').click(); await wait();
     check(!host.querySelector('input[type=range]'), 'Replay keeps running in an inactive tab');
@@ -186,9 +261,10 @@ async function anonymousRoute() {
 }
 
 export async function run() {
+  await carShapesFollowYaw();
   await ownerNavigationAndReplay();
   await anonymousRoute();
-  return 'PitHub analysis browser: archive/filter races, tabs, RAF playback, zoom, sharing and anonymous routing passed.';
+  return 'PitHub analysis browser: archive/filter races, tabs, RAF playback, zoom, finite drag coordinates, sharing and anonymous routing passed.';
 }
 
 // Used for manual desktop/mobile visual inspection with the same test data.

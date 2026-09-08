@@ -144,7 +144,7 @@ export function IncidentReplay({ t, replay, trackOutline }: Props) {
       ) : (
         <>
           <div className={styles.mapToolbar}>
-            <span className={styles.meta}>{focus === 'incident' ? '사고 구간' : '전체 트랙'}</span>
+            <span className={styles.meta}>{focus === 'incident' ? '사고 구간' : '전체 트랙'} · {map.kind === 'outline' ? '기록된 트랙' : '사고 주변 좌표'}</span>
             <div className={styles.controls} aria-label="Map controls"><button type="button" aria-label="축소" onClick={() => zoom(1 / 1.5)} disabled={camera.zoom <= 0.5}>−</button><output aria-label="확대 배율">{camera.zoom.toFixed(3)}×</output><button type="button" aria-label="확대" onClick={() => zoom(1.5)} disabled={camera.zoom >= 16}>+</button><button type="button" onClick={() => fit('incident')}>사고 구간 맞춤</button>{trackOutline?.points.length ? <button type="button" onClick={() => fit('track')}>전체 트랙</button> : null}</div>
           </div>
           <div className={styles.svgWrap} ref={mapElement} data-dragging={dragging} onPointerDown={(event) => {
@@ -164,6 +164,7 @@ export function IncidentReplay({ t, replay, trackOutline }: Props) {
           }} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
             <ReplaySvg t={t} replay={orderedReplay} outline={trackOutline} map={map} project={project} frame={selectedFrame} viewport={viewport} />
           </div>
+          <p className={styles.meta}>차체는 약 5.5 × 2.0m 크기로 표시합니다. 차량별 실제 충돌 판정 영역은 기록에 포함되지 않습니다.</p>
           <div className={styles.replayGrid}>
             <div>
               <div className={styles.controls} aria-label="Replay controls">
@@ -219,12 +220,12 @@ function ReplaySvg({ t, replay, outline, map, project, frame, viewport }: {
         <marker id="analysis-body-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill={t.t1} /></marker>
         <marker id="analysis-motion-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill={t.acc} /></marker>
       </defs>
-      {outline?.points.length ? <Outline points={outline.points} project={project} /> : <LocalGrid label={map.label} viewport={viewport} />}
+      {outline?.points.length ? <Outline points={outline.points} project={project} /> : <LocalGrid viewport={viewport} />}
       {trajectories}
       <text x={16} y={viewport.height - 18} fill={t.t2} fontSize="11">{replay.collisions.map(([first, second]) => `COLL Car #${first} ↔ Car #${second}`).join(' · ') || 'Collision participants unavailable'}</text>
       {frame && replay.participants.map((participant, participantPosition) => {
         const car = decodeIncidentCar(frame.cars[participantPosition]);
-        return car ? <ReplayCar key={participant.idx} participant={participant} car={car} project={project} labelAbove={participantPosition % 2 === 0} width={viewport.width} /> : null;
+        return car ? <ReplayCar key={participant.idx} participant={participant} car={car} project={project} labelAbove={participantPosition % 2 === 0} /> : null;
       })}
     </svg>
   );
@@ -235,15 +236,14 @@ function Outline({ points, project }: { points: Array<[number, number]>; project
     const point = project(x, z);
     return `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`;
   }).join(' ');
-  return <><path d={d} fill="none" stroke="currentColor" strokeWidth="3" opacity=".5" /><text x={PADDING} y={26} fontSize="13">Recorded track centreline</text></>;
+  return <path d={d} fill="none" stroke="currentColor" strokeWidth="3" opacity=".5" />;
 }
 
-function LocalGrid({ label, viewport }: { label: string; viewport: { width: number; height: number } }) {
+function LocalGrid({ viewport }: { viewport: { width: number; height: number } }) {
   const { vertical, horizontal } = localGridLinePositions(viewport.width, viewport.height, PADDING);
   return <g opacity=".55">
     {vertical.map((value) => <line key={`v-${value}`} x1={value} x2={value} y1={PADDING} y2={viewport.height - PADDING} stroke="currentColor" strokeWidth="1" />)}
     {horizontal.map((value) => <line key={`h-${value}`} x1={PADDING} x2={viewport.width - PADDING} y1={value} y2={value} stroke="currentColor" strokeWidth="1" />)}
-    <text x={PADDING} y={26} fontSize="13">{label}</text>
   </g>;
 }
 
@@ -261,28 +261,48 @@ function Trajectory({ tuples, color, project }: {
   return <path d={d} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" opacity=".72" />;
 }
 
-function ReplayCar({ participant, car, project, labelAbove, width }: {
+function ReplayCar({ participant, car, project, labelAbove }: {
   participant: IncidentReplayValue['participants'][number];
   car: NonNullable<ReturnType<typeof decodeIncidentCar>>;
   project: (x: number, z: number) => { x: number; y: number };
   labelAbove: boolean;
-  width: number;
 }) {
   const point = project(car.x, car.z);
   const body = bodyScreenVector(car.yawRad);
+  const metre = project(car.x + 1, car.z);
+  const scale = Math.hypot(metre.x - point.x, metre.y - point.y);
+  const angle = car.yawRad * 180 / Math.PI;
   const motion = motionScreenVector(car.vx, car.vz);
   const team = teamIdentity(participant.teamId);
   const name = participantName(participant.name, participant.idx);
   const label = `${name} · Car #${participant.idx} · ${team.label}${participant.isPlayer ? ' · PLAYER' : ''}`;
-  const labelY = point.y + (labelAbove ? -30 : 30);
-  const labelOnLeft = point.x > width * 0.6;
-  const labelX = point.x + (labelOnLeft ? -14 : 14);
+  const halfHeight = scale * (Math.abs(body.y) * 2.75 + Math.abs(body.x));
+  const labelY = point.y + (labelAbove ? -halfHeight - 24 : halfHeight + 18);
+  const nose = { x: point.x + body.x * scale * 2.75, y: point.y + body.y * scale * 2.75 };
+  const motionStart = motion && { x: point.x + motion.x * scale * 3, y: point.y + motion.y * scale * 3 };
   return <g aria-label={label}>
-    <circle cx={point.x} cy={point.y} r={participant.isPlayer ? 12 : 9} fill={team.color} stroke={participant.isPlayer ? '#111' : '#fff'} strokeWidth={participant.isPlayer ? 4 : 2} />
-    <line x1={point.x} y1={point.y} x2={point.x + body.x * 24} y2={point.y + body.y * 24} stroke="#1a1d24" strokeWidth="3" markerEnd="url(#analysis-body-arrow)" />
-    {motion && <line x1={point.x} y1={point.y} x2={point.x + motion.x * 31} y2={point.y + motion.y * 31} stroke="#e0a83d" strokeWidth="3" strokeDasharray="4 3" markerEnd="url(#analysis-motion-arrow)" />}
-    <text x={labelX} y={labelY} textAnchor={labelOnLeft ? 'end' : 'start'} fontSize="12" fontWeight="700" fill="currentColor">{name.length > 16 ? `${name.slice(0, 15)}…` : name} · #{participant.idx}{participant.isPlayer ? ' ★' : ''}</text>
-    <text x={labelX} y={labelY + 15} textAnchor={labelOnLeft ? 'end' : 'start'} fontSize="10" fill="currentColor">{team.label}</text>
+    {/* Local silhouette units are metres, with the nose toward -Y. Stored
+        replays have no car dimensions, so this is an approximate F1 outline. */}
+    <g data-car-body transform={`translate(${point.x} ${point.y}) rotate(${angle}) scale(${scale})`} stroke="#17202b" strokeWidth="0.06" strokeLinejoin="round">
+      <path d="M-.85 -1.6H.85 M-.85 1.55H.85" fill="none" strokeWidth="0.12" />
+      <g fill="#171b23" stroke="#8993a2">
+        <rect x={-1} y={-2.05} width={0.4} height={0.9} rx={0.09} />
+        <rect x={0.6} y={-2.05} width={0.4} height={0.9} rx={0.09} />
+        <rect x={-1} y={1.05} width={0.44} height={1} rx={0.09} />
+        <rect x={0.56} y={1.05} width={0.44} height={1} rx={0.09} />
+      </g>
+      <g fill={team.color}>
+        <path d="M-.13 -2.6H.13L.26 -1.1 .57 -.45 .62 .9 .32 1.85 .22 2.5H-.22L-.32 1.85 -.62 .9 -.57 -.45 -.26 -1.1Z" />
+        <rect x={-1} y={-2.75} width={2} height={0.28} rx={0.04} />
+        <rect x={-0.85} y={2.42} width={1.7} height={0.33} rx={0.04} />
+      </g>
+      <path d="M0 -.82C.4 -.7 .36 .16 0 .42C-.36 .16 -.4 -.7 0 -.82Z" fill="#17202b" stroke="#e8edf4" strokeWidth="0.09" />
+      <path d="M0 -.72V.31" fill="none" stroke={participant.isPlayer ? '#fff' : team.color} strokeWidth="0.1" />
+    </g>
+    <line x1={nose.x} y1={nose.y} x2={nose.x + body.x * 14} y2={nose.y + body.y * 14} stroke="currentColor" strokeWidth="2" markerEnd="url(#analysis-body-arrow)" />
+    {motion && motionStart && <line x1={motionStart.x} y1={motionStart.y} x2={motionStart.x + motion.x * 24} y2={motionStart.y + motion.y * 24} stroke="#e0a83d" strokeWidth="3" strokeDasharray="4 3" markerEnd="url(#analysis-motion-arrow)" />}
+    <text x={point.x} y={labelY} textAnchor="middle" fontSize="12" fontWeight="700" fill="currentColor">{name.length > 16 ? `${name.slice(0, 15)}…` : name} · #{participant.idx}{participant.isPlayer ? ' ★' : ''}</text>
+    <text x={point.x} y={labelY + 15} textAnchor="middle" fontSize="10" fill="currentColor">{team.label}</text>
   </g>;
 }
 
@@ -319,7 +339,9 @@ function telemetryValues(car: NonNullable<ReturnType<typeof decodeIncidentCar>>)
 function mapPoint(element: HTMLDivElement, clientX: number, clientY: number): { x: number; y: number } | null {
   const matrix = element.querySelector('svg')?.getScreenCTM();
   if (!matrix) return null;
-  return new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse());
+  const point = new DOMPoint(clientX, clientY).matrixTransform(matrix.inverse());
+  // DOMPoint coordinates live on its prototype and disappear in object spreads.
+  return { x: point.x, y: point.y };
 }
 
 function relativeToCollision(playheadMs: number, collisionMs: number): string {
