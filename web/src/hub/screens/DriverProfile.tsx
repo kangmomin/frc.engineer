@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { LeaderboardBoard } from '../data/types';
 import type { HubTheme } from '../theme';
 import { msToTime, tyreLabel } from '../format';
 import { ListingError } from '../data/platform';
@@ -15,9 +16,10 @@ interface Props {
   onLogin: () => void;
   client: Pick<PlatformMarket, 'getDriverProfile'>;
   accountId: string;
+  onGoRankings: (accountId: string, trackId: number, format: string, board: LeaderboardBoard) => void;
 }
 
-export function DriverProfile({ t, configured, account, platformLoading, onLogin, client, accountId }: Props) {
+export function DriverProfile({ t, configured, account, platformLoading, onLogin, client, accountId, onGoRankings }: Props) {
   const [profile, setProfile] = useState<PlatformDriverProfile | null>(null);
   const [profileTarget, setProfileTarget] = useState<string | null>(null);
   const [error, setError] = useState<ListingError | null>(null);
@@ -48,12 +50,12 @@ export function DriverProfile({ t, configured, account, platformLoading, onLogin
   if (platformLoading) return <StateCard t={t} role="status" title="세션 확인 중…" note="로그인 상태를 확인하고 있습니다." />;
   if (!account) return <LoginRequired t={t} onLogin={onLogin} />;
   if (error) return <ErrorState t={t} error={error} onLogin={onLogin} onRetry={() => setAttempt((n) => n + 1)} />;
-  if (!profile || profileTarget !== accountId) return <StateCard t={t} role="status" title="프로필 불러오는 중…" note="검증된 기록과 순위를 집계하고 있습니다." />;
+  if (!profile || profileTarget !== accountId) return <StateCard t={t} role="status" title="프로필 불러오는 중…" note="제출된 유효 랩과 순위를 집계하고 있습니다." />;
 
-  return <ProfileContent t={t} profile={profile} />;
+  return <ProfileContent t={t} profile={profile} onGoRankings={onGoRankings} />;
 }
 
-function ProfileContent({ t, profile }: { t: HubTheme; profile: PlatformDriverProfile }) {
+export function ProfileContent({ t, profile, onGoRankings }: { t: HubTheme; profile: PlatformDriverProfile; onGoRankings: Props['onGoRankings'] }) {
   return (
     <section>
       <header style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
@@ -61,21 +63,22 @@ function ProfileContent({ t, profile }: { t: HubTheme; profile: PlatformDriverPr
         <div>
           <h1 style={{ margin: 0, fontSize: 21, letterSpacing: '-.01em', color: t.t1 }}>{profile.persona || '이름 없음'}</h1>
           <div style={{ marginTop: 5, fontFamily: MONO, fontSize: 10.5, color: profile.verified ? t.ok : t.t3 }}>
-            {profile.verified ? '◆ VERIFIED DRIVER' : 'UNVERIFIED DRIVER'}
+            {profile.verified ? '◆ 참여 기록 있음' : '참여 기록 미확인'}
           </div>
         </div>
       </header>
 
-      <ul aria-label="드라이버 검증 기록 요약" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px),1fr))', gap: 10, maxWidth: 660, padding: 0, margin: '0 0 18px', listStyle: 'none' }}>
-        <Summary t={t} label="VERIFIED RACES" value={profile.summary.verifiedRaces} />
+      <ul aria-label="드라이버 제출 기록 요약" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px),1fr))', gap: 10, maxWidth: 660, padding: 0, margin: '0 0 18px', listStyle: 'none' }}>
+        <Summary t={t} label="ACCEPTED RACES" value={profile.summary.verifiedRaces} />
         <Summary t={t} label="VALID LAPS" value={profile.summary.validLaps} />
         <Summary t={t} label="TRACK FORMATS" value={profile.summary.trackFormats} />
       </ul>
 
+      <p style={{ color: t.t2, fontSize: 12, lineHeight: 1.8 }}>PB는 모든 세션의 개인 최고 유효 랩입니다. 클라이언트 제출 기록에 기본 형식·범위·섹터 검사를 적용하며, 참여 기록은 부정행위 방지 인증이 아닙니다. 페이스는 유효 랩 5개 이상의 평균이며 피트·SC 랩을 별도로 제외하지 않습니다. 표준편차는 전체 집계 랩의 시간 변동입니다.</p>
       {profile.tracks.length === 0 ? (
-        <StateCard t={t} title="기록 없음" note="이 드라이버에게 표시할 검증된 canonical 트랙·포맷 기록이 아직 없습니다." />
+        <StateCard t={t} title="기록 없음" note="이 드라이버에게 표시할 기본 검사를 통과한 트랙·포맷 기록이 아직 없습니다." />
       ) : (
-        <div tabIndex={0} aria-label="드라이버 트랙별 타임트라이얼 및 레이스 페이스 기록 표. 가로로 스크롤할 수 있습니다." style={{ overflowX: 'auto', background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12 }}>
+        <div tabIndex={0} aria-label="드라이버 트랙별 전체 세션 PB 및 유효 랩 페이스 기록 표. 가로로 스크롤할 수 있습니다." style={{ overflowX: 'auto', background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12 }}>
           <table style={{ width: '100%', minWidth: 1120, borderCollapse: 'collapse', fontSize: 12 }}>
             <caption style={{ padding: '14px 18px', textAlign: 'left', fontFamily: MONO, fontSize: 10.5, letterSpacing: '.08em', color: t.t2, captionSide: 'top' }}>
               CANONICAL TRACK + FORMAT PERFORMANCE
@@ -84,8 +87,8 @@ function ProfileContent({ t, profile }: { t: HubTheme; profile: PlatformDriverPr
               <tr>
                 <th scope="col" style={headStyle}>TRACK</th>
                 <th scope="col" style={headStyle}>FORMAT</th>
-                <th scope="col" style={numberHeadStyle}>TT RANK</th>
-                <th scope="col" style={numberHeadStyle}>TT FIELD</th>
+                <th scope="col" style={numberHeadStyle}>PB RANK</th>
+                <th scope="col" style={numberHeadStyle}>PB FIELD</th>
                 <th scope="col" style={numberHeadStyle}>LAP</th>
                 <th scope="col" style={numberHeadStyle}>S1</th>
                 <th scope="col" style={numberHeadStyle}>S2</th>
@@ -94,7 +97,8 @@ function ProfileContent({ t, profile }: { t: HubTheme; profile: PlatformDriverPr
                 <th scope="col" style={numberHeadStyle}>PACE FIELD</th>
                 <th scope="col" style={numberHeadStyle}>AVG</th>
                 <th scope="col" style={numberHeadStyle}>LAPS</th>
-                <th scope="col" style={numberHeadStyle}>CONSISTENCY</th>
+                <th scope="col" style={numberHeadStyle}>표준편차 (초)</th>
+                <th scope="col" style={numberHeadStyle}>기존 일관성 지수</th>
                 <th scope="col" style={headStyle}>TYRE</th>
               </tr>
             </thead>
@@ -104,20 +108,21 @@ function ProfileContent({ t, profile }: { t: HubTheme; profile: PlatformDriverPr
                 return <tr key={`${track.trackId}-${track.gameFormat}`} style={{ borderTop: `1px solid ${t.linesoft}` }}>
                   <th scope="row" style={{ ...cellStyle, textAlign: 'left', color: t.t1, fontWeight: 700 }}>{track.trackName}</th>
                   <td style={{ ...cellStyle, fontFamily: MONO, color: t.t2 }}>{track.gameFormat}</td>
-                  <td style={numberCellStyle}>#{track.timeTrial.rank}</td>
+                  <td style={numberCellStyle}><button onClick={() => onGoRankings(profile.accountId, track.trackId, track.gameFormat, 'pb')} style={secondaryButton(t)} aria-label={`${track.trackName} 전체 세션 PB 순위 보기`}>#{track.timeTrial.rank}</button></td>
                   <td style={numberCellStyle}>{track.timeTrial.participants}</td>
                   <td style={{ ...numberCellStyle, color: t.t1, fontWeight: 700 }}>{msToTime(track.timeTrial.lapMs)}</td>
-                  <td style={numberCellStyle}>{msToTime(track.timeTrial.s1Ms)}</td>
-                  <td style={numberCellStyle}>{msToTime(track.timeTrial.s2Ms)}</td>
-                  <td style={numberCellStyle}>{msToTime(track.timeTrial.s3Ms)}</td>
+                  <td style={numberCellStyle}>{track.timeTrial.s1Ms > 0 ? msToTime(track.timeTrial.s1Ms) : '—'}</td>
+                  <td style={numberCellStyle}>{track.timeTrial.s2Ms > 0 ? msToTime(track.timeTrial.s2Ms) : '—'}</td>
+                  <td style={numberCellStyle}>{track.timeTrial.s3Ms > 0 ? msToTime(track.timeTrial.s3Ms) : '—'}</td>
                   {pace ? <>
-                    <td style={numberCellStyle}>#{pace.rank}</td>
+                    <td style={numberCellStyle}><button onClick={() => onGoRankings(profile.accountId, track.trackId, track.gameFormat, 'pace')} style={secondaryButton(t)} aria-label={`${track.trackName} 유효 랩 페이스 순위 보기`}>#{pace.rank}</button></td>
                     <td style={numberCellStyle}>{pace.participants}</td>
                     <td style={{ ...numberCellStyle, color: t.t1, fontWeight: 700 }}>{msToTime(pace.avgMs)}</td>
                     <td style={numberCellStyle}>{pace.laps}</td>
+                    <td style={numberCellStyle}>{(pace.stddevMs / 1000).toFixed(3)}</td>
                     <td style={numberCellStyle}>{Math.round(pace.consistency * 100)}%</td>
                     <td style={{ ...cellStyle, fontFamily: MONO, fontWeight: 700 }}>{tyreLabel(pace.tyre)}</td>
-                  </> : <td colSpan={6} style={{ ...cellStyle, fontStyle: 'italic', color: t.t3 }}>레이스 페이스 집계 없음</td>}
+                  </> : <td colSpan={7} style={{ ...cellStyle, fontStyle: 'italic', color: t.t3 }}>유효 랩 페이스 집계 없음</td>}
                 </tr>;
               })}
             </tbody>
@@ -133,13 +138,13 @@ function Summary({ t, label, value }: { t: HubTheme; label: string; value: numbe
 }
 
 function LoginRequired({ t, onLogin }: { t: HubTheme; onLogin: () => void }) {
-  return <StateCard t={t} title="로그인이 필요합니다" note="드라이버 프로필과 전체 순위는 로그인한 사용자에게만 제공됩니다."><button onClick={onLogin} style={primaryButton(t)}>◆ STEAM 로그인</button></StateCard>;
+  return <StateCard t={t} title="로그인이 필요합니다" note="드라이버 프로필은 로그인한 사용자에게 제공됩니다. 전체 리더보드는 로그인 없이 볼 수 있습니다."><button onClick={onLogin} style={primaryButton(t)}>◆ STEAM 로그인</button></StateCard>;
 }
 
 function ErrorState({ t, error, onLogin, onRetry }: { t: HubTheme; error: ListingError; onLogin: () => void; onRetry: () => void }) {
   if (error.reason === 'unauthorized') return <StateCard t={t} role="alert" title="로그인이 만료되었습니다" note="다시 로그인한 뒤 드라이버 프로필을 확인하세요."><button onClick={onLogin} style={primaryButton(t)}>◆ 다시 로그인</button></StateCard>;
   if (error.reason === 'forbidden') return <StateCard t={t} role="alert" title="프로필 접근이 거부되었습니다" note="이 계정에서는 드라이버 프로필을 볼 권한이 없습니다." />;
-  if (error.reason === 'not-found') return <StateCard t={t} role="alert" title="프로필을 사용할 수 없습니다" note="드라이버가 없거나 검증 상태가 변경되었습니다." />;
+  if (error.reason === 'not-found') return <StateCard t={t} role="alert" title="프로필을 사용할 수 없습니다" note="드라이버가 없거나 공개 상태가 변경되었습니다." />;
   return <StateCard t={t} role="alert" title="프로필을 불러오지 못했습니다" note="네트워크 상태를 확인한 뒤 다시 시도하세요."><button onClick={onRetry} style={secondaryButton(t)}>다시 시도</button></StateCard>;
 }
 

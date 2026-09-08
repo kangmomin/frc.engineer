@@ -83,3 +83,38 @@ export interface HubRankings {
 export interface HubDataSource {
   getOverview(): Promise<HubOverview>;
 }
+
+// Paginated platform records. Nullable fields remain unavailable in the UI.
+export type LeaderboardBoard = 'pb' | 'tt' | 'pace';
+export interface LeaderboardRecord {
+  rank: number;
+  accountId: string;
+  persona: string;
+  scoreMs: number;
+  you: boolean;
+  sectorsMs: [number, number, number] | null;
+  laps: number | null;
+  tyre: string | null;
+  consistency: number | null;
+  stddevMs: number | null;
+  withinOneSecond: number | null;
+}
+export interface LeaderboardPage {
+  board: LeaderboardBoard;
+  rows: LeaderboardRecord[];
+  total: number;
+  leaderMs: number | null;
+  viewer: LeaderboardRecord | null;
+  viewerGapToTop10Ms: number | null;
+  nextCursor: string | null;
+  previousCursor: string | null;
+  anchorFound: boolean;
+  asOf: string;
+}
+export type LeaderboardPosition = { cursor: string; around?: never } | { around: string; cursor?: never } | { cursor?: never; around?: never };
+export type LeaderboardQuery = LeaderboardPosition & {
+  trackId: number;
+  format: string;
+  board: LeaderboardBoard;
+  limit?: number;
+};

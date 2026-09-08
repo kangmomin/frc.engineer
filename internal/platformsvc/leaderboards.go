@@ -14,8 +14,7 @@ const leaderboardLimit = 200
 // telemetrically valid and inflate the average — accepted for v1.
 const paceMinLaps = 5
 
-// TTEntry is one Time Trial leaderboard row: an account's best verified,
-// valid lap on a track+format, with its sector split.
+// TTEntry is one legacy all-session PB row with its sector split.
 type TTEntry struct {
 	Rank      int    `json:"rank"`
 	AccountID string `json:"accountId"`
@@ -27,8 +26,7 @@ type TTEntry struct {
 	You       bool   `json:"you"`
 }
 
-// PaceEntry is one Race Pace leaderboard row: an account's average clean
-// (valid) lap on a track+format, with lap count, consistency, and dominant tyre.
+// PaceEntry is one pace leaderboard row: an account's average valid lap on a track+format, with lap count, consistency, and dominant tyre.
 type PaceEntry struct {
 	Rank        int     `json:"rank"`
 	AccountID   string  `json:"accountId"`
@@ -40,7 +38,7 @@ type PaceEntry struct {
 	You         bool    `json:"you"`
 }
 
-// TimeTrialLeaderboard returns the fastest verified valid lap per account for a
+// TimeTrialLeaderboard retains the legacy all-session best valid lap per account for a
 // track+format, ranked ascending. viewerID (may be empty) is flagged as You.
 // Banned accounts are excluded.
 func (s *Store) TimeTrialLeaderboard(ctx context.Context, trackID int, format, viewerID string) ([]TTEntry, error) {
@@ -54,7 +52,7 @@ func (s *Store) TimeTrialLeaderboard(ctx context.Context, trackID int, format, v
 			JOIN platform.accounts a ON a.id = r.account_id
 			WHERE r.track_id = $1 AND r.game_format = $2 AND r.plausible AND l.valid
 			  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id = r.account_id)
-			ORDER BY r.account_id, l.lap_ms ASC, r.uploaded_at ASC
+			ORDER BY r.account_id, l.lap_ms ASC, r.uploaded_at ASC, r.id, l.id
 		) best
 		ORDER BY best.lap_ms ASC, best.uploaded_at ASC, best.account_id
 		LIMIT $3`,

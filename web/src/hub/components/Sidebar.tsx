@@ -114,7 +114,7 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = fa
         <div className="hubAccountCopy" style={{ minWidth: 0, lineHeight: 1.3 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, color: t.t1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{account ? account.persona : '로그인'}</div>
           <div style={{ fontFamily: MONO, fontSize: 9.5, color: account?.verified ? t.ok : t.t3, display: 'flex', alignItems: 'center', gap: 4 }}>
-            {account ? (account.verified ? '◆ STEAM · OWNED' : 'STEAM · 미검증') : 'PROFILE에서 로그인'}
+            {account ? (account.verified ? '◆ STEAM · 참여 기록' : 'STEAM · 참여 미확인') : 'PROFILE에서 로그인'}
           </div>
         </div>
       </button>

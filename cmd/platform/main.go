@@ -139,6 +139,7 @@ func main() {
 	mux.HandleFunc("/device/pair", srv.handlePair)
 	mux.HandleFunc("/device/exchange", srv.handleExchange)
 	mux.HandleFunc("/races", srv.handleUpload)
+	mux.HandleFunc("/leaderboards/records", srv.handleLeaderboardRecords)
 	mux.HandleFunc("/leaderboards/tt", srv.handleLeaderboardTT)
 	mux.HandleFunc("/leaderboards/pace", srv.handleLeaderboardPace)
 	mux.HandleFunc("/search", srv.handleSearch)
@@ -720,7 +721,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// handleLeaderboardTT serves the Time Trial leaderboard (public; optional Bearer
+// handleLeaderboardTT serves the legacy all-session PB leaderboard (public; optional Bearer
 // for you-highlight).
 func (s *server) handleLeaderboardTT(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

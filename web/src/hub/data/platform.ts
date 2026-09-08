@@ -9,6 +9,7 @@
 // codes to user-facing outcomes.
 import { getPlatformUrl, isPlatformConfigured } from './platformBase';
 import { getActiveSessionToken, getViewAsToken, notifySessionUnauthorized } from './session';
+import type { LeaderboardPage, LeaderboardQuery } from './types';
 import type { IncidentReplay, RaceAnalysisDetail, RaceAnalysisListResponse } from './raceAnalysisTypes';
 
 export type ListingKind = 'setup' | 'strategy';
@@ -69,6 +70,7 @@ export interface PlatformDriverProfileRacePace {
   avgMs: number;
   laps: number;
   consistency: number;
+  stddevMs: number;
   tyre: string;
 }
 
@@ -399,7 +401,8 @@ async function pfetchViewer(path: string, init?: RequestInit): Promise<Response>
     });
     if (res.status === 401 && token) notifySessionUnauthorized(token);
     return res;
-  } catch {
+  } catch (error: unknown) {
+    if (typeof error === 'object' && error !== null && (error as { name?: unknown }).name === 'AbortError') throw error;
     throw new ListingError('network', '네트워크 오류');
   }
 }
@@ -491,6 +494,16 @@ export class PlatformMarket {
 
   // --- Leaderboards (public; attach viewer token for the `you` highlight) ---
 
+  async leaderboardRecords(query: LeaderboardQuery, signal?: AbortSignal): Promise<LeaderboardPage> {
+    const params = new URLSearchParams({ track: String(query.trackId), format: query.format, board: query.board, limit: String(query.limit ?? 50) });
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.around) params.set('around', query.around);
+    const res = await pfetchViewer(`/leaderboards/records?${params}`, { signal });
+    if (res.status === 400) throw new ListingError('bad-input', '순위 조회 조건이 올바르지 않습니다. 처음부터 다시 조회하세요.');
+    return okJson<LeaderboardPage>(res, '리더보드 조회');
+  }
+
+  // Legacy endpoint: all-session PB, despite its historical TT name.
   async leaderboardTT(trackId: number, format: string): Promise<PlatformTTRow[]> {
     const res = await pfetchViewer(`/leaderboards/tt?track=${trackId}&format=${encodeURIComponent(format)}`);
     if (res.status === 400) return [];

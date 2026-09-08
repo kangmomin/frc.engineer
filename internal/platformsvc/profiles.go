@@ -48,6 +48,7 @@ type ProfileRacePace struct {
 	AvgMS        int     `json:"avgMs"`
 	Laps         int     `json:"laps"`
 	Consistency  float64 `json:"consistency"`
+	StddevMS     float64 `json:"stddevMs"`
 	Tyre         string  `json:"tyre"`
 }
 
@@ -189,7 +190,7 @@ func (s *Store) DriverProfile(ctx context.Context, accountID string) (*DriverPro
 			}
 			track.RacePace = &ProfileRacePace{
 				Rank: *paceRank, Participants: *paceParticipants, AvgMS: *paceAvgMS, Laps: *paceLaps,
-				Consistency: consistency, Tyre: *paceTyre,
+				Consistency: consistency, StddevMS: *paceSD, Tyre: *paceTyre,
 			}
 		}
 		profile.Tracks = append(profile.Tracks, track)

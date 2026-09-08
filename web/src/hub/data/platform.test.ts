@@ -535,3 +535,40 @@ describe('driver profile', () => {
     });
   }
 });
+
+describe('paginated leaderboard contract', () => {
+  it('preserves full-population metadata and nulls and sends strict View As identity', async () => {
+    vi.stubGlobal('window', fakeWindow('actor', 'subject'));
+    const page = { board: 'tt', rows: [], total: 301, leaderMs: 80000, viewer: { rank: 201, accountId: 'subject', scoreMs: 82000 }, viewerGapToTop10Ms: 0, nextCursor: null, previousCursor: null, anchorFound: false, asOf: '2026-09-08T00:00:00.123456Z' };
+    const fetchMock = vi.fn().mockResolvedValue(res(200, page));
+    vi.stubGlobal('fetch', fetchMock);
+    const signal = new AbortController().signal;
+    expect(await mkt.leaderboardRecords({ trackId: 7, format: 'F1 26', board: 'tt', around: 'me' }, signal)).toEqual(page);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(url).pathname).toBe('/leaderboards/records');
+    expect(Object.fromEntries(new URL(url).searchParams)).toEqual({ track: '7', format: 'F1 26', board: 'tt', limit: '50', around: 'me' });
+    expect(init.headers.Authorization).toBe('Bearer subject');
+    expect(init.signal).toBe(signal);
+  });
+  it('sends cursor only after an around page, with URL-safe encoding', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    const fetchMock = vi.fn().mockResolvedValue(res(200, {}));
+    vi.stubGlobal('fetch', fetchMock);
+    await mkt.leaderboardRecords({ trackId: 7, format: 'F1 26', board: 'pb', cursor: 'opaque+/=' });
+    const params = new URL(fetchMock.mock.calls[0][0]).searchParams;
+    expect(params.get('cursor')).toBe('opaque+/=');
+    expect(params.has('around')).toBe(false);
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({});
+  });
+  it.each([400, 401, 500])('keeps HTTP %s as an error', async (status) => {
+    vi.stubGlobal('window', fakeWindow());
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res(status)));
+    await expect(mkt.leaderboardRecords({ trackId: 7, format: 'F1 26', board: 'pace' })).rejects.toBeInstanceOf(ListingError);
+  });
+  it('keeps cancellation distinct from a network failure', async () => {
+    vi.stubGlobal('window', fakeWindow());
+    const cancelled = new DOMException('cancelled', 'AbortError');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(cancelled));
+    await expect(mkt.leaderboardRecords({ trackId: 7, format: 'F1 26', board: 'pb' })).rejects.toBe(cancelled);
+  });
+});

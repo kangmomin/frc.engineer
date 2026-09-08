@@ -1,9 +1,10 @@
 // Overview screen (hub.dc.html:73-168).
-// Shows the viewer's OWN telemetry summary (verified sessions, season best,
+// Shows the viewer's OWN telemetry summary (local sessions, season best,
 // recent sessions) plus platform-derived data threaded in as props: the real
 // credit wallet/ledger (when logged in) and the current-track leaderboard rank.
 // Fields that had no backend source (season rank, credits earned, setups sold,
 // pace trend) were removed rather than mocked.
+import { topTenDescription } from '../data/leaderboardState';
 import type { HubTheme } from '../theme';
 import { rgba } from '../theme';
 import { msToTime, relativeTime, signed } from '../format';
@@ -19,11 +20,11 @@ export interface RealWallet {
   ledger: HubLedgerEntry[];
 }
 
-// RankInfo is the viewer's standing on the currently selected track's TT board,
+// RankInfo is the viewer's standing on the currently selected track's all-session PB board,
 // derived from the live leaderboard. Absent when logged out or not yet ranked.
 export interface RankInfo {
   rank: number;
-  gapMs: number; // ms to the 10th place lap; 0 when already inside the top 10
+  gapMs: number | null; // No 10th-place comparison when null; ties can have gap 0 outside top 10
   trackName: string;
 }
 
@@ -37,9 +38,13 @@ interface Props {
   // out / not yet loaded) → generic greeting.
   persona?: string | null;
   rankInfo?: RankInfo | null;
+  rankStatus?: 'loading' | 'ready' | 'error' | 'anonymous' | 'unconfigured';
+  rankError?: string | null;
+  onRetryRank?: () => void;
+  onGoRankings?: () => void;
 }
 
-export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, rankInfo }: Props) {
+export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, rankInfo, rankStatus, rankError, onRetryRank, onGoRankings }: Props) {
   // Real sessions carry true epoch timestamps, so relative time uses the real clock.
   const now = Date.now();
   return (
@@ -53,20 +58,20 @@ export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, r
           <div style={{ fontSize: 13.5, color: t.t2, marginTop: 5 }}>
             {rankInfo ? (
               <>
-                현재 <span style={{ color: t.t1, fontWeight: 600 }}>{rankInfo.trackName}</span> 타임트라이얼{' '}
+                현재 <span style={{ color: t.t1, fontWeight: 600 }}>{rankInfo.trackName}</span> 전체 세션 PB{' '}
                 <span style={{ color: t.accInk, fontWeight: 700 }}>P{rankInfo.rank}</span>
-                {rankInfo.gapMs > 0 && (
-                  <> · 톱10 진입까지 <span style={{ color: t.ok, fontWeight: 600 }}>{(rankInfo.gapMs / 1000).toFixed(3)}s</span></>
-                )}
+                <span> · {topTenDescription(rankInfo.rank, rankInfo.gapMs)}</span>
               </>
             ) : (
-              '트랙에 검증된 랩을 남기면 리더보드 순위가 여기 표시됩니다.'
+              rankStatus === 'loading' ? 'PB 순위를 불러오는 중…' : rankStatus === 'error' ? (rankError || 'PB 순위를 불러오지 못했습니다.') : rankStatus === 'anonymous' ? '로그인하면 내 PB 순위를 확인할 수 있습니다.' : rankStatus === 'unconfigured' ? '플랫폼 연결 후 PB 순위를 확인할 수 있습니다.' : '이 트랙·포맷에 내 PB 기록이 없습니다.'
             )}
           </div>
+          {rankStatus === 'error' && <button onClick={onRetryRank} style={{ marginTop: 10 }}>PB 다시 시도</button>}
+          {rankInfo && <button onClick={onGoRankings} style={{ marginTop: 10 }}>전체 세션 PB 순위 보기</button>}
         </div>
         {rankInfo && (
           <div style={{ textAlign: 'right', flex: 'none' }}>
-            <div style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.18em', color: t.t3, marginBottom: 6 }}>{rankInfo.trackName.toUpperCase()} · TT</div>
+            <div style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.18em', color: t.t3, marginBottom: 6 }}>{rankInfo.trackName.toUpperCase()} · PB</div>
             <div style={{ fontFamily: MONO, fontSize: 28, fontWeight: 700, color: t.accInk, lineHeight: 1 }}>P{rankInfo.rank}</div>
           </div>
         )}
@@ -77,14 +82,14 @@ export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, r
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
           {/* stat cards — real own-data only */}
           <div style={{ display: 'grid', gridTemplateColumns: rankInfo ? 'repeat(3,1fr)' : 'repeat(2,1fr)', gap: 12 }}>
-            <StatCard t={t} label="VERIFIED SESSIONS" value={String(data.verifiedSessions)} valueColor={t.t1}
+            <StatCard t={t} label="LOCAL SESSIONS" value={String(data.verifiedSessions)} valueColor={t.t1}
               foot={data.verifiedSessionsDelta > 0 ? `▲ 이번 주 ${signed(data.verifiedSessionsDelta)}` : '이번 주 신규 없음'}
               footColor={data.verifiedSessionsDelta > 0 ? t.ok : t.t2} />
             <StatCard t={t} label="SEASON BEST" value={data.seasonBestMs > 0 ? msToTime(data.seasonBestMs) : '—'} valueColor={t.sbest}
               foot={data.seasonBestTrack || '기록 없음'} footColor={t.t2} />
             {rankInfo && (
-              <StatCard t={t} label={`${rankInfo.trackName.toUpperCase()} TT`} value={`P${rankInfo.rank}`} valueColor={t.accInk}
-                foot={rankInfo.gapMs > 0 ? `톱10까지 ${(rankInfo.gapMs / 1000).toFixed(3)}s` : '톱10 진입'} footColor={t.t2} />
+              <StatCard t={t} label={`${rankInfo.trackName.toUpperCase()} PB`} value={`P${rankInfo.rank}`} valueColor={t.accInk}
+                foot={topTenDescription(rankInfo.rank, rankInfo.gapMs)} footColor={t.t2} />
             )}
           </div>
 
@@ -92,11 +97,11 @@ export function Overview({ t, data, onGoMarket, onGoAnalysis, wallet, persona, r
           <div style={{ background: t.panel, border: `1px solid ${t.line}`, borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 18px 13px' }}>
               <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '.14em', color: t.t2, fontWeight: 600 }}>RECENT SESSIONS</div>
-              <div style={{ fontFamily: MONO, fontSize: 10, color: t.t3 }}>라이브니스 바인딩 검증</div>
+              <div style={{ fontFamily: MONO, fontSize: 10, color: t.t3 }}>로컬 저장 세션</div>
             </div>
             {data.recentSessions.length === 0 ? (
               <div style={{ padding: '28px 18px 32px', textAlign: 'center', fontSize: 12.5, color: t.t3, lineHeight: 1.6 }}>
-                아직 세션이 없습니다.<br />데스크톱 앱으로 F1 텔레메트리를 업로드하면 여기에 표시됩니다.
+                아직 세션이 없습니다.<br />로컬에 기록한 F1 세션을 저장하면 여기에 표시됩니다.
               </div>
             ) : (
               data.recentSessions.map((s, i) => <SessionRow key={i} t={t} s={s} now={now} />)
@@ -160,7 +165,7 @@ function StatCard({ t, label, value, valueColor, foot, footColor }: { t: HubThem
 
 function SessionRow({ t, s, now }: { t: HubTheme; s: HubSession; now: number }) {
   const valid = s.state === 'valid';
-  const stateLabel = valid ? '✓ VALID' : '◷ ESCROW';
+  const stateLabel = valid ? '로컬 기록' : '◷ ESCROW';
   const stateColor = valid ? t.green : t.warn;
   const stateBg = valid ? rgba(t.green, 0.12) : t.warnSoft;
   // crDelta 0 = real session with no platform credit ledger yet → hide the badge

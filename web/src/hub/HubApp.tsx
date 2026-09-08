@@ -5,26 +5,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './hub.css';
 import { buildTheme, hubCssVars, rowPadFor } from './theme';
-import { tyreLabel, relativeTime } from './format';
+import { relativeTime } from './format';
 import { OwnHubDataSource } from './data/http';
 import { DEFAULT_TRACK_CONTEXT, trackContextFor, trackName } from './data/tracks';
 import type { TrackContext } from './data/tracks';
-import type { HubOverview, HubRankings, HubLedgerEntry } from './data/types';
+import type { HubOverview, HubLedgerEntry, LeaderboardBoard, LeaderboardPosition } from './data/types';
 import { Sidebar } from './components/Sidebar';
 import type { HubScreen } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
-import { Overview } from './screens/Overview';
 import type { RealWallet } from './screens/Overview';
-import { Rankings } from './screens/Rankings';
-import { MarketManage } from './screens/MarketManage';
-import { Profile } from './screens/Profile';
-import { Feedback } from './screens/Feedback';
-import { FeedbackInbox } from './screens/FeedbackInbox';
-import { Analysis } from './screens/Analysis';
-import { Access } from './screens/Access';
+import { useLeaderboard } from './data/useLeaderboard';
+import { leaderboardContextKey, leaderboardPosition } from './data/leaderboardState';
 import { Guide } from './screens/Guide';
-import { DriverProfile } from './screens/DriverProfile';
-import { MySetups } from './screens/MySetups';
 import { ViewAsBanner } from './components/ViewAsBanner';
 import { isPlatformConfigured } from './data/platformBase';
 import { PlatformMarket, PlatformSearch } from './data/platform';
@@ -40,7 +32,19 @@ import type { PlatformAccount } from './data/session';
 import { canDeleteAdminAnalysisReports, canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canViewFeedbackInbox } from './data/permissions';
 import { isCurrentSessionSnapshot, isParentStorageChange, parentRevalidationFailureAction, resolveBootstrapIdentity, sessionSubtreeKey, sessionUnauthorizedAction, viewAsEntryFailureAction } from './data/sessionState';
 
+import { Overview } from './screens/Overview';
+import { Rankings } from './screens/Rankings';
+import { MarketManage } from './screens/MarketManage';
+import { Profile } from './screens/Profile';
+import { Feedback } from './screens/Feedback';
+import { FeedbackInbox } from './screens/FeedbackInbox';
+import { Analysis } from './screens/Analysis';
+import { Access } from './screens/Access';
+import { DriverProfile } from './screens/DriverProfile';
+import { MySetups } from './screens/MySetups';
+
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
+
 
 export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const t = useMemo(() => buildTheme('#e0a83d', 'light'), []);
@@ -51,7 +55,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   // "맨 처음 가이드 페이지"는 딥링크가 아닌 Hub 진입의 기본 화면을 뜻한다.
   const [active, setActive] = useState<HubScreen>('guide');
-  const [rankTab, setRankTab] = useState<'tt' | 'pace'>('tt');
+  const [rankTab, setRankTab] = useState<LeaderboardBoard>('pb');
   // Shared track+format context for the leaderboards and the marketplace browse.
   const [trackCtx, setTrackCtx] = useState<TrackContext>(DEFAULT_TRACK_CONTEXT);
   const platformMkt = useMemo(() => new PlatformMarket(), []);
@@ -66,7 +70,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const raceContextRequestGeneration = useRef(0);
 
   const [overview, setOverview] = useState<HubOverview | null>(null);
-  const [rankings, setRankings] = useState<HubRankings | null>(null);
+  const [rankSelection, setRankSelection] = useState<{ context: string; position: LeaderboardPosition } | null>(null);
 
   // Hosted platform session (Steam login). null account = logged out.
   // Unconfigured platform → login disabled.
@@ -91,7 +95,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     walletGen.current += 1;
     raceContextRequestGeneration.current += 1;
     setRealWallet(null);
-    setRankings(null);
+    setRankSelection(null);
     setOverview(null);
     setHighlightedAccountId(null);
     setSelectedDriverAccountId(null);
@@ -126,28 +130,13 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     return () => { alive = false; };
   }, [dataSource, sessionEpoch, viewOnly]);
 
-  // Leaderboards come straight from the platform for the selected track+format.
-  // rankings === null renders as "loading"; a failed/empty fetch renders as the
-  // honest empty state (no mock fallback). platformAccount is a dependency so
-  // login/logout re-fetches with (or without) the Bearer token — that's what
-  // toggles the `you` highlight and the Overview rank card.
-  useEffect(() => {
-    if (!platformConfigured) { setRankings(null); return; }
-    let alive = true;
-    const epoch = sessionEpochRef.current;
-    setRankings(null);
-    void Promise.all([
-      platformMkt.leaderboardTT(trackCtx.trackId, trackCtx.format),
-      platformMkt.leaderboardPace(trackCtx.trackId, trackCtx.format),
-    ]).then(([tt, pace]) => {
-      if (!alive || epoch !== sessionEpochRef.current) return;
-      setRankings({
-        tt: tt.map((r) => ({ accountId: r.accountId, handle: r.persona, lapMs: r.lapMs, s1Ms: r.s1Ms, s2Ms: r.s2Ms, s3Ms: r.s3Ms, fmt: trackCtx.format, you: r.you })),
-        pace: pace.map((r) => ({ accountId: r.accountId, handle: r.persona, avgMs: r.avgMs, tyre: tyreLabel(r.tyre), laps: r.laps, consistency: r.consistency, you: r.you })),
-      });
-    }).catch(() => { if (alive && epoch === sessionEpochRef.current) setRankings({ tt: [], pace: [] }); });
-    return () => { alive = false; };
-  }, [platformConfigured, platformMkt, trackCtx, platformAccount, sessionEpoch]);
+  const rankContext = leaderboardContextKey(rankTab, trackCtx.trackId, trackCtx.format, platformAccount?.id ?? null, sessionEpoch);
+  const rankPosition = leaderboardPosition(rankContext, rankSelection);
+  const rankings = useLeaderboard(platformMkt, { ...trackCtx, board: rankTab, ...rankPosition }, rankContext, platformConfigured && !platformLoading, sessionEpochRef);
+  // Overview PB metadata has its own query identity, independent of source,
+  // page and selected-driver neighborhood in Rankings.
+  const pbContext = leaderboardContextKey('pb', trackCtx.trackId, trackCtx.format, platformAccount?.id ?? null, sessionEpoch);
+  const overviewPB = useLeaderboard(platformMkt, { ...trackCtx, board: 'pb', limit: 1 }, pbContext, platformConfigured && !platformLoading && !!platformAccount, sessionEpochRef);
 
   // Once logged in, default the track context to the viewer's most recent race
   // so the board opens on a track they actually drive. Manual selection wins after.
@@ -372,6 +361,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const setUserTrackContext = (context: TrackContext) => {
     trackContextGeneration.current += 1;
     setTrackCtx(trackContextFor(context.trackId, context.format));
+    setRankSelection(null);
   };
   const setManualTrack = (trackId: number) => {
     setHighlightedAccountId(null);
@@ -404,17 +394,16 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     setActive('rankings');
   };
 
-  // The viewer's standing on the current TT board, derived from the live
-  // leaderboard (the `you` row). null when logged out or not yet ranked here.
-  const rankInfo = useMemo(() => {
-    if (!rankings || !platformAccount) return null;
-    const idx = rankings.tt.findIndex((r) => r.you);
-    if (idx < 0) return null;
-    const rank = idx + 1;
-    const tenth = rankings.tt[9];
-    const gapMs = tenth && rank > 10 ? rankings.tt[idx].lapMs - tenth.lapMs : 0;
-    return { rank, gapMs, trackName: trackName(trackCtx.trackId) };
-  }, [rankings, platformAccount, trackCtx]);
+  const openDriverRanking = (accountId: string, trackId: number, format: string, board: LeaderboardBoard) => {
+    const context = trackContextFor(trackId, format);
+    setUserTrackContext(context);
+    setRankTab(board);
+    setHighlightedAccountId(accountId);
+    setRankSelection({ context: leaderboardContextKey(board, context.trackId, context.format, platformAccount?.id ?? null, sessionEpoch), position: { around: accountId } });
+    setActive('rankings');
+  };
+  const pbData = overviewPB.data;
+  const rankInfo = platformAccount && pbData?.viewer ? { rank: pbData.viewer.rank, gapMs: pbData.viewerGapToTop10Ms, trackName: trackName(trackCtx.trackId) } : null;
 
   const rootStyle = {
     ...hubCssVars(t),
@@ -438,15 +427,25 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
           {active === 'overview' && (viewOnly ? (
             <Placeholder t={t} title="OVERVIEW" note="View As에서는 이 PC의 로컬 텔레메트리·리플레이를 대상 사용자 데이터로 표시하지 않습니다." />
           ) : overview ? (
-            <Overview t={t} data={overview} wallet={realWallet} persona={platformAccount?.persona} rankInfo={rankInfo} onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')} />
+            <Overview
+              t={t} data={overview} wallet={realWallet} persona={platformAccount?.persona} rankInfo={rankInfo}
+              rankStatus={!platformConfigured ? 'unconfigured' : platformLoading ? 'loading' : !platformAccount ? 'anonymous' : overviewPB.status}
+              rankError={overviewPB.error} onRetryRank={overviewPB.retry}
+              onGoRankings={() => { if (platformAccount) openDriverRanking(platformAccount.id, trackCtx.trackId, trackCtx.format, 'pb'); }}
+              onGoMarket={() => setActive('market')} onGoAnalysis={() => setActive('analysis')}
+            />
           ) : <Loading t={t} />)}
 
           {active === 'rankings' && (
             <Rankings
-              t={t} data={rankings} configured={platformConfigured}
+              t={t} load={rankings} configured={platformConfigured} signedIn={!!platformAccount && !platformLoading}
               trackId={trackCtx.trackId} format={trackCtx.format}
               onSetTrack={setManualTrack} onSetFormat={setManualFormat}
-              tab={rankTab} onSetTab={setRankTab} rowPad={rowPad}
+              tab={rankTab} onSetTab={(board) => { setRankTab(board); setRankSelection(null); setHighlightedAccountId(null); }} rowPad={rowPad}
+              position={rankPosition} onNavigate={(position) => {
+                if (position.around === 'me') setHighlightedAccountId(null);
+                setRankSelection({ context: rankContext, position });
+              }} onRetry={rankings.retry}
               highlightAccountId={highlightedAccountId}
             />
           )}
@@ -478,7 +477,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
             <DriverProfile
               t={t} configured={platformConfigured} account={platformAccount}
               platformLoading={platformLoading} onLogin={beginSteamLogin}
-              client={platformMkt} accountId={selectedDriverAccountId}
+              client={platformMkt} accountId={selectedDriverAccountId} onGoRankings={openDriverRanking}
             />
           )}
 

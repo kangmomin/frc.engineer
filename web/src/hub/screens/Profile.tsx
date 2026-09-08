@@ -24,7 +24,7 @@ export function Profile({ t, configured, account, loading, onLogin, onLogout, on
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.01em', color: t.t1 }}>Profile</div>
         <div style={{ fontSize: 12.5, color: t.t2, marginTop: 4 }}>
-          Steam 계정 · <span style={{ color: t.ok, fontWeight: 600 }}>proof-of-play</span> 검증 상태 · 디바이스 페어링
+          Steam 계정 · <span style={{ color: t.ok, fontWeight: 600 }}>proof-of-play</span> 참여 기록 · 디바이스 페어링
         </div>
       </div>
 
@@ -59,7 +59,7 @@ function LoginCard({ t, onLogin }: { t: HubTheme; onLogin: () => void }) {
       <div style={{ fontSize: 15, fontWeight: 700, color: t.t1, marginBottom: 6 }}>Steam으로 로그인</div>
       <div style={{ fontSize: 13, color: t.t2, lineHeight: 1.6, marginBottom: 18 }}>
         Steam 계정으로 인증하면 크로스유저 리더보드·셋업 마켓·크레딧 지갑을 사용할 수 있습니다.
-        게임 소유는 실제 텔레메트리를 1건 이상 제출(proof-of-play)하면 검증됩니다.
+        텔레메트리 제출 이력(proof-of-play)은 참여 근거입니다. 게임 소유권이나 부정행위 방지를 인증하지 않습니다.
       </div>
       <button
         onClick={onLogin}
@@ -89,9 +89,9 @@ function AccountCard({ t, account, onLogout }: { t: HubTheme; account: PlatformA
             {account.banned ? (
               <Badge label="BANNED" fg={t.onAcc} bg={t.negRed} />
             ) : account.verified ? (
-              <Badge label="◆ OWNED · VERIFIED" fg={t.onAcc} bg={t.ok} />
+              <Badge label="◆ 참여 기록 있음" fg={t.onAcc} bg={t.ok} />
             ) : (
-              <Badge label="UNVERIFIED" fg={t.t2} bg={t.panel2} border={t.line2} />
+              <Badge label="참여 기록 미확인" fg={t.t2} bg={t.panel2} border={t.line2} />
             )}
           </div>
         </div>
@@ -107,8 +107,8 @@ function AccountCard({ t, account, onLogout }: { t: HubTheme; account: PlatformA
       </div>
       {!account.verified && !account.banned && (
         <div style={{ fontSize: 12, color: t.t3, marginTop: 14, lineHeight: 1.6, borderTop: `1px solid ${t.linesoft}`, paddingTop: 12 }}>
-          아직 검증되지 않았습니다. 데스크톱 앱을 페어링하고 F1 세션 텔레메트리를 1건 이상 업로드하면
-          <span style={{ color: t.ok, fontWeight: 600 }}> proof-of-play</span> 검증이 완료됩니다.
+          아직 참여 기록이 확인되지 않았습니다. 데스크톱 앱을 페어링하고 F1 세션 텔레메트리를 1건 이상 업로드하면
+          <span style={{ color: t.ok, fontWeight: 600 }}> proof-of-play</span> 참여 기록이 반영됩니다.
         </div>
       )}
     </Card>
