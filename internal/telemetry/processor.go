@@ -73,11 +73,12 @@ type Processor struct {
 	fastHub broadcast.FastBroadcaster
 
 	// Rate limiting
-	minInterval     time.Duration
-	lastSend        time.Time
-	lastPitwallSend time.Time
-	pitwallInterval time.Duration // adaptive: 250ms (4Hz) ↔ 500ms (2Hz)
-	noDropStreak    int           // consecutive broadcasts without drops
+	dashboardEnabled bool
+	minInterval      time.Duration
+	lastSend         time.Time
+	lastPitwallSend  time.Time
+	pitwallInterval  time.Duration // adaptive: 250ms (4Hz) ↔ 500ms (2Hz)
+	noDropStreak     int           // consecutive broadcasts without drops
 
 	// Latest data cache
 	mu               sync.RWMutex
@@ -156,19 +157,29 @@ func NewProcessor(parser *udp.Parser, hub broadcast.Broadcaster, updateRateHz in
 	}
 
 	p := &Processor{
-		parser:          parser,
-		hub:             hub,
-		deltaCalculator: NewDeltaCalculator(),
-		pitwallManager:  NewPitwallManager(NewStrategyManager(), trackStore, nil),
-		logger:          logger,
-		minInterval:     interval,
-		pitwallInterval: 250 * time.Millisecond,
-		done:            make(chan struct{}),
-		captureRunID:    newCaptureRunID(),
+		parser:           parser,
+		hub:              hub,
+		deltaCalculator:  NewDeltaCalculator(),
+		pitwallManager:   NewPitwallManager(NewStrategyManager(), trackStore, nil),
+		logger:           logger,
+		dashboardEnabled: true,
+		minInterval:      interval,
+		pitwallInterval:  250 * time.Millisecond,
+		done:             make(chan struct{}),
+		captureRunID:     newCaptureRunID(),
 	}
 	p.incidents = newIncidentRecorder(logger, p.pitwallManager.GetDriverName, p.pitwallManager.GetDriverTeamID)
 	p.incidents.setTelemetryResolver(p.pitwallManager.TelemetryAvailableForVehicle)
 	return p
+}
+
+// SetDashboardEnabled controls only the legacy, untyped dashboard broadcast.
+// Pitwall, positions, events, and personal-best tracking remain active. The
+// constructor enables it by default; updateRateHz <= 0 still means unlimited.
+func (p *Processor) SetDashboardEnabled(enabled bool) {
+	p.mu.Lock()
+	p.dashboardEnabled = enabled
+	p.mu.Unlock()
 }
 
 // SetFastBroadcaster sets the optional high-frequency broadcaster for position data.
@@ -328,9 +339,13 @@ func (p *Processor) Start(ctx context.Context, packets <-chan []byte) {
 	defer close(p.done)
 
 	updateHz := "unlimited"
-	if p.minInterval > 0 {
+	p.mu.RLock()
+	if !p.dashboardEnabled {
+		updateHz = "disabled"
+	} else if p.minInterval > 0 {
 		updateHz = fmt.Sprintf("%d", int(time.Second/p.minInterval))
 	}
+	p.mu.RUnlock()
 	p.logger.Info("telemetry processor started", "updateRateHz", updateHz)
 
 	ticker := time.NewTicker(idleSaveTick)
@@ -582,17 +597,12 @@ func (p *Processor) processPacket(data []byte) {
 		pitwallObserver = p.pitwallObserver
 	}
 
-	// Check rate limit for telemetry dashboard
-	if now.Sub(p.lastSend) < p.minInterval {
-		p.mu.Unlock()
-	} else {
-		// Build and send dashboard data
-		if p.latestTelemetry != nil && p.latestLapData != nil && p.latestHeader != nil {
-			dashData = p.buildDashboardData()
-			p.lastSend = now
-		}
-		p.mu.Unlock()
+	if p.dashboardEnabled && now.Sub(p.lastSend) >= p.minInterval &&
+		p.latestTelemetry != nil && p.latestLapData != nil && p.latestHeader != nil {
+		dashData = p.buildDashboardData()
+		p.lastSend = now
 	}
+	p.mu.Unlock()
 
 	if pitwallState != nil {
 		// Use typed path if available (avoids double marshal/unmarshal losing bool fields)
