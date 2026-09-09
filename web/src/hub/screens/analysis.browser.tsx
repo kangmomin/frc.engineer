@@ -9,6 +9,7 @@ import { buildTheme } from '../theme';
 import { Analysis } from './Analysis';
 import { IncidentReplay as IncidentReplayView } from './IncidentReplay';
 import { loadReplayTrack } from '../../constants/replayTracks';
+import { loadTrackBoundaries } from '../../constants/replayTrackBoundaries';
 
 const complete: SectionCompleteness = { status: 'complete', reasons: [], capturedCount: 1, storedCount: 1 };
 const participants: IncidentReplay['participants'] = [
@@ -233,9 +234,13 @@ async function ownerNavigationAndReplay() {
   } finally { root.unmount(); host.remove(); }
 }
 
-async function anonymousRoute() {
-  const reference = (await loadReplayTrack(5, 'F1 26'))!;
-  const historicClip: IncidentReplay = { ...clip, frames: clip.frames.map((frame, index) => ({ ...frame, cars: frame.cars.map((car) => { if (!car) return null; const [, x, z] = reference.points[index]; return [x, car[1], z, ...car.slice(3)] as typeof car; }) })) };
+async function anonymousRoute(boundaryTrackId?: number) {
+  const boundaries = boundaryTrackId === undefined ? null : (await loadTrackBoundaries(boundaryTrackId, 'F1 25'))!;
+  const withBoundaries = boundaries !== null;
+  const points = withBoundaries
+    ? boundaries!.segments[0].sections.map(({ left }) => [left![0], left![2]])
+    : (await loadReplayTrack(5, 'F1 26'))!.points.map(([, x, z]) => [x, z]);
+  const historicClip: IncidentReplay = { ...clip, frames: clip.frames.map((frame, index) => ({ ...frame, cars: frame.cars.map((car) => { if (!car) return null; const [x, z] = points[index]; return [x, car[1], z, ...car.slice(3)] as typeof car; }) })) };
   const getDetail = PlatformMarket.prototype.getSharedRaceAnalysis;
   const getIncident = PlatformMarket.prototype.getSharedRaceAnalysisIncident;
   const originalFetch = window.fetch; const originalHash = window.location.hash;
@@ -243,7 +248,7 @@ async function anonymousRoute() {
   let publicReads = 0; let incidentReads = 0; let showSetup = false;
   try {
     window.fetch = () => { throw new Error('Anonymous share bootstrapped an authenticated request'); };
-    PlatformMarket.prototype.getSharedRaceAnalysis = async () => { publicReads++; return { detail: { ...detail, track: { id: 5, name: 'Monaco' }, trackOutline: null }, includeSetup: showSetup, ...(showSetup ? { setup } : {}) }; };
+    PlatformMarket.prototype.getSharedRaceAnalysis = async () => { publicReads++; return { detail: { ...detail, track: withBoundaries ? { id: boundaryTrackId!, name: boundaries!.provenance.description } : { id: 5, name: 'Monaco' }, gameFormat: withBoundaries ? 'F1 25' : 'F1 26', trackOutline: null }, includeSetup: showSetup, ...(showSetup ? { setup } : {}) }; };
     PlatformMarket.prototype.getSharedRaceAnalysisIncident = async () => { incidentReads++; return historicClip; };
     window.history.replaceState(null, '', `${window.location.pathname}#raceShare=public-token`);
     root.render(<App />);
@@ -253,7 +258,16 @@ async function anonymousRoute() {
     tab(host, '사고 리플레이').click(); await wait(); host.querySelector<HTMLButtonElement>('[class*=incidentButton]')!.click();
     await until(() => incidentReads > 0 && !!host.querySelector('input[type=range]'), 'Anonymous replay did not load');
     await until(() => !!host.querySelector('[data-overview-car]'), 'Anonymous legacy reference did not load');
-    check(host.textContent!.includes('참조 트랙'), 'Shared page lost track identity');
+    if (withBoundaries) {
+      await until(() => host.querySelectorAll('[data-road-surface]').length === boundaries!.segments.reduce((count, segment) => count + segment.sections.length - 1, 0) * 2, 'Shared road surfaces did not load');
+      check(host.textContent!.includes('본선 흰선 사이만 표시합니다') && host.textContent!.includes('경계 오차 미확인'), 'Road coverage or accuracy label missing');
+      check(!host.textContent!.includes('트랙 폭 자료 없음'), 'Loaded boundaries still reported unavailable');
+      if (boundaries!.coverage === 'main-circuit-partial') check(host.textContent!.includes('일부 구간은 표시에서 제외'), 'Partial road coverage warning missing');
+      const road = host.querySelector('[data-road-surface]')!;
+      const before = road.getAttribute('d'); button(host, '확대').click(); await wait();
+      check(road.getAttribute('d') !== before, 'Road width did not follow the camera zoom');
+      check(!/NaN|Infinity/.test(host.querySelector('svg[aria-label^="Reference track boundaries"]')!.outerHTML), 'Road projection is not finite');
+    } else check(host.textContent!.includes('참조 트랙'), 'Shared page lost track identity');
     showSetup = true; window.location.hash = 'raceShare=public-with-setup';
     await until(() => [...host.querySelectorAll('[role=tab]')].some((item) => item.textContent === '셋업'), 'Visible setup tab did not render');
     tab(host, '셋업').click(); await wait();
@@ -292,7 +306,7 @@ async function historicalTrackReplay() {
     const end = overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform');
     button(host, '확대').click(); await wait();
     check(overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform') === end, 'Incident zoom changed the overview');
-    root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} trackId={5} gameFormat="F1 25" />);
+    root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} trackId={5} gameFormat="F1 27" />);
     await until(() => host.textContent!.includes('트랙 자료 없음'), 'Unsupported format did not fall back');
     check(!host.querySelector('[data-overview-car]'), 'Previous game reference leaked into another format');
   } finally { root.unmount(); host.remove(); }
@@ -303,6 +317,8 @@ export async function run() {
   await carShapesFollowYaw();
   await ownerNavigationAndReplay();
   await anonymousRoute();
+  await anonymousRoute(7);
+  await anonymousRoute(12);
   return 'PitHub analysis browser: archive/filter races, tabs, RAF playback, zoom, finite drag coordinates, sharing and anonymous routing passed.';
 }
 

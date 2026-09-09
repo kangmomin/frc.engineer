@@ -11,6 +11,7 @@ export interface ReplayTrackBoundaries {
   projection: 'single-surface-xz';
   trackId: number;
   gameFormat: string;
+  coverage?: 'main-circuit' | 'main-circuit-partial';
   provenance: { description: string; gameVersion: string; verifiedAt: string };
   maxErrorM: number | null;
   segments: Array<{ id: string; sections: TrackBoundarySection[] }>;
@@ -51,6 +52,7 @@ function convex(polygon: TrackWorldPoint[]): boolean {
 // remain an asset-authoring requirement; a version label cannot prove accuracy.
 export function parseTrackBoundaries(value: unknown, trackId: number | undefined, gameFormat: string | undefined): ReplayTrackBoundaries | null {
   if (!object(value) || value.schemaVersion !== 1 || value.projection !== 'single-surface-xz' || value.trackId !== trackId || value.gameFormat !== gameFormat
+    || !(value.coverage === undefined || value.coverage === 'main-circuit' || value.coverage === 'main-circuit-partial')
     || !Number.isInteger(value.trackId) || !nonempty(value.gameFormat) || !object(value.provenance)
     || !['description', 'gameVersion', 'verifiedAt'].every((key) => nonempty(value.provenance && (value.provenance as Record<string, unknown>)[key]))
     || !(value.maxErrorM === null || typeof value.maxErrorM === 'number' && Number.isFinite(value.maxErrorM) && value.maxErrorM >= 0)
