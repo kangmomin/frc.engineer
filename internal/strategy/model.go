@@ -22,7 +22,7 @@ func contextFor(e Evidence, l Lap) (Context, bool) {
 	if c.Rules.EqualPerformance {
 		c.TeamID = nil
 	}
-	// [Assumption] Compare within five-degree track-temperature bands.
+	// Compare within five-degree track-temperature bands.
 	ctx := Context{Conditions: c, Weather: l.Weather, TrackTempBucket: int(math.Floor(float64(l.TrackTemp)/5)) * 5,
 		TractionControl: l.TractionControl, ABS: l.ABS}
 	b, _ := json.Marshal(ctx)
@@ -233,7 +233,7 @@ func Analyze(records []Record, request Request) Result {
 		return out
 	}
 	n := len(models)
-	// [Assumption] Broad model bounds reject unstable fits; these are not fixed
+	// Broad model bounds reject unstable fits; these are not fixed
 	// fuel or tyre coefficients. Negative warm-up trends are not called damage.
 	if beta[0] < 0 || beta[0] > 500 {
 		out.Status = "unidentifiable"
@@ -568,7 +568,7 @@ func enumeratePlans(models []CompoundModel, pit *PitModel, laps int, request Req
 			return
 		}
 		for _, m := range models {
-			// [Assumption] Only the first two tyre laps may use the fitted
+			// Only the first two tyre laps may use the fitted
 			// intercept for warm-up. Never extend a stint beyond observed age.
 			if m.MinAge > 2 || used[m.Tyre] >= request.AvailableSets[m.Tyre] {
 				continue
@@ -636,7 +636,7 @@ func energyProfile(races []raceData) ERSProfile {
 					valid = false
 				}
 			}
-			// [Assumption] At least 98% native status coverage is needed for an
+			// At least 98% native status coverage is needed for an
 			// observed energy budget. This does not establish an ERS speed benefit.
 			if !valid || duration < float64(l.TimeMs)*.98 {
 				continue

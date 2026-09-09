@@ -7,7 +7,7 @@ const (
 	MaxLaps          = 200
 	MaxStops         = 30
 	MaxEvidenceBytes = 128 << 10
-	// [Assumption] These are minimum evidence gates, not accuracy guarantees.
+	// These are minimum evidence gates, not accuracy guarantees.
 	MinUsers     = 3
 	MinSessions  = 6
 	MinCleanLaps = 40

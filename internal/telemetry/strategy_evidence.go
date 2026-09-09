@@ -11,7 +11,7 @@ import (
 	"frc.engineer/internal/udp"
 )
 
-// [Assumption] Status/damage freshness and status integration gaps are bounded
+// Status/damage freshness and status integration gaps are bounded
 // at 1.2 seconds. Fast timing/controls must be within 150 milliseconds.
 const strategySlowFreshSeconds = 1.2
 const strategyFastFreshSeconds = .15
@@ -380,7 +380,7 @@ func (c *strategyCapture) observeLap(at float64, l packets.LapData) {
 		x.flags["pit"] = true
 	}
 	gap := int(l.DeltaToCarInFrontMinutesPart)*60000 + int(l.DeltaToCarInFrontMSPart)
-	// [Assumption] A reported car ahead within 2 seconds contaminates a clean
+	// A reported car ahead within 2 seconds contaminates a clean
 	// pace baseline. Unknown gaps in a non-leading car are not clean evidence.
 	if l.CarPosition > 1 && (gap <= 2000) {
 		x.flags["traffic"] = true

@@ -98,7 +98,7 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
 
 function Comparison({ track, context, onDenied }: { track: TrackContext; context: StrategyContext; onDenied: () => void }) {
   const wet = context.weather >= 3;
-  // [Assumption] Editable starting inventory, never inferred from an upload.
+  // Editable starting inventory, never inferred from an upload.
   const [sets, setSets] = useState<StrategyRequest['availableSets']>(wet ? { Inter: 2, Wet: 1 } : { Soft: 1, Medium: 1, Hard: 1 });
   const [maxStops, setMaxStops] = useState(2);
   const [twoCompounds, setTwoCompounds] = useState(!wet);
