@@ -5,7 +5,7 @@
 .screen h3 { margin: 0 0 8px; font-size: 16px; }
 .screen p { color: var(--t2); margin: 9px 0; }
 .screen label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 600; }
-.screen select, .screen button { font: inherit; color: var(--t1); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 9px 12px; }
+.screen select, .screen button, .screen input[type="search"] { font: inherit; color: var(--t1); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 9px 12px; }
 .screen select { min-width: 0; max-width: 100%; }
 .screen button { cursor: pointer; }
 .screen button:disabled { cursor: default; opacity: .5; }
@@ -13,7 +13,21 @@
 .filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
 .filters label:first-child { flex: 1; min-width: 150px; }
 .card { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 22px; margin-bottom: 16px; }
-.contextSelect { width: 100%; }
+.recordFilters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 20px; }
+.recordFilters label { flex: 1 1 120px; min-width: 0; }
+.recordFilters .searchField { flex: 2 1 220px; }
+.recordFilters input { min-width: 0; }
+.recordGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 12px; list-style: none; padding: 0; margin: 16px 0 0; }
+.recordGrid li { min-width: 0; }
+.screen .recordButton { display: flex; flex-direction: column; gap: 10px; width: 100%; height: 100%; padding: 18px; text-align: left; border-radius: 10px; overflow-wrap: anywhere; }
+.recordButton:hover, .recordButton[aria-pressed="true"] { border-color: var(--accInk); }
+.recordButton[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accInk); }
+.recordHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.recordHeading > span { color: var(--accInk); font-size: 11px; flex-shrink: 0; }
+.recordSummary { color: var(--t2); font-size: 12px; }
+.recordStats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: 100%; padding-top: 12px; margin-top: auto; border-top: 1px solid var(--line); }
+.recordStats > span { color: var(--t2); font-size: 11px; }
+.recordStats strong { display: block; color: var(--t1); font-size: 19px; font-variant-numeric: tabular-nums; }
 .screen details { margin-top: 14px; color: var(--t2); }
 .screen summary { cursor: pointer; font-size: 12px; }
 .conditions { display: grid; grid-template-columns: minmax(130px, 1fr) 2fr; gap: 6px 16px; font-size: 12px; }

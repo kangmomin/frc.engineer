@@ -8,6 +8,16 @@ const pause = (ms = 20) => new Promise<void>(resolve => setTimeout(resolve, ms))
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 async function until(test: () => boolean, message: string) { const end = performance.now() + 5000; while (!test()) { check(performance.now() < end, `${message}\n${document.body.innerText.slice(-3000)}`); await pause(); } }
 function button(host: HTMLElement, name: string): HTMLButtonElement { const b = [...host.querySelectorAll('button')].find(el => el.getAttribute('aria-label') === name || el.textContent?.trim() === name); check(b, `Missing ${name}`); return b; }
+function selectFilter(host: HTMLElement, label: string, value: string) {
+  const select = [...host.querySelectorAll('label')].find(el => el.firstChild?.textContent === label)?.querySelector('select');
+  check(select, `Missing filter ${label}`); select.value = value; select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+async function searchRecords(host: HTMLElement, value: string) {
+  const input = host.querySelector<HTMLInputElement>('input[type="search"]'); check(input, 'Missing record search');
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true })); await pause();
+}
+const cards = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('[aria-label="경기 조건 목록"] button')];
 
 export async function run() {
   check(import.meta.env.VITE_PLATFORM_URL, 'Run with VITE_PLATFORM_URL=http://strategy.test');
@@ -18,6 +28,12 @@ export async function run() {
   let finishMe: ((r: Response) => void) | null = null, finishSimulation: ((r: Response) => void) | null = null;
   const grants = () => ['pithub.race.read', 'pithub.race.create', ...(allowed ? ['pithub.strategy.read'] : [])];
   const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+  const otherContext = structuredClone(strategyContextFixture);
+  otherContext.id = 'b'.repeat(32); otherContext.weather = 2; otherContext.conditions.totalLaps = 50;
+  otherContext.conditions.gameMinor = 23; otherContext.conditions.teamId = 1;
+  otherContext.conditions.rules.equalPerformance = false; otherContext.conditions.rules.gameMode = 4;
+  const wetContext = structuredClone(strategyContextFixture);
+  wetContext.id = 'c'.repeat(32); wetContext.weather = 3; wetContext.conditions.totalLaps = 50;
   try {
     clearViewAsSession(); localStorage.setItem(PARENT_TOKEN_KEY, 'token-a');
     // Only transport is stubbed: real Hub session, role grants, form and result lifecycle.
@@ -31,7 +47,7 @@ export async function run() {
       if (url.pathname === '/me/strategy-preferences') { preferences++; return json({}, 404); }
       if (url.pathname === '/strategies/contexts') {
         contexts++; if (!allowed || isB) return json({}, 403);
-        return json({ contexts: url.searchParams.get('trackId') === '5' ? [] : [strategyContextFixture], records: 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6 });
+        return json({ contexts: url.searchParams.get('trackId') === '5' ? [] : [strategyContextFixture, otherContext, wetContext], records: 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6 });
       }
       if (url.pathname === '/strategies/simulate') {
         simulations++; if (!allowed || isB) return json({}, 403);
@@ -56,9 +72,33 @@ export async function run() {
     button(host, 'STRATEGY').click();
     await until(() => host.textContent?.includes('전략 비교하기') === true, 'workbench did not load');
     check(simulations === 0, 'opening strategy auto-ran a comparison');
+    check(cards(host).length === 3 && cards(host)[0].getAttribute('aria-pressed') === 'true', 'initial record cards or selection missing');
+    await searchRecords(host, '  그랑프리 V1.23  ');
+    check(cards(host).length === 1 && cards(host)[0].textContent?.includes('조건 2'), 'search lost case folding, combined terms, or stable condition number');
+    check(!host.textContent?.includes('전략 비교하기') && host.textContent?.includes('비교할 조건 카드를 선택하세요'), 'hidden selection retained comparison');
+    cards(host)[0].click(); await until(() => host.textContent?.includes('전략 비교하기') === true, 'card selection did not open comparison');
+    check(cards(host)[0].getAttribute('aria-pressed') === 'true' && simulations === 0, 'card did not select or auto-ran comparison');
+    selectFilter(host, '차량 성능', 'equal');
+    await until(() => host.textContent?.includes('검색·필터에 맞는 경기 조건이 없습니다') === true, 'search and performance filter did not combine');
+    button(host, '초기화').click(); await until(() => cards(host).length === 3, 'reset did not restore cards');
+    check(cards(host)[1].getAttribute('aria-pressed') === 'true', 'reset lost selected condition');
+    selectFilter(host, '날씨', '3'); selectFilter(host, '총 랩 수', '50');
+    await until(() => cards(host).length === 1 && cards(host)[0].textContent?.includes('조건 3') === true, 'weather and lap filters did not combine');
+    selectFilter(host, '총 랩 수', '30');
+    await until(() => cards(host).length === 0, 'lap options changed with filtering or AND filter failed');
+    button(host, '초기화').click(); await until(() => cards(host).length === 3, 'second reset failed');
+    cards(host)[0].click(); await pause();
     button(host, '전략 비교하기').click();
     await until(() => host.textContent?.includes('12랩 종료') === true, 'computed plan did not render');
     check(host.textContent?.includes('+0.85초') && host.textContent?.includes('공식 섹터가 아닌 거리 3등분'), 'result units or segment limitation missing');
+    deferSimulation = true; button(host, '전략 비교하기').click(); await until(() => finishSimulation !== null, 'filtered simulation not pending');
+    await searchRecords(host, '찾을 수 없는 조건');
+    check(cards(host).length === 0 && !host.textContent?.includes('전략 비교 중'), 'filter did not unmount pending comparison');
+    (finishSimulation as unknown as (r: Response) => void)(json(strategyResultFixture)); await pause(60);
+    check(!host.textContent?.includes('12랩 종료'), 'late result leaked after filtering');
+    button(host, '초기화').click(); await until(() => host.textContent?.includes('전략 비교하기') === true, 'reset did not restore comparison');
+    check(!host.textContent?.includes('12랩 종료'), 'reset restored stale result');
+    finishSimulation = null;
     deferSimulation = true; button(host, '전략 비교하기').click(); await until(() => finishSimulation !== null, 'second simulation not pending');
     const trackSelect = [...host.querySelectorAll('select')].find(s => [...s.options].some(o => o.textContent === 'Monaco'))!;
     trackSelect.value = '5'; trackSelect.dispatchEvent(new Event('change', { bubbles: true }));
@@ -88,7 +128,7 @@ export async function run() {
     (finishMe as unknown as (r: Response) => void)(json({ ...account, permissions: ['pithub'] })); await pause(60);
     check(!host.querySelector('[aria-label="STRATEGY"]') && !host.textContent?.includes('12랩 종료'), 'late permission grant crossed account boundary');
     check(preferences === 0, 'obsolete opt-in API was called');
-    return 'Strategy browser: permission-only entry, grant/revoke, 403 cleanup, manual comparison, units, stale track/account/permission responses passed';
+    return 'Strategy browser: record cards, combined search/filters, reset, selection and stale filtered results, permission entry/grant/revoke, manual comparison, units and stale track/account responses passed';
   } finally {
     root.unmount(); host.remove(); window.fetch = originalFetch;
     if (previousToken === null) localStorage.removeItem(PARENT_TOKEN_KEY); else localStorage.setItem(PARENT_TOKEN_KEY, previousToken);

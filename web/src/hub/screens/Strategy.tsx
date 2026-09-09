@@ -70,6 +70,10 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [search, setSearch] = useState('');
+  const [weatherFilter, setWeatherFilter] = useState('');
+  const [performanceFilter, setPerformanceFilter] = useState('');
+  const [lapsFilter, setLapsFilter] = useState('');
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setCorpus(null); setContextId(''); setError('');
@@ -80,15 +84,41 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [track.trackId, track.format, revision, onDenied]);
-  const context = corpus?.contexts.find(c => c.id === contextId);
+  const records = (corpus?.contexts ?? []).map((context, index) => ({ context, number: index + 1 }));
+  const terms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const visible = records.filter(({ context: c, number }) =>
+    (!weatherFilter || String(c.weather) === weatherFilter)
+    && (!performanceFilter || (c.conditions.rules.equalPerformance ? 'equal' : 'realistic') === performanceFilter)
+    && (!lapsFilter || String(c.conditions.totalLaps) === lapsFilter)
+    && terms.every(term => `조건 ${number} ${strategyContextLabel(c)}`.toLocaleLowerCase().includes(term)));
+  const context = visible.find(({ context: c }) => c.id === contextId)?.context;
+  const resetFilters = () => { setSearch(''); setWeatherFilter(''); setPerformanceFilter(''); setLapsFilter(''); };
   return <>
     {loading && <div className={styles.empty} role="status">업로드된 경기 조건을 찾고 있습니다…</div>}
     {error && <div className={styles.empty} role="alert"><p>{error}</p><button onClick={() => setRevision(n => n + 1)}>조건 다시 불러오기</button></div>}
     {!loading && !error && corpus && <>
       {corpus.contexts.length === 0 ? <div className={styles.empty}><h3>이 조건의 기록을 모으고 있습니다</h3><p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p><p>최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 40개의 정상 랩이 필요합니다. 사고·손상·트래픽·SC가 있는 랩은 기준 페이스에서 제외합니다.</p><button onClick={() => setRevision(n => n + 1)}>다시 확인</button></div> : <>
-        <div className={styles.card}><label>비교할 경기 조건<select className={styles.contextSelect} value={contextId} onChange={e => setContextId(e.target.value)}>{corpus.contexts.map((c, i) => <option key={c.id} value={c.id}>조건 {i + 1} · {strategyContextLabel(c)} · {c.users}명 / {c.sessions}경기</option>)}</select></label>
-          {context && <><p>{context.users}명 · 독립 경기 {context.sessions}개 · 정상 랩 {context.cleanLaps}개</p><details><summary>조건 확인</summary><StrategyContextDetails context={context} /><p>게임 버전·모드·규칙·경기 길이와 물리 설정이 같은 기록끼리만 비교합니다. 드라이버와 고정 셋업 차이는 경기별 기준 페이스로 보정하며, 도중에 셋업이 바뀐 자료는 제외합니다.</p></details></>}
-        </div>
+        <section className={styles.card} aria-labelledby="strategy-records-title">
+          <h3 id="strategy-records-title">수집 기록 · 경기 조건</h3>
+          <p>같은 경기 조건의 기록을 묶었습니다. 조건 카드를 선택해 전략을 비교하세요.</p>
+          <div className={styles.recordFilters} role="search" aria-label="경기 조건 검색 및 필터">
+            <label className={styles.searchField}>조건 검색<input type="search" placeholder="모드, 팀, 버전, 온도 검색" maxLength={100} value={search} onChange={e => setSearch(e.target.value)} /></label>
+            <label>날씨<select value={weatherFilter} onChange={e => setWeatherFilter(e.target.value)}><option value="">전체 날씨</option>{[...new Set(corpus.contexts.map(c => c.weather))].sort((a, b) => a - b).map(value => <option key={value} value={value}>{weather[value]}</option>)}</select></label>
+            <label>차량 성능<select value={performanceFilter} onChange={e => setPerformanceFilter(e.target.value)}><option value="">전체 성능</option><option value="equal">이퀄</option><option value="realistic">논이퀄</option></select></label>
+            <label>총 랩 수<select value={lapsFilter} onChange={e => setLapsFilter(e.target.value)}><option value="">전체 랩 수</option>{[...new Set(corpus.contexts.map(c => c.conditions.totalLaps))].sort((a, b) => a - b).map(value => <option key={value} value={value}>{value}랩</option>)}</select></label>
+            <button type="button" onClick={resetFilters}>초기화</button>
+          </div>
+          <p className={styles.note} role="status">경기 조건 {visible.length} / {records.length}개</p>
+          {visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
+            <button type="button" className={styles.recordButton} aria-pressed={c.id === contextId} onClick={() => setContextId(c.id)}>
+              <span className={styles.recordHeading}><strong>조건 {number} · {c.conditions.totalLaps}랩</strong><span>{c.id === contextId ? '선택됨' : '조건 선택'}</span></span>
+              <span className={styles.recordSummary}>{weather[c.weather]} · {c.trackTempBucket}–{c.trackTempBucket + 4}°C · {c.conditions.rules.equalPerformance ? '이퀄' : `논이퀄 · ${getTeamName(c.conditions.teamId ?? -1)}`}</span>
+              <span className={styles.recordSummary}>{modeLabel(c.conditions.rules.gameMode)} / {rulesLabel(c.conditions.rules.ruleSet)} · v{c.conditions.gameMajor}.{c.conditions.gameMinor}</span>
+              <span className={styles.recordStats}><span><strong>{c.users}</strong>참여자</span><span><strong>{c.sessions}</strong>독립 경기</span><span><strong>{c.cleanLaps}</strong>정상 랩</span></span>
+            </button>
+          </li>)}</ul>}
+          {context ? <details key={context.id}><summary>선택한 조건 상세</summary><StrategyContextDetails context={context} /><p>게임 버전·모드·규칙·경기 길이와 물리 설정이 같은 기록끼리만 비교합니다. 드라이버와 고정 셋업 차이는 경기별 기준 페이스로 보정하며, 도중에 셋업이 바뀐 자료는 제외합니다.</p></details> : visible.length > 0 && <p className={styles.note}>비교할 조건 카드를 선택하세요.</p>}
+        </section>
         {context && <Comparison key={`${context.id}:${revision}`} track={track} context={context} onDenied={onDenied} />}
       </>}
       <p className={styles.note}>트랙·게임별 최근 최대 {corpus.recordLimit}개 업로드, 사용자별 최대 20경기를 사용합니다.{corpus.truncated ? ' 현재 전체 조회 한도에 도달했습니다.' : ''} 같은 사용자의 같은 경기 재업로드는 한 건으로 처리합니다.</p>
