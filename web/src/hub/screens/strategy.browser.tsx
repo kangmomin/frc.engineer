@@ -103,6 +103,13 @@ export async function run() {
     const trackSelect = [...host.querySelectorAll('select')].find(s => [...s.options].some(o => o.textContent === 'Monaco'))!;
     trackSelect.value = '5'; trackSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => host.textContent?.includes('이 조건의 기록을 모으고 있습니다') === true, 'empty context did not render');
+    check(host.querySelector('[aria-label="경기 조건 검색 및 필터"]') && host.textContent?.includes('경기 조건 0 / 0개'), 'empty corpus hid record filters or count');
+    check(cards(host).length === 0 && !host.textContent?.includes('전략 비교하기'), 'empty corpus displayed a card or comparison');
+    selectFilter(host, '날씨', ''); selectFilter(host, '총 랩 수', ''); selectFilter(host, '차량 성능', 'equal');
+    await searchRecords(host, 'Monaco');
+    check(host.textContent?.includes('이 조건의 기록을 모으고 있습니다') && !host.textContent?.includes('검색·필터에 맞는 경기 조건이 없습니다'), 'empty corpus was confused with a filtered result');
+    button(host, '초기화').click(); await pause();
+    check(host.querySelector<HTMLInputElement>('input[type="search"]')?.value === '' && host.textContent?.includes('이 조건의 기록을 모으고 있습니다'), 'empty corpus reset hid record browsing');
     const completeSimulation = finishSimulation as unknown as (r: Response) => void; completeSimulation(json(strategyResultFixture)); await pause(60);
     check(!host.textContent?.includes('12랩 종료'), 'late result leaked across track change');
     deferSimulation = false;

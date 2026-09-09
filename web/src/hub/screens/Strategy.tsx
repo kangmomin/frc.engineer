@@ -97,7 +97,6 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
     {loading && <div className={styles.empty} role="status">업로드된 경기 조건을 찾고 있습니다…</div>}
     {error && <div className={styles.empty} role="alert"><p>{error}</p><button onClick={() => setRevision(n => n + 1)}>조건 다시 불러오기</button></div>}
     {!loading && !error && corpus && <>
-      {corpus.contexts.length === 0 ? <div className={styles.empty}><h3>이 조건의 기록을 모으고 있습니다</h3><p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p><p>최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 40개의 정상 랩이 필요합니다. 사고·손상·트래픽·SC가 있는 랩은 기준 페이스에서 제외합니다.</p><button onClick={() => setRevision(n => n + 1)}>다시 확인</button></div> : <>
         <section className={styles.card} aria-labelledby="strategy-records-title">
           <h3 id="strategy-records-title">수집 기록 · 경기 조건</h3>
           <p>같은 경기 조건의 기록을 묶었습니다. 조건 카드를 선택해 전략을 비교하세요.</p>
@@ -109,7 +108,7 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
             <button type="button" onClick={resetFilters}>초기화</button>
           </div>
           <p className={styles.note} role="status">경기 조건 {visible.length} / {records.length}개</p>
-          {visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
+          {corpus.contexts.length === 0 ? <div className={styles.empty}><h3>이 조건의 기록을 모으고 있습니다</h3><p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p><p>최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 40개의 정상 랩이 필요합니다. 사고·손상·트래픽·SC가 있는 랩은 기준 페이스에서 제외합니다.</p><button onClick={() => setRevision(n => n + 1)}>다시 확인</button></div> : visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
             <button type="button" className={styles.recordButton} aria-pressed={c.id === contextId} onClick={() => setContextId(c.id)}>
               <span className={styles.recordHeading}><strong>조건 {number} · {c.conditions.totalLaps}랩</strong><span>{c.id === contextId ? '선택됨' : '조건 선택'}</span></span>
               <span className={styles.recordSummary}>{weather[c.weather]} · {c.trackTempBucket}–{c.trackTempBucket + 4}°C · {c.conditions.rules.equalPerformance ? '이퀄' : `논이퀄 · ${getTeamName(c.conditions.teamId ?? -1)}`}</span>
@@ -120,7 +119,6 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
           {context ? <details key={context.id}><summary>선택한 조건 상세</summary><StrategyContextDetails context={context} /><p>게임 버전·모드·규칙·경기 길이와 물리 설정이 같은 기록끼리만 비교합니다. 드라이버와 고정 셋업 차이는 경기별 기준 페이스로 보정하며, 도중에 셋업이 바뀐 자료는 제외합니다.</p></details> : visible.length > 0 && <p className={styles.note}>비교할 조건 카드를 선택하세요.</p>}
         </section>
         {context && <Comparison key={`${context.id}:${revision}`} track={track} context={context} onDenied={onDenied} />}
-      </>}
       <p className={styles.note}>트랙·게임별 최근 최대 {corpus.recordLimit}개 업로드, 사용자별 최대 20경기를 사용합니다.{corpus.truncated ? ' 현재 전체 조회 한도에 도달했습니다.' : ''} 같은 사용자의 같은 경기 재업로드는 한 건으로 처리합니다.</p>
     </>}
   </>;
