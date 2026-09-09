@@ -1,7 +1,7 @@
 /**
  * F1 Team Colors
  * Team ID to color mapping based on official team colors.
- * 0-10: F1 25 (2025 season) / 476-486: 2026 Season Pack ('26 teams)
+ * 0-11: F1 25(0-10) + F1 26이 덧붙인 Cadillac(11) / 476-486: 2026 Season Pack
  */
 export const TEAM_COLORS: Record<number, string> = {
   0: '#27f4d2',   // Mercedes
@@ -15,6 +15,7 @@ export const TEAM_COLORS: Record<number, string> = {
   8: '#ff8000',   // McLaren
   9: '#52e252',   // Kick Sauber
   10: '#f50537',  // Audi
+  11: '#c8a25f',  // Cadillac (F1 26 라이브 실측 — 486과 같은 팀)
   255: '#6f7070', // Unknown/Safety Car
   // 2026 Season Pack team IDs
   476: '#27f4d2', // Mercedes '26
@@ -40,7 +41,7 @@ export function getTeamColor(teamId: number): string {
 
 /**
  * Short team badges for the leaderboard driver cell. Same ID set as TEAM_NAMES
- * (0-10 / 255 / 476-486). Unknown falls back to an em dash.
+ * (0-11 / 255 / 476-486). 미매핑은 getTeamShort가 `T{id}`로 노출한다.
  */
 export const TEAM_SHORT: Record<number, string> = {
   0: 'MER',
@@ -54,6 +55,7 @@ export const TEAM_SHORT: Record<number, string> = {
   8: 'MCL',
   9: 'SAU',
   10: 'AUD',
+  11: 'CAD',
   255: '—',
   // 2026 Season Pack team IDs
   476: 'MER',
@@ -99,6 +101,7 @@ export const TEAM_NAMES: Record<number, string> = {
   8: 'McLaren',
   9: 'Kick Sauber',
   10: 'Audi',
+  11: 'Cadillac',
   255: 'Unknown',
   // 2026 Season Pack team IDs
   476: 'Mercedes',
@@ -119,7 +122,7 @@ export function getTeamName(teamId: number): string {
 }
 
 /**
- * 로고 마크 식별자. F1 25(0-10)와 2026 Season Pack(476-486)이 같은 팀에 서로 다른
+ * 로고 마크 식별자. F1 25/26(0-11)과 2026 Season Pack(476-486)이 같은 팀에 서로 다른
  * ID를 쓰므로, 마크를 고르기 전에 하나의 키로 정규화한다. 컬러/약어와 달리 마크는
  * ID가 아니라 '팀'에 종속되기 때문에 별도 테이블이 필요하다.
  */
@@ -149,6 +152,7 @@ const TEAM_KEYS: Record<number, TeamKey> = {
   8: 'mclaren',
   9: 'sauber',
   10: 'audi',
+  11: 'cadillac',
   // 2026 Season Pack team IDs
   476: 'mercedes',
   477: 'ferrari',

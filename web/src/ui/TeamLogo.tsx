@@ -71,7 +71,7 @@ const MARKS: Record<TeamKey, React.ReactNode> = {
 };
 
 export interface TeamLogoProps {
-  /** 게임이 보낸 원본 team ID. F1 25(0-10)와 2026 팩(476-486)을 모두 받는다. */
+  /** 게임이 보낸 원본 team ID. F1 25/26(0-11)과 2026 팩(476-486)을 모두 받는다. */
   teamId: number;
 }
 

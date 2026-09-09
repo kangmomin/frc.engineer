@@ -1,11 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { getTeamKey, getTeamShort, TEAM_NAMES, TEAM_SHORT } from './teamColors';
+import { getTeamColor, getTeamKey, getTeamName, getTeamShort, TEAM_COLORS, TEAM_NAMES, TEAM_SHORT } from './teamColors';
 
 describe('teamColors', () => {
   it('TEAM_SHORT covers exactly the same team IDs as TEAM_NAMES', () => {
     const shortKeys = Object.keys(TEAM_SHORT).sort();
     const nameKeys = Object.keys(TEAM_NAMES).sort();
     expect(shortKeys).toEqual(nameKeys);
+  });
+
+  it('TEAM_COLORS covers the same team IDs too, so a new ID cannot land in only some tables', () => {
+    // 새 팀 ID를 추가할 때 한 테이블을 빠뜨리면 색만 회색으로 남는 식으로 조용히 어긋난다.
+    expect(Object.keys(TEAM_COLORS).sort()).toEqual(Object.keys(TEAM_NAMES).sort());
+  });
+
+  it('maps team ID 11 to Cadillac, the ID F1 26 sends live', () => {
+    // 라이브에서 T11로 관측됨. 2026 팩의 486과 같은 팀이다.
+    expect(getTeamShort(11)).toBe('CAD');
+    expect(getTeamName(11)).toBe('Cadillac');
+    expect(getTeamKey(11)).toBe(getTeamKey(486));
+    expect(getTeamColor(11)).toBe(getTeamColor(486));
   });
 
   it('every TEAM_SHORT badge is a non-empty 2-3 char code (255 is the em-dash placeholder)', () => {
