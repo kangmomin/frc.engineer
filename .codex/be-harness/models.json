@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-09-09",
+  "sources": [
+    "https://developers.openai.com/api/docs/guides/latest-model",
+    "https://learn.chatgpt.com/docs/agent-configuration/subagents",
+    "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+    "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+    "https://developers.openai.com/api/docs/models/gpt-6-astra"
+  ],
+  "models": {
+    "executor": {
+      "model": "gpt-5.6-terra",
+      "effort": "high"
+    },
+    "readonly": {
+      "model": "gpt-5.6-luna",
+      "effort": "xhigh"
+    },
+    "advisor": {
+      "model": "gpt-6-astra",
+      "effort": "tiered"
+    }
+  },
+  "rationale": {
+    "executor": "공식 Terra 모델 문서의 지능·비용 균형과 Subagents 가이드의 효율적인 작업자 용도를 근거로, 승인된 Spec 구현과 테스트를 맡는 Worker의 기존 Terra 추천을 유지한다. 복잡한 설계 검증은 별도 Advisor 역할이 맡는 현재 토폴로지를 고려한 판단이며, 실행 시간·성능을 직접 비교한 결과는 아니다. 기존 high effort를 보존한다.",
+    "readonly": "Subagents 가이드는 Luna를 범위가 좁고 명확한 작업에 권장한다. 명시한 파일·관점으로 나누어 탐색·리뷰하고 결과를 오케스트레이터가 통합하는 역할에 맞춰 기존 Luna 추천을 유지한다. 공식 문서에 근거한 효율 판단이며 리뷰 정확도 벤치마크를 수행한 것은 아니다. 기존 xhigh effort를 보존한다.",
+    "advisor": "최신 모델 가이드와 Astra 모델 문서가 복잡한 추론·코딩·여러 단계 작업에 가장 높은 역량을 가진 모델로 설명하므로, 독립적인 설계·반례 검토를 맡는 Advisor에 Astra를 유지한다. 호스트 도구 스키마에서 xhigh와 max 지원을 확인해 기존 tiered 정책을 보존한다. 실제 dispatch나 성능 비교는 수행하지 않았다."
+  },
+  "host_models": {
+    "gpt-5.6-terra": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra"
+    ],
+    "gpt-5.6-luna": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "gpt-6-astra": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra"
+    ]
+  }
+}
