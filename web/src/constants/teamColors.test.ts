@@ -19,7 +19,18 @@ describe('teamColors', () => {
     }
   });
 
-  it('falls back to an em dash for unknown team IDs', () => {
-    expect(getTeamShort(9999)).toBe('—');
+  it('surfaces unknown team IDs as T{id} instead of hiding them behind an em dash', () => {
+    // 게임이 새 팀 ID 대역을 보내면 '—'가 값을 삼켜 원인 파악이 막힌다.
+    expect(getTeamShort(9999)).toBe('T9999');
+  });
+
+  it('keeps the em dash for the no-team sentinel and for missing values', () => {
+    expect(getTeamShort(255)).toBe('—');
+    expect(getTeamShort(undefined as unknown as number)).toBe('—');
+    expect(getTeamShort(NaN)).toBe('—');
+  });
+
+  it('does not discard team ID 0 (Mercedes) as a falsy value', () => {
+    expect(getTeamShort(0)).toBe('MER');
   });
 });

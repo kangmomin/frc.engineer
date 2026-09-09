@@ -69,9 +69,19 @@ export const TEAM_SHORT: Record<number, string> = {
   486: 'CAD',
 };
 
-/** Get short team badge by team ID; em dash for unknown IDs. */
+/**
+ * Get short team badge by team ID.
+ *
+ * 매핑에 없는 ID는 '—'로 가리지 않고 `T{id}`로 그대로 노출한다. 게임이 새 팀 ID
+ * 대역을 보내기 시작하면 '—'가 실제 값을 삼켜버려 원인 파악이 불가능했다
+ * (hub의 teamIdentity()가 이미 `Team #${id}`로 같은 방침을 쓴다).
+ * 다만 값 자체가 없는 경우(런타임 결측)는 'Tundefined'가 되지 않도록 '—'로 떨군다.
+ */
 export function getTeamShort(teamId: number): string {
-  return TEAM_SHORT[teamId] ?? '—';
+  const known = TEAM_SHORT[teamId];
+  if (known !== undefined) return known; // 255(무팀 센티넬)의 '—'도 이 경로
+  if (!Number.isFinite(teamId)) return '—';
+  return `T${teamId}`;
 }
 
 /**
