@@ -8,6 +8,9 @@ package dto
 // the telemetry layer (producer) and the races/cmd layers (consumers) share them
 // without a layer cycle.
 
+// IncidentMaxParticipants is the maximum supported grid (F1 26: 24 cars).
+const IncidentMaxParticipants = 24
+
 // IncidentCarFrameValues is the fixed length of one car's per-frame value array:
 // x, y, z, vx, vy, vz, yaw, gLat, gLong, speedKmh, throttle, brake, steer, gear.
 const IncidentCarFrameValues = 14

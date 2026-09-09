@@ -109,7 +109,7 @@ func TestBuildUploadRequestMatchesRaceAnalysisV2Golden(t *testing.T) {
 }
 
 func senderLargeV2Incident(tMS int64) dto.IncidentClip {
-	participantCount, frameCount := 10, 101
+	participantCount, frameCount := 24, 101
 	clip := dto.IncidentClip{
 		SessionTimeMS: tMS, WindowStartMS: tMS - 1000, FrameIntervalMS: 50, Lap: 3,
 		Collisions: [][2]int{{0, 1}},
@@ -143,7 +143,7 @@ func TestBuildUploadRequestRequestBudgetDropKeepsV2Metadata(t *testing.T) {
 	summary.Detail.Events = nil
 	for i := 0; i < uploadMaxDetailEvents; i++ {
 		summary.Detail.Events = append(summary.Detail.Events, dto.RaceControlNotification{
-			Timestamp: int64(i), Category: "info", Severity: "info", Message: strings.Repeat("event-", 118),
+			Timestamp: int64(i), Category: "info", Severity: "info", Message: strings.Repeat("event-", 160),
 		})
 	}
 	summary.PrivateCapture.Provenance.EventsSeen = len(summary.Detail.Events)
@@ -285,4 +285,37 @@ func hasUploadReason(reasons []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+func TestBuildUploadRequestKeeps24Participants(t *testing.T) {
+	summary := senderGoldenV2Summary()
+	summary.Incidents = []dto.IncidentClip{senderLargeV2Incident(10_000)}
+	summary.Incidents[0].Collisions = [][2]int{{0, 23}}
+	request, ok := buildUploadRequest(summary, testUploadLogger())
+	if !ok || request.Detail == nil || len(request.Detail.Incidents) != 1 {
+		t.Fatal("24-car incident missing")
+	}
+	raw, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded uploadRequest
+	if err = json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	clip := decoded.Detail.Incidents[0]
+	if len(clip.Participants) != 24 || clip.Completeness.StoredParticipantCount != 24 || clip.Collisions[0] != [2]int{0, 23} {
+		t.Fatalf("24-car identities lost: %+v", clip.Completeness)
+	}
+	for _, f := range clip.Frames {
+		for j, p := range clip.Participants {
+			if len(f.Cars) != 24 || f.Cars[j][0] != float64(p.Idx) {
+				t.Fatal("frame columns changed")
+			}
+		}
+	}
+	if hasUploadReason(decoded.Detail.Completeness.Sections.Incidents.Reasons, string(dto.ReasonUploadParticipantsTrimmed)) {
+		t.Fatal("new upload trimmed participants")
+	}
+	t.Logf("serialized 24-car upload: %d bytes", len(raw))
 }
