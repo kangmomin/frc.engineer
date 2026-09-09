@@ -28,6 +28,66 @@ const fixture = (): ReplayTrackBoundaries => ({
 const project = (x: number, z: number) => ({ x: x * 10, y: -z * 10 });
 
 describe('replay road boundaries', () => {
+  it.each([
+    [0, 'Melbourne'], [2, 'shanghai'], [3, 'Bahrain'], [4, 'Catalunya'], [5, 'Monaco'], [6, 'Montreal'],
+    [7, 'Great Britain'], [8, 'Hungaroring'], [9, 'Spa Francorchamps'], [10, 'Monza'], [11, 'Singapore'],
+    [12, 'Suzuka'], [13, 'Abu Dhabi'], [14, 'USA'], [16, 'Brazil'], [17, 'Austria'], [19, 'Mexico'],
+    [20, 'Baku'], [23, 'Zandvoort'], [24, 'Imola'], [25, 'Jeddah'], [26, 'Miami'], [27, 'Qatar'], [28, 'Las Vegas'],
+  ] as const)('loads canonical track %i as %s through strict geometry validation', async (id, name) => {
+    const data = await loadTrackBoundaries(id, 'F1 25');
+    expect(data?.provenance.description).toBe(`EA RaceNet · ${name} · 본선 흰선`);
+    expect(data?.maxErrorM).toBeNull();
+    expect(await loadTrackBoundaries(id, 'F1 26')).toBeNull();
+    if (id !== 12 && id !== 28) {
+      expect(data?.coverage).toBe('main-circuit');
+      expect(data?.segments).toHaveLength(1);
+    }
+  });
+
+  it('keeps both Suzuka overpass levels and malformed Vegas normals out of separate continuous runs', async () => {
+    const suzuka = (await loadTrackBoundaries(12, 'F1 25'))!;
+    const vegas = (await loadTrackBoundaries(28, 'F1 25'))!;
+    for (const data of [suzuka, vegas]) {
+      expect(data.coverage).toBe('main-circuit-partial');
+      for (let i = 1; i < data.segments.length; i++) {
+        const previous = data.segments[i - 1].sections;
+        expect(data.segments[i].sections[0].distance).toBeGreaterThan(previous[previous.length - 1].distance);
+      }
+      const html = renderToStaticMarkup(<svg><ReplayTrackSurface boundaries={data} project={project} /></svg>);
+      expect(html.match(/data-road-surface/g)).toHaveLength(data.trackId === 12 ? 354 : 330);
+      expect(html).not.toMatch(/NaN|Infinity/);
+    }
+    expect(suzuka.segments.map(({ sections }) => sections.length - 1)).toEqual([168, 133, 53]);
+    expect(vegas.segments.map(({ sections }) => sections.length - 1)).toEqual([94, 236]);
+  });
+
+  it('loads the audited Silverstone main road with signed, asymmetric white-line offsets and explicit closure', async () => {
+    const data = await loadTrackBoundaries(7, 'F1 25');
+    expect(data).not.toBeNull();
+    expect(data!.coverage).toBe('main-circuit');
+    expect(data!.maxErrorM).toBeNull();
+    expect(data!.features).toEqual([]);
+    expect(data!.segments).toHaveLength(1);
+    const sections = data!.segments[0].sections;
+    expect(sections).toHaveLength(342); // all 341 source main-route links, no pit links
+    expect(sections[sections.length - 1].left).toEqual(sections[0].left);
+    expect(sections[sections.length - 1].right).toEqual(sections[0].right);
+    // Source gate 0 follows the closing link 340 -> 0. Its left offset is
+    // positive; centering a guessed width or forcing it negative is incorrect.
+    const gate = sections[1];
+    expect(gate.left![0]).toBeCloseTo(-461.034 + 0.81029 * 0.0733297, 5);
+    expect(gate.left![2]).toBeCloseTo(342.011 + 0.586029 * 0.0733297, 5);
+    expect(gate.right![0]).toBeCloseTo(-461.034 + 0.81029 * 14.2949, 5);
+    const widths = sections.map(({ left, right }) => Math.hypot(...left!.map((v, i) => v - right![i])));
+    expect(Math.min(...widths)).toBeCloseTo(11.86112, 4);
+    expect(Math.max(...widths)).toBeCloseTo(17.13918, 4);
+    const html = renderToStaticMarkup(<svg><ReplayTrackSurface boundaries={data!} project={project} /></svg>);
+    expect(html.match(/data-road-surface/g)).toHaveLength(341);
+    expect(html).not.toMatch(/data-road-wall|NaN|Infinity/);
+    expect(await loadTrackBoundaries(7, 'F1 26')).toBeNull();
+    expect(parseTrackBoundaries(data, 5, 'F1 25')).toBeNull();
+  });
+
   it('requires exact track and game identity and preserves missing sides and heights', () => {
     const data = fixture();
     expect(parseTrackBoundaries(data, 999, 'F1 26')).toEqual(data);

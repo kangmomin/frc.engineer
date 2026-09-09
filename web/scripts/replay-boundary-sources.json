@@ -1,0 +1,196 @@
+{
+  "verifiedAt": "2026-09-09",
+  "identitySource": "https://racenet.com/static/js/48.bb8e9ff7.chunk.js",
+  "sources": [
+    {
+      "apiTrackId": 0,
+      "trackId": 0,
+      "name": "Melbourne",
+      "sha256": "696fccce85cdbd52814be8b05292faff4d482832a6f818619f2094c294026c1d",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 2,
+      "trackId": 2,
+      "name": "shanghai",
+      "sha256": "9b829939dcd9a41fb86536141aa748b669d5bdd54f805b70569955222876ca8e",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 3,
+      "trackId": 3,
+      "name": "Bahrain",
+      "sha256": "a765ff5cc2afa4f9b4c95b996ddba3db8d1d1e619aef8b13ec8fdd768d047d6b",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 4,
+      "trackId": 4,
+      "name": "Catalunya",
+      "sha256": "13383ac08510b9b619f81f35e91c8df17a7d2daed3ce6013c0d0c5a2d183633f",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 5,
+      "trackId": 5,
+      "name": "Monaco",
+      "sha256": "f10ee7d3ab39c15c77a797b0d0ed76ea18e7e9e66ffdcbb63935377f4d400155",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 6,
+      "trackId": 6,
+      "name": "Montreal",
+      "sha256": "f5a833d2ae96bfe32b9e943ab7723dd6d0edc08362c6bb910c4d28d24261d5f5",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 7,
+      "trackId": 7,
+      "name": "Great Britain",
+      "sha256": "948dd2d2598fa3db6083995f8251527dd44d989956cffb44040bbd64beda694a",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 9,
+      "trackId": 8,
+      "name": "Hungaroring",
+      "sha256": "e1c701aa47399e8fa3bd4f73f4eabc6117e052edb133642ffca7ee1e735bb0f6",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 10,
+      "trackId": 9,
+      "name": "Spa Francorchamps",
+      "sha256": "fa93f2f31f3779f7eb40d72ef0c0553f0faeee4f6f07a2a02d1c2dfd078f1319",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 11,
+      "trackId": 10,
+      "name": "Monza",
+      "sha256": "ab9e86dd8dd9565995e0ed47c952e0ba1b7c241a7482c5885058ad379820f007",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 12,
+      "trackId": 11,
+      "name": "Singapore",
+      "sha256": "57e27aaeb71d6b545a19d95e794e9690c9af2c612600ec4e03ca82d18ced1fb6",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 13,
+      "trackId": 12,
+      "name": "Suzuka",
+      "sha256": "62cdfe131ca7c578c4da12907e79d18bb587ee3985639b357a6754d9f28508bc",
+      "excludedLinks": [
+        168,
+        302
+      ],
+      "exclusionReason": "Both road levels at the X/Z overpass overlap"
+    },
+    {
+      "apiTrackId": 14,
+      "trackId": 13,
+      "name": "Abu Dhabi",
+      "sha256": "beb1cc4f13d50a3f4a1ad5d77ae934e03b7dba8c284ad5e6ac528ccc52a89044",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 15,
+      "trackId": 14,
+      "name": "USA",
+      "sha256": "d891c44f62e49531825d1f4c14cccd450d8df35966499dcedbf332cca9b1da3f",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 16,
+      "trackId": 16,
+      "name": "Brazil",
+      "sha256": "7d593ec91b785dbf91a0c343ddc5c7c554b5c0257a57b8c1795a9292bb39d6b2",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 17,
+      "trackId": 17,
+      "name": "Austria",
+      "sha256": "4a7b5199e42757b21a5c01257ac71e869e7618afa07763f31d6d43312e115432",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 19,
+      "trackId": 19,
+      "name": "Mexico",
+      "sha256": "a01633745ca982369c1f099034fe4093dda43ef4b3e761fc57dc6a57a8e2283e",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 20,
+      "trackId": 20,
+      "name": "Baku",
+      "sha256": "422c8ef59c10bf62a6a3eacf8d9bfd9b159b2cb6cbc10237b820ef87a730db8a",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 26,
+      "trackId": 23,
+      "name": "Zandvoort",
+      "sha256": "79cb49234bb6e5bff79b5b9706da934ed05e574e50ab19c6f139ab05b0df2529",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 27,
+      "trackId": 24,
+      "name": "Imola",
+      "sha256": "b5d8e0ace17a300f2aa498e7c3c42eb2f8e952f4562bfc49af276eca17e8430e",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 29,
+      "trackId": 25,
+      "name": "Jeddah",
+      "sha256": "acfd2c7921fceb5bf86ceee4612fa1c8d1a919fc7c5dce08d331514b88938803",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 30,
+      "trackId": 26,
+      "name": "Miami",
+      "sha256": "b6b90d67e7aec545ee1396ddc5e666c0e13ae9c47db00af6a8b1a0e147394d72",
+      "excludedLinks": []
+    },
+    {
+      "apiTrackId": 31,
+      "trackId": 28,
+      "name": "Las Vegas",
+      "sha256": "471b47fa00e432cb9798ae97d143fae30301e575d6e011716f4bb5bc5b6bcd92",
+      "excludedLinks": [
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109
+      ],
+      "exclusionReason": "Nonunit source normals at gates 96..108, nonconvex patches and both members of every overlapping patch pair"
+    },
+    {
+      "apiTrackId": 32,
+      "trackId": 27,
+      "name": "Qatar",
+      "sha256": "ba226cdb6134cc2704a04eff4a891a8cd3e089a747b916e7f69b73a368b17798",
+      "excludedLinks": []
+    }
+  ]
+}

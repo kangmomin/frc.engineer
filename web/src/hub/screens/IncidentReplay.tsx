@@ -189,7 +189,9 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
             <ReplaySvg t={t} replay={orderedReplay} outline={outline} boundaries={boundaries} landmarks={track.landmarks} map={boundaries ? { ...map, label: 'Reference track boundaries' } : track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} viewport={viewport} />
           </div>
           {fitOutline && <TrackOverview replay={orderedReplay} outline={outline} fitOutline={fitOutline} boundaries={boundaries} landmarks={track.landmarks} frame={selectedFrame} />}
-          <p className={styles.meta}>{boundaries ? `트랙 경계 · ${boundaries.provenance.description} · ${boundaries.provenance.gameVersion} · ${boundaries.maxErrorM === null ? '경계 오차 미확인' : `자료 기준 오차 ≤ ${boundaries.maxErrorM}m`} · 벽은 붉은 선` : loadingTrack ? '트랙 폭 자료 확인 중' : '트랙 폭 자료 없음 · 도로 양끝은 확인할 수 없습니다.'}</p>
+          <p className={styles.meta}>{boundaries ? `트랙 경계 · ${boundaries.provenance.description} · ${boundaries.provenance.gameVersion} · ${boundaries.maxErrorM === null ? '경계 오차 미확인' : `자료 기준 오차 ≤ ${boundaries.maxErrorM}m`}${boundaries.features.some(({ kind }) => kind === 'wall') ? ' · 벽은 붉은 선' : ''}` : loadingTrack ? '트랙 폭 자료 확인 중' : '트랙 폭 자료 없음 · 도로 양끝은 확인할 수 없습니다.'}</p>
+          {boundaries?.coverage && <p className={styles.meta}>본선 흰선 사이만 표시합니다. 피트·런오프·벽은 미제공이며, 채워지지 않은 영역이 비어 있는 공간을 뜻하지 않습니다.</p>}
+          {boundaries?.coverage === 'main-circuit-partial' && <p className={styles.meta}>입체교차 또는 원본 경계 오류가 있는 일부 구간은 표시에서 제외했습니다.</p>}
           {track.landmarks.length > 0 && <p className={styles.meta}>T 번호는 Pitwall과 같은 코너 비율을 적용한 참고 위치입니다.</p>}
           <p className={styles.meta}>차체는 약 5.5 × 2.0m 크기로 표시합니다. 차량별 실제 충돌 판정 영역은 기록에 포함되지 않습니다.</p>
           <div className={styles.replayGrid}>
