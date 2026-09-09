@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatPenaltyEntry, summarizePenalties } from '../../constants/penalties';
-import { PanelTitle } from '../../ui';
+import { PanelTitle, TeamLogo } from '../../ui';
 import type { CornerMark } from '../../ui/TrackStrip.derive';
 import { COL_ALIGN, COL_ORDER, MAX_COL_WIDTH, MIN_COL_WIDTH, columnHeadLabel, type ColumnKey, type WidthKey } from './columns';
 import type { LeaderRow } from './derive/leaderboardRows';
@@ -145,6 +145,7 @@ export function LeaderboardPanel({ rows, cols, colW, is2026, detail, trackPos, c
               >
                 <span role="cell" style={{ ...raceFont, fontWeight: 800, fontSize: 15, color: row.posColor }}>{row.pos}</span>
                 <div role="cell" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <TeamLogo teamId={row.teamId} />
                   <span style={{ ...raceFont, fontWeight: 800, fontSize: 14, letterSpacing: '.04em', color: row.nameColor, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
                     {row.name}
                   </span>

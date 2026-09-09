@@ -172,6 +172,8 @@ export interface LeaderRow {
   index: number;
   pos: string;
   posColor: string;
+  /** 게임이 보낸 원본 team ID. 로고 마크 선택용 — 색/약어와 달리 여기서 매핑하지 않는다. */
+  teamId: number;
   teamColor: string;
   rowBg: string;
   name: string;
@@ -445,6 +447,7 @@ export function deriveLeaderboardRows(
       index: driver.index,
       pos: String(driver.position).padStart(2, '0'),
       posColor: posColor(isLeader, isPlayer),
+      teamId: driver.teamId,
       teamColor: getTeamColor(driver.teamId),
       rowBg: rowBackground(tone, i),
       name: displayName,

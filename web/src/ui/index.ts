@@ -6,6 +6,8 @@ export { MetricTile } from './MetricTile';
 export type { MetricTileProps } from './MetricTile';
 export { WeatherIcon } from './WeatherIcon';
 export type { WeatherIconProps } from './WeatherIcon';
+export { TeamLogo } from './TeamLogo';
+export type { TeamLogoProps } from './TeamLogo';
 export { TrackStrip } from './TrackStrip';
 export type { TrackStripProps, TrackStripCorner, TrackStripDriver } from './TrackStrip';
 export type { Tone } from './types';

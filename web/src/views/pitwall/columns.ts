@@ -41,8 +41,10 @@ export const COL_ORDER: ColumnKey[] = [
 
 /** Default Driver column width (px). Fixed-width so its resize handle follows the
  * cursor and left/right columns don't reflow (FIX: was minmax(128px,1.1fr) which
- * absorbed every resize). Wide enough for "VERSTAPPEN [RBR]". */
-export const DRIVER_COL_W = 232;
+ * absorbed every resize). Wide enough for "VERSTAPPEN [RBR]" plus the team logo
+ * (16px 마크 + flex gap 7px = 23px). 이미 저장된 사용자 폭은 useDisplayPrefs가
+ * localStorage에서 복원하므로 이 기본값은 신규 사용자에게만 적용된다. */
+export const DRIVER_COL_W = 255;
 
 /** 기본 컬럼폭(px). 리사이즈 시 useDisplayPrefs의 colW가 이 값을 덮어쓴다. */
 export const COL_W: Record<ColumnKey, number> = {

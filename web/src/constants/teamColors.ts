@@ -117,3 +117,53 @@ export const TEAM_NAMES: Record<number, string> = {
 export function getTeamName(teamId: number): string {
   return TEAM_NAMES[teamId] ?? 'Unknown';
 }
+
+/**
+ * 로고 마크 식별자. F1 25(0-10)와 2026 Season Pack(476-486)이 같은 팀에 서로 다른
+ * ID를 쓰므로, 마크를 고르기 전에 하나의 키로 정규화한다. 컬러/약어와 달리 마크는
+ * ID가 아니라 '팀'에 종속되기 때문에 별도 테이블이 필요하다.
+ */
+export type TeamKey =
+  | 'mercedes'
+  | 'ferrari'
+  | 'redbull'
+  | 'williams'
+  | 'aston'
+  | 'alpine'
+  | 'rb'
+  | 'haas'
+  | 'mclaren'
+  | 'sauber'
+  | 'audi'
+  | 'cadillac';
+
+const TEAM_KEYS: Record<number, TeamKey> = {
+  0: 'mercedes',
+  1: 'ferrari',
+  2: 'redbull',
+  3: 'williams',
+  4: 'aston',
+  5: 'alpine',
+  6: 'rb',
+  7: 'haas',
+  8: 'mclaren',
+  9: 'sauber',
+  10: 'audi',
+  // 2026 Season Pack team IDs
+  476: 'mercedes',
+  477: 'ferrari',
+  478: 'redbull',
+  479: 'williams',
+  480: 'aston',
+  481: 'alpine',
+  482: 'rb',
+  483: 'haas',
+  484: 'mclaren',
+  485: 'audi',
+  486: 'cadillac',
+};
+
+/** 팀 마크 키. 미매핑 ID와 255(무팀)는 null — 호출부가 중립 폴백을 그린다. */
+export function getTeamKey(teamId: number): TeamKey | null {
+  return TEAM_KEYS[teamId] ?? null;
+}

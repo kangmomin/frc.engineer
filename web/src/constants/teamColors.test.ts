@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getTeamShort, TEAM_NAMES, TEAM_SHORT } from './teamColors';
+import { getTeamKey, getTeamShort, TEAM_NAMES, TEAM_SHORT } from './teamColors';
 
 describe('teamColors', () => {
   it('TEAM_SHORT covers exactly the same team IDs as TEAM_NAMES', () => {
@@ -32,5 +32,24 @@ describe('teamColors', () => {
 
   it('does not discard team ID 0 (Mercedes) as a falsy value', () => {
     expect(getTeamShort(0)).toBe('MER');
+    expect(getTeamKey(0)).toBe('mercedes');
+  });
+
+  it('normalizes the F1 25 and 2026 Season Pack IDs of a team to one mark key', () => {
+    expect(getTeamKey(476)).toBe(getTeamKey(0));   // Mercedes
+    expect(getTeamKey(484)).toBe(getTeamKey(8));   // McLaren
+    expect(getTeamKey(485)).toBe(getTeamKey(10));  // Audi
+  });
+
+  it('has no mark key for the no-team sentinel or unmapped IDs', () => {
+    expect(getTeamKey(255)).toBeNull();
+    expect(getTeamKey(9999)).toBeNull();
+  });
+
+  it('gives every TEAM_SHORT id except the sentinel a mark key', () => {
+    for (const id of Object.keys(TEAM_SHORT)) {
+      if (id === '255') continue;
+      expect(getTeamKey(Number(id))).not.toBeNull();
+    }
   });
 });

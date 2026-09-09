@@ -1,0 +1,27 @@
+/* 리더보드 행 높이를 바꾸지 않도록 고정 16px 박스. 미매핑/무팀 폴백도 같은 폭을
+   차지해야 드라이버 이름의 좌측 정렬이 행마다 흔들리지 않는다. */
+.box {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+/* 드롭인 로고 파일. 가로로 긴 로고가 찌그러지지 않도록 종횡비를 보존한다. */
+.image {
+  object-fit: contain;
+}
+
+/* 팀 컬러로 칠하는 인라인 마크. WeatherIcon과 같은 규약(부모가 색을 준다). */
+.mark {
+  fill: currentColor;
+  stroke: none;
+}
+
+.mark .stroked {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
