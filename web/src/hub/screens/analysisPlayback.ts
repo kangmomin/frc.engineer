@@ -154,7 +154,7 @@ export function localGridLinePositions(width: number, height: number, padding: n
   return { vertical: positionsFor(width), horizontal: positionsFor(height) };
 }
 
-export function makeReplayMap(incident: IncidentReplay, outline: RaceAnalysisTrackOutline | null, focus: 'track' | 'incident' = 'track'): ReplayMap {
+export function makeReplayMap(incident: IncidentReplay, outline: RaceAnalysisTrackOutline | null, focus: 'track' | 'incident' = 'track', contextPoints: Array<[number, number]> = []): ReplayMap {
   const positions: Array<[number, number]> = [];
   for (const frame of incident.frames) {
     for (const tuple of frame.cars) {
@@ -163,7 +163,7 @@ export function makeReplayMap(incident: IncidentReplay, outline: RaceAnalysisTra
     }
   }
   if (outline?.points.length) {
-    return { kind: 'outline', label: 'Recorded track centreline', bounds: boundsForPoints(focus === 'incident' && positions.length ? positions : [...outline.points, ...positions]) };
+    return { kind: 'outline', label: 'Recorded track centreline', bounds: boundsForPoints(focus === 'incident' && positions.length ? [...positions, ...contextPoints] : [...outline.points, ...positions]) };
   }
   return { kind: 'local-grid', label: 'Incident-local metre grid', bounds: boundsForPoints(positions) };
 }

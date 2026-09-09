@@ -25,7 +25,9 @@ import {
 } from './analysisPlayback';
 import styles from './Analysis.module.css';
 import { loadReplayTrack, type ReplayTrackReference } from '../../constants/replayTracks';
-import { resolveReplayTrack, type ReplayLandmark } from './analysisTrack';
+import { outlineFor, resolveReplayTrack, type ReplayLandmark } from './analysisTrack';
+import { boundaryMapPoints, incidentBoundaryPoints, loadTrackBoundaries, type ReplayTrackBoundaries, type TrackWorldPoint } from '../../constants/replayTrackBoundaries';
+import { ReplayScaleBar, ReplayTrackSurface } from './ReplayTrackSurface';
 
 interface Props {
   t: HubTheme;
@@ -42,20 +44,25 @@ const RATES: PlaybackRate[] = [0.25, 0.5, 1, 2];
 
 export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }: Props) {
   const [reference, setReference] = useState<ReplayTrackReference | null>(null);
+  const [boundaryAsset, setBoundaryAsset] = useState<ReplayTrackBoundaries | null>(null);
   const [loadingTrack, setLoadingTrack] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setReference(null);
+    setBoundaryAsset(null);
     setLoadingTrack(true);
-    loadReplayTrack(trackId, gameFormat).catch(() => null).then((value) => {
-      if (!cancelled) { setReference(value); setLoadingTrack(false); }
+    Promise.all([loadReplayTrack(trackId, gameFormat).catch(() => null), loadTrackBoundaries(trackId, gameFormat).catch(() => null)]).then(([value, boundaries]) => {
+      if (!cancelled) { setReference(value); setBoundaryAsset(boundaries); setLoadingTrack(false); }
     });
     return () => { cancelled = true; };
   }, [trackId, gameFormat]);
   const track = useMemo(() => resolveReplayTrack(trackOutline, reference, trackId, gameFormat), [trackOutline, reference, trackId, gameFormat]);
   const outline = track.outline;
+  const boundaries = boundaryAsset?.trackId === trackId && boundaryAsset?.gameFormat === gameFormat ? boundaryAsset : null;
+  const fitOutline = useMemo(() => boundaries ? outlineFor([...(outline?.points ?? []), ...boundaryMapPoints(boundaries)]) : outline, [outline, boundaries]);
   const frames = useMemo(() => sortedReplayFrames(replay.frames), [replay.frames]);
   const orderedReplay = useMemo(() => ({ ...replay, frames }), [frames, replay]);
+  const boundaryContext = useMemo(() => boundaries ? incidentBoundaryPoints(boundaries, frames.flatMap((frame) => frame.cars.flatMap((tuple): TrackWorldPoint[] => tuple ? [[tuple[0], tuple[1], tuple[2]]] : []))) : [], [boundaries, frames]);
   const timestamps = useMemo(() => frames.map((frame) => frame.tMs), [frames]);
   const [playback, setPlayback] = useState(() => createPlaybackState(timestamps));
   const [focus, setFocus] = useState<'track' | 'incident'>('incident');
@@ -64,7 +71,7 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
   const [dragging, setDragging] = useState(false);
   const mapElement = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointerId: number; x: number; y: number } | null>(null);
-  const map = useMemo(() => makeReplayMap({ ...replay, frames }, outline, focus), [frames, replay, outline, focus]);
+  const map = useMemo(() => makeReplayMap(orderedReplay, fitOutline, focus, boundaryContext), [orderedReplay, fitOutline, focus, boundaryContext]);
   const project = useMemo(() => {
     const base = projectionFor(map, viewport.width, viewport.height);
     return (x: number, z: number) => {
@@ -161,8 +168,8 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
       ) : (
         <>
           <div className={styles.mapToolbar}>
-            <span className={styles.meta}>{focus === 'incident' ? '사고 구간' : '전체 트랙'} · {track.source === 'recorded' ? '기록된 트랙' : track.source === 'reference' ? '참조 트랙 · 실주행 경로' : loadingTrack ? '트랙 확인 중' : '트랙 자료 없음 · 사고 주변 좌표'}</span>
-            <div className={styles.controls} aria-label="Map controls"><button type="button" aria-label="축소" onClick={() => zoom(1 / 1.5)} disabled={camera.zoom <= 0.5}>−</button><output aria-label="확대 배율">{camera.zoom.toFixed(3)}×</output><button type="button" aria-label="확대" onClick={() => zoom(1.5)} disabled={camera.zoom >= 16}>+</button><button type="button" onClick={() => fit('incident')}>사고 구간 맞춤</button>{outline ? <button type="button" onClick={() => fit('track')}>전체 트랙</button> : null}</div>
+            <span className={styles.meta}>{focus === 'incident' ? '사고 구간' : '전체 트랙'} · {boundaries ? '트랙 경계' : track.source === 'recorded' ? '기록된 트랙' : track.source === 'reference' ? '참조 트랙 · 실주행 경로' : loadingTrack ? '트랙 확인 중' : '트랙 자료 없음 · 사고 주변 좌표'}</span>
+            <div className={styles.controls} aria-label="Map controls"><button type="button" aria-label="축소" onClick={() => zoom(1 / 1.5)} disabled={camera.zoom <= 0.5}>−</button><output aria-label="확대 배율">{camera.zoom.toFixed(3)}×</output><button type="button" aria-label="확대" onClick={() => zoom(1.5)} disabled={camera.zoom >= 16}>+</button><button type="button" onClick={() => fit('incident')}>사고 구간 맞춤</button>{fitOutline ? <button type="button" onClick={() => fit('track')}>전체 트랙</button> : null}</div>
           </div>
           <div className={styles.svgWrap} ref={mapElement} data-dragging={dragging} onPointerDown={(event) => {
             if (event.button !== 0 || drag.current) return;
@@ -179,9 +186,10 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
             setCamera((current) => ({ ...current, x: current.x + point.x - previous.x, y: current.y + point.y - previous.y }));
             drag.current = { pointerId: event.pointerId, ...point };
           }} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
-            <ReplaySvg t={t} replay={orderedReplay} outline={outline} landmarks={track.landmarks} map={track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} viewport={viewport} />
+            <ReplaySvg t={t} replay={orderedReplay} outline={outline} boundaries={boundaries} landmarks={track.landmarks} map={boundaries ? { ...map, label: 'Reference track boundaries' } : track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} viewport={viewport} />
           </div>
-          {outline && <TrackOverview replay={orderedReplay} outline={outline} landmarks={track.landmarks} frame={selectedFrame} />}
+          {fitOutline && <TrackOverview replay={orderedReplay} outline={outline} fitOutline={fitOutline} boundaries={boundaries} landmarks={track.landmarks} frame={selectedFrame} />}
+          <p className={styles.meta}>{boundaries ? `트랙 경계 · ${boundaries.provenance.description} · ${boundaries.provenance.gameVersion} · ${boundaries.maxErrorM === null ? '경계 오차 미확인' : `자료 기준 오차 ≤ ${boundaries.maxErrorM}m`} · 벽은 붉은 선` : loadingTrack ? '트랙 폭 자료 확인 중' : '트랙 폭 자료 없음 · 도로 양끝은 확인할 수 없습니다.'}</p>
           {track.landmarks.length > 0 && <p className={styles.meta}>T 번호는 Pitwall과 같은 코너 비율을 적용한 참고 위치입니다.</p>}
           <p className={styles.meta}>차체는 약 5.5 × 2.0m 크기로 표시합니다. 차량별 실제 충돌 판정 영역은 기록에 포함되지 않습니다.</p>
           <div className={styles.replayGrid}>
@@ -219,10 +227,11 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
   );
 }
 
-function ReplaySvg({ t, replay, outline, landmarks, map, project, frame, viewport }: {
+function ReplaySvg({ t, replay, outline, boundaries, landmarks, map, project, frame, viewport }: {
   t: HubTheme;
   replay: IncidentReplayValue;
   outline: RaceAnalysisTrackOutline | null;
+  boundaries: ReplayTrackBoundaries | null;
   landmarks: ReplayLandmark[];
   map: ReplayMap;
   project: (x: number, z: number) => { x: number; y: number };
@@ -240,7 +249,9 @@ function ReplaySvg({ t, replay, outline, landmarks, map, project, frame, viewpor
         <marker id="analysis-body-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill={t.t1} /></marker>
         <marker id="analysis-motion-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill={t.acc} /></marker>
       </defs>
-      {outline?.points.length ? <Outline points={outline.points} project={project} /> : <LocalGrid viewport={viewport} />}
+      {boundaries && <ReplayTrackSurface boundaries={boundaries} project={project} />}
+      {outline?.points.length ? <Outline points={outline.points} project={project} /> : !boundaries && <LocalGrid viewport={viewport} />}
+      <ReplayScaleBar project={project} height={viewport.height} />
       <Landmarks landmarks={landmarks} project={project} />
       {trajectories}
       <text x={16} y={viewport.height - 18} fill={t.t2} fontSize="11">{replay.collisions.map(([first, second]) => `COLL Car #${first} ↔ Car #${second}`).join(' · ') || 'Collision participants unavailable'}</text>
@@ -259,15 +270,16 @@ function Landmarks({ landmarks, project }: { landmarks: ReplayLandmark[]; projec
   })}</g>;
 }
 
-function TrackOverview({ replay, outline, landmarks, frame }: {
-  replay: IncidentReplayValue; outline: RaceAnalysisTrackOutline; landmarks: ReplayLandmark[]; frame: IncidentFrame | null;
+function TrackOverview({ replay, outline, fitOutline, boundaries, landmarks, frame }: {
+  replay: IncidentReplayValue; outline: RaceAnalysisTrackOutline | null; fitOutline: RaceAnalysisTrackOutline; boundaries: ReplayTrackBoundaries | null; landmarks: ReplayLandmark[]; frame: IncidentFrame | null;
 }) {
-  const map = useMemo(() => makeReplayMap(replay, outline, 'track'), [replay, outline]);
+  const map = useMemo(() => makeReplayMap(replay, fitOutline, 'track'), [replay, fitOutline]);
   const project = useMemo(() => projectionFor(map, 320, 220), [map]);
   return <figure className={styles.trackOverview}>
     <figcaption>전체 트랙 · 현재 프레임</figcaption>
     <svg viewBox="0 0 320 220" role="img" aria-label="전체 트랙 차량 위치" data-frame-time={frame?.tMs}>
-      <Outline points={outline.points} project={project} />
+      {boundaries && <ReplayTrackSurface boundaries={boundaries} project={project} />}
+      {outline && <Outline points={outline.points} project={project} />}
       <Landmarks landmarks={landmarks} project={project} />
       {frame && replay.participants.map((participant, index) => {
         const car = decodeIncidentCar(frame.cars[index]);
