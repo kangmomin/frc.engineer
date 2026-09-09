@@ -174,6 +174,38 @@ jobs:
           go build -ldflags "-H windowsgui" -o build/artifacts/frc-pitwall-sender.exe ./cmd/sender
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go version -m build/artifacts/frc-pitwall-sender.exe
+      - name: Native Sender startup and status API
+        shell: pwsh
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+          New-Item -ItemType Directory $smokeRoot | Out-Null
+          $env:FRC_STORAGE_DIR = $smokeRoot
+          $env:FRC_NO_BROWSER = '1'
+          $env:DRIVER_PACK_EMBEDDED = '1'
+          $env:SETTINGS_PORT = '58099'
+          $env:F1_UDP_PORT = '52077'
+          $env:SIGNALING_URL = 'ws://127.0.0.1:59998/ws'
+          $sender = Start-Process -FilePath (Resolve-Path build/artifacts/frc-pitwall-sender.exe) -PassThru -RedirectStandardError "$smokeRoot/stderr.log" -RedirectStandardOutput "$smokeRoot/stdout.log"
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              if ($sender.HasExited) { throw "Sender exited before API startup: $($sender.ExitCode)" }
+              try { $status = Invoke-RestMethod 'http://127.0.0.1:58099/api/status' -TimeoutSec 1 } catch { Start-Sleep -Seconds 1; continue }
+              if ($status.udpPort -ne 52077 -or $status.paired -ne $false) { throw 'Unexpected Sender status' }
+              $debug = Invoke-RestMethod 'http://127.0.0.1:58099/api/debug' -TimeoutSec 3
+              $expectedVersion = 'v' + (Get-Content apps/setup-manager/package.json | ConvertFrom-Json).version
+              if ($debug.version -ne $expectedVersion) { throw "Unexpected Sender version: $($debug.version)" }
+              $ready = $true
+              break
+            }
+            if (-not $ready) { throw 'Sender status API did not become ready within 30 attempts' }
+            Write-Host "Sender $expectedVersion started and served status/debug APIs"
+          } finally {
+            if (-not $sender.HasExited) { Stop-Process -Id $sender.Id -Force }
+            $sender.WaitForExit()
+            Get-Content "$smokeRoot/stderr.log", "$smokeRoot/logs/sender.log" -ErrorAction SilentlyContinue
+            Remove-Item $smokeRoot -Recurse -Force
+          }
       - name: Install Driver Pack dependencies
         run: npm ci
         working-directory: apps/setup-manager

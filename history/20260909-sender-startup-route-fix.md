@@ -7,12 +7,12 @@
 
 ### 2. Implementation Details
 - **Assumptions**: 없음. 코드에서 결정적 시작 실패를 재현했다. 사용자 Windows에서 수정판 실행 결과는 아직 확인하지 않았다.
-- **Key Changes**: Sender trace GET 등록 한 줄 수정. 전체 경로 등록, 홈·상태·trace GET 선택, trace POST 405 검증 추가. Driver Pack 및 Sender 버전 v4.57.0 동기화.
+- **Key Changes**: Sender trace GET 등록 한 줄 수정. 전체 경로 등록, 홈·상태·trace GET 선택, trace POST 405 검증 추가. Windows CI에서 실제 Sender 프로세스를 시작해 상태 API와 버전을 확인한다. Driver Pack 및 Sender 버전 v4.57.0 동기화.
 
 ### 3. Final Convention Review
 - **Layer Analysis**: Presentation의 라우팅 등록만 변경. Service 및 Repository 변경 없음. GET 전용 trace의 비허용 메서드 응답은 라우터 기본 405를 사용한다.
 - **Simplicity Check**: 시작 함수 전체 리팩토링 없이 충돌을 일으킨 한 줄만 수정. 테스트는 실제 프로덕션 경로를 검증한다.
 
 ### 4. Status
-- **Verification**: 수정 전 새 테스트에서 동일 panic 재현, 수정 후 `go test ./cmd/sender ./internal/analysishttp -count=1` 통과. Windows GUI 크로스 빌드 통과. 최종 설치 파일 검증은 릴리스 산출물 보고서에 기록한다.
+- **Verification**: 수정 전 새 테스트에서 동일 panic 재현, 수정 후 `go test ./cmd/sender ./internal/analysishttp -count=1` 및 동일 패키지 `-race` 통과. Windows GUI 크로스 빌드 통과. 로컬 Wine에서는 상태 API 시작을 확인하지 못했으므로 Windows CI 실제 시작 결과와 최종 설치 파일 검증을 릴리스 산출물 보고서에 기록한다.
 - **Cleanup**: 트랙 전체 조회 검증용 PostgreSQL 종료 및 데이터 삭제. 사용자 기존 리플레이 수정은 보존한다.
