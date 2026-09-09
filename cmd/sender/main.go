@@ -37,7 +37,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-var appVersion = "v4.56.0"
+var appVersion = "v4.57.0"
 
 // trackStrategyConfig holds per-track strategy overlay settings.
 type trackStrategyConfig struct {
@@ -1624,7 +1624,7 @@ func main() {
 		json.NewEncoder(w).Encode(result)
 	})
 
-	mux.Handle("/api/sessions/{dir}/trace", analysishttp.TraceHandler(packetLogDir))
+	mux.Handle("GET /api/sessions/{dir}/trace", analysishttp.TraceHandler(packetLogDir))
 
 	mux.HandleFunc("GET /api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
