@@ -8,6 +8,7 @@ import { SETUP_FIELDS } from '../data/setupFields';
 import { buildTheme } from '../theme';
 import { Analysis } from './Analysis';
 import { IncidentReplay as IncidentReplayView } from './IncidentReplay';
+import { loadReplayTrack } from '../../constants/replayTracks';
 
 const complete: SectionCompleteness = { status: 'complete', reasons: [], capturedCount: 1, storedCount: 1 };
 const participants: IncidentReplay['participants'] = [
@@ -176,7 +177,7 @@ async function ownerNavigationAndReplay() {
     const carX = () => host.querySelector('[data-car-body]')!.getBoundingClientRect().x;
     const initialX = carX();
     const carBody = host.querySelector<SVGGElement>('[data-car-body]')!;
-    check(!host.querySelector('svg circle') && carBody.querySelectorAll('rect').length === 6, 'Replay is missing the car body, four tyres or wings');
+    check(carBody.querySelectorAll('rect').length === 6, 'Replay is missing the car body, four tyres or wings');
     const carMatrix = carBody.getScreenCTM()!;
     check(carMatrix.b > 0 && Math.abs(carMatrix.a) < 0.001, 'Car body is not aligned with recorded yaw');
     check(host.textContent!.includes('120.123 km/h') && host.textContent!.includes('67.891%') && host.textContent!.includes('-0.235'), 'Telemetry precision is inconsistent');
@@ -233,6 +234,8 @@ async function ownerNavigationAndReplay() {
 }
 
 async function anonymousRoute() {
+  const reference = (await loadReplayTrack(5, 'F1 26'))!;
+  const historicClip: IncidentReplay = { ...clip, frames: clip.frames.map((frame, index) => ({ ...frame, cars: frame.cars.map((car) => { if (!car) return null; const [, x, z] = reference.points[index]; return [x, car[1], z, ...car.slice(3)] as typeof car; }) })) };
   const getDetail = PlatformMarket.prototype.getSharedRaceAnalysis;
   const getIncident = PlatformMarket.prototype.getSharedRaceAnalysisIncident;
   const originalFetch = window.fetch; const originalHash = window.location.hash;
@@ -240,8 +243,8 @@ async function anonymousRoute() {
   let publicReads = 0; let incidentReads = 0; let showSetup = false;
   try {
     window.fetch = () => { throw new Error('Anonymous share bootstrapped an authenticated request'); };
-    PlatformMarket.prototype.getSharedRaceAnalysis = async () => { publicReads++; return { detail, includeSetup: showSetup, ...(showSetup ? { setup } : {}) }; };
-    PlatformMarket.prototype.getSharedRaceAnalysisIncident = async () => { incidentReads++; return clip; };
+    PlatformMarket.prototype.getSharedRaceAnalysis = async () => { publicReads++; return { detail: { ...detail, track: { id: 5, name: 'Monaco' }, trackOutline: null }, includeSetup: showSetup, ...(showSetup ? { setup } : {}) }; };
+    PlatformMarket.prototype.getSharedRaceAnalysisIncident = async () => { incidentReads++; return historicClip; };
     window.history.replaceState(null, '', `${window.location.pathname}#raceShare=public-token`);
     root.render(<App />);
     await until(() => !!host.querySelector('[role=tablist]'), 'Anonymous link did not open detail');
@@ -249,6 +252,8 @@ async function anonymousRoute() {
     check(![...host.querySelectorAll('[role=tab]')].some((item) => item.textContent === '셋업'), 'Hidden setup tab was rendered');
     tab(host, '사고 리플레이').click(); await wait(); host.querySelector<HTMLButtonElement>('[class*=incidentButton]')!.click();
     await until(() => incidentReads > 0 && !!host.querySelector('input[type=range]'), 'Anonymous replay did not load');
+    await until(() => !!host.querySelector('[data-overview-car]'), 'Anonymous legacy reference did not load');
+    check(host.textContent!.includes('참조 트랙'), 'Shared page lost track identity');
     showSetup = true; window.location.hash = 'raceShare=public-with-setup';
     await until(() => [...host.querySelectorAll('[role=tab]')].some((item) => item.textContent === '셋업'), 'Visible setup tab did not render');
     tab(host, '셋업').click(); await wait();
@@ -260,7 +265,41 @@ async function anonymousRoute() {
   }
 }
 
+async function historicalTrackReplay() {
+  const reference = (await loadReplayTrack(5, 'F1 26'))!;
+  const replay: IncidentReplay = {
+    ...clip, schemaVersion: 1,
+    participants: Array.from({ length: 24 }, (_, idx) => ({ ...participants[0], idx })),
+    frames: [0, 20].map((offset, frameIndex) => ({ tMs: 1000 + frameIndex * 1000, telemetryUnavailable: null,
+      cars: Array.from({ length: 24 }, (_, idx) => {
+        const [, x, z] = reference.points[offset + idx];
+        return [x + 5000, 0, z, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      }),
+    })),
+  };
+  const host = document.createElement('div'); host.style.width = '360px'; document.body.append(host);
+  const root = createRoot(host);
+  try {
+    root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} trackId={5} gameFormat="F1 26" />);
+    await until(() => host.querySelectorAll('[data-overview-car]').length === 24, 'Historic Monaco reference hidden despite valid identity and distant cars');
+    check(host.textContent!.includes('참조 트랙') && host.textContent!.includes('T1'), 'Reference provenance or corner labels missing');
+    const overview = host.querySelector<SVGElement>('[data-frame-time]')!;
+    check(overview.getBoundingClientRect().width <= 360, 'Overview overflows mobile width');
+    const start = overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform');
+    button(host, '끝').click(); await wait();
+    check(overview.getAttribute('data-frame-time') === '2000', 'Overview frame is not synchronized');
+    check(overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform') !== start, 'Off-track car did not move');
+    const end = overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform');
+    button(host, '확대').click(); await wait();
+    check(overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform') === end, 'Incident zoom changed the overview');
+    root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} trackId={5} gameFormat="F1 25" />);
+    await until(() => host.textContent!.includes('트랙 자료 없음'), 'Unsupported format did not fall back');
+    check(!host.querySelector('[data-overview-car]'), 'Previous game reference leaked into another format');
+  } finally { root.unmount(); host.remove(); }
+}
+
 export async function run() {
+  await historicalTrackReplay();
   await carShapesFollowYaw();
   await ownerNavigationAndReplay();
   await anonymousRoute();

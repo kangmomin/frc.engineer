@@ -70,7 +70,7 @@ export function SharedRaceAnalysis({ token }: { token: string }) {
             actions={<span className={styles.badge}>{value.includeSetup ? value.setup ? '셋업 공개' : '저장된 셋업 없음' : '셋업 비공개'}</span>}
             incidentPanel={incidentLoading ? <p className={styles.status} role="status">사고 프레임을 불러오는 중…</p>
               : incidentError ? <p role="alert" className={styles.error}>{incidentError}<button type="button" className={styles.retryButton} onClick={() => selected !== null && selectIncident(selected)}>다시 시도</button></p>
-                : incident ? <IncidentReplay key={`${incident.raceId}:${incident.index}`} t={t} replay={incident} trackOutline={value.detail.trackOutline} />
+                : incident ? <IncidentReplay key={`${incident.raceId}:${incident.index}`} t={t} replay={incident} trackOutline={value.detail.trackOutline} trackId={value.detail.track.id} gameFormat={value.detail.gameFormat} />
                   : <p className={styles.empty}>사고를 선택하면 리플레이가 열립니다.</p>} /></div>}
     </div>
   </main>;
