@@ -24,11 +24,15 @@ import {
   type ReplayMap,
 } from './analysisPlayback';
 import styles from './Analysis.module.css';
+import { loadReplayTrack, type ReplayTrackReference } from '../../constants/replayTracks';
+import { resolveReplayTrack, type ReplayLandmark } from './analysisTrack';
 
 interface Props {
   t: HubTheme;
   replay: IncidentReplayValue;
   trackOutline: RaceAnalysisTrackOutline | null;
+  trackId?: number;
+  gameFormat?: string;
 }
 
 const WIDTH = 1_000;
@@ -36,7 +40,20 @@ const HEIGHT = 560;
 const PADDING = 42;
 const RATES: PlaybackRate[] = [0.25, 0.5, 1, 2];
 
-export function IncidentReplay({ t, replay, trackOutline }: Props) {
+export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }: Props) {
+  const [reference, setReference] = useState<ReplayTrackReference | null>(null);
+  const [loadingTrack, setLoadingTrack] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setReference(null);
+    setLoadingTrack(true);
+    loadReplayTrack(trackId, gameFormat).catch(() => null).then((value) => {
+      if (!cancelled) { setReference(value); setLoadingTrack(false); }
+    });
+    return () => { cancelled = true; };
+  }, [trackId, gameFormat]);
+  const track = useMemo(() => resolveReplayTrack(trackOutline, reference, trackId, gameFormat, replay.frames), [trackOutline, reference, trackId, gameFormat, replay.frames]);
+  const outline = track.outline;
   const frames = useMemo(() => sortedReplayFrames(replay.frames), [replay.frames]);
   const orderedReplay = useMemo(() => ({ ...replay, frames }), [frames, replay]);
   const timestamps = useMemo(() => frames.map((frame) => frame.tMs), [frames]);
@@ -47,7 +64,7 @@ export function IncidentReplay({ t, replay, trackOutline }: Props) {
   const [dragging, setDragging] = useState(false);
   const mapElement = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointerId: number; x: number; y: number } | null>(null);
-  const map = useMemo(() => makeReplayMap({ ...replay, frames }, trackOutline, focus), [frames, replay, trackOutline, focus]);
+  const map = useMemo(() => makeReplayMap({ ...replay, frames }, outline, focus), [frames, replay, outline, focus]);
   const project = useMemo(() => {
     const base = projectionFor(map, viewport.width, viewport.height);
     return (x: number, z: number) => {
@@ -144,8 +161,8 @@ export function IncidentReplay({ t, replay, trackOutline }: Props) {
       ) : (
         <>
           <div className={styles.mapToolbar}>
-            <span className={styles.meta}>{focus === 'incident' ? '사고 구간' : '전체 트랙'} · {map.kind === 'outline' ? '기록된 트랙' : '사고 주변 좌표'}</span>
-            <div className={styles.controls} aria-label="Map controls"><button type="button" aria-label="축소" onClick={() => zoom(1 / 1.5)} disabled={camera.zoom <= 0.5}>−</button><output aria-label="확대 배율">{camera.zoom.toFixed(3)}×</output><button type="button" aria-label="확대" onClick={() => zoom(1.5)} disabled={camera.zoom >= 16}>+</button><button type="button" onClick={() => fit('incident')}>사고 구간 맞춤</button>{trackOutline?.points.length ? <button type="button" onClick={() => fit('track')}>전체 트랙</button> : null}</div>
+            <span className={styles.meta}>{focus === 'incident' ? '사고 구간' : '전체 트랙'} · {track.source === 'recorded' ? '기록된 트랙' : track.source === 'reference' ? '참조 트랙 · 실주행 경로' : loadingTrack ? '트랙 확인 중' : '트랙 자료 없음 · 사고 주변 좌표'}</span>
+            <div className={styles.controls} aria-label="Map controls"><button type="button" aria-label="축소" onClick={() => zoom(1 / 1.5)} disabled={camera.zoom <= 0.5}>−</button><output aria-label="확대 배율">{camera.zoom.toFixed(3)}×</output><button type="button" aria-label="확대" onClick={() => zoom(1.5)} disabled={camera.zoom >= 16}>+</button><button type="button" onClick={() => fit('incident')}>사고 구간 맞춤</button>{outline ? <button type="button" onClick={() => fit('track')}>전체 트랙</button> : null}</div>
           </div>
           <div className={styles.svgWrap} ref={mapElement} data-dragging={dragging} onPointerDown={(event) => {
             if (event.button !== 0 || drag.current) return;
@@ -162,8 +179,10 @@ export function IncidentReplay({ t, replay, trackOutline }: Props) {
             setCamera((current) => ({ ...current, x: current.x + point.x - previous.x, y: current.y + point.y - previous.y }));
             drag.current = { pointerId: event.pointerId, ...point };
           }} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
-            <ReplaySvg t={t} replay={orderedReplay} outline={trackOutline} map={map} project={project} frame={selectedFrame} viewport={viewport} />
+            <ReplaySvg t={t} replay={orderedReplay} outline={outline} landmarks={track.landmarks} map={track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} viewport={viewport} />
           </div>
+          {outline && <TrackOverview replay={orderedReplay} outline={outline} landmarks={track.landmarks} frame={selectedFrame} />}
+          {track.landmarks.length > 0 && <p className={styles.meta}>T 번호는 Pitwall과 같은 코너 비율을 적용한 참고 위치입니다.</p>}
           <p className={styles.meta}>차체는 약 5.5 × 2.0m 크기로 표시합니다. 차량별 실제 충돌 판정 영역은 기록에 포함되지 않습니다.</p>
           <div className={styles.replayGrid}>
             <div>
@@ -200,10 +219,11 @@ export function IncidentReplay({ t, replay, trackOutline }: Props) {
   );
 }
 
-function ReplaySvg({ t, replay, outline, map, project, frame, viewport }: {
+function ReplaySvg({ t, replay, outline, landmarks, map, project, frame, viewport }: {
   t: HubTheme;
   replay: IncidentReplayValue;
   outline: RaceAnalysisTrackOutline | null;
+  landmarks: ReplayLandmark[];
   map: ReplayMap;
   project: (x: number, z: number) => { x: number; y: number };
   frame: IncidentFrame | null;
@@ -221,6 +241,7 @@ function ReplaySvg({ t, replay, outline, map, project, frame, viewport }: {
         <marker id="analysis-motion-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill={t.acc} /></marker>
       </defs>
       {outline?.points.length ? <Outline points={outline.points} project={project} /> : <LocalGrid viewport={viewport} />}
+      <Landmarks landmarks={landmarks} project={project} />
       {trajectories}
       <text x={16} y={viewport.height - 18} fill={t.t2} fontSize="11">{replay.collisions.map(([first, second]) => `COLL Car #${first} ↔ Car #${second}`).join(' · ') || 'Collision participants unavailable'}</text>
       {frame && replay.participants.map((participant, participantPosition) => {
@@ -229,6 +250,36 @@ function ReplaySvg({ t, replay, outline, map, project, frame, viewport }: {
       })}
     </svg>
   );
+}
+
+function Landmarks({ landmarks, project }: { landmarks: ReplayLandmark[]; project: (x: number, z: number) => { x: number; y: number } }) {
+  return <g fill="currentColor" fontSize="10" paintOrder="stroke" stroke="var(--analysis-inset, #f7f8fa)" strokeWidth="2">{landmarks.map(({ label, x, z }, index) => {
+    const point = project(x, z);
+    return <text key={`${label}:${index}`} x={point.x + 5} y={point.y - 5}>{label}</text>;
+  })}</g>;
+}
+
+function TrackOverview({ replay, outline, landmarks, frame }: {
+  replay: IncidentReplayValue; outline: RaceAnalysisTrackOutline; landmarks: ReplayLandmark[]; frame: IncidentFrame | null;
+}) {
+  const map = useMemo(() => makeReplayMap(replay, outline, 'track'), [replay, outline]);
+  const project = useMemo(() => projectionFor(map, 320, 220), [map]);
+  return <figure className={styles.trackOverview}>
+    <figcaption>전체 트랙 · 현재 프레임</figcaption>
+    <svg viewBox="0 0 320 220" role="img" aria-label="전체 트랙 차량 위치" data-frame-time={frame?.tMs}>
+      <Outline points={outline.points} project={project} />
+      <Landmarks landmarks={landmarks} project={project} />
+      {frame && replay.participants.map((participant, index) => {
+        const car = decodeIncidentCar(frame.cars[index]);
+        if (!car) return null;
+        const point = project(car.x, car.z);
+        return <g key={participant.idx} data-overview-car={participant.idx} transform={`translate(${point.x},${point.y})`}>
+          <circle r="4" fill={teamIdentity(participant.teamId).color} stroke="currentColor" strokeWidth="1" />
+          <text x="6" y="4" fill="currentColor" fontSize="11">#{participant.idx}</text>
+        </g>;
+      })}
+    </svg>
+  </figure>;
 }
 
 function Outline({ points, project }: { points: Array<[number, number]>; project: (x: number, z: number) => { x: number; y: number } }) {

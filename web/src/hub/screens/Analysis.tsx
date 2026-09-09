@@ -307,7 +307,7 @@ function IncidentPanel({ state, detail, t, onRetry }: { state: IncidentState; de
   if (state.kind === 'invalid-empty') return <ScopedFailure title="재생할 프레임이 없습니다" note="이 사고에는 사용 가능한 저장 프레임이 없습니다." />;
   if (state.kind === 'not-found') return <ScopedFailure title="사고를 찾을 수 없습니다" note="사고 목록을 다시 확인하세요." onRetry={onRetry} />;
   if (state.kind === 'error') return <ScopedFailure title="사고 프레임을 불러오지 못했습니다" note={failureMessage(state.error)} onRetry={onRetry} />;
-  return state.value ? <IncidentReplay key={`${state.value.raceId}:${state.value.index}`} t={t} replay={state.value} trackOutline={detail.trackOutline} /> : null;
+  return state.value ? <IncidentReplay key={`${state.value.raceId}:${state.value.index}`} t={t} replay={state.value} trackOutline={detail.trackOutline} trackId={detail.track.id} gameFormat={detail.gameFormat} /> : null;
 }
 
 function AnalysisGate({ title, note, loading }: { title: string; note: string; loading: boolean }) {
