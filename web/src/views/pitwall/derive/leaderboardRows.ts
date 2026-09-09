@@ -1,5 +1,5 @@
 import type { LapRecord } from '../../../store/lapHistoryStore';
-import { getTeamColor, getTeamShort } from '../../../constants/teamColors';
+import { getTeamColor, getTeamShort, resolveTeamId } from '../../../constants/teamColors';
 import { getTyreColor, getTyreShortLabel } from '../../../constants/tyreCompounds';
 import type { DriverInfo, PenaltyLogEntry, SessionInfo } from '../../../types/telemetry';
 import { deriveDriverCodes } from '../../../utils/driverCodes';
@@ -442,16 +442,18 @@ export function deriveLeaderboardRows(
     // Full name (uppercased in the panel) with a code/CAR fallback — the backend
     // sends an empty name before participants arrive or for blank garage slots.
     const displayName = driver.name.trim() || codes.get(driver.index) || `CAR ${driver.index + 1}`;
+    // 색/약어/마크가 같은 키를 쓰므로 여기서 한 번만 접는다.
+    const teamId = resolveTeamId(driver.teamId, is2026);
 
     return {
       index: driver.index,
       pos: String(driver.position).padStart(2, '0'),
       posColor: posColor(isLeader, isPlayer),
-      teamId: driver.teamId,
-      teamColor: getTeamColor(driver.teamId),
+      teamId,
+      teamColor: getTeamColor(teamId),
       rowBg: rowBackground(tone, i),
       name: displayName,
-      teamShort: getTeamShort(driver.teamId),
+      teamShort: getTeamShort(teamId),
       nameColor: isPlayer ? 'var(--accent)' : 'var(--text-primary)',
       aiShow: driver.aiControlled,
       drsLabel: drs.label,

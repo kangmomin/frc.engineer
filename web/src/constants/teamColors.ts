@@ -167,6 +167,27 @@ const TEAM_KEYS: Record<number, TeamKey> = {
   486: 'cadillac',
 };
 
+/**
+ * F1 26에서 소속이 바뀐 팀 ID를 정규 ID로 접는다.
+ *
+ * 킥 자우버(9)는 F1 26에서 아우디가 됐다. 게임이 그 슬롯을 그대로 재사용하면
+ * 2026 세션인데 'SAU'로 표시되므로 아우디(10)로 접는다. 반대로 F1 26이 아우디에
+ * 새 ID(10)를 주고 9를 아예 안 보낼 수도 있는데, 그 경우 이 함수는 무동작이라
+ * 어느 쪽이든 화면은 맞는다. 캐딜락(11)은 F1 25에 없던 팀이라 접을 대상이 없다.
+ *
+ * 색·약어·마크를 각각 분기하지 않고 ID 하나만 접는 이유: 세 테이블이 모두 같은
+ * 키를 쓰므로 입구에서 한 번 정규화하면 하위는 손댈 필요가 없다.
+ */
+const TEAM_ID_2026: Record<number, number> = {
+  9: 10, // Kick Sauber → Audi
+};
+
+/** 게임 버전에 따라 달라지는 팀 ID를 정규 ID로 접는다. F1 25는 원본 그대로. */
+export function resolveTeamId(teamId: number, is2026: boolean): number {
+  if (!is2026) return teamId;
+  return TEAM_ID_2026[teamId] ?? teamId;
+}
+
 /** 팀 마크 키. 미매핑 ID와 255(무팀)는 null — 호출부가 중립 폴백을 그린다. */
 export function getTeamKey(teamId: number): TeamKey | null {
   return TEAM_KEYS[teamId] ?? null;

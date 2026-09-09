@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getTeamColor, getTeamKey, getTeamName, getTeamShort, TEAM_COLORS, TEAM_NAMES, TEAM_SHORT } from './teamColors';
+import { getTeamColor, getTeamKey, getTeamName, getTeamShort, resolveTeamId, TEAM_COLORS, TEAM_NAMES, TEAM_SHORT } from './teamColors';
 
 describe('teamColors', () => {
   it('TEAM_SHORT covers exactly the same team IDs as TEAM_NAMES', () => {
@@ -52,6 +52,23 @@ describe('teamColors', () => {
     expect(getTeamKey(476)).toBe(getTeamKey(0));   // Mercedes
     expect(getTeamKey(484)).toBe(getTeamKey(8));   // McLaren
     expect(getTeamKey(485)).toBe(getTeamKey(10));  // Audi
+  });
+
+  it('folds the F1 26 Kick Sauber slot onto Audi, and leaves F1 25 alone', () => {
+    // 킥 자우버는 F1 26에서 아우디가 됐다. 게임이 9를 그대로 보내면 2026 세션인데
+    // 'SAU'로 뜨므로 접는다. 게임이 9를 안 보내면 이 정규화는 무동작이다.
+    expect(getTeamShort(resolveTeamId(9, true))).toBe('AUD');
+    expect(getTeamShort(resolveTeamId(9, false))).toBe('SAU');
+  });
+
+  it('leaves every other team ID untouched in both game versions', () => {
+    for (const id of Object.keys(TEAM_SHORT).map(Number)) {
+      if (id === 9) continue;
+      expect(resolveTeamId(id, true)).toBe(id);
+      expect(resolveTeamId(id, false)).toBe(id);
+    }
+    // 캐딜락(11)은 F1 25에 없던 팀이라 접을 대상이 아니다.
+    expect(resolveTeamId(11, true)).toBe(11);
   });
 
   it('has no mark key for the no-team sentinel or unmapped IDs', () => {
