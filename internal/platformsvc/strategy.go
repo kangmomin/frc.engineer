@@ -1,0 +1,111 @@
+package platformsvc
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sort"
+
+	"frc.engineer/internal/strategy"
+)
+
+const StrategyRecordLimit = 300
+const strategyRecordsPerUser = 20
+
+// LoadStrategyRecords reads a bounded, deduplicated cross-user corpus. Banned
+// users are excluded at query time. The payload and all identities remain
+// internal; handlers expose only strategy.Context/Result aggregate models.
+func (s *Store) LoadStrategyRecords(ctx context.Context, trackID int, format string) ([]strategy.Record, bool, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH dedup AS (
+			SELECT DISTINCT ON (r.account_id, st.session_uid)
+				r.id, r.account_id, st.session_uid, r.uploaded_at, st.evidence
+			FROM platform.races r JOIN platform.race_strategy st ON st.race_id=r.id
+			WHERE r.track_id=$1 AND r.game_format=$2 AND r.plausible
+			  AND r.session_type IN ('Race','Race 2','Race 3')
+			  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id=r.account_id)
+			ORDER BY r.account_id, st.session_uid, jsonb_array_length(st.evidence->'laps') DESC, r.uploaded_at DESC, r.id
+		), ranked AS (
+			SELECT *, row_number() OVER (PARTITION BY account_id ORDER BY uploaded_at DESC,id) AS user_row FROM dedup
+		)
+		SELECT id::text,account_id::text,evidence FROM ranked WHERE user_row <= $3
+		ORDER BY uploaded_at DESC,id LIMIT $4`, trackID, format, strategyRecordsPerUser, StrategyRecordLimit+1)
+	if err != nil {
+		return nil, false, fmt.Errorf("platformsvc: strategy corpus: %w", err)
+	}
+	defer rows.Close()
+	out := []strategy.Record{}
+	for rows.Next() {
+		var r strategy.Record
+		var body []byte
+		if err := rows.Scan(&r.RaceID, &r.AccountID, &body); err != nil {
+			return nil, false, err
+		}
+		if err := json.Unmarshal(body, &r.Evidence); err != nil {
+			return nil, false, fmt.Errorf("platformsvc: stored strategy: %w", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	truncated := len(out) > StrategyRecordLimit
+	if truncated {
+		out = out[:StrategyRecordLimit]
+	}
+	return out, truncated, nil
+}
+
+func validateStrategyUpload(req *UploadRequest) error {
+	e := req.Strategy
+	if e == nil {
+		return nil
+	}
+	if strategy.ValidateEvidence(e) != nil {
+		return ErrBadUpload
+	}
+	format := fmt.Sprintf("F1 %d", e.Conditions.PacketFormat-2000)
+	session := map[int]string{15: "Race", 16: "Race 2", 17: "Race 3"}[e.Conditions.SessionType]
+	if req.GameFormat != format || req.SessionType != session {
+		return ErrBadUpload
+	}
+	byNumber := map[int]UploadLap{}
+	for _, l := range req.Laps {
+		byNumber[l.LapNumber] = l
+	}
+	for _, l := range e.Laps {
+		p, ok := byNumber[l.Number]
+		if !ok || int(p.LapMs) != l.TimeMs {
+			return ErrBadUpload
+		}
+	}
+	return nil
+}
+
+// The normal server-side lap plausibility decision also governs new evidence.
+// A client cannot turn an invalid leaderboard lap into a clean training lap.
+func normalizedStrategyEvidence(req UploadRequest, minMs, maxMs uint32) *strategy.Evidence {
+	e := *req.Strategy
+	e.Laps = append([]strategy.Lap{}, req.Strategy.Laps...)
+	valid := map[int]bool{}
+	for _, l := range req.Laps {
+		valid[l.LapNumber] = validateLap(l, minMs, maxMs)
+	}
+	for i := range e.Laps {
+		l := &e.Laps[i]
+		if valid[l.Number] {
+			continue
+		}
+		hasInvalid := false
+		for _, flag := range l.Flags {
+			if flag == "invalid" {
+				hasInvalid = true
+			}
+		}
+		if !hasInvalid {
+			l.Flags = append(append([]string{}, l.Flags...), "invalid")
+			sort.Strings(l.Flags)
+		}
+	}
+	return &e
+}

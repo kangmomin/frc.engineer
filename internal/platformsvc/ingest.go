@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/strategy"
 )
 
 // ErrDuplicate is returned when a race with the same (account, source) was
@@ -169,6 +170,9 @@ func validateUpload(req *UploadRequest) error {
 			(p.PitLaneTimeMs > 0 && p.StationaryMs > p.PitLaneTimeMs) { // 정지 ≤ 레인 체류(Minor 2)
 			return ErrBadUpload
 		}
+	}
+	if err := validateStrategyUpload(req); err != nil {
+		return err
 	}
 	return nil
 }
@@ -721,16 +725,17 @@ type UploadSetup struct {
 // snapshot; Detail is the private rich document (stints/dynamics/events) stored
 // opaquely in race_detail and never surfaced on a public endpoint.
 type UploadRequest struct {
-	SourceRaceID  string        `json:"sourceRaceId"`
-	TrackID       int           `json:"trackId"`
-	TrackName     string        `json:"trackName"`
-	SessionType   string        `json:"sessionType"`
-	GameFormat    string        `json:"gameFormat"`
-	Laps          []UploadLap   `json:"laps"`
-	Setup         *UploadSetup  `json:"setup,omitempty"`
-	SchemaVersion int           `json:"schemaVersion,omitempty"`
-	Detail        *UploadDetail `json:"detail,omitempty"`
-	Pit           *UploadPit    `json:"pit,omitempty"`
+	Strategy      *strategy.Evidence `json:"strategy,omitempty"`
+	SourceRaceID  string             `json:"sourceRaceId"`
+	TrackID       int                `json:"trackId"`
+	TrackName     string             `json:"trackName"`
+	SessionType   string             `json:"sessionType"`
+	GameFormat    string             `json:"gameFormat"`
+	Laps          []UploadLap        `json:"laps"`
+	Setup         *UploadSetup       `json:"setup,omitempty"`
+	SchemaVersion int                `json:"schemaVersion,omitempty"`
+	Detail        *UploadDetail      `json:"detail,omitempty"`
+	Pit           *UploadPit         `json:"pit,omitempty"`
 	// RecordedAt is the sender's summary/finish record time, not an upload
 	// timestamp. A nil value deliberately preserves legacy unknown history.
 	RecordedAt *time.Time `json:"recordedAt,omitempty"`
@@ -1293,6 +1298,16 @@ func (s *Store) IngestRace(ctx context.Context, accountID string, req UploadRequ
 			raceID, req.Pit.Stops, int32(req.Pit.PitLaneTimeMs), int32(req.Pit.StationaryMs),
 		); err != nil {
 			return nil, fmt.Errorf("platformsvc: insert pit loss: %w", err)
+		}
+	}
+
+	if req.Strategy != nil {
+		payload, err := json.Marshal(normalizedStrategyEvidence(req, minMs, maxMs))
+		if err != nil {
+			return nil, fmt.Errorf("platformsvc: marshal strategy: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO platform.race_strategy (race_id, session_uid, evidence) VALUES ($1, $2, $3)`, raceID, req.Strategy.SessionUID, string(payload)); err != nil {
+			return nil, fmt.Errorf("platformsvc: insert strategy: %w", err)
 		}
 	}
 

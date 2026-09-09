@@ -39,3 +39,16 @@ describe('Sidebar Analysis navigation', () => {
     expect(render(['pithub.race-analyze.read'])).toContain('ANALYSIS');
   });
 });
+
+describe('permission-controlled Strategy navigation', () => {
+  it('shows the menu for read or ancestor grants without an opt-in', () => {
+    for (const grant of ['pithub.strategy.read', 'pithub.strategy', 'pithub']) expect(render([grant])).toContain('STRATEGY');
+  });
+  it('hides it for ordinary users, View As and a rejected server access check', () => {
+    expect(render(['pithub.race.create', 'pithub.race.read'])).not.toContain('STRATEGY');
+    expect(render()).not.toContain('STRATEGY');
+    expect(render(['pithub'], true)).not.toContain('STRATEGY');
+    const html = renderToStaticMarkup(<Sidebar t={t} active="strategy" onNav={vi.fn()} onLaunchLive={vi.fn()} account={{ ...account, permissions: ['pithub'] }} strategyDenied />);
+    expect(html).not.toContain('STRATEGY');
+  });
+});

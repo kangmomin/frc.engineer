@@ -1,0 +1,50 @@
+.screen { max-width: 1050px; font-size: 13px; line-height: 1.6; }
+.header { margin-bottom: 22px; }
+.eyebrow { color: var(--accInk); font-size: 10px; letter-spacing: .14em; font-weight: 700; }
+.screen h2 { margin: 5px 0; font-size: 25px; letter-spacing: -.03em; }
+.screen h3 { margin: 0 0 8px; font-size: 16px; }
+.screen p { color: var(--t2); margin: 9px 0; }
+.screen label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 600; }
+.screen select, .screen button { font: inherit; color: var(--t1); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 9px 12px; }
+.screen select { min-width: 0; max-width: 100%; }
+.screen button { cursor: pointer; }
+.screen button:disabled { cursor: default; opacity: .5; }
+.screen :is(button, select, input):focus-visible { outline: 2px solid var(--accInk); outline-offset: 3px; }
+.filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+.filters label:first-child { flex: 1; min-width: 150px; }
+.card { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 22px; margin-bottom: 16px; }
+.contextSelect { width: 100%; }
+.screen details { margin-top: 14px; color: var(--t2); }
+.screen summary { cursor: pointer; font-size: 12px; }
+.conditions { display: grid; grid-template-columns: minmax(130px, 1fr) 2fr; gap: 6px 16px; font-size: 12px; }
+.conditions dd { margin: 0; }
+.inventory { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+.inventory label { border-top: 3px solid; padding-top: 9px; }
+.options { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 18px; }
+.options .check { display: flex; flex-direction: row; align-items: center; font-weight: 400; }
+.screen .primary { background: var(--acc); color: #201909; font-weight: 700; border-color: var(--acc); }
+.empty { border: 1px dashed var(--line); border-radius: 12px; padding: 32px; background: var(--panel); }
+.empty p { max-width: 720px; }
+.screen .note { font-size: 12px; color: var(--t2); line-height: 1.75; }
+.plans { list-style: none; padding: 0; margin: 18px 0 0; }
+.plans li { padding: 16px 0; border-top: 1px solid var(--line); }
+.planHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.planHeading span { white-space: nowrap; font-size: 12px; color: var(--accInk); font-variant-numeric: tabular-nums; }
+.stints { display: flex; gap: 3px; border-radius: 5px; overflow: hidden; }
+.stints div { min-width: 0; padding: 7px 2px; color: white; text-align: center; font-size: 11px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.plans p { font-size: 12px; }
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 14px 0; }
+.metrics div { color: var(--t2); font-size: 12px; }
+.metrics strong { display: block; color: var(--t1); font-size: 21px; font-variant-numeric: tabular-nums; }
+.tableWrap { overflow-x: auto; margin: 12px 0; }
+.tableWrap table { border-collapse: collapse; text-align: left; width: 100%; font-size: 12px; white-space: nowrap; }
+.tableWrap :is(th, td) { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); }
+@media (max-width: 600px) {
+  .card { padding: 16px; }
+  .inventory { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .metrics { gap: 6px; }
+  .metrics strong { font-size: 17px; }
+  .empty { padding: 22px; }
+  .conditions { grid-template-columns: 1fr; gap: 4px; }
+  .conditions dd { margin-bottom: 8px; }
+}

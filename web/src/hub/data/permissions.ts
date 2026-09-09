@@ -79,3 +79,7 @@ export function canEditMySetups(account: PlatformAccount | null): boolean {
   if (!account?.permissions || account.banned) return false;
   return hasPermission(account.permissions, 'pithub.race.update');
 }
+
+export function canReadStrategy(account: PlatformAccount | null): boolean {
+  return !!account?.permissions && !account.banned && hasPermission(account.permissions, 'pithub.strategy.read');
+}

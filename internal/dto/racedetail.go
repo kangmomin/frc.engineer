@@ -1,5 +1,7 @@
 package dto
 
+import "frc.engineer/internal/strategy"
+
 // Availability is the producer-proven availability of a section. It is not a
 // UI state: unknown means historical/schema ambiguity, while unavailable means
 // the producer knows there is no usable stored data.
@@ -119,6 +121,10 @@ type RaceCaptureProvenance struct {
 // Callers that serialize summaries to an archive API or DataChannel must clear
 // it before encoding.
 type RacePrivateCapture struct {
+	// Strategy is player-only evidence retained on disk and explicitly mapped
+	// to the authenticated race upload. The entire private block is stripped
+	// from archive reads and WebRTC summaries.
+	Strategy *strategy.Evidence `json:"strategy,omitempty"`
 	// RunID distinguishes cumulative snapshots produced by one sender process
 	// from a genuinely restarted capture run. It is private restart metadata and
 	// is stripped alongside the ledger before every external serialization.

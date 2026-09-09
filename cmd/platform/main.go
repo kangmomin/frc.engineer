@@ -155,6 +155,7 @@ func main() {
 	mux.HandleFunc("GET /me/race-analyses/{id}", srv.handleMyRaceAnalysis)
 	mux.HandleFunc("GET /me/race-analyses/{id}/incidents/{index}", srv.handleMyRaceAnalysisIncident)
 	registerRaceAnalysisShareRoutes(mux, srv)
+	registerStrategyRoutes(mux, srv)
 	mux.HandleFunc("GET /me/setups", srv.handleMySetups)
 	mux.HandleFunc("GET /me/setups/{id}", srv.handleMySetup)
 	mux.HandleFunc("POST /me/setups/{id}", srv.handleUpdateMySetup)
@@ -226,6 +227,7 @@ type server struct {
 	// a disposable database. Production leaves these nil and uses store directly.
 	raceAnalysisReader  raceAnalysisReader
 	raceAnalysisShares  raceAnalysisShareStore
+	strategyStore       strategyStore
 	authenticateForTest func(context.Context, *http.Request) (platformsvc.Principal, error)
 }
 

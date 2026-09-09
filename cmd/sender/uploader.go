@@ -13,6 +13,7 @@ import (
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
+	"frc.engineer/internal/strategy"
 )
 
 // Platform upload client. The sender is the "device" half of the pairing flow: a
@@ -32,18 +33,19 @@ const (
 )
 
 type uploadRequest struct {
-	SourceRaceID   string        `json:"sourceRaceId"`
-	TrackID        int           `json:"trackId"`
-	TrackName      string        `json:"trackName"`
-	SessionType    string        `json:"sessionType"`
-	GameFormat     string        `json:"gameFormat"`
-	Laps           []uploadLap   `json:"laps"`
-	Setup          *uploadSetup  `json:"setup,omitempty"`
-	SchemaVersion  int           `json:"schemaVersion,omitempty"`
-	Detail         *uploadDetail `json:"detail,omitempty"`
-	Pit            *uploadPit    `json:"pit,omitempty"`
-	RecordedAt     *time.Time    `json:"recordedAt,omitempty"`
-	FinishPosition *int          `json:"finishPosition,omitempty"`
+	Strategy       *strategy.Evidence `json:"strategy,omitempty"`
+	SourceRaceID   string             `json:"sourceRaceId"`
+	TrackID        int                `json:"trackId"`
+	TrackName      string             `json:"trackName"`
+	SessionType    string             `json:"sessionType"`
+	GameFormat     string             `json:"gameFormat"`
+	Laps           []uploadLap        `json:"laps"`
+	Setup          *uploadSetup       `json:"setup,omitempty"`
+	SchemaVersion  int                `json:"schemaVersion,omitempty"`
+	Detail         *uploadDetail      `json:"detail,omitempty"`
+	Pit            *uploadPit         `json:"pit,omitempty"`
+	RecordedAt     *time.Time         `json:"recordedAt,omitempty"`
+	FinishPosition *int               `json:"finishPosition,omitempty"`
 }
 
 // uploadPit mirrors platformsvc.UploadPit (sender must not import the platform DB
@@ -520,6 +522,15 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 				req.Detail.CaptureStartLap == 0 && req.Detail.FinalizeTrigger == "" {
 				req.Detail = nil
 			}
+		}
+	}
+	// Strategy is optional. Preserve the existing lap/incident upload budget
+	// before attaching it, and omit it if the complete HTTP request will not fit.
+	if evidence := uploadStrategyEvidence(summary); evidence != nil {
+		req.Strategy = evidence
+		if raw, err := json.Marshal(req); err != nil || len(raw) > uploadRequestSafetyBytes {
+			req.Strategy = nil
+			logger.Warn("strategy omitted from upload (request over safety cap)", "id", summary.ID)
 		}
 	}
 	return req, true

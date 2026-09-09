@@ -136,7 +136,8 @@ type Processor struct {
 	banned           atomic.Bool
 
 	// Player-involved collision capture (own mutex inside; fed from processPacket)
-	incidents *incidentRecorder
+	incidents        *incidentRecorder
+	strategyEvidence strategyCapture
 	// captureRunID is intentionally private restart metadata. Every save emitted
 	// by this processor carries the same ID so adopting an earlier checkpoint can
 	// distinguish a cumulative in-process snapshot from a real restart run.
@@ -516,6 +517,7 @@ func (p *Processor) processPacket(data []byte) {
 	if p.evaluateBan() {
 		return
 	}
+	p.strategyEvidence.observe(parsed)
 
 	if parsed.Session != nil {
 		p.deltaCalculator.SetTrackID(parsed.Session.TrackID)
@@ -1058,7 +1060,7 @@ func (p *Processor) saveRaceSummary(sessionUID uint64, trigger string, markSaved
 	provenance.CheckpointFinalize = !provenance.NormalFinalize
 	provenance.TrackOutlineSourcePoints = sourcePoints
 	detail.TrackOutline = outline
-	detail.PrivateCapture = &dto.RacePrivateCapture{RunID: p.captureRunID, Provenance: provenance}
+	detail.PrivateCapture = &dto.RacePrivateCapture{RunID: p.captureRunID, Provenance: provenance, Strategy: p.strategyEvidence.snapshot(sessionUID)}
 	if err := save(sessionUID, counts, timeline, state, detail); err != nil {
 		p.logger.Error("failed to save race summary", "sessionUID", sessionUID, "trigger", trigger, "error", err)
 		if markSaved {

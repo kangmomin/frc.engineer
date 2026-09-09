@@ -47,6 +47,15 @@ type PacketSessionData struct {
 	PitStopWindowIdealLap     uint8
 	PitStopWindowLatestLap    uint8
 	PitStopRejoinPosition     uint8
+	// Nil on short/legacy packets: zero is a real setting, not "unknown".
+	StrategyRules *SessionStrategyRules
+}
+
+type SessionStrategyRules struct {
+	EqualPerformance                                          bool
+	GameMode, RuleSet, SessionLength                          uint8
+	SurfaceType, LowFuelMode, TyreTemperature, PitLaneTyreSim uint8
+	ERSAssist, PitAssist, PitReleaseAssist, PitStopExperience uint8
 }
 
 // Session packet field offsets (relative to start of packet)
@@ -221,6 +230,18 @@ func ParseSessionPacket(data []byte, header *PacketHeader) (*PacketSessionData, 
 	}
 	if len(data) > sessionPitStopRejoinPositionOffset {
 		packet.PitStopRejoinPosition = data[sessionPitStopRejoinPositionOffset]
+	}
+	// EA F1 25 / 2026 Season Pack packed Session layout. The common settings
+	// precede the 2026 additions; see docs/F1 25 Telemetry Output Structures.txt.
+	// Require the complete settings block and validate enum bytes before
+	// considering equal/off or any physics setting known.
+	if len(data) >= 725 && data[708] <= 1 && data[711] <= 1 && data[712] <= 1 &&
+		data[714] <= 1 && data[715] <= 1 && data[690] <= 1 && data[688] <= 1 && data[689] <= 1 && data[724] <= 2 {
+		packet.StrategyRules = &SessionStrategyRules{
+			EqualPerformance: data[708] == 1, GameMode: data[694], RuleSet: data[695], SessionLength: data[700],
+			SurfaceType: data[711], LowFuelMode: data[712], TyreTemperature: data[714], PitLaneTyreSim: data[715],
+			ERSAssist: data[690], PitAssist: data[688], PitReleaseAssist: data[689], PitStopExperience: data[724],
+		}
 	}
 
 	return packet, nil

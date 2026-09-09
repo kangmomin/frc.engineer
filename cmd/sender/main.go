@@ -1073,6 +1073,7 @@ func main() {
 		if capture := processor.GetIncidentCaptureMetadata(sessionUID); capture != nil {
 			if summary.PrivateCapture != nil {
 				capture.RunID = summary.PrivateCapture.RunID
+				capture.Strategy = summary.PrivateCapture.Strategy
 				capture.Provenance = mergeCaptureProvenance(summary.PrivateCapture.Provenance, capture.Provenance)
 			}
 			summary.PrivateCapture = capture

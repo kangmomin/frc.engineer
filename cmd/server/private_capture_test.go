@@ -7,11 +7,13 @@ import (
 
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/races"
+	"frc.engineer/internal/strategy"
 )
 
 func TestStripPrivateCaptureForServerArchivePayloads(t *testing.T) {
 	summary := &races.RaceSummary{
 		PrivateCapture: &dto.RacePrivateCapture{
+			Strategy:             &strategy.Evidence{SessionUID: "private-strategy-session"},
 			RunID:                "private-run",
 			EligibleIncidentKeys: []dto.IncidentCaptureKey{{SessionTimeMS: 123, Collisions: [][2]int{{0, 1}}}},
 			Provenance:           dto.RaceCaptureProvenance{SessionHistoryObserved: true, IncidentsCaptureActive: true, TrackOutlineSourcePoints: 336},
@@ -25,7 +27,7 @@ func TestStripPrivateCaptureForServerArchivePayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal external archive response: %v", err)
 	}
-	for _, privateField := range []string{"privateCapture", "runId", "eligibleIncidentKeys", "sessionHistoryObserved", "trackOutlineSourcePoints"} {
+	for _, privateField := range []string{"privateCapture", "runId", "eligibleIncidentKeys", "sessionHistoryObserved", "trackOutlineSourcePoints", "strategy", "private-strategy-session"} {
 		if strings.Contains(string(raw), privateField) {
 			t.Fatalf("server archive payload leaked %q: %s", privateField, raw)
 		}

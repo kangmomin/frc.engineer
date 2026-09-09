@@ -1,9 +1,9 @@
 // Hub sidebar — logo, nav, user footer (hub.dc.html:29-48).
 import type { HubTheme } from '../theme';
 import type { PlatformAccount } from '../data/session';
-import { canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canViewFeedbackInbox } from '../data/permissions';
+import { canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canReadStrategy, canViewFeedbackInbox } from '../data/permissions';
 
-export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'feedback-inbox' | 'access' | 'driver-profile' | 'updates';
+export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' | 'analysis' | 'profile' | 'feedback' | 'feedback-inbox' | 'access' | 'driver-profile' | 'updates' | 'strategy';
 
 const MONO = "'JetBrains Mono',monospace";
 
@@ -21,6 +21,7 @@ const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean; nee
   { id: 'feedback-inbox', label: 'FEEDBACK INBOX', idx: '08', needsFeedbackInbox: true },
   { id: 'access', label: 'ACCESS', idx: '09', needsRBAC: true },
   { id: 'updates', label: 'UPDATES', idx: '10' },
+  { id: 'strategy', label: 'STRATEGY', idx: '11' },
 ];
 
 interface Props {
@@ -31,9 +32,10 @@ interface Props {
   // Logged-in platform account; null when logged out / platform unconfigured.
   account: PlatformAccount | null;
   viewOnly?: boolean;
+  strategyDenied?: boolean;
 }
 
-export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = false }: Props) {
+export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = false, strategyDenied = false }: Props) {
   return (
     <aside
       className="hubSidebar"
@@ -57,6 +59,7 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = fa
       <nav style={{ padding: '14px 0', flex: 1, overflowY: 'auto' }}>
         {NAV.filter((item) =>
           (!viewOnly || (item.id !== 'access' && item.id !== 'feedback-inbox'))
+          && (item.id !== 'strategy' || (!viewOnly && !strategyDenied && canReadStrategy(account)))
           && (!item.needsRBAC || canManageRBAC(account))
           && (!item.needsFeedbackInbox || canViewFeedbackInbox(account))
           && (!item.needsAnalysis || canReadRaceAnalysis(account) || (!viewOnly && canReadAdminAnalysisReports(account))),

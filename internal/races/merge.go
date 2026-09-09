@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/strategy"
 )
 
 // MergeAdoptedSummary folds capture data from a previously persisted summary of
@@ -181,12 +182,14 @@ func mergePrivateCapture(prev, next *RaceSummary) {
 	if prev.PrivateCapture != nil {
 		merged.RunID = prev.PrivateCapture.RunID
 		merged.Provenance = prev.PrivateCapture.Provenance
+		merged.Strategy = prev.PrivateCapture.Strategy
 	}
 	if next.PrivateCapture != nil {
 		if next.PrivateCapture.RunID != "" {
 			merged.RunID = next.PrivateCapture.RunID
 		}
 		merged.Provenance = mergeProvenance(merged.Provenance, next.PrivateCapture.Provenance, sameRun)
+		merged.Strategy = strategy.Merge(merged.Strategy, next.PrivateCapture.Strategy, sameRun)
 	}
 	keys := make(map[string]dto.IncidentCaptureKey)
 	for _, capture := range []*dto.RacePrivateCapture{prev.PrivateCapture, next.PrivateCapture} {

@@ -36,6 +36,7 @@ const (
 	PermRaceCreate        = "pithub.race.create"
 	PermRaceRead          = "pithub.race.read"
 	PermRaceUpdate        = "pithub.race.update"
+	PermStrategyRead      = "pithub.strategy.read"
 	PermAnalyzeCreate     = "pithub.race-analyze.create"
 	PermAnalyzeRead       = "pithub.race-analyze.read"
 	PermAnalyzeDelete     = "pithub.race-analyze.delete"
@@ -76,10 +77,12 @@ var seedMids = []string{
 	"pithub.wallet", "pithub.purchase", "pithub.review", "pithub.feedback",
 	"pithub.feedback-inbox", "pithub.view-as", "pithub.rbac", "pitwall.broadcast", "sender.setup",
 	"pithub.update-log",
+	"pithub.strategy",
 }
 
 var seedLeaves = []string{
 	PermDeviceCreate, PermRaceCreate, PermRaceRead, PermRaceUpdate,
+	PermStrategyRead,
 	PermAnalyzeCreate, PermAnalyzeRead, PermAnalyzeDelete,
 	PermMarketCreate, PermMarketRead, PermMarketUpdate,
 	PermWalletRead, PermPurchaseCreate, PermReviewCreate,

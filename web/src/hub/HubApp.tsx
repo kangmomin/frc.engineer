@@ -28,10 +28,10 @@ import {
   captureTokenFromFragment, fetchMeWithToken, beginSteamLogin, createPairingCode,
   getParentSessionToken, getViewAsToken, storeViewAsSession, clearViewAsSession,
   clearParentSessionToken, clearCurrentParentSession, startViewAs, exitViewAs, revokeSession,
-  subscribeSessionUnauthorized, SessionRequestError,
+  subscribeSessionUnauthorized, notifySessionUnauthorized, SessionRequestError,
 } from './data/session';
 import type { PlatformAccount } from './data/session';
-import { canDeleteAdminAnalysisReports, canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canViewFeedbackInbox } from './data/permissions';
+import { canDeleteAdminAnalysisReports, canManageRBAC, canReadAdminAnalysisReports, canReadRaceAnalysis, canReadStrategy, canViewFeedbackInbox } from './data/permissions';
 import { isCurrentSessionSnapshot, isParentStorageChange, parentRevalidationFailureAction, resolveBootstrapIdentity, sessionSubtreeKey, sessionUnauthorizedAction, viewAsEntryFailureAction } from './data/sessionState';
 
 const FONT = "'IBM Plex Sans KR',system-ui,sans-serif";
@@ -46,6 +46,7 @@ const Analysis = lazy(() => import('./screens/Analysis').then(module => ({ defau
 const Access = lazy(() => import('./screens/Access').then(module => ({ default: module.Access })));
 const DriverProfile = lazy(() => import('./screens/DriverProfile').then(module => ({ default: module.DriverProfile })));
 const MySetups = lazy(() => import('./screens/MySetups').then(module => ({ default: module.MySetups })));
+const Strategy = lazy(() => import('./screens/Strategy').then(module => ({ default: module.Strategy })));
 
 export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const t = useMemo(() => buildTheme('#e0a83d', 'light'), []);
@@ -84,6 +85,9 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   const sessionEpochRef = useRef(0);
   const [sessionBusy, setSessionBusy] = useState(false);
   const viewOnly = viewAs !== null;
+  const [strategyDenied, setStrategyDenied] = useState(false);
+  const strategyRefreshGeneration = useRef(0);
+  const strategyAllowed = !viewOnly && !strategyDenied && canReadStrategy(platformAccount);
   const walletGen = useRef(0);
 
   const advanceSessionEpoch = useCallback(() => {
@@ -93,6 +97,8 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
   }, []);
 
   const clearOwnerState = useCallback(() => {
+    setStrategyDenied(false);
+    strategyRefreshGeneration.current += 1;
     walletGen.current += 1;
     raceContextRequestGeneration.current += 1;
     setRealWallet(null);
@@ -152,7 +158,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
       setTrackCtx(trackContextFor(races[0].trackId, races[0].gameFormat));
     }).catch(() => { /* keep default context */ });
     return () => { alive = false; };
-  }, [platformConfigured, platformAccount, platformMkt, sessionEpoch]);
+  }, [platformConfigured, platformAccount?.id, platformMkt, sessionEpoch]);
 
   const bootstrapSession = useCallback(async () => {
     const epoch = advanceSessionEpoch();
@@ -279,6 +285,44 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [bootstrapSession, recoverChildSession]);
+
+  // Refresh grants on entry/focus, including grants added after login. A late
+  // response from a prior token or View As transition must not restore access.
+  const refreshStrategyAccess = useCallback(async () => {
+    const token = getParentSessionToken();
+    if (!platformConfigured || !token || getViewAsToken()) return;
+    const epoch = sessionEpochRef.current;
+    const generation = ++strategyRefreshGeneration.current;
+    const current = () => generation === strategyRefreshGeneration.current && epoch === sessionEpochRef.current
+      && token === getParentSessionToken() && !getViewAsToken();
+    try {
+      const account = await fetchMeWithToken(token);
+      if (!current()) return;
+      setPlatformAccount(previous => {
+        if (!previous || previous.id !== account.id) return previous;
+        if (previous.banned === account.banned && JSON.stringify(previous.permissions) === JSON.stringify(account.permissions)) return previous;
+        return { ...previous, banned: account.banned, permissions: account.permissions };
+      });
+      setStrategyDenied(false);
+    } catch (error) {
+      if (current() && error instanceof SessionRequestError && error.status === 401) notifySessionUnauthorized(token);
+    }
+  }, [platformConfigured]);
+
+  useEffect(() => {
+    const refresh = () => { void refreshStrategyAccess(); };
+    window.addEventListener('focus', refresh);
+    return () => { window.removeEventListener('focus', refresh); strategyRefreshGeneration.current += 1; };
+  }, [refreshStrategyAccess, sessionEpoch, viewOnly]);
+
+  useEffect(() => {
+    if (active === 'strategy' && !viewOnly) void refreshStrategyAccess();
+  }, [active, refreshStrategyAccess, sessionEpoch, viewOnly]);
+
+  const handleStrategyDenied = useCallback(() => {
+    strategyRefreshGeneration.current += 1;
+    setStrategyDenied(true);
+  }, []);
 
   const handleLogout = useCallback(() => {
     const parentToken = getParentSessionToken();
@@ -417,7 +461,7 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
 
   return (
     <div className="hubRoot" style={rootStyle}>
-      <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} account={platformAccount} viewOnly={viewOnly} />
+      <Sidebar t={t} active={active} onNav={setActive} onLaunchLive={onLaunchLive} account={platformAccount} viewOnly={viewOnly} strategyDenied={strategyDenied} />
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
         <TopBar t={t} ctx={ctx} credits={realWallet ? realWallet.balance : null} walletInitialized={realWallet?.initialized} search={platformSearch} onSearchSelect={selectSearchResult} />
@@ -475,6 +519,10 @@ export function HubApp({ onLaunchLive }: { onLaunchLive: () => void }) {
               viewOnly={viewOnly}
             />
           )}
+
+          {active === 'strategy' && (strategyAllowed ? (
+            <Strategy track={trackCtx} onSetTrack={setManualTrackCtx} onDenied={handleStrategyDenied} />
+          ) : <section><h2>전략 실험실</h2><p>전략 조회 권한이 필요합니다. 관리자에게 권한을 요청하세요.</p><button onClick={() => void refreshStrategyAccess()}>권한 다시 확인</button></section>)}
 
           {active === 'driver-profile' && selectedDriverAccountId && (
             <DriverProfile
@@ -566,6 +614,7 @@ function ctxLabel(active: HubScreen, trackCtx: TrackContext): string {
     case 'market': return 'MARKETPLACE';
     case 'setups': return 'MY SETUPS';
     case 'analysis': return 'ANALYSIS';
+    case 'strategy': return 'STRATEGY · 전략 실험실';
     case 'profile': return 'PROFILE';
     case 'feedback': return 'FEEDBACK';
     case 'updates': return 'UPDATES · 업데이트 로그';

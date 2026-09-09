@@ -93,8 +93,8 @@ func TestValidRoleName(t *testing.T) {
 // themselves in the catalog (grantable at any level).
 func TestSeedCatalogIntegrity(t *testing.T) {
 	nodes := AllSeededNodes()
-	if len(nodes) != 41 {
-		t.Fatalf("AllSeededNodes() has %d nodes, want 41", len(nodes))
+	if len(nodes) != 43 {
+		t.Fatalf("AllSeededNodes() has %d nodes, want 43", len(nodes))
 	}
 	seen := make(map[string]bool, len(nodes))
 	for _, n := range nodes {
@@ -123,6 +123,9 @@ func TestSeedCatalogIntegrity(t *testing.T) {
 	}
 	if len(SeedUserGrants()) != 14 {
 		t.Errorf("SeedUserGrants() has %d grants, want 14", len(SeedUserGrants()))
+	}
+	if HasPermission(SeedUserGrants(), PermStrategyRead) {
+		t.Error("strategy read must not be granted to ordinary users by default")
 	}
 	if !HasPermission(SeedUserGrants(), PermRaceUpdate) {
 		t.Error("default user grants must include setup metadata update access")
