@@ -273,7 +273,7 @@ async function historicalTrackReplay() {
     frames: [0, 20].map((offset, frameIndex) => ({ tMs: 1000 + frameIndex * 1000, telemetryUnavailable: null,
       cars: Array.from({ length: 24 }, (_, idx) => {
         const [, x, z] = reference.points[offset + idx];
-        return [x + (idx === 23 ? 80 : 0), 0, z, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        return [x + 5000, 0, z, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
       }),
     })),
   };
@@ -281,7 +281,7 @@ async function historicalTrackReplay() {
   const root = createRoot(host);
   try {
     root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} trackId={5} gameFormat="F1 26" />);
-    await until(() => host.querySelectorAll('[data-overview-car]').length === 24, 'Historic Monaco reference did not load');
+    await until(() => host.querySelectorAll('[data-overview-car]').length === 24, 'Historic Monaco reference hidden despite valid identity and distant cars');
     check(host.textContent!.includes('참조 트랙') && host.textContent!.includes('T1'), 'Reference provenance or corner labels missing');
     const overview = host.querySelector<SVGElement>('[data-frame-time]')!;
     check(overview.getBoundingClientRect().width <= 360, 'Overview overflows mobile width');

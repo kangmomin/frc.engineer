@@ -34,13 +34,9 @@ describe('replay track resolution', () => {
     expect(resolveReplayTrack(null, { ...reference, points: [[0, 0, 0], [2, 1, 1], [1, 2, 2]] }, 5, 'F1 26').source).toBe('unavailable');
   });
 
-  it('rejects an unrelated coordinate origin but retains runoff and missing samples', () => {
-    const frame = (x: number): import('../data/raceAnalysisTypes').IncidentFrame => ({ tMs: 0, telemetryUnavailable: null, cars: [[x, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], null] });
-    expect(resolveReplayTrack(null, reference, 5, 'F1 26', [frame(1000)]).source).toBe('unavailable');
-    expect(resolveReplayTrack(null, reference, 5, 'F1 26', [frame(80)]).source).toBe('reference');
-    expect(resolveReplayTrack(null, reference, 5, 'F1 26', [{ ...frame(0), cars: [null] }]).source).toBe('reference');
+  it('withholds corner labels when the captured circuit is translated', () => {
     const translated = outlineFor(reference.points.map(([, x, z]) => [x + 49, z]))!;
-    const result = resolveReplayTrack(translated, reference, 5, 'F1 26', [frame(1000)]);
+    const result = resolveReplayTrack(translated, reference, 5, 'F1 26');
     expect(result.source).toBe('recorded');
     expect(result.landmarks).toEqual([]);
   });

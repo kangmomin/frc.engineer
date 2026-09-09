@@ -52,7 +52,7 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
     });
     return () => { cancelled = true; };
   }, [trackId, gameFormat]);
-  const track = useMemo(() => resolveReplayTrack(trackOutline, reference, trackId, gameFormat, replay.frames), [trackOutline, reference, trackId, gameFormat, replay.frames]);
+  const track = useMemo(() => resolveReplayTrack(trackOutline, reference, trackId, gameFormat), [trackOutline, reference, trackId, gameFormat]);
   const outline = track.outline;
   const frames = useMemo(() => sortedReplayFrames(replay.frames), [replay.frames]);
   const orderedReplay = useMemo(() => ({ ...replay, frames }), [frames, replay]);

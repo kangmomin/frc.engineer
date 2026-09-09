@@ -38,13 +38,10 @@ Corner labels that reuse canonical lap fractions are approximate locations
 along this racing line, not independently surveyed game corner coordinates.
 
 The viewer keeps a usable captured outline first. A reference must match both
-the canonical track ID and game format. As a conservative mismatch check, it
-is withheld if every usable car position is more than 200 m from the reference;
-individual pit/runoff positions are never snapped or removed. With no usable
-car samples, the reference can still display. Captured-outline corner labels
-require both paths to be within 15 m of one another, allowing sampling and
-racing-line variation. These tolerances are rendering assumptions, not evidence
-of track identity. Missing or failed reference loads leave local replay usable.
+the canonical track ID and game format. Car distance never hides the reference;
+measured car positions are never snapped or removed. Captured-outline corner
+labels require both paths to be within 15 m of one another, allowing sampling
+and racing-line variation. Missing or failed reference loads leave local replay usable.
 
 Other historical replays need a valid captured outline or another independently
 audited reference. The repository's recorded CSV filenames alone do not prove
