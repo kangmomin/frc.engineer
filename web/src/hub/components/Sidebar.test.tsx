@@ -52,3 +52,22 @@ describe('permission-controlled Strategy navigation', () => {
     expect(html).not.toContain('STRATEGY');
   });
 });
+
+describe('community link', () => {
+  it('always offers the Discord invite, including View As and logged-out', () => {
+    // 권한 게이팅 대상이 아니다 — 커뮤니티 링크는 계정 상태와 무관하다.
+    for (const html of [render(), render(['pithub'], true)]) {
+      expect(html).toContain('https://discord.gg/Vcxr49w4TX');
+      expect(html).toContain('DISCORD');
+    }
+    const loggedOut = renderToStaticMarkup(
+      <Sidebar t={t} active="guide" onNav={vi.fn()} onLaunchLive={vi.fn()} account={null} />,
+    );
+    expect(loggedOut).toContain('https://discord.gg/Vcxr49w4TX');
+  });
+
+  it('opens in a new tab without leaking the opener', () => {
+    expect(render()).toContain('rel="noopener noreferrer"');
+    expect(render()).toContain('target="_blank"');
+  });
+});

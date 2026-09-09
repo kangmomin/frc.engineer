@@ -7,6 +7,10 @@ export type HubScreen = 'guide' | 'overview' | 'rankings' | 'market' | 'setups' 
 
 const MONO = "'JetBrains Mono',monospace";
 
+// 공식 커뮤니티 서버. 파일 로컬 const는 setup-manager의 RELEASES_URL과 같은 방식 —
+// 레포에 외부 링크 공용 상수가 없고, 이 하나 때문에 만들지 않는다.
+const DISCORD_URL = 'https://discord.gg/Vcxr49w4TX';
+
 // ACCESS는 rbac 권한이 있을 때만 노출되므로 목록 끝에 두어 앞 항목의 번호가
 // 노출 여부에 따라 흔들리지 않게 한다. 노출은 편의일 뿐 — 경계는 서버 게이트다.
 const NAV: { id: HubScreen; label: string; idx: string; needsRBAC?: boolean; needsFeedbackInbox?: boolean; needsAnalysis?: boolean }[] = [
@@ -102,6 +106,30 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = fa
           <span className="hubNavLabel">{viewOnly ? 'LIVE · View As 미지원' : 'LIVE · 피트월'}</span>
         </button>
       </nav>
+
+      {/*
+        외부 이동이므로 nav 버튼이 아니라 <a>다. 다만 ≤720px에서 사이드바가 64px로
+        접히므로 hubNavButton 클래스와 라벨 span 쌍을 그대로 따른다(hub.css:65-72).
+        flex 자식은 flex 컨테이너가 아니므로 display:flex를 명시해야 한다.
+        권한과 무관한 커뮤니티 링크라 viewOnly로 가리지 않는다.
+      */}
+      <a
+        className="hubNavButton"
+        href={DISCORD_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="공식 디스코드 커뮤니티 (새 탭에서 열림)"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 13, width: '100%',
+          borderTop: `1px solid ${t.line}`, borderLeft: '2px solid transparent',
+          padding: '11px 20px 11px 18px', textDecoration: 'none',
+          color: t.t2, fontFamily: MONO, fontSize: 11.5, letterSpacing: '.13em', fontWeight: 600,
+        }}
+      >
+        <span className="hubNavIndex" style={{ color: t.navMuted, fontSize: 9.5, letterSpacing: 0 }}>↗</span>
+        <span className="hubMobileNavLabel">DC</span>
+        <span className="hubNavLabel">DISCORD</span>
+      </a>
 
       <button
         className="hubAccountButton"

@@ -7,6 +7,11 @@ import (
 	"github.com/energye/systray"
 )
 
+// discordURL is the official community server. Kept here next to the tray menu
+// (settings.html hardcodes the same invite) — the repo has no shared link table
+// and the Driver Pack shell keeps its own URLs the same way.
+const discordURL = "https://discord.gg/Vcxr49w4TX"
+
 func openBrowser(url string) {
 	switch runtime.GOOS {
 	case "windows":
@@ -29,6 +34,7 @@ func startTray(settingsURL string, version string, onQuit func()) <-chan struct{
 		systray.SetIcon(trayIconBytes)
 
 		mSettings := systray.AddMenuItem("Settings", "Open settings in browser")
+		mDiscord := systray.AddMenuItem("Discord", "공식 디스코드 서버 열기")
 		systray.AddSeparator()
 		mQuit := systray.AddMenuItem("Quit", "Stop the sender")
 
@@ -39,6 +45,10 @@ func startTray(settingsURL string, version string, onQuit func()) <-chan struct{
 
 		mSettings.Click(func() {
 			openBrowser(settingsURL)
+		})
+
+		mDiscord.Click(func() {
+			openBrowser(discordURL)
 		})
 
 		mQuit.Click(func() {

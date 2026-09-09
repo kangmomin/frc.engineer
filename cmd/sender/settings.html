@@ -494,6 +494,23 @@
     line-height: 1.8;
   }
   .pair-modal ol a { color: #00d2ff; }
+
+  /* Save 버튼과 시각적으로 분리한다 — 저장 동작의 일부로 오인되면 안 된다. */
+  .footer-links {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid #1f1f1f;
+    text-align: center;
+  }
+  .footer-links a {
+    color: #00d2ff;
+    font-size: 0.72rem;
+    letter-spacing: 0.5px;
+    text-decoration: none;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+  }
+  .footer-links a:hover { opacity: 1; text-decoration: underline; }
   .pair-modal .muted { color: #777; }
   .pair-modal-error {
     min-height: 1em;
@@ -995,6 +1012,11 @@
 
 
   <button class="save-btn" id="saveBtn">Save</button>
+
+  <div class="footer-links">
+    <a href="https://discord.gg/Vcxr49w4TX" target="_blank" rel="noopener noreferrer"
+       aria-label="공식 디스코드 커뮤니티 (새 탭에서 열림)">공식 디스코드 커뮤니티 ↗</a>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
