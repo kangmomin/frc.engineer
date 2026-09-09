@@ -184,9 +184,9 @@ func TestBuildSummaryRichDetail(t *testing.T) {
 	}
 }
 
-// worstIncidentClip builds one maximal merged clip — 10 participants × 101
-// frames × 20 collisions — with every value at the full post-rounding JSON
-// width the recorder emits, so the budget math sees the true worst case.
+// worstIncidentClip builds a full 24-car merged clip with long UTF-8 names
+// and representative recorded numeric widths. The separate extreme-value test
+// covers finite values beyond normal game coordinates.
 func worstIncidentClip(t0MS int64) dto.IncidentClip {
 	clip := dto.IncidentClip{
 		SessionTimeMS:   t0MS,
@@ -197,13 +197,13 @@ func worstIncidentClip(t0MS int64) dto.IncidentClip {
 	for i := range 20 {
 		clip.Collisions = append(clip.Collisions, [2]int{0, (i % 23) + 1})
 	}
-	for j := range 10 {
+	for j := range 24 {
 		clip.Participants = append(clip.Participants, dto.IncidentParticipant{
-			Idx: j, Name: strings.Repeat("D", 32), IsPlayer: j == 0, MinDistM: 39.97,
+			Idx: j, Name: strings.Repeat("가", 48), IsPlayer: j == 0, MinDistM: 39.97,
 		})
 	}
 	for f := range 101 {
-		cars := make([][]float64, 10)
+		cars := make([][]float64, 24)
 		for j := range cars {
 			cars[j] = []float64{
 				-2345.67, -102.34, -1987.65, // pos (2dp)
@@ -215,8 +215,10 @@ func worstIncidentClip(t0MS int64) dto.IncidentClip {
 				8, // gear
 			}
 		}
-		clip.Frames = append(clip.Frames, dto.IncidentFrame{TMS: clip.WindowStartMS + int64(f*50), Cars: cars})
+		clip.Frames = append(clip.Frames, dto.IncidentFrame{TMS: clip.WindowStartMS + int64(f*50), Cars: cars, TelemetryUnavailable: []int{}})
 	}
+	participants, frames := len(clip.Participants), len(clip.Frames)
+	clip.Completeness = dto.IncidentCompleteness{Status: dto.AvailabilityComplete, Reasons: []dto.CompletenessReason{}, CapturedParticipantCount: &participants, StoredParticipantCount: participants, CapturedFrameCount: &frames, StoredFrameCount: frames}
 	return clip
 }
 
@@ -289,7 +291,7 @@ func TestRaceSummarySerializationSizeUnderBudget(t *testing.T) {
 	}
 	t.Logf("worst-case rich summary JSON = %d bytes (SCTP budget %d)", len(data), sctpBudget)
 
-	// 업로드(HTTP) 형태: 워스트 incidents(20클립 × 10대 × 101프레임, raw ~2MB)를
+	// 업로드(HTTP) 형태: 워스트 incidents(20클립 × 24대 × 101프레임, raw ~4.5MB)를
 	// 업로드 경로와 동일하게 트리밍해 부착한다. 트리밍 블록이 자체 예산(300KB)을
 	// 지키면 요청 전체도 512KiB 안에 남아야 한다.
 	var clips []dto.IncidentClip

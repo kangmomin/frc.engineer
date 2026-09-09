@@ -1067,3 +1067,40 @@ func TestLeaderboardExcludesBanned(t *testing.T) {
 		t.Fatalf("banned account leaked onto leaderboard: %+v", rows)
 	}
 }
+
+func TestValidateUploadV2FullGrid(t *testing.T) {
+	_, request := readRaceAnalysisV2Fixture(t)
+	clip := &request.Detail.Incidents[0]
+	originalCar := append([]float64(nil), clip.Frames[0].Cars[0]...)
+	clip.Participants = make([]UploadIncidentParticipant, 24)
+	for i := range clip.Participants {
+		clip.Participants[i] = UploadIncidentParticipant{Idx: i, Name: "Driver", IsPlayer: i == 0, MinDistM: float64(i)}
+	}
+	for i := range clip.Frames {
+		clip.Frames[i].Cars = make([][]float64, 24)
+		clip.Frames[i].TelemetryUnavailable = []int{}
+		for j := range clip.Frames[i].Cars {
+			clip.Frames[i].Cars[j] = append([]float64(nil), originalCar...)
+			clip.Frames[i].Cars[j][0] = float64(j)
+		}
+	}
+	count := 24
+	clip.Completeness.CapturedParticipantCount = &count
+	clip.Completeness.StoredParticipantCount = 24
+	clip.Collisions = [][2]int{{0, 23}}
+	raw, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded UploadRequest
+	if err = json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if err = validateUpload(&decoded); err != nil {
+		t.Fatalf("24-car v2 upload rejected: %v", err)
+	}
+	decoded.Detail.Incidents[0].Participants = append(decoded.Detail.Incidents[0].Participants, UploadIncidentParticipant{Idx: 24})
+	if err = validateUpload(&decoded); !errors.Is(err, ErrBadUpload) {
+		t.Fatalf("25-car upload accepted: %v", err)
+	}
+}

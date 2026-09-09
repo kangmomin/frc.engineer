@@ -27,7 +27,7 @@ const (
 	incidentPostWindowMS       = 1000
 	incidentMergedWindowMaxMS  = 5000
 	incidentRadiusM            = 40.0
-	incidentMaxParticipants    = 10
+	incidentMaxParticipants    = dto.IncidentMaxParticipants
 	incidentMaxClipsPerSession = 20
 	incidentMaxCollisions      = 20  // mirrors platform validateUpload cap
 	incidentMaxFrames          = 101 // mirrors platform cap; gate jitter could exceed 5s/50ms
@@ -267,7 +267,11 @@ func (r *incidentRecorder) buildTickLocked(m *packets.PacketMotionData, header *
 	lapOK := r.latestLapData != nil &&
 		frameDelta(header.FrameIdentifier, r.latestLapData.Header.FrameIdentifier) <= incidentStaleCacheFrames
 
-	for i := 0; i < packets.MaxCars; i++ {
+	spec, ok := packets.SpecFor(header.PacketFormat)
+	if !ok {
+		return tick
+	}
+	for i := 0; i < spec.NumCars; i++ {
 		cm := &m.CarMotionData[i]
 		s := incidentCarSample{
 			posX: cm.WorldPositionX, posY: cm.WorldPositionY, posZ: cm.WorldPositionZ,
@@ -296,11 +300,12 @@ func (r *incidentRecorder) onCollision(header *packets.PacketHeader, v1, v2 uint
 	if r == nil || header == nil {
 		return
 	}
-	if v1 == v2 || int(v1) >= packets.MaxCars || int(v2) >= packets.MaxCars {
+	spec, ok := packets.SpecFor(header.PacketFormat)
+	if !ok || v1 == v2 || int(v1) >= spec.NumCars || int(v2) >= spec.NumCars {
 		return // degenerate event / spectator sentinel
 	}
 	player := header.PlayerCarIndex
-	if int(player) >= packets.MaxCars || (v1 != player && v2 != player) {
+	if int(player) >= spec.NumCars || (v1 != player && v2 != player) {
 		return
 	}
 

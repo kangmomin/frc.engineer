@@ -63,7 +63,7 @@ const (
 	// (incident recorder + races.TrimIncidentsForUpload); these mirror them so a
 	// forged or buggy payload gets a clean 400 instead of bloating race_detail.
 	maxDetailIncidents      = 20
-	maxIncidentParticipants = 10
+	maxIncidentParticipants = dto.IncidentMaxParticipants
 	maxIncidentFrames       = 101 // 5s merged window at nominal 50ms + endpoints
 	maxIncidentCollisions   = 20
 	maxIncidentNameLen      = 48

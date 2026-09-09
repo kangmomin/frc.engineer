@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -15,6 +16,7 @@ type incSim struct {
 	t             *testing.T
 	r             *incidentRecorder
 	uid           uint64
+	format        uint16
 	frame         uint32
 	pos           map[int][3]float32 // vehicleIdx → world position (persists between steps)
 	status        map[int]uint8      // vehicleIdx → ResultStatus (persists; default 0 = inactive)
@@ -27,6 +29,7 @@ func newIncSim(t *testing.T) *incSim {
 		t:             t,
 		r:             newIncidentRecorder(testLogger(), nil),
 		uid:           777,
+		format:        packets.PacketFormat2026,
 		pos:           make(map[int][3]float32),
 		status:        make(map[int]uint8),
 		speed:         make(map[int]uint16),
@@ -39,6 +42,7 @@ func newIncSim(t *testing.T) *incSim {
 func (s *incSim) header(sessionTime float32) *packets.PacketHeader {
 	return &packets.PacketHeader{
 		SessionUID:      s.uid,
+		PacketFormat:    s.format,
 		SessionTime:     sessionTime,
 		FrameIdentifier: s.frame,
 		PlayerCarIndex:  0,
@@ -418,35 +422,58 @@ func TestIncidentRecorderPerSampleStatusKeepsMidWindowRetiree(t *testing.T) {
 	}
 }
 
-func TestIncidentRecorderParticipantCap(t *testing.T) {
-	s := newIncSim(t)
-	s.pos[0] = [3]float32{0, 0, 0}
-	s.status[0] = 2
-	// 12대가 서로 다른 거리(2m..24m)로 반경 안에 존재 → 플레이어 포함 10대만 유지
-	for i := 1; i <= 12; i++ {
-		s.pos[i] = [3]float32{float32(2 * i), 0, 0}
-		s.status[i] = 2
-	}
-	s.run(0, 2.0)
-	s.collide(2.0, 0, 1)
-	s.run(2.0, 3.3)
-
-	clips := s.clips()
-	if len(clips) != 1 {
-		t.Fatalf("clips = %d, want 1", len(clips))
-	}
-	c := clips[0]
-	if len(c.Participants) != incidentMaxParticipants {
-		t.Fatalf("participants = %d, want %d", len(c.Participants), incidentMaxParticipants)
-	}
-	// 가장 먼 11, 12번이 잘려야 한다
-	if hasParticipant(c, 11) || hasParticipant(c, 12) {
-		t.Fatalf("farthest cars not trimmed: %v", participantIdxs(c))
+func TestIncidentRecorderFullGrid(t *testing.T) {
+	for _, tc := range []struct {
+		format uint16
+		cars   int
+	}{{packets.PacketFormat2025, 22}, {packets.PacketFormat2026, 24}} {
+		t.Run(fmt.Sprint(tc.format), func(t *testing.T) {
+			s := newIncSim(t)
+			s.format = tc.format
+			// Deliberately poison trailing slots too: a 2025 capture must ignore them.
+			for i := 0; i < 24; i++ {
+				s.pos[i] = [3]float32{float32(i), 0, 0}
+				s.status[i] = 2
+			}
+			s.run(0, 2)
+			if tc.cars == 22 {
+				s.collide(2, 0, 23)
+				if s.r.pending != nil {
+					t.Fatal("2025 accepted a nonexistent collision partner")
+				}
+			}
+			s.collide(2, 0, uint8(tc.cars-1))
+			s.run(2, 3.3)
+			clips := s.clips()
+			if len(clips) != 1 {
+				t.Fatalf("clips = %d, want 1", len(clips))
+			}
+			c := clips[0]
+			if len(c.Participants) != tc.cars || *c.Completeness.CapturedParticipantCount != tc.cars {
+				t.Fatalf("participants = %d, want %d", len(c.Participants), tc.cars)
+			}
+			for i := 0; i < tc.cars; i++ {
+				if !hasParticipant(c, i) {
+					t.Fatalf("lost car %d", i)
+				}
+			}
+			if hasIncidentReason(c.Completeness.Reasons, dto.ReasonIncidentParticipantLimit) {
+				t.Fatal("full grid incorrectly marked truncated")
+			}
+			for _, f := range c.Frames {
+				for j, p := range c.Participants {
+					if f.Cars[j] == nil || f.Cars[j][0] != float64(p.Idx) {
+						t.Fatalf("car %d lost frame alignment", p.Idx)
+					}
+				}
+			}
+			assertIncidentV2Identity(t, c)
+		})
 	}
 }
 
 func TestIncidentRecorderFiltersCollisionsAfterParticipantSelection(t *testing.T) {
-	t.Run("participant cap", func(t *testing.T) {
+	t.Run("multiple collision partners retained", func(t *testing.T) {
 		s := newIncSim(t)
 		s.pos[0] = [3]float32{0, 0, 0}
 		s.status[0] = 2
@@ -464,8 +491,8 @@ func TestIncidentRecorderFiltersCollisionsAfterParticipantSelection(t *testing.T
 			t.Fatalf("clips = %d, want 1", len(clips))
 		}
 		clip := clips[0]
-		if !hasIncidentReason(clip.Completeness.Reasons, dto.ReasonIncidentParticipantLimit) {
-			t.Fatalf("cap collision loss missing participant reason: %+v", clip.Completeness)
+		if len(clip.Participants) != 13 || len(clip.Collisions) != 12 || hasIncidentReason(clip.Completeness.Reasons, dto.ReasonIncidentParticipantLimit) {
+			t.Fatalf("collision partners lost: %+v", clip.Completeness)
 		}
 		assertIncidentV2Identity(t, clip)
 	})
@@ -638,7 +665,7 @@ func TestIncidentRecorderEligibleEventWithoutFramesStillCountsUnlessDiscarded(t 
 	r := newIncidentRecorder(testLogger(), nil)
 	const uid uint64 = 991
 	r.observeSession(uid)
-	r.onCollision(&packets.PacketHeader{SessionUID: uid, SessionTime: 1, PlayerCarIndex: 0}, 0, 1)
+	r.onCollision(&packets.PacketHeader{PacketFormat: packets.PacketFormat2026, SessionUID: uid, SessionTime: 1, PlayerCarIndex: 0}, 0, 1)
 	if clips := r.snapshot(uid); len(clips) != 0 {
 		t.Fatalf("zero-frame capture clips = %d, want no visible clip", len(clips))
 	}
