@@ -67,6 +67,81 @@ async function type(input: HTMLInputElement, value: string) {
   await wait();
 }
 
+async function displayDriver(host: HTMLElement, idx: number, value: 'full' | 'car' | 'hidden') {
+  const select = host.querySelector<HTMLSelectElement>(`[data-driver-control="${idx}"] select`)!;
+  check(select, `Driver #${idx} display control missing`);
+  select.value = value;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await wait();
+}
+
+async function driverVisibility() {
+  // Same-team drivers with sparse IDs: car idx 23 is at tuple position 1.
+  const replay = { ...clip, participants: clip.participants.map((p) => ({ ...p, teamId: 0 })) };
+  const host = document.createElement('div'); host.style.width = '360px'; document.body.append(host);
+  const root = createRoot(host);
+  const render = (value: IncidentReplay) => root.render(<IncidentReplayView t={t} replay={value} trackOutline={detail.trackOutline} />);
+  const car = (idx: number) => host.querySelector(`[data-replay-car="${idx}"]`);
+  const line = (idx: number) => host.querySelector(`[data-driver-trajectory="${idx}"]`);
+  const mode = (idx: number) => host.querySelector<HTMLSelectElement>(`[data-driver-control="${idx}"] select`)!.value;
+  const timeline = () => host.querySelector<HTMLInputElement>('input[type=range]')!;
+  try {
+    render(replay);
+    await until(() => host.querySelectorAll('[data-car-body]').length === 2, 'Driver fixtures did not load');
+    await wait();
+    const colors = [0, 23].map((idx) => host.querySelector(`[data-driver-color="${idx}"]`)!.getAttribute('fill'));
+    check(colors[0] !== colors[1], 'Teammates share a replay color');
+    [0, 23].forEach((idx, i) => {
+      check(line(idx)?.getAttribute('stroke') === colors[i], 'Car and trajectory colors differ');
+      check(host.querySelector(`[data-overview-car="${idx}"] circle`)!.getAttribute('fill') === colors[i], 'Overview color differs');
+      const swatch = host.querySelector(`[data-driver-control="${idx}"] [aria-hidden]`)!;
+      check(getComputedStyle(swatch).backgroundColor === getComputedStyle(host.querySelector(`[data-driver-color="${idx}"]`)!).fill, 'Control swatch color differs');
+    });
+    check(host.querySelector('[data-driver-control]')!.getBoundingClientRect().right <= host.getBoundingClientRect().right, 'Driver controls overflow mobile layout');
+    button(host, '확대').click(); button(host, '다음 프레임 →').click(); await wait();
+    const transform = car(23)!.querySelector('[data-car-body]')!.getAttribute('transform');
+    const trajectory = line(23)!.getAttribute('d');
+    const time = timeline().value;
+    const zoom = host.querySelector('output[aria-label="확대 배율"]')!.textContent;
+    await displayDriver(host, 0, 'car');
+    check(car(0) && !line(0) && car(23) && line(23), 'Car-only mode hid the wrong geometry');
+    await displayDriver(host, 0, 'hidden');
+    check(!car(0) && !line(0) && !host.querySelector('[data-overview-car="0"]') && !host.querySelector('[data-telemetry-driver="0"]'), 'Hidden driver remains visible');
+    check(car(23)!.querySelector('[data-car-body]')!.getAttribute('transform') === transform && line(23)!.getAttribute('d') === trajectory, 'Filtering reassigned sparse car tuples or moved the camera');
+    check(host.querySelector('[data-telemetry-driver="23"]')!.textContent!.includes('122.235 km/h'), 'Filtering reassigned telemetry tuples');
+    check(timeline().value === time && host.querySelector('output[aria-label="확대 배율"]')!.textContent === zoom, 'Filtering reset replay time or zoom');
+    button(host, '라인 모두 끄기').click(); await wait();
+    check(mode(0) === 'hidden' && mode(23) === 'car' && !line(23), 'Bulk line-off restored a hidden driver');
+    await displayDriver(host, 0, 'full');
+    check(host.querySelector('[data-driver-color="0"]')!.getAttribute('fill') === colors[0], 'Restoring a driver changed its color');
+    button(host, '모두 숨기기').click(); await wait();
+    check(!host.querySelector('[data-replay-car], [data-driver-trajectory], [data-overview-car], [data-telemetry-driver]'), 'Hide-all left driver output behind');
+    check(host.textContent!.includes('표시 중인 드라이버가 없습니다') && host.querySelectorAll('[data-driver-control]').length === 2, 'Hide-all cannot be recovered');
+    check(host.querySelector('svg[aria-label^="Recorded track"] path'), 'Hide-all removed the track');
+    await displayDriver(host, 23, 'full');
+    check(car(23) && line(23) && !car(0), 'Selecting one driver did not isolate it');
+    const select = host.querySelector<HTMLSelectElement>('[data-driver-control="23"] select')!;
+    select.focus(); select.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    check(timeline().value === time, 'Driver control key changed playback');
+    button(host, '사고 시점').click(); await wait();
+    check(!host.querySelector('[data-telemetry-driver="23"]')!.textContent!.includes('122.235'), 'Sparse driver freshness was reassigned after hiding');
+    button(host, '처음').click(); button(host, 'Play').click(); await wait(60);
+    const playingTime = Number(timeline().value);
+    await displayDriver(host, 23, 'car'); await wait(60);
+    check(button(host, 'Pause').getAttribute('aria-pressed') === 'true' && Number(timeline().value) > playingTime, 'Filtering stopped playback');
+    button(host, 'Pause').click();
+    render({ ...replay, frames: [...replay.frames] }); await wait();
+    check(mode(0) === 'hidden' && mode(23) === 'car', 'Refreshing frames reset driver selections');
+    render({ ...replay, index: 1 }); await wait();
+    check(mode(0) === 'full' && mode(23) === 'full' && line(0) && line(23), 'New incident inherited hidden drivers');
+    button(host, '모두 숨기기').click(); await wait();
+    render({ ...replay, raceId: 'race-b', index: 1 }); await wait();
+    check(mode(0) === 'full' && mode(23) === 'full', 'New race inherited hidden drivers');
+    button(host, '모두 숨기기').click(); await wait(); button(host, '모두 표시').click(); await wait();
+    check(car(0) && line(0) && car(23) && line(23), 'Show-all failed to restore drivers');
+  } finally { root.unmount(); host.remove(); }
+}
+
 async function checkMapDrag(map: HTMLElement) {
   const position = () => {
     for (const element of map.querySelectorAll('path, rect, line, text, g')) {
@@ -258,6 +333,9 @@ async function anonymousRoute(boundaryTrackId?: number) {
     tab(host, '사고 리플레이').click(); await wait(); host.querySelector<HTMLButtonElement>('[class*=incidentButton]')!.click();
     await until(() => incidentReads > 0 && !!host.querySelector('input[type=range]'), 'Anonymous replay did not load');
     await until(() => !!host.querySelector('[data-overview-car]'), 'Anonymous legacy reference did not load');
+    await displayDriver(host, 0, 'hidden');
+    check(!host.querySelector('[data-replay-car="0"], [data-driver-trajectory="0"], [data-overview-car="0"]') && host.querySelector('[data-replay-car="23"]'), 'Anonymous driver filtering failed');
+    await displayDriver(host, 0, 'full');
     if (withBoundaries) {
       await until(() => host.querySelectorAll('[data-road-surface]').length === boundaries!.segments.reduce((count, segment) => count + segment.sections.length - 1, 0) * 2, 'Shared road surfaces did not load');
       check(host.textContent!.includes('본선 흰선 사이만 표시합니다') && host.textContent!.includes('경계 오차 미확인'), 'Road coverage or accuracy label missing');
@@ -313,6 +391,7 @@ async function historicalTrackReplay() {
 }
 
 export async function run() {
+  await driverVisibility();
   await historicalTrackReplay();
   await carShapesFollowYaw();
   await ownerNavigationAndReplay();

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { buildTheme } from '../theme';
 import type { IncidentReplay as IncidentReplayValue } from '../data/raceAnalysisTypes';
 import { IncidentReplay } from './IncidentReplay';
+import { replayDriverColor } from './analysisDriverDisplay';
 
 const t = buildTheme('#e0a83d', 'light');
 const replay: IncidentReplayValue = {
@@ -25,6 +26,20 @@ const replay: IncidentReplayValue = {
 };
 
 describe('IncidentReplay', () => {
+  it('assigns all 24 car indices distinct colors and matches teammate cars to their trajectories', () => {
+    expect(new Set(Array.from({ length: 24 }, (_, idx) => replayDriverColor(idx))).size).toBe(24);
+    const teammates = { ...replay, participants: replay.participants.map((p) => ({ ...p, teamId: 0 })) };
+    const html = renderToStaticMarkup(<IncidentReplay t={t} replay={teammates} trackOutline={null} />);
+    for (const idx of [0, 23]) {
+      expect(html).toContain(`fill="${replayDriverColor(idx)}" data-driver-color="${idx}"`);
+      expect(html).toMatch(new RegExp(`data-driver-trajectory="${idx}"[^>]*stroke="${replayDriverColor(idx)}"`));
+      expect(html).toContain(`data-driver-control="${idx}"`);
+    }
+    expect(html).toContain('차량 + 라인');
+    expect(html).toContain('차량만');
+    expect(html).toContain('모두 숨기기');
+  });
+
   it('SSR-renders an explicit local metre grid, non-colour vehicle IDs, and accessible controls', () => {
     const html = renderToStaticMarkup(<IncidentReplay t={t} replay={replay} trackOutline={null} />);
     expect(html).toContain('Incident-local metre grid');

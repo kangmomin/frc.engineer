@@ -28,6 +28,8 @@ import { loadReplayTrack, type ReplayTrackReference } from '../../constants/repl
 import { outlineFor, resolveReplayTrack, type ReplayLandmark } from './analysisTrack';
 import { boundaryMapPoints, incidentBoundaryPoints, loadTrackBoundaries, type ReplayTrackBoundaries, type TrackWorldPoint } from '../../constants/replayTrackBoundaries';
 import { ReplayScaleBar, ReplayTrackSurface } from './ReplayTrackSurface';
+import { ReplayDriverControls } from './ReplayDriverControls';
+import { replayDriverColor, type DriverVisibility } from './analysisDriverDisplay';
 
 interface Props {
   t: HubTheme;
@@ -46,6 +48,8 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
   const [reference, setReference] = useState<ReplayTrackReference | null>(null);
   const [boundaryAsset, setBoundaryAsset] = useState<ReplayTrackBoundaries | null>(null);
   const [loadingTrack, setLoadingTrack] = useState(false);
+  const [visibility, setVisibility] = useState<DriverVisibility>({});
+  useEffect(() => { setVisibility({}); }, [replay.raceId, replay.index]);
   useEffect(() => {
     let cancelled = false;
     setReference(null);
@@ -167,6 +171,7 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
         <p className={styles.empty}>This incident has no usable stored frames.</p>
       ) : (
         <>
+          <ReplayDriverControls participants={replay.participants} visibility={visibility} onChange={setVisibility} />
           <div className={styles.mapToolbar}>
             <span className={styles.meta}>{focus === 'incident' ? '사고 구간' : '전체 트랙'} · {boundaries ? '트랙 경계' : track.source === 'recorded' ? '기록된 트랙' : track.source === 'reference' ? '참조 트랙 · 실주행 경로' : loadingTrack ? '트랙 확인 중' : '트랙 자료 없음 · 사고 주변 좌표'}</span>
             <div className={styles.controls} aria-label="Map controls"><button type="button" aria-label="축소" onClick={() => zoom(1 / 1.5)} disabled={camera.zoom <= 0.5}>−</button><output aria-label="확대 배율">{camera.zoom.toFixed(3)}×</output><button type="button" aria-label="확대" onClick={() => zoom(1.5)} disabled={camera.zoom >= 16}>+</button><button type="button" onClick={() => fit('incident')}>사고 구간 맞춤</button>{fitOutline ? <button type="button" onClick={() => fit('track')}>전체 트랙</button> : null}</div>
@@ -186,9 +191,9 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
             setCamera((current) => ({ ...current, x: current.x + point.x - previous.x, y: current.y + point.y - previous.y }));
             drag.current = { pointerId: event.pointerId, ...point };
           }} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
-            <ReplaySvg t={t} replay={orderedReplay} outline={outline} boundaries={boundaries} landmarks={track.landmarks} map={boundaries ? { ...map, label: 'Reference track boundaries' } : track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} viewport={viewport} />
+            <ReplaySvg t={t} replay={orderedReplay} visibility={visibility} outline={outline} boundaries={boundaries} landmarks={track.landmarks} map={boundaries ? { ...map, label: 'Reference track boundaries' } : track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} viewport={viewport} />
           </div>
-          {fitOutline && <TrackOverview replay={orderedReplay} outline={outline} fitOutline={fitOutline} boundaries={boundaries} landmarks={track.landmarks} frame={selectedFrame} />}
+          {fitOutline && <TrackOverview replay={orderedReplay} visibility={visibility} outline={outline} fitOutline={fitOutline} boundaries={boundaries} landmarks={track.landmarks} frame={selectedFrame} />}
           <p className={styles.meta}>{boundaries ? `트랙 경계 · ${boundaries.provenance.description} · ${boundaries.provenance.gameVersion} · ${boundaries.maxErrorM === null ? '경계 오차 미확인' : `자료 기준 오차 ≤ ${boundaries.maxErrorM}m`}${boundaries.features.some(({ kind }) => kind === 'wall') ? ' · 벽은 붉은 선' : ''}` : loadingTrack ? '트랙 폭 자료 확인 중' : '트랙 폭 자료 없음 · 도로 양끝은 확인할 수 없습니다.'}</p>
           {boundaries?.coverage && <p className={styles.meta}>본선 흰선 사이만 표시합니다. 피트·런오프·벽은 미제공이며, 채워지지 않은 영역이 비어 있는 공간을 뜻하지 않습니다.</p>}
           {boundaries?.coverage === 'main-circuit-partial' && <p className={styles.meta}>입체교차 또는 원본 경계 오류가 있는 일부 구간은 표시에서 제외했습니다.</p>}
@@ -221,7 +226,7 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
               {!playable && <p className={styles.status}>시간이 다른 프레임이 없어 정지 화면으로 표시합니다.</p>}
               {selectedFrame?.telemetryUnavailable === null && <p className={styles.status}>legacy freshness unknown — speed and input values are suppressed.</p>}
             </div>
-            <TelemetryPanel frame={selectedFrame} replay={replay} />
+            <TelemetryPanel frame={selectedFrame} replay={replay} visibility={visibility} />
           </div>
         </>
       )}
@@ -229,9 +234,10 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
   );
 }
 
-function ReplaySvg({ t, replay, outline, boundaries, landmarks, map, project, frame, viewport }: {
+function ReplaySvg({ t, replay, visibility, outline, boundaries, landmarks, map, project, frame, viewport }: {
   t: HubTheme;
   replay: IncidentReplayValue;
+  visibility: DriverVisibility;
   outline: RaceAnalysisTrackOutline | null;
   boundaries: ReplayTrackBoundaries | null;
   landmarks: ReplayLandmark[];
@@ -243,8 +249,9 @@ function ReplaySvg({ t, replay, outline, boundaries, landmarks, map, project, fr
   // Captured trajectories are static during playback. Rebuild them only when
   // changing the clip or camera, not on every animation frame (up to 24 cars).
   const trajectories = useMemo(() => replay.participants.map((participant, participantPosition) => (
-    <Trajectory key={participant.idx} tuples={replay.frames.map((sourceFrame) => sourceFrame.cars[participantPosition])} color={teamIdentity(participant.teamId).color} project={project} />
-  )), [replay.participants, replay.frames, project]);
+    (visibility[participant.idx] ?? 'full') === 'full'
+      ? <Trajectory key={participant.idx} idx={participant.idx} tuples={replay.frames.map((sourceFrame) => sourceFrame.cars[participantPosition])} color={replayDriverColor(participant.idx)} project={project} /> : null
+  )), [replay.participants, replay.frames, project, visibility]);
   return (
     <svg className={styles.trackSvg} width={viewport.width} height={viewport.height} viewBox={`0 0 ${viewport.width} ${viewport.height}`} role="img" aria-label={`${map.label}; collision participants and their trajectory`}>
       <defs>
@@ -258,6 +265,7 @@ function ReplaySvg({ t, replay, outline, boundaries, landmarks, map, project, fr
       {trajectories}
       <text x={16} y={viewport.height - 18} fill={t.t2} fontSize="11">{replay.collisions.map(([first, second]) => `COLL Car #${first} ↔ Car #${second}`).join(' · ') || 'Collision participants unavailable'}</text>
       {frame && replay.participants.map((participant, participantPosition) => {
+        if (visibility[participant.idx] === 'hidden') return null;
         const car = decodeIncidentCar(frame.cars[participantPosition]);
         return car ? <ReplayCar key={participant.idx} participant={participant} car={car} project={project} labelAbove={participantPosition % 2 === 0} /> : null;
       })}
@@ -272,8 +280,9 @@ function Landmarks({ landmarks, project }: { landmarks: ReplayLandmark[]; projec
   })}</g>;
 }
 
-function TrackOverview({ replay, outline, fitOutline, boundaries, landmarks, frame }: {
+function TrackOverview({ replay, visibility, outline, fitOutline, boundaries, landmarks, frame }: {
   replay: IncidentReplayValue; outline: RaceAnalysisTrackOutline | null; fitOutline: RaceAnalysisTrackOutline; boundaries: ReplayTrackBoundaries | null; landmarks: ReplayLandmark[]; frame: IncidentFrame | null;
+  visibility: DriverVisibility;
 }) {
   const map = useMemo(() => makeReplayMap(replay, fitOutline, 'track'), [replay, fitOutline]);
   const project = useMemo(() => projectionFor(map, 320, 220), [map]);
@@ -284,11 +293,12 @@ function TrackOverview({ replay, outline, fitOutline, boundaries, landmarks, fra
       {outline && <Outline points={outline.points} project={project} />}
       <Landmarks landmarks={landmarks} project={project} />
       {frame && replay.participants.map((participant, index) => {
+        if (visibility[participant.idx] === 'hidden') return null;
         const car = decodeIncidentCar(frame.cars[index]);
         if (!car) return null;
         const point = project(car.x, car.z);
         return <g key={participant.idx} data-overview-car={participant.idx} transform={`translate(${point.x},${point.y})`}>
-          <circle r="4" fill={teamIdentity(participant.teamId).color} stroke="currentColor" strokeWidth="1" />
+          <circle r="4" fill={replayDriverColor(participant.idx)} stroke="currentColor" strokeWidth="1" />
           <text x="6" y="4" fill="currentColor" fontSize="11">#{participant.idx}</text>
         </g>;
       })}
@@ -312,7 +322,8 @@ function LocalGrid({ viewport }: { viewport: { width: number; height: number } }
   </g>;
 }
 
-function Trajectory({ tuples, color, project }: {
+function Trajectory({ idx, tuples, color, project }: {
+  idx: number;
   tuples: Array<IncidentCarTuple | null | undefined>;
   color: string;
   project: (x: number, z: number) => { x: number; y: number };
@@ -323,7 +334,7 @@ function Trajectory({ tuples, color, project }: {
     const point = project(car.x, car.z);
     return `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)},${point.y.toFixed(2)}`;
   }).join(' ');
-  return <path d={d} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" opacity=".72" />;
+  return <path data-driver-trajectory={idx} d={d} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" opacity=".72" />;
 }
 
 function ReplayCar({ participant, car, project, labelAbove }: {
@@ -339,13 +350,14 @@ function ReplayCar({ participant, car, project, labelAbove }: {
   const angle = car.yawRad * 180 / Math.PI;
   const motion = motionScreenVector(car.vx, car.vz);
   const team = teamIdentity(participant.teamId);
+  const color = replayDriverColor(participant.idx);
   const name = participantName(participant.name, participant.idx);
   const label = `${name} · Car #${participant.idx} · ${team.label}${participant.isPlayer ? ' · PLAYER' : ''}`;
   const halfHeight = scale * (Math.abs(body.y) * 2.75 + Math.abs(body.x));
   const labelY = point.y + (labelAbove ? -halfHeight - 24 : halfHeight + 18);
   const nose = { x: point.x + body.x * scale * 2.75, y: point.y + body.y * scale * 2.75 };
   const motionStart = motion && { x: point.x + motion.x * scale * 3, y: point.y + motion.y * scale * 3 };
-  return <g aria-label={label}>
+  return <g aria-label={label} data-replay-car={participant.idx}>
     {/* Local silhouette units are metres, with the nose toward -Y. Stored
         replays have no car dimensions, so this is an approximate F1 outline. */}
     <g data-car-body transform={`translate(${point.x} ${point.y}) rotate(${angle}) scale(${scale})`} stroke="#17202b" strokeWidth="0.06" strokeLinejoin="round">
@@ -356,13 +368,13 @@ function ReplayCar({ participant, car, project, labelAbove }: {
         <rect x={-1} y={1.05} width={0.44} height={1} rx={0.09} />
         <rect x={0.56} y={1.05} width={0.44} height={1} rx={0.09} />
       </g>
-      <g fill={team.color}>
+      <g fill={color} data-driver-color={participant.idx}>
         <path d="M-.13 -2.6H.13L.26 -1.1 .57 -.45 .62 .9 .32 1.85 .22 2.5H-.22L-.32 1.85 -.62 .9 -.57 -.45 -.26 -1.1Z" />
         <rect x={-1} y={-2.75} width={2} height={0.28} rx={0.04} />
         <rect x={-0.85} y={2.42} width={1.7} height={0.33} rx={0.04} />
       </g>
       <path d="M0 -.82C.4 -.7 .36 .16 0 .42C-.36 .16 -.4 -.7 0 -.82Z" fill="#17202b" stroke="#e8edf4" strokeWidth="0.09" />
-      <path d="M0 -.72V.31" fill="none" stroke={participant.isPlayer ? '#fff' : team.color} strokeWidth="0.1" />
+      <path d="M0 -.72V.31" fill="none" stroke={participant.isPlayer ? '#fff' : color} strokeWidth="0.1" />
     </g>
     <line x1={nose.x} y1={nose.y} x2={nose.x + body.x * 14} y2={nose.y + body.y * 14} stroke="currentColor" strokeWidth="2" markerEnd="url(#analysis-body-arrow)" />
     {motion && motionStart && <line x1={motionStart.x} y1={motionStart.y} x2={motionStart.x + motion.x * 24} y2={motionStart.y + motion.y * 24} stroke="#e0a83d" strokeWidth="3" strokeDasharray="4 3" markerEnd="url(#analysis-motion-arrow)" />}
@@ -371,18 +383,19 @@ function ReplayCar({ participant, car, project, labelAbove }: {
   </g>;
 }
 
-function TelemetryPanel({ frame, replay }: { frame: IncidentFrame | null; replay: IncidentReplayValue }) {
+function TelemetryPanel({ frame, replay, visibility }: { frame: IncidentFrame | null; replay: IncidentReplayValue; visibility: DriverVisibility }) {
   return (
     <div className={styles.telemetry}>
       <table aria-label="Incident vehicle telemetry">
         <thead><tr><th>Vehicle</th><th>Speed</th><th>Throttle</th><th>Brake</th><th>Steer</th><th>Gear</th></tr></thead>
         <tbody>{replay.participants.map((participant, position) => {
+          if (visibility[participant.idx] === 'hidden') return null;
           const car = decodeIncidentCar(frame?.cars[position]);
           const freshness = frame ? telemetryFreshness(frame, participant.idx) : 'unavailable';
           const values = car && freshness === 'fresh' ? telemetryValues(car) : ['—', '—', '—', '—', '—'];
           const team = teamIdentity(participant.teamId);
-          return <tr key={participant.idx} className={participant.isPlayer ? styles.player : undefined}>
-            <td>{participantName(participant.name, participant.idx)} · Car #{participant.idx}<br /><span className={styles.telemetryLabel}>{team.label}{participant.isPlayer ? ' · PLAYER' : ''}</span></td>
+          return <tr key={participant.idx} data-telemetry-driver={participant.idx} className={participant.isPlayer ? styles.player : undefined}>
+            <td><span className={styles.driverSwatch} style={{ backgroundColor: replayDriverColor(participant.idx) }} aria-hidden="true" />{participantName(participant.name, participant.idx)} · Car #{participant.idx}<br /><span className={styles.telemetryLabel}>{team.label}{participant.isPlayer ? ' · PLAYER' : ''}</span></td>
             {values.map((value, index) => <td key={index}>{value}</td>)}
           </tr>;
         })}</tbody>

@@ -95,6 +95,14 @@
 .replay { padding: 20px; border: 1px solid var(--analysis-line); border-radius: 12px; background: var(--analysis-panel); }
 .replayHeader { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
 .replayHeader h3 { margin: 0 0 6px; font-size: 16px; }
+.driverControls { min-width: 0; margin: 0 0 16px; padding: 12px; border: 1px solid var(--analysis-line); border-radius: 9px; }
+.driverControls legend { padding: 0 6px; font-size: 12px; font-weight: 700; }
+.driverList { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px 16px; max-height: 208px; overflow: auto; margin-top: 12px; }
+.driverControl { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: 12px; }
+.driverControl select { flex-shrink: 0; max-width: 55%; padding: 6px; border: 1px solid var(--analysis-line); border-radius: 6px; background: var(--analysis-inset); color: var(--analysis-text); font: inherit; }
+.driverName { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.driverName > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.driverSwatch { display: inline-block; flex-shrink: 0; width: 10px; height: 10px; margin-right: 3px; border: 1px solid #ffffff70; border-radius: 50%; vertical-align: middle; }
 .mapToolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--analysis-line); border-bottom: 0; border-radius: 9px 9px 0 0; background: var(--analysis-inset); }
 .mapToolbar output { min-width: 63px; text-align: center; color: var(--analysis-sub); font: 500 12px 'JetBrains Mono', monospace; }
 .svgWrap { overflow: hidden; border: 1px solid var(--analysis-line); border-radius: 0 0 9px 9px; background: var(--analysis-inset); cursor: grab; touch-action: none; user-select: none; }
