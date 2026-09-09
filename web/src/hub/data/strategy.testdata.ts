@@ -2,7 +2,7 @@
 import type { StrategyContext, StrategyResult } from './strategy';
 
 export const strategyContextFixture: StrategyContext = {
-  id: 'a'.repeat(32), conditions: { packetFormat: 2026, gameYear: 25, gameMajor: 1, gameMinor: 22, formula: 13, sessionType: 15, totalLaps: 30, trackLengthM: 4500, teamId: null,
+  id: 'a'.repeat(32), trackId: 10, conditions: { packetFormat: 2026, gameYear: 25, gameMajor: 1, gameMinor: 22, formula: 13, sessionType: 15, totalLaps: 30, trackLengthM: 4500, teamId: null,
     rules: { equalPerformance: true, gameMode: 7, ruleSet: 1, sessionLength: 5, surfaceType: 1, lowFuelMode: 0, tyreTemperature: 1, pitLaneTyreSim: 0, ersAssist: 0, pitAssist: 0, pitReleaseAssist: 0, pitStopExperience: 1 } },
   weather: 0, trackTempBucket: 30, tractionControl: 0, abs: 0, users: 3, sessions: 12, cleanLaps: 324,
 };

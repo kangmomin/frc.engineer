@@ -6,6 +6,12 @@ vi.mock('./session', () => ({ getActiveSessionToken: () => auth.token, getViewAs
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); auth.viewAs = false; auth.unauthorized.mockClear(); });
 
 describe('strategy HTTP boundary', () => {
+  it('omits trackId for the all-track context query', async () => {
+    vi.stubEnv('VITE_PLATFORM_URL', 'https://platform.test');
+    const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 })); vi.stubGlobal('fetch', fetch);
+    await strategyClient.contexts({ trackId: null, format: 'F1 26' });
+    expect(fetch.mock.calls[0][0]).toBe('https://platform.test/strategies/contexts?gameFormat=F1+26');
+  });
   it('sends authenticated, abortable contexts and explicit simulation constraints', async () => {
     vi.stubEnv('VITE_PLATFORM_URL', 'https://platform.test');
     const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 })); vi.stubGlobal('fetch', fetch);

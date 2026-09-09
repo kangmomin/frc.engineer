@@ -14,11 +14,23 @@ import (
 	"frc.engineer/internal/strategy/strategytest"
 )
 
-type strategyStub struct{ loads int }
+type strategyStub struct {
+	loads  int
+	tracks []int
+}
 
-func (s *strategyStub) LoadStrategyRecords(context.Context, int, string) ([]strategy.Record, bool, error) {
+func (s *strategyStub) LoadStrategyRecords(_ context.Context, trackID int, _ string) ([]strategy.Record, bool, error) {
 	s.loads++
-	return strategytest.Records(), false, nil
+	s.tracks = append(s.tracks, trackID)
+	records := strategytest.Records()
+	if trackID == platformsvc.AllStrategyTracks {
+		other := strategytest.Records()
+		for i := range other {
+			other[i].TrackID = 7
+		}
+		records = append(records, other...)
+	}
+	return records, false, nil
 }
 
 func strategyHTTP(s *server) func(string, string, string) *httptest.ResponseRecorder {
@@ -76,10 +88,21 @@ func TestStrategyPermissionAndHTTPContract(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || w.Code != 200 || len(data.Contexts) != 1 {
 		t.Fatalf("contexts: %s %v", w.Body.String(), err)
 	}
-	for _, invalid := range []string{"", strategyQuery + "&trackId=7", "?trackId=x&gameFormat=F1+26", strategyQuery + "&accountId=other"} {
+	for _, invalid := range []string{"", strategyQuery + "&trackId=7", "?trackId=x&gameFormat=F1+26", "?trackId=-1&gameFormat=F1+26", "?trackId=&gameFormat=F1+26", "?gameFormat=F1+26&gameFormat=F1+25", strategyQuery + "&accountId=other"} {
 		if w := call("GET", "/strategies/contexts"+invalid, ""); w.Code != 400 {
 			t.Fatalf("query accepted: %s", invalid)
 		}
+	}
+	w = call("GET", "/strategies/contexts?gameFormat=F1+26", "")
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || w.Code != 200 || len(data.Contexts) != 2 || store.tracks[len(store.tracks)-1] != platformsvc.AllStrategyTracks {
+		t.Fatalf("all tracks: %d %s %v", w.Code, w.Body.String(), err)
+	}
+	if data.Contexts[0].TrackID == data.Contexts[1].TrackID || data.Contexts[0].ID == data.Contexts[1].ID {
+		t.Fatal("different tracks merged in all-track response")
+	}
+	loads := store.loads
+	if w := call("POST", "/strategies/simulate?gameFormat=F1+26", `{}`); w.Code != 400 || store.loads != loads {
+		t.Fatal("simulation accepted an all-track query")
 	}
 	req := strategytest.Request(strategytest.Records())
 	raw, _ := json.Marshal(req)

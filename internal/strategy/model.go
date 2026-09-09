@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"math"
 	"sort"
+	"strconv"
 )
 
 func clean(l Lap) bool {
@@ -13,7 +14,8 @@ func clean(l Lap) bool {
 		l.FuelEndKg != nil && l.Compound == l.EndCompound && ValidTyre(l.Tyre)
 }
 
-func contextFor(e Evidence, l Lap) (Context, bool) {
+func contextFor(record Record, l Lap) (Context, bool) {
+	e := record.Evidence
 	c := e.Conditions
 	if c.Rules == nil || c.TeamID == nil || len(e.Reasons) != 0 ||
 		(c.Formula != 0 && c.Formula != 13) || l.SetupRevision == 0 {
@@ -23,7 +25,7 @@ func contextFor(e Evidence, l Lap) (Context, bool) {
 		c.TeamID = nil
 	}
 	// Compare within five-degree track-temperature bands.
-	ctx := Context{Conditions: c, Weather: l.Weather, TrackTempBucket: int(math.Floor(float64(l.TrackTemp)/5)) * 5,
+	ctx := Context{TrackID: record.TrackID, Conditions: c, Weather: l.Weather, TrackTempBucket: int(math.Floor(float64(l.TrackTemp)/5)) * 5,
 		TractionControl: l.TractionControl, ABS: l.ABS}
 	b, _ := json.Marshal(ctx)
 	h := sha256.Sum256(b)
@@ -37,7 +39,7 @@ func uniqueRecords(records []Record) []Record {
 		if ValidateEvidence(&r.Evidence) != nil || r.AccountID == "" {
 			continue
 		}
-		key := r.AccountID + "/" + r.Evidence.SessionUID
+		key := strconv.Itoa(r.TrackID) + "/" + r.AccountID + "/" + r.Evidence.SessionUID
 		old, exists := byKey[key]
 		if !exists || len(r.Evidence.Laps) > len(old.Evidence.Laps) ||
 			(len(r.Evidence.Laps) == len(old.Evidence.Laps) && r.RaceID < old.RaceID) {
@@ -72,7 +74,7 @@ func Contexts(records []Record) []Context {
 			if !clean(l) {
 				continue
 			}
-			c, ok := contextFor(r.Evidence, l)
+			c, ok := contextFor(r, l)
 			if !ok {
 				continue
 			}
@@ -133,7 +135,7 @@ func Analyze(records []Record, request Request) Result {
 		setup := 0
 		mixedSetup := false
 		for _, l := range record.Evidence.Laps {
-			c, ok := contextFor(record.Evidence, l)
+			c, ok := contextFor(record, l)
 			if !ok || c.ID != request.ContextID || !clean(l) {
 				continue
 			}
@@ -504,7 +506,7 @@ func pitModel(races []raceData, models map[int]int, beta []float64, contextID st
 			var extra float64
 			for number := s.InLap; number <= s.OutLap; number++ {
 				l, ok := byNumber[number]
-				c, known := contextFor(r.record.Evidence, l)
+				c, known := contextFor(r.record, l)
 				if !ok || !known || c.ID != contextID || l.FuelKg == nil || l.SetupRevision != r.laps[0].SetupRevision {
 					valid = false
 					break

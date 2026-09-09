@@ -10,25 +10,27 @@ import (
 )
 
 const StrategyRecordLimit = 300
+const AllStrategyTracks = -1
 const strategyRecordsPerUser = 20
 
 // LoadStrategyRecords reads a bounded, deduplicated cross-user corpus. Banned
 // users are excluded at query time. The payload and all identities remain
 // internal; handlers expose only strategy.Context/Result aggregate models.
+// AllStrategyTracks selects all tracks within the same global corpus limits.
 func (s *Store) LoadStrategyRecords(ctx context.Context, trackID int, format string) ([]strategy.Record, bool, error) {
 	rows, err := s.pool.Query(ctx, `
 		WITH dedup AS (
-			SELECT DISTINCT ON (r.account_id, st.session_uid)
-				r.id, r.account_id, st.session_uid, r.uploaded_at, st.evidence
+			SELECT DISTINCT ON (r.account_id, r.track_id, st.session_uid)
+				r.id, r.account_id, r.track_id, st.session_uid, r.uploaded_at, st.evidence
 			FROM platform.races r JOIN platform.race_strategy st ON st.race_id=r.id
-			WHERE r.track_id=$1 AND r.game_format=$2 AND r.plausible
+			WHERE ($1::integer=-1 OR r.track_id=$1) AND r.game_format=$2 AND r.plausible
 			  AND r.session_type IN ('Race','Race 2','Race 3')
 			  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id=r.account_id)
-			ORDER BY r.account_id, st.session_uid, jsonb_array_length(st.evidence->'laps') DESC, r.uploaded_at DESC, r.id
+			ORDER BY r.account_id, r.track_id, st.session_uid, jsonb_array_length(st.evidence->'laps') DESC, r.uploaded_at DESC, r.id
 		), ranked AS (
 			SELECT *, row_number() OVER (PARTITION BY account_id ORDER BY uploaded_at DESC,id) AS user_row FROM dedup
 		)
-		SELECT id::text,account_id::text,evidence FROM ranked WHERE user_row <= $3
+		SELECT id::text,account_id::text,track_id,evidence FROM ranked WHERE user_row <= $3
 		ORDER BY uploaded_at DESC,id LIMIT $4`, trackID, format, strategyRecordsPerUser, StrategyRecordLimit+1)
 	if err != nil {
 		return nil, false, fmt.Errorf("platformsvc: strategy corpus: %w", err)
@@ -38,7 +40,7 @@ func (s *Store) LoadStrategyRecords(ctx context.Context, trackID int, format str
 	for rows.Next() {
 		var r strategy.Record
 		var body []byte
-		if err := rows.Scan(&r.RaceID, &r.AccountID, &body); err != nil {
+		if err := rows.Scan(&r.RaceID, &r.AccountID, &r.TrackID, &body); err != nil {
 			return nil, false, err
 		}
 		if err := json.Unmarshal(body, &r.Evidence); err != nil {

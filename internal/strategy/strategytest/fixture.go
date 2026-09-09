@@ -51,7 +51,7 @@ func Records() []strategy.Record {
 					{DeployedJ: 800000, HarvestedJ: 500000, DurationMs: float64(lapMs)/3 - 150, MeanSpeedKph: 210},
 					{DeployedJ: 400000, HarvestedJ: 300000, DurationMs: float64(lapMs)/3 - 150, MeanSpeedKph: 230}}})
 		}
-		out = append(out, strategy.Record{AccountID: fmt.Sprintf("driver-%d", race%3), RaceID: fmt.Sprintf("race-%02d", race), Evidence: e})
+		out = append(out, strategy.Record{TrackID: 10, AccountID: fmt.Sprintf("driver-%d", race%3), RaceID: fmt.Sprintf("race-%02d", race), Evidence: e})
 	}
 	return out
 }

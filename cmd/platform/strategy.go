@@ -60,8 +60,12 @@ func (s *server) strategyError(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-func strategyTrackQuery(r *http.Request) (int, string, bool) {
+func strategyTrackQuery(r *http.Request, allowAll bool) (int, string, bool) {
 	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err == nil && allowAll && len(q) == 1 && len(q["gameFormat"]) == 1 {
+		format := q.Get("gameFormat")
+		return platformsvc.AllStrategyTracks, format, format == "F1 25" || format == "F1 26"
+	}
 	if err != nil || len(q) != 2 || len(q["trackId"]) != 1 || len(q["gameFormat"]) != 1 {
 		return 0, "", false
 	}
@@ -76,7 +80,7 @@ func (s *server) handleStrategyContexts(w http.ResponseWriter, r *http.Request) 
 	if !s.strategyGate(w, r, ctx) {
 		return
 	}
-	track, format, ok := strategyTrackQuery(r)
+	track, format, ok := strategyTrackQuery(r, true)
 	if !ok {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -101,7 +105,7 @@ func (s *server) handleStrategySimulate(w http.ResponseWriter, r *http.Request) 
 	if !s.strategyGate(w, r, ctx) {
 		return
 	}
-	track, format, ok := strategyTrackQuery(r)
+	track, format, ok := strategyTrackQuery(r, false)
 	if !ok {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return

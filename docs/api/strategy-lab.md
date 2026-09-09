@@ -28,12 +28,12 @@ flowchart LR
 
 | 경로 | 권한 | 동작 |
 | --- | --- | --- |
-| `GET /strategies/contexts?trackId=10&gameFormat=F1+26` | `pithub.strategy.read` | 선택 트랙·게임의 비교 조건 |
+| `GET /strategies/contexts?trackId=10&gameFormat=F1+26` | `pithub.strategy.read` | 선택 트랙·게임의 비교 조건 (`trackId` 생략 시 전체 트랙) |
 | `POST /strategies/simulate?trackId=10&gameFormat=F1+26` | `pithub.strategy.read` | 선택한 조건과 재고에 따른 비교 |
 
 개인별 설정 API와 `strategy_preferences` 테이블은 사용하지 않는다. 권한은 서버의 매 요청 인증에서 다시 확인하므로 회수 후 다음 조회·계산 요청은 `403`이다. Hub는 전략 화면 진입과 창 포커스 시 `/me`로 권한을 갱신한다. 권한 회수나 API의 `403` 응답을 확인하면 전략 화면을 내리고 기존 결과와 진행 중 요청을 정리한다. 이미 시작된 계정·트랙·권한 조회의 지연 응답이 새 계정이나 회수된 화면을 복원하지 않도록 세대와 토큰을 확인한다. 유휴 화면에서 권한 변경을 실시간으로 푸시하지는 않는다.
 
-조건 조회 응답은 `contexts`, `records`, `truncated`, `recordLimit`, `minUsers`, `minSessions`를 가진다. `contexts`에는 조건 ID, 게임/차량/물리 설정, 날씨, 트랙 온도 구간, 보조 기능, 사용자·독립 경기·정상 랩 수만 포함된다. 조건 ID는 해당 응답에서 선택한다.
+조건 조회 응답은 `contexts`, `records`, `truncated`, `recordLimit`, `minUsers`, `minSessions`를 가진다. `contexts`에는 조건 ID, `trackId`, 게임/차량/물리 설정, 날씨, 트랙 온도 구간, 보조 기능, 사용자·독립 경기·정상 랩 수만 포함된다. 조건 ID는 해당 응답에서 선택한다.
 
 비교 요청 예시:
 
@@ -99,3 +99,9 @@ flowchart LR
 위 최소 표본 수, 신선도·트래픽 기준, 온도 구간, 선형 근사, 새 타이어 초기 랩 근사는 초기 기준이다. 사고/SC 발생 확률, 날씨 전환, 실제 교통 속 복귀 위치, 개인 셋업과 타이어 열화의 상호작용은 예측하지 않는다. `ready`는 계산 가능한 근거가 있다는 뜻이며, 검증된 실제 최적 전략이라는 뜻이 아니다.
 
 프로토콜 값은 프로젝트의 `docs/F1 25 Telemetry Output Structures.txt`와 [EA 공식 UDP 명세](https://forums.ea.com/blog/f1-games-game-info-hub-en/ea-sports%E2%84%A2-f1%C2%AE25-2026-season-pack-udp-specification/12187347)를 기준으로 한다. 피트 레인 타이어 시뮬레이션은 다른 보조 옵션과 달리 `0=켜짐, 1=꺼짐`이다. 게임 모드·규칙 이름은 [F1 25 명세의 부록](https://forums.ea.com/t5/s/tghpe58374/attachments/tghpe58374/f1-games-game-info-hub-en/61/4/Data%20Output%20from%20F1%2025%20v3.pdf)에 따라 표시하고 아직 이름을 모르는 값은 ID를 그대로 구분한다.
+
+### 전체 트랙 탐색
+
+Strategy 트랙 필터는 전체 트랙으로 시작한다. `GET /strategies/contexts?gameFormat=F1+26`처럼 `trackId`를 생략하면 선택한 게임의 모든 트랙을 조회한다. 조회 범위 전체의 최근 최대 300개·사용자별 최대 20경기 제한은 유지한다. 명시한 음수·빈 트랙 값과 중복 쿼리는 거부한다.
+
+트랙 ID는 저장된 레이스에서 가져오며, 중복 제거와 조건 ID 생성에 포함한다. 동일 사용자·세션 UID·경기 설정이어도 트랙이 다르면 별도로 집계한다. 카드는 트랙명을 표시하고 검색할 수 있다. 전략 계산 POST에는 선택한 카드의 `trackId`가 반드시 필요하다.

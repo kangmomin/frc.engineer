@@ -93,6 +93,7 @@ type Stop struct {
 // Record identities stay server-side. SessionUID, not uploaded row count, is
 // the independent race identity when several drivers upload the same race.
 type Record struct {
+	TrackID   int
 	AccountID string
 	RaceID    string
 	Evidence  Evidence
@@ -102,6 +103,7 @@ type Record struct {
 // session identifier is returned through this public aggregate shape.
 type Context struct {
 	ID              string     `json:"id"`
+	TrackID         int        `json:"trackId"`
 	Conditions      Conditions `json:"conditions"`
 	Weather         int        `json:"weather"`
 	TrackTempBucket int        `json:"trackTempBucket"`

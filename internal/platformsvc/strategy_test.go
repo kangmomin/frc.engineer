@@ -141,4 +141,51 @@ func TestStrategyCorpusPerUserBound(t *testing.T) {
 	if err != nil || len(records) != strategyRecordsPerUser {
 		t.Fatalf("unbounded user: %d %v", len(records), err)
 	}
+	records, _, err = s.LoadStrategyRecords(ctx, AllStrategyTracks, "F1 26")
+	if err != nil || len(records) != strategyRecordsPerUser {
+		t.Fatalf("unbounded all-track user: %d %v", len(records), err)
+	}
+}
+
+func TestStrategyCorpusAllTracks(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	owner, err := s.UpsertSteamAccount(ctx, steamA, "Driver", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, trackID := range []int{7, 10} {
+		for copy := 0; copy < 2; copy++ {
+			req := strategyUpload(strategytest.Records()[0])
+			req.TrackID = trackID
+			req.SourceRaceID = fmt.Sprintf("track-%d-copy-%d", trackID, copy)
+			if _, err := s.IngestRace(ctx, owner, req); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	all, truncated, err := s.LoadStrategyRecords(ctx, AllStrategyTracks, "F1 26")
+	if err != nil || truncated || len(all) != 2 {
+		t.Fatalf("all tracks dedup: %d %v %v", len(all), truncated, err)
+	}
+	if len(strategy.Contexts(all)) != 2 {
+		t.Fatal("same session UID on different tracks merged")
+	}
+	for _, trackID := range []int{7, 10} {
+		rows, _, err := s.LoadStrategyRecords(ctx, trackID, "F1 26")
+		if err != nil || len(rows) != 1 || rows[0].TrackID != trackID {
+			t.Fatalf("single track: %+v %v", rows, err)
+		}
+	}
+	rows, _, err := s.LoadStrategyRecords(ctx, AllStrategyTracks, "F1 25")
+	if err != nil || len(rows) != 0 {
+		t.Fatal("all tracks crossed game format")
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO platform.account_bans(account_id,reason) VALUES($1,'test')`, owner); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err = s.LoadStrategyRecords(ctx, AllStrategyTracks, "F1 26")
+	if err != nil || len(rows) != 0 {
+		t.Fatal("all tracks included banned user")
+	}
 }

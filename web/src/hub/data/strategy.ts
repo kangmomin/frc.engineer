@@ -6,6 +6,7 @@ export type StrategyTyre = 'Soft' | 'Medium' | 'Hard' | 'Inter' | 'Wet';
 export const STRATEGY_TYRES: StrategyTyre[] = ['Soft', 'Medium', 'Hard', 'Inter', 'Wet'];
 export interface StrategyContext {
   id: string;
+  trackId: number;
   conditions: {
     packetFormat: number; gameYear: number; gameMajor: number; gameMinor: number;
     formula: number; sessionType: number; totalLaps: number; trackLengthM: number; teamId: number | null;
@@ -54,9 +55,15 @@ async function request<T>(path: string, signal?: AbortSignal, body?: unknown): P
   if (!response.ok) throw new StrategyError(response.status, response.status === 403 ? '전략 실험실 사용 권한이 없습니다.' : response.status === 404 ? '비교 조건이 바뀌었습니다. 조건을 새로 불러오세요.' : '요청에 실패했습니다. 잠시 후 다시 시도하세요.');
   return response.json() as Promise<T>;
 }
-const query = (track: TrackContext) => new URLSearchParams({ trackId: String(track.trackId), gameFormat: track.format }).toString();
+export interface StrategyFilter { trackId: number | null; format: string }
+const query = (track: StrategyFilter) => {
+  const params = new URLSearchParams();
+  if (track.trackId !== null) params.set('trackId', String(track.trackId));
+  params.set('gameFormat', track.format);
+  return params.toString();
+};
 export const strategyClient = {
-  contexts: (track: TrackContext, signal?: AbortSignal) => request<StrategyContexts>(`/strategies/contexts?${query(track)}`, signal),
+  contexts: (track: StrategyFilter, signal?: AbortSignal) => request<StrategyContexts>(`/strategies/contexts?${query(track)}`, signal),
   simulate: (track: TrackContext, body: StrategyRequest, signal?: AbortSignal) => request<StrategyResult>(`/strategies/simulate?${query(track)}`, signal, body),
 };
 export const strategyErrorMessage = (error: unknown) => error instanceof StrategyError ? error.message : '연결을 확인하고 다시 시도하세요.';

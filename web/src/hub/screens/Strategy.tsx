@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { getTeamName } from '../../constants/teamColors';
-import { HUB_FORMATS, HUB_TRACKS, isF126OnlyTrack, trackContextFor } from '../data/tracks';
+import { HUB_FORMATS, HUB_TRACKS, isF126OnlyTrack, trackContextFor, trackName } from '../data/tracks';
 import type { TrackContext } from '../data/tracks';
 import { STRATEGY_TYRES, StrategyError, strategyClient, strategyErrorMessage } from '../data/strategy';
-import type { StrategyContext, StrategyContexts, StrategyRequest, StrategyResult, StrategyTyre } from '../data/strategy';
+import type { StrategyContext, StrategyContexts, StrategyFilter, StrategyRequest, StrategyResult, StrategyTyre } from '../data/strategy';
 import styles from './Strategy.module.css';
 
 const weather = ['맑음', '옅은 구름', '흐림', '약한 비', '강한 비', '폭우'];
@@ -33,12 +33,13 @@ const statusLabels: Record<string, string> = { 'insufficient-data': '기록이 �
 
 export function strategyContextLabel(c: StrategyContext): string {
   const r = c.conditions.rules;
-  return `${c.conditions.totalLaps}랩 · ${r.equalPerformance ? '이퀄' : `논이퀄 ${getTeamName(c.conditions.teamId ?? -1)}`} · ${weather[c.weather]} · ${c.trackTempBucket}–${c.trackTempBucket + 4}°C · v${c.conditions.gameMajor}.${c.conditions.gameMinor} · ${modeLabel(r.gameMode)} / ${rulesLabel(r.ruleSet)} · 저연료 ${r.lowFuelMode ? '어려움' : '쉬움'} · 피트 ${pitExperiences[r.pitStopExperience]}`;
+  return `${trackName(c.trackId)} · ${c.conditions.totalLaps}랩 · ${r.equalPerformance ? '이퀄' : `논이퀄 ${getTeamName(c.conditions.teamId ?? -1)}`} · ${weather[c.weather]} · ${c.trackTempBucket}–${c.trackTempBucket + 4}°C · v${c.conditions.gameMajor}.${c.conditions.gameMinor} · ${modeLabel(r.gameMode)} / ${rulesLabel(r.ruleSet)} · 저연료 ${r.lowFuelMode ? '어려움' : '쉬움'} · 피트 ${pitExperiences[r.pitStopExperience]}`;
 }
 
 export function StrategyContextDetails({ context: c }: { context: StrategyContext }) {
   const r = c.conditions.rules;
   return <dl className={styles.conditions}>
+    <dt>서킷</dt><dd>{trackName(c.trackId)}</dd>
     <dt>게임 모드 / 규칙</dt><dd>{modeLabel(r.gameMode)} / {rulesLabel(r.ruleSet)}</dd>
     <dt>게임 연도 / 차량 규정</dt><dd>20{c.conditions.gameYear} / {c.conditions.formula === 13 ? 'F1 2026' : 'F1 현대 규정'}</dd>
     <dt>레이스 세션 / 길이</dt><dd>{c.conditions.sessionType === 15 ? 'Race' : `Race ${c.conditions.sessionType - 14}`} / {sessionLengths[r.sessionLength] ?? `길이 ${r.sessionLength}`}</dd>
@@ -54,17 +55,18 @@ export function StrategyContextDetails({ context: c }: { context: StrategyContex
 }
 
 export function Strategy(props: { track: TrackContext; onSetTrack: (track: TrackContext) => void; onDenied: () => void }) {
+  const [trackId, setTrackId] = useState<number | null>(null);
   return <section className={styles.screen}>
     <header className={styles.header}><div><div className={styles.eyebrow}>STRATEGY LAB · 실험 중</div><h2>내 다음 레이스의 전략</h2><p>모든 사용자의 업로드 기록 중 경기 조건이 맞는 자료로 타이어·피트 조합을 비교합니다.</p></div></header>
     <div className={styles.filters}>
-      <label>트랙<select value={props.track.trackId} onChange={e => props.onSetTrack(trackContextFor(Number(e.target.value), props.track.format))}>{HUB_TRACKS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-      <label>게임<select value={props.track.format} onChange={e => props.onSetTrack(trackContextFor(props.track.trackId, e.target.value))}>{HUB_FORMATS.map(f => <option key={f} disabled={f === 'F1 25' && isF126OnlyTrack(props.track.trackId)}>{f}</option>)}</select></label>
+      <label>트랙<select value={trackId ?? ''} onChange={e => { const id = e.target.value === '' ? null : Number(e.target.value); setTrackId(id); if (id !== null) props.onSetTrack(trackContextFor(id, props.track.format)); }}><option value="">전체 트랙</option>{HUB_TRACKS.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      <label>게임<select value={props.track.format} onChange={e => props.onSetTrack(trackContextFor(trackId ?? 0, e.target.value))}>{HUB_FORMATS.map(f => <option key={f} disabled={f === 'F1 25' && trackId !== null && isF126OnlyTrack(trackId)}>{f}</option>)}</select></label>
     </div>
-    <Workbench key={`${props.track.trackId}:${props.track.format}`} track={props.track} onDenied={props.onDenied} />
+    <Workbench key={`${trackId ?? 'all'}:${props.track.format}`} track={{ trackId, format: props.track.format }} onDenied={props.onDenied} />
   </section>;
 }
 
-function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => void }) {
+function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () => void }) {
   const [corpus, setCorpus] = useState<StrategyContexts | null>(null);
   const [contextId, setContextId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,7 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
           <h3 id="strategy-records-title">수집 기록 · 경기 조건</h3>
           <p>같은 경기 조건의 기록을 묶었습니다. 조건 카드를 선택해 전략을 비교하세요.</p>
           <div className={styles.recordFilters} role="search" aria-label="경기 조건 검색 및 필터">
-            <label className={styles.searchField}>조건 검색<input type="search" placeholder="모드, 팀, 버전, 온도 검색" maxLength={100} value={search} onChange={e => setSearch(e.target.value)} /></label>
+            <label className={styles.searchField}>조건 검색<input type="search" placeholder="서킷, 모드, 팀, 버전, 온도 검색" maxLength={100} value={search} onChange={e => setSearch(e.target.value)} /></label>
             <label>날씨<select value={weatherFilter} onChange={e => setWeatherFilter(e.target.value)}><option value="">전체 날씨</option>{[...new Set(corpus.contexts.map(c => c.weather))].sort((a, b) => a - b).map(value => <option key={value} value={value}>{weather[value]}</option>)}</select></label>
             <label>차량 성능<select value={performanceFilter} onChange={e => setPerformanceFilter(e.target.value)}><option value="">전체 성능</option><option value="equal">이퀄</option><option value="realistic">논이퀄</option></select></label>
             <label>총 랩 수<select value={lapsFilter} onChange={e => setLapsFilter(e.target.value)}><option value="">전체 랩 수</option>{[...new Set(corpus.contexts.map(c => c.conditions.totalLaps))].sort((a, b) => a - b).map(value => <option key={value} value={value}>{value}랩</option>)}</select></label>
@@ -111,6 +113,7 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
           {corpus.contexts.length === 0 ? <div className={styles.empty}><h3>이 조건의 기록을 모으고 있습니다</h3><p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p><p>최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 40개의 정상 랩이 필요합니다. 사고·손상·트래픽·SC가 있는 랩은 기준 페이스에서 제외합니다.</p><button onClick={() => setRevision(n => n + 1)}>다시 확인</button></div> : visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
             <button type="button" className={styles.recordButton} aria-pressed={c.id === contextId} onClick={() => setContextId(c.id)}>
               <span className={styles.recordHeading}><strong>조건 {number} · {c.conditions.totalLaps}랩</strong><span>{c.id === contextId ? '선택됨' : '조건 선택'}</span></span>
+              <strong>{trackName(c.trackId)}</strong>
               <span className={styles.recordSummary}>{weather[c.weather]} · {c.trackTempBucket}–{c.trackTempBucket + 4}°C · {c.conditions.rules.equalPerformance ? '이퀄' : `논이퀄 · ${getTeamName(c.conditions.teamId ?? -1)}`}</span>
               <span className={styles.recordSummary}>{modeLabel(c.conditions.rules.gameMode)} / {rulesLabel(c.conditions.rules.ruleSet)} · v{c.conditions.gameMajor}.{c.conditions.gameMinor}</span>
               <span className={styles.recordStats}><span><strong>{c.users}</strong>참여자</span><span><strong>{c.sessions}</strong>독립 경기</span><span><strong>{c.cleanLaps}</strong>정상 랩</span></span>
@@ -118,8 +121,8 @@ function Workbench({ track, onDenied }: { track: TrackContext; onDenied: () => v
           </li>)}</ul>}
           {context ? <details key={context.id}><summary>선택한 조건 상세</summary><StrategyContextDetails context={context} /><p>게임 버전·모드·규칙·경기 길이와 물리 설정이 같은 기록끼리만 비교합니다. 드라이버와 고정 셋업 차이는 경기별 기준 페이스로 보정하며, 도중에 셋업이 바뀐 자료는 제외합니다.</p></details> : visible.length > 0 && <p className={styles.note}>비교할 조건 카드를 선택하세요.</p>}
         </section>
-        {context && <Comparison key={`${context.id}:${revision}`} track={track} context={context} onDenied={onDenied} />}
-      <p className={styles.note}>트랙·게임별 최근 최대 {corpus.recordLimit}개 업로드, 사용자별 최대 20경기를 사용합니다.{corpus.truncated ? ' 현재 전체 조회 한도에 도달했습니다.' : ''} 같은 사용자의 같은 경기 재업로드는 한 건으로 처리합니다.</p>
+        {context && <Comparison key={`${context.id}:${revision}`} track={{ trackId: context.trackId, format: track.format }} context={context} onDenied={onDenied} />}
+      <p className={styles.note}>선택한 {track.trackId === null ? '전체 트랙' : trackName(track.trackId)} · {track.format} 범위에서 최근 최대 {corpus.recordLimit}개 업로드, 사용자별 최대 20경기를 사용합니다.{corpus.truncated ? ' 현재 전체 조회 한도에 도달했습니다.' : ''} 같은 사용자의 같은 경기 재업로드는 한 건으로 처리합니다.</p>
     </>}
   </>;
 }

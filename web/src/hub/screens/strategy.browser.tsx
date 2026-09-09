@@ -25,11 +25,12 @@ export async function run() {
   const root = createRoot(host); const originalFetch = window.fetch; const previousToken = localStorage.getItem(PARENT_TOKEN_KEY);
   const account = { id: 'owner-a', steamId64: '7', persona: 'Strategy A', avatarUrl: '', kind: 'user', verified: true, banned: false, createdAt: '' };
   let allowed = false, contexts = 0, simulations = 0, preferences = 0, deferMe = false, deferSimulation = false;
+  const contextQueries: URLSearchParams[] = [];
   let finishMe: ((r: Response) => void) | null = null, finishSimulation: ((r: Response) => void) | null = null;
   const grants = () => ['pithub.race.read', 'pithub.race.create', ...(allowed ? ['pithub.strategy.read'] : [])];
   const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
   const otherContext = structuredClone(strategyContextFixture);
-  otherContext.id = 'b'.repeat(32); otherContext.weather = 2; otherContext.conditions.totalLaps = 50;
+  otherContext.id = 'b'.repeat(32); otherContext.trackId = 7; otherContext.weather = 2; otherContext.conditions.totalLaps = 50;
   otherContext.conditions.gameMinor = 23; otherContext.conditions.teamId = 1;
   otherContext.conditions.rules.equalPerformance = false; otherContext.conditions.rules.gameMode = 4;
   const wetContext = structuredClone(strategyContextFixture);
@@ -47,11 +48,15 @@ export async function run() {
       if (url.pathname === '/me/strategy-preferences') { preferences++; return json({}, 404); }
       if (url.pathname === '/strategies/contexts') {
         contexts++; if (!allowed || isB) return json({}, 403);
-        return json({ contexts: url.searchParams.get('trackId') === '5' ? [] : [strategyContextFixture, otherContext, wetContext], records: 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6 });
+        contextQueries.push(url.searchParams);
+        const selectedTrack = url.searchParams.get('trackId');
+        return json({ contexts: [strategyContextFixture, otherContext, wetContext].filter(c => selectedTrack === null || c.trackId === Number(selectedTrack)), records: 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6 });
       }
       if (url.pathname === '/strategies/simulate') {
         simulations++; if (!allowed || isB) return json({}, 403);
         const body = JSON.parse(String(init?.body));
+        const selected = [strategyContextFixture, otherContext, wetContext].find(c => c.id === body.contextId);
+        check(selected && url.searchParams.get('trackId') === String(selected.trackId), 'simulation used the global track instead of the selected card');
         check(body.availableSets.Soft === 1 && body.maxStops === 2 && body.requireTwoCompounds === true, 'form lost explicit tyre constraints');
         if (deferSimulation) return new Promise<Response>(resolve => { finishSimulation = resolve; });
         return json(strategyResultFixture);
@@ -73,11 +78,24 @@ export async function run() {
     await until(() => host.textContent?.includes('전략 비교하기') === true, 'workbench did not load');
     check(simulations === 0, 'opening strategy auto-ran a comparison');
     check(cards(host).length === 3 && cards(host)[0].getAttribute('aria-pressed') === 'true', 'initial record cards or selection missing');
+    check(contextQueries[contextQueries.length - 1]?.get('trackId') === null && host.textContent?.includes('전체 트랙'), 'strategy did not default to all tracks');
+    check(cards(host)[0].textContent?.includes('Italy (Monza)') && cards(host)[1].textContent?.includes('Great Britain'), 'all-track cards lost track names');
+    selectFilter(host, '트랙', '42');
+    await until(() => contextQueries[contextQueries.length - 1]?.get('trackId') === '42' && contextQueries[contextQueries.length - 1]?.get('gameFormat') === 'F1 26', 'Madrid did not select F1 26');
+    selectFilter(host, '트랙', '');
+    await until(() => cards(host).length === 3 && contextQueries[contextQueries.length - 1]?.get('trackId') === null, 'all-track selection did not restore records');
+    selectFilter(host, '게임', 'F1 25');
+    await until(() => contextQueries[contextQueries.length - 1]?.get('gameFormat') === 'F1 25' && cards(host).length === 3, 'all tracks inherited Madrid format restriction');
+    await searchRecords(host, 'Great Britain');
+    check(cards(host).length === 1 && cards(host)[0].textContent?.includes('조건 2'), 'track name search did not find its card');
+    button(host, '초기화').click(); await until(() => cards(host).length === 3, 'track search reset failed');
     await searchRecords(host, '  그랑프리 V1.23  ');
     check(cards(host).length === 1 && cards(host)[0].textContent?.includes('조건 2'), 'search lost case folding, combined terms, or stable condition number');
     check(!host.textContent?.includes('전략 비교하기') && host.textContent?.includes('비교할 조건 카드를 선택하세요'), 'hidden selection retained comparison');
     cards(host)[0].click(); await until(() => host.textContent?.includes('전략 비교하기') === true, 'card selection did not open comparison');
     check(cards(host)[0].getAttribute('aria-pressed') === 'true' && simulations === 0, 'card did not select or auto-ran comparison');
+    button(host, '전략 비교하기').click();
+    await until(() => host.textContent?.includes('12랩 종료') === true, 'other-track card did not simulate');
     selectFilter(host, '차량 성능', 'equal');
     await until(() => host.textContent?.includes('검색·필터에 맞는 경기 조건이 없습니다') === true, 'search and performance filter did not combine');
     button(host, '초기화').click(); await until(() => cards(host).length === 3, 'reset did not restore cards');
@@ -115,6 +133,7 @@ export async function run() {
     deferSimulation = false;
     trackSelect.value = '10'; trackSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => host.textContent?.includes('전략 비교하기') === true, 'track return did not load');
+    check(cards(host).length === 2 && cards(host).every(c => c.textContent?.includes('Italy (Monza)')), 'single-track selection included another track');
     button(host, '전략 비교하기').click(); await until(() => host.textContent?.includes('12랩 종료') === true, 'result missing before revoke');
     allowed = false; button(host, '전략 비교하기').click();
     await until(() => !host.querySelector('[aria-label="STRATEGY"]') && host.textContent?.includes('관리자에게 권한을 요청하세요') === true, '403 did not remove access');

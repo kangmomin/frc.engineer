@@ -404,3 +404,40 @@ func strategyRecordWithBudget(record strategy.Record, pitMs int, deployedJ, harv
 	}
 	return record
 }
+
+func TestContextsKeepTracksSeparate(t *testing.T) {
+	first := strategytest.Records()
+	second := strategytest.Records()
+	for i := range second {
+		second[i].TrackID = 7
+	}
+	combined := append(append([]strategy.Record{}, first...), second...)
+	contexts := strategy.Contexts(combined)
+	if len(contexts) != 2 {
+		t.Fatalf("tracks were deduplicated or combined: %+v", contexts)
+	}
+	for _, records := range [][]strategy.Record{first, second} {
+		one := strategy.Contexts(records)[0]
+		found := false
+		for _, c := range contexts {
+			if c.TrackID == one.TrackID {
+				found = true
+				if c.ID != one.ID || c.Users != one.Users || c.Sessions != one.Sessions || c.CleanLaps != one.CleanLaps {
+					t.Fatalf("all-track context changed: %+v vs %+v", c, one)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("track absent")
+		}
+		result := strategy.Analyze(combined, strategytest.Request(records))
+		if result.Status != "ready" || result.Context.TrackID != one.TrackID || result.Context.Sessions != one.Sessions {
+			t.Fatalf("comparison mixed tracks: %+v", result)
+		}
+		want, _ := json.Marshal(strategy.Analyze(records, strategytest.Request(records)))
+		got, _ := json.Marshal(result)
+		if string(got) != string(want) {
+			t.Fatal("other track changed tyre, pit or ERS calculation")
+		}
+	}
+}
