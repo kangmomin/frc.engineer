@@ -13,29 +13,24 @@ const MARKS: Record<TeamKey, React.ReactNode> = {
   // 원 안의 삼각별
   mercedes: (
     <>
-      <circle className={styles.stroked} cx="12" cy="12" r="9" />
-      <path className={styles.stroked} d="M12 12V3M12 12L4.2 16.5M12 12l7.8 4.5" />
+      <circle className={styles.stroked} cx="12" cy="12" r="8.2" />
+      <path className={styles.stroked} d="M12 12V3.8M12 12L4.9 16.1M12 12l7.1 4.1" />
     </>
   ),
   // 방패 (Cadillac의 사분 십자와 구분된다)
   ferrari: (
-    <path className={styles.stroked} d="M12 2.5l7.5 2.8v6.4c0 5-3.2 8-7.5 9.6-4.3-1.6-7.5-4.6-7.5-9.6V5.3z" />
+    <path className={styles.stroked} d="M12 3.6l6.6 2.5v5.6c0 4.4-2.8 7-6.6 8.4-3.8-1.4-6.6-4-6.6-8.4V6.1z" />
   ),
-  // 태양 아래 마주보고 돌진하는 실루엣 2개
-  redbull: (
-    <>
-      <circle cx="12" cy="6" r="3" />
-      <path d="M2 10.5L11.2 15 2 19z" />
-      <path d="M22 10.5L12.8 15 22 19z" />
-    </>
-  ),
+  // 마주보고 돌진하는 두 형상. 원(태양)+삼각 2개로 그렸을 때 16px에서 서로 떨어진
+  // 점 무더기로 보여(실측 확인) 중앙에서 맞물린 단일 실루엣으로 합쳤다.
+  redbull: <path d="M2 4.5L12 12 22 4.5v15L12 12 2 19.5z" />,
   // 스타일라이즈드 W
   williams: <path className={styles.stroked} d="M3 5.5l3.6 13L12 9l5.4 9.5L21 5.5" />,
   // 펼친 날개 (이중 셰브론)
   aston: (
     <>
-      <path className={styles.stroked} d="M2.5 8.5L12 13l9.5-4.5" />
-      <path className={styles.stroked} d="M6 13.5l6 3 6-3" />
+      <path className={styles.stroked} d="M2.5 4.5L12 11.5l9.5-7" />
+      <path className={styles.stroked} d="M4 13l8 5.5 8-5.5" />
     </>
   ),
   // 산형 A
@@ -50,22 +45,23 @@ const MARKS: Record<TeamKey, React.ReactNode> = {
   // H + 사선 크로스바
   haas: <path className={styles.stroked} d="M6 5v14M18 5v14M6 13.2l12-2.4" />,
   // 스피드마크
-  mclaren: <path d="M21.5 6.6c-7.4-.3-14 3.4-18.5 10.4 5.6-4.4 11.6-6.6 18-6.6z" />,
+  mclaren: <path d="M22 4c-8.4-.4-15.8 3.9-20.5 15.4 6.4-5.2 13.2-7.9 20-7.9z" />,
   // K 셰브론 (Kick Sauber)
   sauber: <path className={styles.stroked} d="M7 5v14M17.5 5L8.5 12l9 7" />,
   // 링 2개. 실물은 4링이지만 16px에서 링 하나가 4.5px밖에 안 돼 구멍이 메워지고
   // 붉은 알약 한 덩어리로 뭉갠다(실측 확인). 2링만 남겨야 '겹친 원'으로 읽힌다.
+  // r은 5.9가 상한 — 링 2개가 가로로 놓여 viewBox 24를 먼저 채운다(세로가 아니라 가로가 제약).
   audi: (
     <>
-      <circle className={styles.stroked} cx="7.6" cy="12" r="5.1" />
-      <circle className={styles.stroked} cx="16.4" cy="12" r="5.1" />
+      <circle className={styles.stroked} cx="7.4" cy="12" r="5.9" />
+      <circle className={styles.stroked} cx="16.6" cy="12" r="5.9" />
     </>
   ),
   // 크레스트 (사분 방패)
   cadillac: (
     <>
-      <path className={styles.stroked} d="M12 2.5l7.5 2.8v6.4c0 5-3.2 8-7.5 9.6-4.3-1.6-7.5-4.6-7.5-9.6V5.3z" />
-      <path className={styles.stroked} d="M12 3.5v18M4.8 11.5h14.4" />
+      <path className={styles.stroked} d="M12 3.6l6.6 2.5v5.6c0 4.4-2.8 7-6.6 8.4-3.8-1.4-6.6-4-6.6-8.4V6.1z" />
+      <path className={styles.stroked} d="M12 4.4v15M6.2 11.3h11.6" />
     </>
   ),
 };

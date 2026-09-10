@@ -21,7 +21,8 @@
 .mark .stroked {
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  /* 2 → 2.5. 16px 환산 1.33px는 1x DPR 안티에일리어싱에 먹혀 마크가 흐려진다. */
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
