@@ -69,6 +69,7 @@ describe('IncidentReplay', () => {
     const html = renderToStaticMarkup(<IncidentReplay t={t} replay={replay} trackOutline={{ points: [[0, 0], [10, 5]], bounds: { minX: 0, maxX: 10, minZ: 0, maxZ: 5 } }} />);
     expect(html).toContain('Recorded track centreline');
     expect(html).not.toContain('Incident-local metre grid');
+    expect(html).not.toContain('전체 트랙 차량 위치');
   });
 
   it('paints clip-end damage by part and marks only increases from the first collision', () => {

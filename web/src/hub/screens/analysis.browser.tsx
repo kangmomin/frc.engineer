@@ -99,7 +99,6 @@ async function driverVisibility() {
     check(colors[0] !== colors[1], 'Teammates share a replay color');
     [0, 23].forEach((idx, i) => {
       check(line(idx)?.getAttribute('stroke') === colors[i], 'Car and trajectory colors differ');
-      check(host.querySelector(`[data-overview-car="${idx}"] circle`)!.getAttribute('fill') === colors[i], 'Overview color differs');
       const swatch = host.querySelector(`[data-driver-control="${idx}"] [aria-hidden]`)!;
       check(getComputedStyle(swatch).backgroundColor === getComputedStyle(host.querySelector(`[data-driver-color="${idx}"]`)!).fill, 'Control swatch color differs');
     });
@@ -112,7 +111,7 @@ async function driverVisibility() {
     await displayDriver(host, 0, 'car');
     check(car(0) && !line(0) && car(23) && line(23), 'Car-only mode hid the wrong geometry');
     await displayDriver(host, 0, 'hidden');
-    check(!car(0) && !line(0) && !host.querySelector('[data-overview-car="0"]') && !host.querySelector('[data-telemetry-driver="0"]'), 'Hidden driver remains visible');
+    check(!car(0) && !line(0) && !host.querySelector('[data-telemetry-driver="0"]'), 'Hidden driver remains visible');
     check(car(23)!.querySelector('[data-car-body]')!.getAttribute('transform') === transform && line(23)!.getAttribute('d') === trajectory, 'Filtering reassigned sparse car tuples or moved the camera');
     check(host.querySelector('[data-telemetry-driver="23"]')!.textContent!.includes('122.235 km/h'), 'Filtering reassigned telemetry tuples');
     check(timeline().value === time && host.querySelector('output[aria-label="확대 배율"]')!.textContent === zoom, 'Filtering reset replay time or zoom');
@@ -121,7 +120,7 @@ async function driverVisibility() {
     await displayDriver(host, 0, 'full');
     check(host.querySelector('[data-driver-color="0"]')!.getAttribute('fill') === colors[0], 'Restoring a driver changed its color');
     button(host, '모두 숨기기').click(); await wait();
-    check(!host.querySelector('[data-replay-car], [data-driver-trajectory], [data-overview-car], [data-telemetry-driver]'), 'Hide-all left driver output behind');
+    check(!host.querySelector('[data-replay-car], [data-driver-trajectory], [data-telemetry-driver]'), 'Hide-all left driver output behind');
     check(host.textContent!.includes('표시 중인 드라이버가 없습니다') && host.querySelectorAll('[data-driver-control]').length === 2, 'Hide-all cannot be recovered');
     check(host.querySelector('svg[aria-label^="Recorded track"] path'), 'Hide-all removed the track');
     await displayDriver(host, 23, 'full');
@@ -292,6 +291,7 @@ async function ownerNavigationAndReplay() {
     check(market.incidentRequests === 0, 'Tab prefetched incident frames without a selection');
     host.querySelector<HTMLButtonElement>('[class*=incidentButton]')!.click();
     await until(() => !!host.querySelector('input[type=range]'), 'Incident did not load');
+    check(host.querySelector('[class*=svgWrap] + [class*=replayGrid] > div:first-child > [aria-label="Replay controls"]'), 'Replay controls are not directly below the map');
     const slider = () => host.querySelector<HTMLInputElement>('input[type=range]')!;
     const carX = () => host.querySelector('[data-car-body]')!.getBoundingClientRect().x;
     const initialX = carX();
@@ -379,14 +379,14 @@ async function anonymousRoute(boundaryTrackId?: number) {
     check(![...host.querySelectorAll('[role=tab]')].some((item) => item.textContent === '셋업'), 'Hidden setup tab was rendered');
     tab(host, '사고 리플레이').click(); await wait(); host.querySelector<HTMLButtonElement>('[class*=incidentButton]')!.click();
     await until(() => incidentReads > 0 && !!host.querySelector('input[type=range]'), 'Anonymous replay did not load');
-    await until(() => !!host.querySelector('[data-overview-car]'), 'Anonymous legacy reference did not load');
+    await until(() => !!host.querySelector('svg[aria-label^="Reference track"]'), 'Anonymous legacy reference did not load');
     const sharedTyre = host.querySelector('[data-damage-driver="0"] [data-damage-part="tyre-rl"]');
     check(sharedTyre && getComputedStyle(sharedTyre).fill === hexRgb(buildTheme('#e0a83d', 'light').damageScale[3]), 'Shared replay lost the damage colour scale');
     await displayDriver(host, 0, 'hidden');
-    check(!host.querySelector('[data-replay-car="0"], [data-driver-trajectory="0"], [data-overview-car="0"]') && host.querySelector('[data-replay-car="23"]'), 'Anonymous driver filtering failed');
+    check(!host.querySelector('[data-replay-car="0"], [data-driver-trajectory="0"]') && host.querySelector('[data-replay-car="23"]'), 'Anonymous driver filtering failed');
     await displayDriver(host, 0, 'full');
     if (withBoundaries) {
-      await until(() => host.querySelectorAll('[data-road-surface]').length === boundaries!.segments.reduce((count, segment) => count + segment.sections.length - 1, 0) * 2, 'Shared road surfaces did not load');
+      await until(() => host.querySelectorAll('[data-road-surface]').length === boundaries!.segments.reduce((count, segment) => count + segment.sections.length - 1, 0), 'Shared road surfaces did not load');
       check(host.textContent!.includes('본선 흰선 사이만 표시합니다') && host.textContent!.includes('경계 오차 미확인'), 'Road coverage or accuracy label missing');
       check(!host.textContent!.includes('트랙 폭 자료 없음'), 'Loaded boundaries still reported unavailable');
       if (boundaries!.coverage === 'main-circuit-partial') check(host.textContent!.includes('일부 구간은 표시에서 제외'), 'Partial road coverage warning missing');
@@ -422,20 +422,15 @@ async function historicalTrackReplay() {
   const root = createRoot(host);
   try {
     root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} trackId={5} gameFormat="F1 26" />);
-    await until(() => host.querySelectorAll('[data-overview-car]').length === 24, 'Historic Monaco reference hidden despite valid identity and distant cars');
+    await until(() => !!host.querySelector('svg[aria-label^="Reference track"]') && host.querySelectorAll('[data-replay-car]').length === 24, 'Historic Monaco reference hidden despite valid identity and distant cars');
     check(host.textContent!.includes('참조 트랙') && host.textContent!.includes('T1'), 'Reference provenance or corner labels missing');
-    const overview = host.querySelector<SVGElement>('[data-frame-time]')!;
-    check(overview.getBoundingClientRect().width <= 360, 'Overview overflows mobile width');
-    const start = overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform');
+    const offTrackCar = () => host.querySelector('[data-replay-car="23"] [data-car-body]')!.getAttribute('transform');
+    const start = offTrackCar();
     button(host, '끝').click(); await wait();
-    check(overview.getAttribute('data-frame-time') === '2000', 'Overview frame is not synchronized');
-    check(overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform') !== start, 'Off-track car did not move');
-    const end = overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform');
-    button(host, '확대').click(); await wait();
-    check(overview.querySelector('[data-overview-car="23"]')!.getAttribute('transform') === end, 'Incident zoom changed the overview');
+    check(offTrackCar() !== start, 'Off-track car did not move');
     root.render(<IncidentReplayView t={t} replay={replay} trackOutline={null} trackId={5} gameFormat="F1 27" />);
     await until(() => host.textContent!.includes('트랙 자료 없음'), 'Unsupported format did not fall back');
-    check(!host.querySelector('[data-overview-car]'), 'Previous game reference leaked into another format');
+    check(!host.querySelector('svg[aria-label^="Reference track"]'), 'Previous game reference leaked into another format');
   } finally { root.unmount(); host.remove(); }
 }
 
