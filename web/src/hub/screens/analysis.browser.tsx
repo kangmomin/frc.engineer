@@ -205,6 +205,22 @@ async function carShapesFollowYaw() {
       const scale = Math.hypot(matrix.c, matrix.d);
       check(Math.abs(-matrix.c / scale - x) < 0.001 && Math.abs(-matrix.d / scale - y) < 0.001, 'Car nose disagrees with recorded yaw');
     });
+    const contactReplay: IncidentReplay = {
+      ...replay, sessionTimeMs: 1_050, collisions: [[0, 3]],
+      frames: [replay.frames[0], { ...replay.frames[0], tMs: 1_070 }],
+    };
+    root.render(<IncidentReplayView t={t} replay={contactReplay} trackOutline={null} />); await wait();
+    check(!host.querySelector('[data-contact-outline]'), 'Between-frame contact was highlighted early');
+    button(host, '사고 시점').click(); await wait();
+    const outlinedCars = [...host.querySelectorAll('[data-contact-outline]')].map((outline) => outline.closest('g[aria-label]')!.getAttribute('aria-label'));
+    check(outlinedCars.length === 2 && outlinedCars[0]!.includes('Car #0') && outlinedCars[1]!.includes('Car #3'), 'Contact outlines included unrelated vehicles');
+    button(host, 'Previous measured frame').click(); await wait();
+    check(!host.querySelector('[data-contact-outline]'), 'Seeking before a between-frame contact kept outlines');
+    for (const sessionTimeMs of [900, 1_100]) {
+      root.render(<IncidentReplayView t={t} replay={{ ...contactReplay, sessionTimeMs }} trackOutline={null} />); await wait();
+      button(host, '사고 시점').click(); await wait();
+      check(!host.querySelector('[data-contact-outline]'), 'Out-of-range contact highlighted a clamped frame');
+    }
   } finally { root.unmount(); host.remove(); }
 }
 
@@ -252,6 +268,7 @@ async function ownerNavigationAndReplay() {
     const slider = () => host.querySelector<HTMLInputElement>('input[type=range]')!;
     const carX = () => host.querySelector('[data-car-body]')!.getBoundingClientRect().x;
     const initialX = carX();
+    check(!host.querySelector('[data-contact-outline]'), 'Cars are highlighted before contact');
     const carBody = host.querySelector<SVGGElement>('[data-car-body]')!;
     check(carBody.querySelectorAll('rect').length === 6, 'Replay is missing the car body, four tyres or wings');
     const carMatrix = carBody.getScreenCTM()!;
@@ -266,9 +283,12 @@ async function ownerNavigationAndReplay() {
     await until(() => Number(slider().value) > Number(pausedAt) + 300, 'Rate/resume did not advance');
     button(host, 'Pause').click(); await wait();
     button(host, '사고 시점').click(); await until(() => slider().value === '4000', 'Collision seek was not exact');
+    check(host.querySelectorAll('[data-contact-outline]').length === 2, 'Contact vehicles are missing red outlines');
     check(host.querySelector('table[aria-label="Incident vehicle telemetry"] tbody tr:last-child')!.textContent!.includes('—'), 'Unavailable telemetry was shown as current');
     button(host, 'Next measured frame').click(); await until(() => slider().value === '4100', 'Next frame did not use measured timestamps');
+    check(!host.querySelector('[data-contact-outline]'), 'Contact outlines remained after the contact frame');
     button(host, 'Previous measured frame').click(); await until(() => slider().value === '4000', 'Previous frame did not step');
+    check(host.querySelectorAll('[data-contact-outline]').length === 2, 'Contact outlines did not restore when seeking back');
     button(host, '끝').click(); await until(() => slider().value === '7000', 'End seek failed');
     button(host, 'Replay').click(); await until(() => Number(slider().value) < 4_000, 'Replay did not restart at beginning');
     button(host, 'Pause').click(); await wait();

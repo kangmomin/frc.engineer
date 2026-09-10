@@ -191,7 +191,7 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
             setCamera((current) => ({ ...current, x: current.x + point.x - previous.x, y: current.y + point.y - previous.y }));
             drag.current = { pointerId: event.pointerId, ...point };
           }} onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
-            <ReplaySvg t={t} replay={orderedReplay} visibility={visibility} outline={outline} boundaries={boundaries} landmarks={track.landmarks} map={boundaries ? { ...map, label: 'Reference track boundaries' } : track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} viewport={viewport} />
+            <ReplaySvg t={t} replay={orderedReplay} visibility={visibility} outline={outline} boundaries={boundaries} landmarks={track.landmarks} map={boundaries ? { ...map, label: 'Reference track boundaries' } : track.source === 'reference' ? { ...map, label: 'Reference track racing line' } : map} project={project} frame={selectedFrame} playheadMs={playback.playheadMs} viewport={viewport} />
           </div>
           {fitOutline && <TrackOverview replay={orderedReplay} visibility={visibility} outline={outline} fitOutline={fitOutline} boundaries={boundaries} landmarks={track.landmarks} frame={selectedFrame} />}
           <p className={styles.meta}>{boundaries ? `트랙 경계 · ${boundaries.provenance.description} · ${boundaries.provenance.gameVersion} · ${boundaries.maxErrorM === null ? '경계 오차 미확인' : `자료 기준 오차 ≤ ${boundaries.maxErrorM}m`}${boundaries.features.some(({ kind }) => kind === 'wall') ? ' · 벽은 붉은 선' : ''}` : loadingTrack ? '트랙 폭 자료 확인 중' : '트랙 폭 자료 없음 · 도로 양끝은 확인할 수 없습니다.'}</p>
@@ -234,7 +234,7 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
   );
 }
 
-function ReplaySvg({ t, replay, visibility, outline, boundaries, landmarks, map, project, frame, viewport }: {
+function ReplaySvg({ t, replay, visibility, outline, boundaries, landmarks, map, project, frame, playheadMs, viewport }: {
   t: HubTheme;
   replay: IncidentReplayValue;
   visibility: DriverVisibility;
@@ -244,6 +244,7 @@ function ReplaySvg({ t, replay, visibility, outline, boundaries, landmarks, map,
   map: ReplayMap;
   project: (x: number, z: number) => { x: number; y: number };
   frame: IncidentFrame | null;
+  playheadMs: number;
   viewport: { width: number; height: number };
 }) {
   // Captured trajectories are static during playback. Rebuild them only when
@@ -252,6 +253,7 @@ function ReplaySvg({ t, replay, visibility, outline, boundaries, landmarks, map,
     (visibility[participant.idx] ?? 'full') === 'full'
       ? <Trajectory key={participant.idx} idx={participant.idx} tuples={replay.frames.map((sourceFrame) => sourceFrame.cars[participantPosition])} color={replayDriverColor(participant.idx)} project={project} /> : null
   )), [replay.participants, replay.frames, project, visibility]);
+  const atContact = playheadMs >= replay.sessionTimeMs && frame === replay.frames[frameIndexAt(replay.frames, replay.sessionTimeMs)];
   return (
     <svg className={styles.trackSvg} width={viewport.width} height={viewport.height} viewBox={`0 0 ${viewport.width} ${viewport.height}`} role="img" aria-label={`${map.label}; collision participants and their trajectory`}>
       <defs>
@@ -267,7 +269,8 @@ function ReplaySvg({ t, replay, visibility, outline, boundaries, landmarks, map,
       {frame && replay.participants.map((participant, participantPosition) => {
         if (visibility[participant.idx] === 'hidden') return null;
         const car = decodeIncidentCar(frame.cars[participantPosition]);
-        return car ? <ReplayCar key={participant.idx} participant={participant} car={car} project={project} labelAbove={participantPosition % 2 === 0} /> : null;
+        const contact = atContact && replay.collisions.some((pair) => pair.includes(participant.idx));
+        return car ? <ReplayCar key={participant.idx} participant={participant} car={car} project={project} labelAbove={participantPosition % 2 === 0} contact={contact} /> : null;
       })}
     </svg>
   );
@@ -337,11 +340,12 @@ function Trajectory({ idx, tuples, color, project }: {
   return <path data-driver-trajectory={idx} d={d} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" opacity=".72" />;
 }
 
-function ReplayCar({ participant, car, project, labelAbove }: {
+function ReplayCar({ participant, car, project, labelAbove, contact }: {
   participant: IncidentReplayValue['participants'][number];
   car: NonNullable<ReturnType<typeof decodeIncidentCar>>;
   project: (x: number, z: number) => { x: number; y: number };
   labelAbove: boolean;
+  contact: boolean;
 }) {
   const point = project(car.x, car.z);
   const body = bodyScreenVector(car.yawRad);
@@ -375,6 +379,7 @@ function ReplayCar({ participant, car, project, labelAbove }: {
       </g>
       <path d="M0 -.82C.4 -.7 .36 .16 0 .42C-.36 .16 -.4 -.7 0 -.82Z" fill="#17202b" stroke="#e8edf4" strokeWidth="0.09" />
       <path d="M0 -.72V.31" fill="none" stroke={participant.isPlayer ? '#fff' : color} strokeWidth="0.1" />
+      {contact && <path data-contact-outline d="M-1 -2.75H1V-2.47H.22V-2.05H1V-1.15H.6V1.05H1V2.05H.85V2.75H-.85V2.05H-1V1.05H-.6V-1.15H-1V-2.05H-.22V-2.47H-1Z" fill="none" stroke="#ef4444" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />}
     </g>
     <line x1={nose.x} y1={nose.y} x2={nose.x + body.x * 14} y2={nose.y + body.y * 14} stroke="currentColor" strokeWidth="2" markerEnd="url(#analysis-body-arrow)" />
     {motion && motionStart && <line x1={motionStart.x} y1={motionStart.y} x2={motionStart.x + motion.x * 24} y2={motionStart.y + motion.y * 24} stroke="#e0a83d" strokeWidth="3" strokeDasharray="4 3" markerEnd="url(#analysis-motion-arrow)" />}
