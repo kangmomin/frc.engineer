@@ -139,6 +139,9 @@ type RaceAnalysisIncidentParticipant struct {
 	TeamID   *int    `json:"teamId"`
 	IsPlayer bool    `json:"isPlayer"`
 	MinDistM float64 `json:"minDistM"`
+	// Damage snapshots are always emitted; null means that snapshot was not captured.
+	DamageBefore []int `json:"damageBefore"`
+	DamageAfter  []int `json:"damageAfter"`
 }
 
 type RaceAnalysisIncidentCompleteness struct {
@@ -595,6 +598,7 @@ func mapIncidentParticipants(source []UploadIncidentParticipant, legacy bool) []
 		}
 		out = append(out, RaceAnalysisIncidentParticipant{
 			Idx: participant.Idx, Name: participant.Name, TeamID: teamID, IsPlayer: participant.IsPlayer, MinDistM: participant.MinDistM,
+			DamageBefore: append([]int(nil), participant.DamageBefore...), DamageAfter: append([]int(nil), participant.DamageAfter...),
 		})
 	}
 	return out

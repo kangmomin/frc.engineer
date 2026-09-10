@@ -184,9 +184,9 @@ func TestBuildSummaryRichDetail(t *testing.T) {
 	}
 }
 
-// worstIncidentClip builds a full 24-car merged clip with long UTF-8 names
-// and representative recorded numeric widths. The separate extreme-value test
-// covers finite values beyond normal game coordinates.
+// worstIncidentClip builds a full 24-car merged clip with long UTF-8 names,
+// three-digit damage snapshots and representative recorded numeric widths. The
+// separate extreme-value test covers finite values beyond normal game coordinates.
 func worstIncidentClip(t0MS int64) dto.IncidentClip {
 	clip := dto.IncidentClip{
 		SessionTimeMS:   t0MS,
@@ -197,9 +197,14 @@ func worstIncidentClip(t0MS int64) dto.IncidentClip {
 	for i := range 20 {
 		clip.Collisions = append(clip.Collisions, [2]int{0, (i % 23) + 1})
 	}
+	damage := make([]int, dto.IncidentDamageValues)
+	for i := range damage {
+		damage[i] = 100 // widest recorded percentage
+	}
 	for j := range 24 {
 		clip.Participants = append(clip.Participants, dto.IncidentParticipant{
 			Idx: j, Name: strings.Repeat("가", 48), IsPlayer: j == 0, MinDistM: 39.97,
+			DamageBefore: damage, DamageAfter: damage,
 		})
 	}
 	for f := range 101 {

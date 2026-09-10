@@ -18,7 +18,7 @@ const detail: RaceAnalysisDetailValue = {
   events: [{ lap: 1, timestamp: 1_000, category: 'COLL', severity: 'warning', message: 'Contact', driverName: null }],
   pitMeasurement: { stops: 1, pitLaneTimeMs: 23_000, stationaryMs: 4_000 },
   trackOutline: null,
-  incidents: [{ index: 0, sessionTimeMs: 1_000, windowStartMs: 0, frameIntervalMs: 50, lap: 1, collisions: [[0, 1]], participants: [{ idx: 0, name: 'Player', teamId: 0, isPlayer: true, minDistM: 1 }], frameCount: 40, completeness: { status: 'partial', reasons: ['incident-window-truncated'], capturedParticipantCount: 1, storedParticipantCount: 1, capturedFrameCount: 50, storedFrameCount: 40 } }],
+  incidents: [{ index: 0, sessionTimeMs: 1_000, windowStartMs: 0, frameIntervalMs: 50, lap: 1, collisions: [[0, 1]], participants: [{ idx: 0, name: 'Player', teamId: 0, isPlayer: true, minDistM: 1, damageBefore: null, damageAfter: null }], frameCount: 40, completeness: { status: 'partial', reasons: ['incident-window-truncated'], capturedParticipantCount: 1, storedParticipantCount: 1, capturedFrameCount: 50, storedFrameCount: 40 } }],
   sectionCompleteness: {
     laps: complete, sectors: complete, stints: complete, tyres: complete, dynamics: complete, penalties: complete,
     events: complete, pit: complete, trackOutline: { status: 'unavailable', reasons: ['track-outline-unavailable'], capturedCount: 0, storedCount: 0 },

@@ -13,8 +13,13 @@ import { loadTrackBoundaries } from '../../constants/replayTrackBoundaries';
 
 const complete: SectionCompleteness = { status: 'complete', reasons: [], capturedCount: 1, storedCount: 1 };
 const participants: IncidentReplay['participants'] = [
-  { idx: 0, name: 'Minmo', teamId: 0, isPlayer: true, minDistM: 0 },
-  { idx: 23, name: 'Driver 24', teamId: 255, isPlayer: false, minDistM: 1.23 },
+  { idx: 0, name: 'Minmo', teamId: 0, isPlayer: true, minDistM: 0, damageBefore: null, damageAfter: null },
+  { idx: 23, name: 'Driver 24', teamId: 255, isPlayer: false, minDistM: 1.23, damageBefore: null, damageAfter: null },
+];
+// Asymmetric slots catch swapped wing and tyre positions.
+const damagedParticipants: IncidentReplay['participants'] = [
+  { ...participants[0], damageBefore: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], damageAfter: [42, 0, 0, 15, 0, 0, 0, 0, 100, 0, 0, 0] },
+  { ...participants[1], damageBefore: [0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], damageAfter: [0, 60, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0] },
 ];
 const clip: IncidentReplay = {
   raceId: 'race-a', index: 0, schemaVersion: 2, sessionTimeMs: 4_000, windowStartMs: 1_000, frameIntervalMs: 100, lap: 7,
@@ -47,6 +52,7 @@ const setup = Object.fromEntries(SETUP_FIELDS.map(({ key }) => [key, key === 'fr
 const t = buildTheme('#e0a83d', 'light');
 const account = { id: 'owner', steamId64: '0', persona: 'Minmo', avatarUrl: '', kind: 'user', verified: true, banned: false, createdAt: '', permissions: ['pithub.race'] };
 const wait = (ms = 20) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const hexRgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
 function check(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
 async function until(predicate: () => boolean, message: string) {
   const deadline = performance.now() + 4_000;
@@ -224,6 +230,27 @@ async function carShapesFollowYaw() {
   } finally { root.unmount(); host.remove(); }
 }
 
+async function damageReplay() {
+  const damaged: IncidentReplay = { ...clip, participants: damagedParticipants };
+  const host = document.createElement('div'); host.style.width = '360px'; document.body.append(host);
+  const root = createRoot(host);
+  try {
+    for (const theme of [t, buildTheme('#e0a83d', 'dark')]) {
+      root.render(<IncidentReplayView t={theme} replay={damaged} trackOutline={null} />);
+      // Both themes render two cards, so wait for this theme's surface stroke before reading fills.
+      await until(() => host.querySelectorAll('[data-damage-driver]').length === 2 && host.querySelector('[data-damage-part]')?.getAttribute('stroke') === theme.panel, 'Damage cards did not render for the theme');
+      const fill = (idx: number, part: string) => getComputedStyle(host.querySelector(`[data-damage-driver="${idx}"] [data-damage-part="${part}"]`)!).fill;
+      check(fill(0, 'tyre-rl') === hexRgb(theme.damageScale[3]) && fill(0, 'tyre-fl') === hexRgb(theme.damageScale[0]), 'Rear-left and front-left tyre damage colours were swapped');
+      check(fill(0, 'wing-fl') === hexRgb(theme.damageScale[1]) && fill(23, 'wing-fr') === hexRgb(theme.damageScale[2]), 'Wing damage colour steps are wrong');
+      const panel = host.querySelector<HTMLElement>('[aria-label="Incident vehicle damage"]')!;
+      check(panel.scrollWidth <= panel.clientWidth + 1 && panel.getBoundingClientRect().right <= host.getBoundingClientRect().right + 1, 'Damage panel overflows the 360px layout');
+    }
+    check(host.querySelector('[data-damage-driver="23"] [data-damage-row="wing-fr"]')!.textContent!.includes('구간 중 +48'), 'Increase from the first collision is missing');
+    await displayDriver(host, 23, 'hidden');
+    check(!host.querySelector('[data-damage-driver="23"]') && host.querySelector('[data-damage-driver="0"]'), 'Hidden driver kept a damage card');
+  } finally { root.unmount(); host.remove(); }
+}
+
 class TestMarket extends PlatformMarket {
   share: RaceAnalysisShare | null = null;
   incidentRequests = 0;
@@ -335,7 +362,7 @@ async function anonymousRoute(boundaryTrackId?: number) {
   const points = withBoundaries
     ? boundaries!.segments[0].sections.map(({ left }) => [left![0], left![2]])
     : (await loadReplayTrack(5, 'F1 26'))!.points.map(([, x, z]) => [x, z]);
-  const historicClip: IncidentReplay = { ...clip, frames: clip.frames.map((frame, index) => ({ ...frame, cars: frame.cars.map((car) => { if (!car) return null; const [x, z] = points[index]; return [x, car[1], z, ...car.slice(3)] as typeof car; }) })) };
+  const historicClip: IncidentReplay = { ...clip, participants: damagedParticipants, frames: clip.frames.map((frame, index) => ({ ...frame, cars: frame.cars.map((car) => { if (!car) return null; const [x, z] = points[index]; return [x, car[1], z, ...car.slice(3)] as typeof car; }) })) };
   const getDetail = PlatformMarket.prototype.getSharedRaceAnalysis;
   const getIncident = PlatformMarket.prototype.getSharedRaceAnalysisIncident;
   const originalFetch = window.fetch; const originalHash = window.location.hash;
@@ -353,6 +380,8 @@ async function anonymousRoute(boundaryTrackId?: number) {
     tab(host, '사고 리플레이').click(); await wait(); host.querySelector<HTMLButtonElement>('[class*=incidentButton]')!.click();
     await until(() => incidentReads > 0 && !!host.querySelector('input[type=range]'), 'Anonymous replay did not load');
     await until(() => !!host.querySelector('[data-overview-car]'), 'Anonymous legacy reference did not load');
+    const sharedTyre = host.querySelector('[data-damage-driver="0"] [data-damage-part="tyre-rl"]');
+    check(sharedTyre && getComputedStyle(sharedTyre).fill === hexRgb(buildTheme('#e0a83d', 'light').damageScale[3]), 'Shared replay lost the damage colour scale');
     await displayDriver(host, 0, 'hidden');
     check(!host.querySelector('[data-replay-car="0"], [data-driver-trajectory="0"], [data-overview-car="0"]') && host.querySelector('[data-replay-car="23"]'), 'Anonymous driver filtering failed');
     await displayDriver(host, 0, 'full');
@@ -414,6 +443,7 @@ export async function run() {
   await driverVisibility();
   await historicalTrackReplay();
   await carShapesFollowYaw();
+  await damageReplay();
   await ownerNavigationAndReplay();
   await anonymousRoute();
   await anonymousRoute(7);

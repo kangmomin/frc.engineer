@@ -49,6 +49,9 @@ func TestBuildRaceAnalysisDetailProjectsGoldenV2WithoutRawJSON(t *testing.T) {
 		incident.Participants[1].TeamID == nil || *incident.Participants[1].TeamID != 255 {
 		t.Fatalf("v2 incident summary = %+v", incident)
 	}
+	if got := incident.Participants[0].DamageAfter; len(got) != dto.IncidentDamageValues || got[0] != 42 || got[8] != 100 {
+		t.Fatalf("v2 incident damage = %v, want front-left wing 42 and tyre RL 100", got)
+	}
 	if incident.Completeness.StoredFrameCount != 2 || incident.Completeness.CapturedFrameCount == nil || *incident.Completeness.CapturedFrameCount != 2 {
 		t.Fatalf("v2 incident completeness = %+v", incident.Completeness)
 	}
@@ -268,3 +271,13 @@ func TestRaceAnalysisOwnerScopedStoreReadIntegration(t *testing.T) {
 }
 
 func stringPtr(value string) *string { return &value }
+
+func TestIncidentParticipantDamageAlwaysSerializesKeys(t *testing.T) {
+	encoded, err := json.Marshal(mapIncidentParticipants([]UploadIncidentParticipant{{Idx: 3, DamageAfter: []int{}}}, false))
+	if err != nil {
+		t.Fatalf("marshal participants: %v", err)
+	}
+	if got := string(encoded); !strings.Contains(got, `"damageBefore":null`) || !strings.Contains(got, `"damageAfter":null`) {
+		t.Fatalf("missing damage snapshots must serialize as null: %s", got)
+	}
+}

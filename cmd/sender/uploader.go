@@ -124,11 +124,13 @@ type uploadIncident struct {
 }
 
 type uploadIncidentParticipant struct {
-	Idx      int     `json:"idx"`
-	Name     string  `json:"name,omitempty"`
-	TeamID   *int    `json:"teamId"`
-	IsPlayer bool    `json:"isPlayer,omitempty"`
-	MinDistM float64 `json:"minDistM"`
+	Idx          int     `json:"idx"`
+	Name         string  `json:"name,omitempty"`
+	TeamID       *int    `json:"teamId"`
+	IsPlayer     bool    `json:"isPlayer,omitempty"`
+	MinDistM     float64 `json:"minDistM"`
+	DamageBefore []int   `json:"damageBefore,omitempty"`
+	DamageAfter  []int   `json:"damageAfter,omitempty"`
 }
 
 type uploadIncidentFrame struct {
@@ -466,6 +468,7 @@ func buildUploadRequest(summary *races.RaceSummary, logger *slog.Logger) (*uploa
 		for _, pt := range c.Participants {
 			inc.Participants = append(inc.Participants, uploadIncidentParticipant{
 				Idx: pt.Idx, Name: pt.Name, TeamID: copyOptionalInt(pt.TeamID), IsPlayer: pt.IsPlayer, MinDistM: pt.MinDistM,
+				DamageBefore: pt.DamageBefore, DamageAfter: pt.DamageAfter,
 			})
 		}
 		for _, f := range c.Frames {

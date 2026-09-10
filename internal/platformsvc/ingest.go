@@ -70,6 +70,8 @@ const (
 	maxIncidentNameLen      = 48
 	maxIncidentVehicleIdx   = 23 // 2026 grid: 24 slots
 	incidentCarFrameValues  = 14
+	incidentDamageValues    = dto.IncidentDamageValues
+	maxIncidentDamagePct    = 100
 )
 
 // validTyres whitelists the compound strings that may reach the public pace
@@ -251,6 +253,9 @@ func validIncident(inc *UploadIncident) bool {
 		if !floatFinite(pt.MinDistM) || pt.MinDistM < 0 {
 			return false
 		}
+		if !validIncidentDamage(pt.DamageBefore) || !validIncidentDamage(pt.DamageAfter) {
+			return false
+		}
 	}
 	if len(inc.Frames) < 1 || len(inc.Frames) > maxIncidentFrames {
 		return false
@@ -275,6 +280,23 @@ func validIncident(inc *UploadIncident) bool {
 					return false
 				}
 			}
+		}
+	}
+	return true
+}
+
+// validIncidentDamage accepts an omitted snapshot or exactly one 0..100
+// percentage per documented damage slot.
+func validIncidentDamage(values []int) bool {
+	if len(values) == 0 {
+		return true
+	}
+	if len(values) != incidentDamageValues {
+		return false
+	}
+	for _, value := range values {
+		if value < 0 || value > maxIncidentDamagePct {
+			return false
 		}
 	}
 	return true
@@ -818,6 +840,8 @@ type UploadIncidentParticipant struct {
 	TeamID        *int    `json:"teamId"`
 	IsPlayer      bool    `json:"isPlayer,omitempty"`
 	MinDistM      float64 `json:"minDistM"`
+	DamageBefore  []int   `json:"damageBefore,omitempty"`
+	DamageAfter   []int   `json:"damageAfter,omitempty"`
 	teamIDPresent bool
 }
 

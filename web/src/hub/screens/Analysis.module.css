@@ -127,6 +127,20 @@
 .telemetry tr:last-child td { border-bottom: 0; }
 .telemetryLabel { font-size: 10px; color: var(--analysis-sub); }
 .player { font-weight: 700; background: var(--analysis-accent-soft); }
+.damage { padding: 14px; border: 1px solid var(--analysis-line); border-radius: 9px; }
+.damage h4 { margin: 0; font-size: 13px; }
+.damageCards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.damageCard { display: flex; flex: 1 1 280px; flex-wrap: wrap; align-items: flex-start; gap: 10px 14px; min-width: 0; padding: 12px; border: 1px solid var(--analysis-line); border-radius: 8px; }
+.damageCard > p { flex-basis: 100%; margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.damageGlyph { display: block; flex-shrink: 0; width: 88px; max-width: 100%; height: auto; }
+.damageParts { display: grid; flex: 1 1 170px; gap: 5px; min-width: 0; margin: 0; font-size: 11px; }
+.damageParts div { display: flex; justify-content: space-between; gap: 8px; }
+.damageParts dt { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--analysis-sub); }
+.damageParts dd { margin: 0; color: var(--analysis-text); font: 600 11px 'JetBrains Mono', monospace; white-space: nowrap; }
+.damageIncrease { color: var(--analysis-negative); }
+.damageChip { display: inline-block; flex-shrink: 0; width: 9px; height: 9px; border-radius: 2px; }
+.damageLegend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 12px 0 0; color: var(--analysis-muted); font: 500 10px 'JetBrains Mono', monospace; }
+.damageLegend > span { display: inline-flex; align-items: center; gap: 5px; }
 .status { margin: 12px 0 0; color: var(--analysis-muted); font-size: 11px; line-height: 1.6; }
 .error { color: var(--analysis-negative); }
 .empty { padding: 22px 0; margin: 0; color: var(--analysis-sub); font-size: 13px; line-height: 1.65; }

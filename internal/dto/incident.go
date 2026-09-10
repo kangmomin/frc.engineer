@@ -15,6 +15,12 @@ const IncidentMaxParticipants = 24
 // x, y, z, vx, vy, vz, yaw, gLat, gLong, speedKmh, throttle, brake, steer, gear.
 const IncidentCarFrameValues = 14
 
+// IncidentDamageValues is the fixed length of one car's damage snapshot, in
+// integer percent: front-left wing, front-right wing, rear wing, floor,
+// diffuser, sidepod, engine, gearbox, then tyre damage in the packet's RL, RR,
+// FL, FR order.
+const IncidentDamageValues = 12
+
 // IncidentClip is one captured incident. Frames[i].Cars[j] aligns positionally
 // with Participants[j]; a nil entry means no usable sample for that car at that
 // tick. FrameIntervalMS is nominal — frames carry their measured game-time TMS.
@@ -43,6 +49,13 @@ type IncidentParticipant struct {
 	TeamID   *int    `json:"teamId"`
 	IsPlayer bool    `json:"isPlayer,omitempty"`
 	MinDistM float64 `json:"minDistM"`
+	// DamageBefore and DamageAfter hold IncidentDamageValues entries captured at
+	// the first merged COLL and at clip finalization; nil means no fresh
+	// CarDamage packet existed then. The packet arrives about every 100ms, so
+	// DamageBefore can already include the first contact, and the difference
+	// covers every collision merged into the clip.
+	DamageBefore []int `json:"damageBefore,omitempty"`
+	DamageAfter  []int `json:"damageAfter,omitempty"`
 }
 
 // IncidentFrame is one ~50ms tick. Each non-nil Cars entry holds exactly

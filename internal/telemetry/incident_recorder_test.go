@@ -3,6 +3,7 @@ package telemetry
 import (
 	"fmt"
 	"math"
+	"slices"
 	"testing"
 
 	"frc.engineer/internal/dto"
@@ -22,6 +23,7 @@ type incSim struct {
 	status        map[int]uint8      // vehicleIdx → ResultStatus (persists; default 0 = inactive)
 	speed         map[int]uint16
 	emitTelemetry bool
+	damage        func(*packets.PacketCarDamageData) // nil: no CarDamage packet
 }
 
 func newIncSim(t *testing.T) *incSim {
@@ -66,6 +68,12 @@ func (s *incSim) tick(sessionTime float32) {
 			tel.CarTelemetryData[idx].Speed = sp
 		}
 		s.r.noteTelemetry(tel)
+	}
+
+	if s.damage != nil {
+		cd := &packets.PacketCarDamageData{Header: *h}
+		s.damage(cd)
+		s.r.noteCarDamage(cd)
 	}
 
 	m := &packets.PacketMotionData{Header: *h}
@@ -858,5 +866,108 @@ func TestIncidentRecorderStaleTelemetryIgnored(t *testing.T) {
 		if f.Cars[0] != nil && f.Cars[0][9] != 0 {
 			t.Fatalf("stale telemetry leaked: speed = %v", f.Cars[0][9])
 		}
+	}
+}
+
+func TestIncidentRecorderDamageSnapshotsAtT0AndFinalize(t *testing.T) {
+	s := newIncSim(t)
+	s.pos[0] = [3]float32{0, 0, 0}
+	s.pos[1] = [3]float32{3, 0, 0}
+	s.status[0], s.status[1] = 2, 2
+	s.damage = func(cd *packets.PacketCarDamageData) {
+		cd.CarDamageData[1].FrontRightWingDamage = 12
+	}
+	s.run(0, 2.0)
+	s.collide(2.0, 0, 1)
+	// Distinct values in each group catch a swapped wing, body or tyre slot.
+	s.damage = func(cd *packets.PacketCarDamageData) {
+		player := &cd.CarDamageData[0]
+		player.FrontLeftWingDamage = 42
+		player.RearWingDamage = 255 // out-of-range packet value clamps to 100
+		player.FloorDamage = 15
+		player.EngineDamage = 3
+		player.TyresDamage = [4]uint8{100, 0, 7, 0} // RL, RR, FL, FR
+		partner := &cd.CarDamageData[1]
+		partner.FrontRightWingDamage = 30
+		partner.SidepodDamage = 8
+	}
+	s.run(2.0, 3.3)
+
+	clips := s.clips()
+	if len(clips) != 1 || len(clips[0].Participants) != 2 {
+		t.Fatalf("clips = %+v, want one clip with player and partner", clips)
+	}
+	player, partner := clips[0].Participants[0], clips[0].Participants[1]
+	for _, tc := range []struct {
+		name      string
+		got, want []int
+	}{
+		{"player before", player.DamageBefore, make([]int, dto.IncidentDamageValues)},
+		{"player after", player.DamageAfter, []int{42, 0, 100, 15, 0, 0, 3, 0, 100, 0, 7, 0}},
+		{"partner before", partner.DamageBefore, []int{0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{"partner after", partner.DamageAfter, []int{0, 30, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0}},
+	} {
+		if !slices.Equal(tc.got, tc.want) {
+			t.Fatalf("%s damage = %v, want %v", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestIncidentRecorderDamageAvailabilityIsIndependentPerSnapshot(t *testing.T) {
+	setup := func() *incSim {
+		s := newIncSim(t)
+		s.pos[0] = [3]float32{0, 0, 0}
+		s.pos[1] = [3]float32{3, 0, 0}
+		s.status[0], s.status[1] = 2, 2
+		return s
+	}
+	onlyClip := func(s *incSim) dto.IncidentClip {
+		t.Helper()
+		clips := s.clips()
+		if len(clips) != 1 {
+			t.Fatalf("clips = %d, want 1", len(clips))
+		}
+		return clips[0]
+	}
+
+	// Without any CarDamage packet neither snapshot may invent healthy zeros.
+	s := setup()
+	s.run(0, 2.0)
+	s.collide(2.0, 0, 1)
+	s.run(2.0, 3.3)
+	for _, participant := range onlyClip(s).Participants {
+		if participant.DamageBefore != nil || participant.DamageAfter != nil {
+			t.Fatalf("unobserved damage = %v / %v, want nil", participant.DamageBefore, participant.DamageAfter)
+		}
+	}
+
+	// A packet 120 frames before t0 is stale there, while a fresh post-contact
+	// stream still fills the finalization snapshot.
+	s = setup()
+	early := &packets.PacketCarDamageData{Header: *s.header(0)}
+	early.CarDamageData[0].FloorDamage = 50
+	s.r.noteCarDamage(early)
+	s.run(0, 2.0)
+	s.collide(2.0, 0, 1)
+	s.damage = func(cd *packets.PacketCarDamageData) { cd.CarDamageData[0].FloorDamage = 60 }
+	s.run(2.0, 3.3)
+	player := onlyClip(s).Participants[0]
+	if player.DamageBefore != nil || len(player.DamageAfter) != dto.IncidentDamageValues || player.DamageAfter[3] != 60 {
+		t.Fatalf("stale t0 / fresh finalize damage = %v / %v", player.DamageBefore, player.DamageAfter)
+	}
+
+	// A new session must not inherit the old damage cache even when its frame
+	// identifiers restart close to the old packet.
+	s = setup()
+	old := &packets.PacketCarDamageData{Header: *s.header(0)}
+	old.CarDamageData[0].FloorDamage = 70
+	s.r.noteCarDamage(old)
+	s.uid = 888
+	s.r.observeSession(s.uid)
+	s.run(0, 0.3)
+	s.collide(0.3, 0, 1)
+	s.run(0.3, 1.6)
+	if player := onlyClip(s).Participants[0]; player.DamageBefore != nil {
+		t.Fatalf("new session inherited damage %v", player.DamageBefore)
 	}
 }

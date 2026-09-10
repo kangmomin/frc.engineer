@@ -313,6 +313,9 @@ func TestValidateUploadV2GoldenContract(t *testing.T) {
 		participants[1].TeamID == nil || *participants[1].TeamID != 255 {
 		t.Fatalf("required nullable team ids lost 0/255: %+v", participants)
 	}
+	if got := participants[0].DamageAfter; len(got) != dto.IncidentDamageValues || got[0] != 42 || got[8] != 100 {
+		t.Fatalf("golden damage snapshot = %v, want front-left wing 42 and tyre RL 100", got)
+	}
 	if got := request.Detail.Incidents[0].Frames[0].TelemetryUnavailable; got == nil || len(got) != 0 {
 		t.Fatalf("fresh v2 telemetry marker = %#v, want explicit []", got)
 	}
@@ -731,6 +734,12 @@ func TestValidateUploadIncidents(t *testing.T) {
 	if err := validateUpload(base(validIncidentClip())); err != nil {
 		t.Fatalf("valid incident rejected: %v", err)
 	}
+	withDamage := validIncidentClip()
+	withDamage.Participants[0].DamageBefore = make([]int, incidentDamageValues)
+	withDamage.Participants[0].DamageAfter = []int{100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100}
+	if err := validateUpload(base(withDamage)); err != nil {
+		t.Fatalf("valid damage snapshots rejected: %v", err)
+	}
 
 	// Detail 레벨 개수 상한 (클립 자체는 전부 유효).
 	fat := make([]UploadIncident, maxDetailIncidents+1)
@@ -778,6 +787,17 @@ func TestValidateUploadIncidents(t *testing.T) {
 	})
 	reject("negative min distance", func(c *UploadIncident) { c.Participants[1].MinDistM = -0.1 })
 	reject("NaN min distance", func(c *UploadIncident) { c.Participants[1].MinDistM = math.NaN() })
+	reject("damage snapshot wrong arity", func(c *UploadIncident) {
+		c.Participants[0].DamageBefore = make([]int, incidentDamageValues-1)
+	})
+	reject("damage over 100 percent", func(c *UploadIncident) {
+		c.Participants[1].DamageAfter = make([]int, incidentDamageValues)
+		c.Participants[1].DamageAfter[8] = maxIncidentDamagePct + 1
+	})
+	reject("negative damage", func(c *UploadIncident) {
+		c.Participants[1].DamageBefore = make([]int, incidentDamageValues)
+		c.Participants[1].DamageBefore[0] = -1
+	})
 	reject("no frames", func(c *UploadIncident) { c.Frames = nil })
 	reject("over-cap frames", func(c *UploadIncident) {
 		frame := c.Frames[0]

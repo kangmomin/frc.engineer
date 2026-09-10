@@ -531,6 +531,9 @@ func (p *Processor) processPacket(data []byte) {
 	if parsed.LapData != nil {
 		p.incidents.noteLapData(parsed.LapData)
 	}
+	if parsed.CarDamage != nil {
+		p.incidents.noteCarDamage(parsed.CarDamage)
+	}
 	if parsed.Motion != nil {
 		p.incidents.noteMotion(parsed.Motion, parsed.Header)
 	}

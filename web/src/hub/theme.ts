@@ -43,6 +43,8 @@ export interface HubTheme {
   topInk: string;
   // wet-condition accent + hard-compound fill (hub.dc.html:741,820).
   wetInk: string; compHard: string;
+  // incident damage 0–24 / 25–49 / 50–74 / 75–100%, green to red.
+  damageScale: [string, string, string, string];
 }
 
 export const ACCENT_OPTIONS = ['#e0a83d', '#3fb6c9', '#e0533d', '#9a7cff'] as const;
@@ -85,6 +87,9 @@ export function buildTheme(accent: string, mode: ThemeMode = 'light'): HubTheme 
     topInk: dark ? '#cdd2db' : '#3a3f49',
     wetInk: dark ? '#3fb6c9' : '#2f8aa0',
     compHard: dark ? '#d6dae2' : '#c8ccd4',
+    // Lightness is monotone so the order survives colour-vision deficiency, and
+    // the worst step has the most contrast against the panel in either mode.
+    damageScale: dark ? ['#00581f', '#7e6f00', '#df7b0c', '#ffaaa7'] : ['#00d47f', '#889c00', '#976400', '#9b0020'],
   };
 }
 

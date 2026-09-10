@@ -33,7 +33,7 @@ const (
 	incidentMaxFrames          = 101 // mirrors platform cap; gate jitter could exceed 5s/50ms
 	incidentPairDebounceMS     = 1000
 	incidentRewindResetMS      = 500
-	incidentStaleCacheFrames   = 30 // ~0.5s at 60Hz: stale telemetry/lap caches are dropped
+	incidentStaleCacheFrames   = 30 // ~0.5s at 60Hz: stale telemetry/lap/damage caches are dropped
 	incidentRingSlots          = 24 // ≥1.15s at 50ms spacing — always covers the 1s pre window
 	incidentNameMaxRunes       = 48 // mirrors platform cap (packet names are ≤32 bytes anyway)
 )
@@ -53,6 +53,9 @@ type incidentCarSample struct {
 	throttle, brake, steer float32
 	gear                   int8
 }
+
+// incidentDamage is one car's damage percentages in dto.IncidentDamageValues order.
+type incidentDamage [dto.IncidentDamageValues]uint8
 
 type incidentTick struct {
 	tMS   int64
@@ -75,6 +78,10 @@ type incidentPending struct {
 	// monotonic candidate sample even after ticks reaches the storage cap.
 	candidateFrameCount int
 	ticks               []incidentTick
+	// damageBefore is the full-grid damage at t0. Its availability is tracked
+	// separately because the t0 cache can be absent or stale.
+	damageBefore    [packets.MaxCars]incidentDamage
+	hasDamageBefore bool
 }
 
 type incidentRecorder struct {
@@ -92,6 +99,7 @@ type incidentRecorder struct {
 
 	latestTelemetry *packets.PacketCarTelemetryData
 	latestLapData   *packets.PacketLapData
+	latestDamage    *packets.PacketCarDamageData
 
 	ring     [incidentRingSlots]incidentTick
 	ringLen  int
@@ -145,6 +153,7 @@ func (r *incidentRecorder) observeSession(sessionUID uint64) {
 	r.lastMotionTMS = 0
 	r.latestTelemetry = nil
 	r.latestLapData = nil
+	r.latestDamage = nil
 	r.clips = nil
 	r.eligibleKeys = nil
 	r.clipLimitWarned = false
@@ -206,6 +215,15 @@ func (r *incidentRecorder) noteLapData(ld *packets.PacketLapData) {
 	}
 	r.mu.Lock()
 	r.latestLapData = ld
+	r.mu.Unlock()
+}
+
+func (r *incidentRecorder) noteCarDamage(cd *packets.PacketCarDamageData) {
+	if r == nil || cd == nil {
+		return
+	}
+	r.mu.Lock()
+	r.latestDamage = cd
 	r.mu.Unlock()
 }
 
@@ -375,6 +393,7 @@ func (r *incidentRecorder) onCollision(header *packets.PacketHeader, v1, v2 uint
 	if r.latestLapData != nil {
 		p.lap = int(r.latestLapData.LapData[player].CurrentLapNum)
 	}
+	p.damageBefore, p.hasDamageBefore = r.damageGridLocked(header.FrameIdentifier)
 	// Copy (not reference) the pre window out of the ring: the ring keeps rolling
 	// during the post window and would overwrite these slots.
 	for k := 0; k < r.ringLen; k++ {
@@ -539,6 +558,9 @@ func (r *incidentRecorder) finalizeLocked() {
 		cands = cands[:incidentMaxParticipants]
 	}
 
+	// Every finalize path has a retained tick, including session-end and
+	// event-driven closes that have no current motion header.
+	damageAfter, hasDamageAfter := r.damageGridLocked(p.ticks[len(p.ticks)-1].frame)
 	participants := make([]dto.IncidentParticipant, len(cands))
 	retainedParticipants := make(map[int]struct{}, len(cands))
 	for j, c := range cands {
@@ -552,6 +574,12 @@ func (r *incidentRecorder) finalizeLocked() {
 			TeamID:   teamIDFor(r.teamResolver, uint8(c.idx)),
 			IsPlayer: c.idx == playerIdx,
 			MinDistM: roundTo(c.minDist, 1),
+		}
+		if p.hasDamageBefore {
+			participants[j].DamageBefore = p.damageBefore[c.idx].percentages()
+		}
+		if hasDamageAfter {
+			participants[j].DamageAfter = damageAfter[c.idx].percentages()
 		}
 		retainedParticipants[c.idx] = struct{}{}
 	}
@@ -684,6 +712,34 @@ func carFrameValues(s *incidentCarSample) []float64 {
 		roundTo(float64(s.throttle), 2), roundTo(float64(s.brake), 2), roundTo(float64(s.steer), 2),
 		float64(s.gear),
 	}
+}
+
+// damageGridLocked value-copies the latest CarDamage packet when it is within
+// incidentStaleCacheFrames of frame. Tyre damage keeps the packet's RL, RR, FL,
+// FR order.
+func (r *incidentRecorder) damageGridLocked(frame uint32) (grid [packets.MaxCars]incidentDamage, ok bool) {
+	if r.latestDamage == nil || frameDelta(frame, r.latestDamage.Header.FrameIdentifier) > incidentStaleCacheFrames {
+		return grid, false
+	}
+	for i := range grid {
+		d := &r.latestDamage.CarDamageData[i]
+		grid[i] = incidentDamage{
+			d.FrontLeftWingDamage, d.FrontRightWingDamage, d.RearWingDamage,
+			d.FloorDamage, d.DiffuserDamage, d.SidepodDamage,
+			d.EngineDamage, d.GearBoxDamage,
+			d.TyresDamage[0], d.TyresDamage[1], d.TyresDamage[2], d.TyresDamage[3],
+		}
+	}
+	return grid, true
+}
+
+// percentages encodes one car as the fixed dto.IncidentDamageValues array.
+func (d incidentDamage) percentages() []int {
+	values := make([]int, len(d))
+	for i, value := range d {
+		values[i] = clampDamage(value)
+	}
+	return values
 }
 
 func sampleDistance(a, b *incidentCarSample) float64 {

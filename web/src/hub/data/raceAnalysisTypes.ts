@@ -149,6 +149,11 @@ export interface IncidentParticipant {
   teamId: number | null;
   isPlayer: boolean;
   minDistM: number;
+  // Integer percentages at the first collision and at clip end: FL wing, FR wing,
+  // rear wing, floor, diffuser, sidepod, engine, gearbox, tyre RL, RR, FL, FR.
+  // null means that snapshot was not captured.
+  damageBefore: number[] | null;
+  damageAfter: number[] | null;
 }
 
 export interface IncidentCompleteness {

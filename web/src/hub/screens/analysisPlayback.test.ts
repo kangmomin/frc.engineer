@@ -24,8 +24,8 @@ function replay(overrides: Partial<IncidentReplay> = {}): IncidentReplay {
     raceId: 'race-a', index: 0, schemaVersion: 2, sessionTimeMs: 1_000,
     windowStartMs: 0, frameIntervalMs: 50, lap: 4, collisions: [[1, 2]],
     participants: [
-      { idx: 0, name: 'Player', teamId: 0, isPlayer: true, minDistM: 0.4 },
-      { idx: 23, name: '', teamId: 255, isPlayer: false, minDistM: 1.2 },
+      { idx: 0, name: 'Player', teamId: 0, isPlayer: true, minDistM: 0.4, damageBefore: null, damageAfter: null },
+      { idx: 23, name: '', teamId: 255, isPlayer: false, minDistM: 1.2, damageBefore: null, damageAfter: null },
     ],
     frames: [
       { tMs: 900, cars: [[1, 0, 2, 3, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1], [4, 0, 8, 0, 0, 0, 1, 0, 0, 120, 0, 1, -0.5, 3]], telemetryUnavailable: [] },

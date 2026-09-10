@@ -10,8 +10,8 @@ const replay: IncidentReplayValue = {
   raceId: 'race-a', index: 0, schemaVersion: 2, sessionTimeMs: 1_000, windowStartMs: 0, frameIntervalMs: 50, lap: 1,
   collisions: [[0, 23]],
   participants: [
-    { idx: 0, name: 'Player', teamId: 0, isPlayer: true, minDistM: 0.5 },
-    { idx: 23, name: '', teamId: 255, isPlayer: false, minDistM: 1 },
+    { idx: 0, name: 'Player', teamId: 0, isPlayer: true, minDistM: 0.5, damageBefore: null, damageAfter: null },
+    { idx: 23, name: '', teamId: 255, isPlayer: false, minDistM: 1, damageBefore: null, damageAfter: null },
   ],
   frames: [{
     tMs: 1_000,
@@ -69,5 +69,26 @@ describe('IncidentReplay', () => {
     const html = renderToStaticMarkup(<IncidentReplay t={t} replay={replay} trackOutline={{ points: [[0, 0], [10, 5]], bounds: { minX: 0, maxX: 10, minZ: 0, maxZ: 5 } }} />);
     expect(html).toContain('Recorded track centreline');
     expect(html).not.toContain('Incident-local metre grid');
+  });
+
+  it('paints clip-end damage by part and marks only increases from the first collision', () => {
+    const damaged = { ...replay, participants: [
+      { ...replay.participants[0], damageBefore: [0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0], damageAfter: [42, 0, 0, 10, 0, 0, 0, 0, 100, 0, 0, 0] },
+      { ...replay.participants[1], damageBefore: null, damageAfter: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    ] };
+    const html = renderToStaticMarkup(<IncidentReplay t={t} replay={damaged} trackOutline={null} />);
+    expect(html).toContain('aria-label="Incident vehicle damage"');
+    expect(html).toMatch(new RegExp(`data-damage-part="tyre-rl"[^>]*fill="${t.damageScale[3]}"`));
+    expect(html).toMatch(new RegExp(`data-damage-part="tyre-fl"[^>]*fill="${t.damageScale[0]}"`));
+    expect(html).toMatch(new RegExp(`data-damage-part="wing-fl"[^>]*fill="${t.damageScale[1]}"`));
+    expect(html).toMatch(/data-damage-row="tyre-rl".*?>100%<span[^>]*> 구간 중 \+100</);
+    // Floor was repaired from 20 to 10: no increase badge and no fallback to 20.
+    expect(html).toMatch(/data-damage-row="floor".*?<dd>10%<\/dd>/);
+    expect(html).not.toContain('data-damage-driver="23"');
+  });
+
+  it('omits the damage panel when no captured part is damaged', () => {
+    const html = renderToStaticMarkup(<IncidentReplay t={t} replay={replay} trackOutline={null} />);
+    expect(html).not.toContain('Incident vehicle damage');
   });
 });

@@ -53,8 +53,8 @@ func senderGoldenV2Summary() *races.RaceSummary {
 			SessionTimeMS: 1000, WindowStartMS: 0, FrameIntervalMS: 50, Lap: 1,
 			Collisions: [][2]int{{0, 1}},
 			Participants: []dto.IncidentParticipant{
-				{Idx: 0, Name: "Player", TeamID: senderV2Int(0), IsPlayer: true, MinDistM: 0},
-				{Idx: 1, Name: "No Team", TeamID: senderV2Int(255), MinDistM: 2.1},
+				{Idx: 0, Name: "Player", TeamID: senderV2Int(0), IsPlayer: true, MinDistM: 0, DamageBefore: make([]int, dto.IncidentDamageValues), DamageAfter: []int{42, 0, 0, 15, 0, 0, 0, 0, 100, 0, 0, 0}},
+				{Idx: 1, Name: "No Team", TeamID: senderV2Int(255), MinDistM: 2.1, DamageBefore: []int{0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, DamageAfter: []int{0, 30, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0}},
 			},
 			Frames: []dto.IncidentFrame{
 				{TMS: 0, Cars: [][]float64{{0, 0, 0, 0, 0, 10, 0, 0, 0, 100, 0, 0, 0, 4}, {2, 0, 0, 0, 0, 9, 0, 0, 0, 90, 0, 0, 0, 4}}, TelemetryUnavailable: []int{}},

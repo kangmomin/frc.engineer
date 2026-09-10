@@ -30,6 +30,7 @@ import { boundaryMapPoints, incidentBoundaryPoints, loadTrackBoundaries, type Re
 import { ReplayScaleBar, ReplayTrackSurface } from './ReplayTrackSurface';
 import { ReplayDriverControls } from './ReplayDriverControls';
 import { replayDriverColor, type DriverVisibility } from './analysisDriverDisplay';
+import { INCIDENT_DAMAGE_PARTS, INCIDENT_DAMAGE_STEP_LABELS, incidentDamageColor, incidentDamageView, type IncidentDamagePart } from './incidentDamage';
 
 interface Props {
   t: HubTheme;
@@ -227,6 +228,7 @@ export function IncidentReplay({ t, replay, trackOutline, trackId, gameFormat }:
               {selectedFrame?.telemetryUnavailable === null && <p className={styles.status}>legacy freshness unknown — speed and input values are suppressed.</p>}
             </div>
             <TelemetryPanel frame={selectedFrame} replay={replay} visibility={visibility} />
+            <DamagePanel t={t} replay={replay} visibility={visibility} />
           </div>
         </>
       )}
@@ -406,6 +408,62 @@ function TelemetryPanel({ frame, replay, visibility }: { frame: IncidentFrame | 
         })}</tbody>
       </table>
     </div>
+  );
+}
+
+// Schematic top view in a 100×200 box, nose up. Both sidepods share one game value.
+const DAMAGE_GLYPH: Record<IncidentDamagePart, ReadonlyArray<{ x: number; y: number; width: number; height: number }>> = {
+  'wing-fl': [{ x: 8, y: 4, width: 40, height: 12 }],
+  'wing-fr': [{ x: 52, y: 4, width: 40, height: 12 }],
+  'tyre-fl': [{ x: 2, y: 24, width: 20, height: 34 }],
+  'tyre-fr': [{ x: 78, y: 24, width: 20, height: 34 }],
+  sidepod: [{ x: 24, y: 70, width: 14, height: 58 }, { x: 62, y: 70, width: 14, height: 58 }],
+  floor: [{ x: 40, y: 60, width: 20, height: 46 }],
+  engine: [{ x: 40, y: 108, width: 20, height: 24 }],
+  gearbox: [{ x: 42, y: 134, width: 16, height: 16 }],
+  diffuser: [{ x: 26, y: 152, width: 48, height: 14 }],
+  'tyre-rl': [{ x: 2, y: 142, width: 22, height: 38 }],
+  'tyre-rr': [{ x: 76, y: 142, width: 22, height: 38 }],
+  'wing-rear': [{ x: 12, y: 182, width: 76, height: 14 }],
+};
+
+function DamagePanel({ t, replay, visibility }: { t: HubTheme; replay: IncidentReplayValue; visibility: DriverVisibility }) {
+  const cards = replay.participants.flatMap((participant) => {
+    const view = visibility[participant.idx] === 'hidden' ? null : incidentDamageView(participant);
+    return view ? [{ participant, view }] : [];
+  });
+  if (cards.length === 0) return null;
+  return (
+    <section className={styles.damage} aria-label="Incident vehicle damage">
+      <h4>차량 손상</h4>
+      <p className={styles.status}>클립 종료 시점의 부위별 손상률입니다. “구간 중 +N”은 첫 충돌 시점보다 늘어난 값이며, 병합된 연쇄 충돌을 모두 포함합니다.</p>
+      <div className={styles.damageCards}>
+        {cards.map(({ participant, view }) => {
+          const note = view.basis === 'before' ? ' · 첫 충돌 시점 값 (클립 종료 기록 없음)' : view.baseline ? '' : ' · 첫 충돌 시점 기록 없음';
+          return (
+            <article key={participant.idx} className={styles.damageCard} data-damage-driver={participant.idx}>
+              <p><span className={styles.driverSwatch} style={{ backgroundColor: replayDriverColor(participant.idx) }} aria-hidden="true" /><strong>{participantName(participant.name, participant.idx)} · Car #{participant.idx}</strong><br /><span className={styles.telemetryLabel}>{teamIdentity(participant.teamId).label}{participant.isPlayer ? ' · PLAYER' : ''}{note}</span></p>
+              <svg className={styles.damageGlyph} viewBox="0 0 100 200" aria-hidden="true">
+                <rect x="46" y="16" width="8" height="44" rx="3" fill={t.line2} />
+                {INCIDENT_DAMAGE_PARTS.flatMap(({ part, slot, label }) => DAMAGE_GLYPH[part].map((shape, index) => (
+                  <rect key={`${part}-${index}`} data-damage-part={part} {...shape} rx="3" fill={incidentDamageColor(t, view.values[slot])} stroke={t.panel} strokeWidth="2"><title>{`${label} ${view.values[slot]}%`}</title></rect>
+                )))}
+              </svg>
+              <dl className={styles.damageParts}>
+                {INCIDENT_DAMAGE_PARTS.map(({ part, slot, label }) => {
+                  const increase = view.increases[slot];
+                  return <div key={part} data-damage-row={part}>
+                    <dt><span className={styles.damageChip} style={{ backgroundColor: incidentDamageColor(t, view.values[slot]) }} aria-hidden="true" />{label}</dt>
+                    <dd>{`${view.values[slot]}%`}{increase !== null && <span className={styles.damageIncrease}>{` 구간 중 +${increase}`}</span>}</dd>
+                  </div>;
+                })}
+              </dl>
+            </article>
+          );
+        })}
+      </div>
+      <p className={styles.damageLegend}>{INCIDENT_DAMAGE_STEP_LABELS.map((label, step) => <span key={label}><span className={styles.damageChip} style={{ backgroundColor: t.damageScale[step] }} aria-hidden="true" />{label}</span>)}</p>
+    </section>
   );
 }
 
