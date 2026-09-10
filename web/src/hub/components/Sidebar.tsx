@@ -127,7 +127,7 @@ export function Sidebar({ t, active, onNav, onLaunchLive, account, viewOnly = fa
         }}
       >
         <span className="hubNavIndex" style={{ color: t.navMuted, fontSize: 9.5, letterSpacing: 0 }}>↗</span>
-        <span className="hubMobileNavLabel">DC</span>
+        <span className="hubMobileNavLabel">DISCORD</span>
         <span className="hubNavLabel">DISCORD</span>
       </a>
 
