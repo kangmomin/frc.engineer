@@ -1,7 +1,7 @@
 import { PanelTitle } from '../../ui';
 import type { ClassificationRow } from './derive/classificationRows';
 
-const GRID_TEMPLATE = '36px minmax(120px,1.1fr) 84px 78px 58px 58px 58px 72px 62px 42px 66px 66px';
+const GRID_TEMPLATE = '36px 120px 84px 78px 58px 58px 58px 72px 62px 42px 66px 66px minmax(0,1fr)';
 
 const headLabel: React.CSSProperties = {
   fontSize: 10,
@@ -45,7 +45,7 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
           wrapper는 role="presentation"으로 밝혀 rowgroup→row 체인이 끊기지 않게 한다(a11y #1/
           comp M-1/scope L2). 마커 자체는 장식용 구분선이라 aria-hidden으로 숨긴다. */}
       <div role="table" aria-label="Qualifying Classification" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden' }}>
-        <div role="presentation" style={{ minWidth: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div role="presentation" style={{ width: '100%', minWidth: 950, height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div
             role="row"
             style={{
@@ -57,6 +57,7 @@ export function ClassificationPanel({ rows, detail, cutoffLabel }: Classificatio
               padding: '0 10px 8px',
               background: 'var(--bg-panel)',
               borderBottom: '1px solid var(--bg-panel-border)',
+              borderLeft: '3px solid transparent',
             }}
           >
             <span role="columnheader" style={headLabel}>Pos</span>

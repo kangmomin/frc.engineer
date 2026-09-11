@@ -8,6 +8,7 @@ import { startLapHistoryTracker, useLapHistoryStore } from '../../store/lapHisto
 import { startReplayDerivedTracker, useDisplayedLapHistory, useDisplayedRaceMeta, useReplayDerivedStore } from '../../store/replayDerivedStore';
 import type { DriverInfo, PitwallState, ReplayFrame } from '../../types/telemetry';
 import type { ShellControls } from '../../shell/types';
+import '../../styles/theme.css';
 
 const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 25));
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -93,6 +94,34 @@ export async function run() {
     await feed(cutoff);
     await until(() => container.textContent!.includes('Need 0.001s'), 'Cutoff tie or target is incorrect.');
     check(container.textContent!.includes('Top 16 advance'), '22-entry format was not displayed.');
+
+    // Wide layouts keep the times beside the driver; narrow layouts scroll all
+    // 12 columns together even when 24 cars also require vertical scrolling.
+    const originalSize = container.style.cssText;
+    container.style.cssText = 'width:1920px;height:740px';
+    const fullGrid = state(Array.from({ length: 24 }, (_, i) => driver({
+      index: i, name: `Driver ${i}`, position: i + 1, bestLapTime: 90000 + i * 100, lapDistance: i * 100,
+    })));
+    fullGrid.session!.qualifyingGridSize = 24;
+    await feed(fullGrid);
+    const table = container.querySelector<HTMLElement>('[aria-label="Qualifying Classification"]')!;
+    const aligned = () => {
+      const headers = table.querySelectorAll('[role="columnheader"]');
+      check(headers.length === 12 && cells()!.length === 12, 'Classification lost a data column.');
+      headers.forEach((header, i) => check(Math.abs(header.getBoundingClientRect().left - cells()![i].getBoundingClientRect().left) < 1, `Column ${i} header and data do not align.`));
+    };
+    for (const width of [1920, 2560, 1280]) {
+      container.style.width = `${width}px`; await pause();
+      check(cells()![2].getBoundingClientRect().left - cells()![1].getBoundingClientRect().left < 200, 'Best lap drifted away from the driver on a wide screen.');
+      aligned();
+    }
+    check(table.scrollWidth > table.clientWidth, 'Narrow classification cannot scroll to all columns.');
+    const group = table.querySelector<HTMLElement>('[role="rowgroup"]')!;
+    check(group.scrollHeight > group.clientHeight, '24-car layout did not exercise vertical scrolling.');
+    table.scrollLeft = table.scrollWidth; await pause(); aligned();
+    check(cells()![11].getBoundingClientRect().right <= table.getBoundingClientRect().left + table.clientWidth, 'Final status column is clipped after horizontal scrolling.');
+    container.style.cssText = originalSize;
+
     // Derived display switches stores, consumes seek prefixes, and prunes same-lap rewinds.
     await feed(state([driver({ position: 3 })], 'Race', 'live'));
     await feed(state([driver({ currentLapNum: 2, lastLapTime: 99000 })], 'Race', 'live'));
@@ -151,6 +180,6 @@ export async function run() {
     check(!container.querySelector('[role="dialog"]'), 'Archive B retained archive A driver detail.');
     store.setPlaybackActive(false); await pause();
     check(container.textContent!.includes('Building read'), 'Leaving replay inherited a replay battle baseline.');
-    return 'Qualifying/replay Chrome: invalid best, official sectors, identity resets, 22-car cutoff, replay prefix/isolation and actual Broadcast/Pitwall source switches passed.';
+    return 'Qualifying/replay Chrome: compact wide/narrow classification, 24-car scroll, invalid best, official sectors, identity resets, cutoff and replay isolation passed.';
   } finally { root.unmount(); container.remove(); store.resetRoom(); }
 }
