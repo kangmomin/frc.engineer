@@ -22,8 +22,8 @@ export interface MyLapPanelProps {
   detail: string;
 }
 
-/** My Lap 사이드바 패널(Phase3 Spec §4.1) — phase + best/라이브 델타 + progress + 라이브 섹터
- * + ahead/behind. VM만 받는 순수 컴포넌트. */
+/** My Lap 사이드바 패널 — phase + best/라이브 델타 + progress + 라이브 섹터.
+ * VM만 받는 순수 컴포넌트. */
 export function MyLapPanel({ lap, detail }: MyLapPanelProps) {
   if (!lap.hasPlayer) {
     return (
@@ -85,29 +85,6 @@ export function MyLapPanel({ lap, detail }: MyLapPanelProps) {
         <div style={tile}>
           <div style={tileLabel}>S3</div>
           <div style={{ ...tileValue, color: lap.s3Color }}>{lap.s3Text}</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* threat 모드: 플레이어가 트랙 밖이라 슬롯이 앞뒤차가 아니라 위협 랭킹 상위 2대 —
-            라벨을 ⚠+순위로 바꿔 "물리적 앞/뒤"로 오독되지 않게 한다(갭 값도 거리→베스트랩 델타). */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 11px', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderLeft: '3px solid var(--accent)', borderRadius: 2 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-              {lap.aroundMode === 'threat' ? `⚠ ${lap.aheadCode} ${lap.aheadPos}`.trim() : `▲ ${lap.aheadCode}`}
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{lap.aheadSummary}</div>
-          </div>
-          <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 16, color: lap.aheadGapColor }}>{lap.aheadGapText}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 11px', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderLeft: '3px solid var(--text-secondary)', borderRadius: 2 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10, letterSpacing: '.1em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-              {lap.aroundMode === 'threat' ? `⚠ ${lap.behindCode} ${lap.behindPos}`.trim() : `▼ ${lap.behindCode}`}
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{lap.behindSummary}</div>
-          </div>
-          <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 16, color: lap.behindGapColor }}>{lap.behindGapText}</span>
         </div>
       </div>
     </div>

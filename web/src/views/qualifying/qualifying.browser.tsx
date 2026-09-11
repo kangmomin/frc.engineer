@@ -122,6 +122,46 @@ export async function run() {
     check(cells()![11].getBoundingClientRect().right <= table.getBoundingClientRect().left + table.clientWidth, 'Final status column is clipped after horizontal scrolling.');
     container.style.cssText = originalSize;
 
+    // Physical traffic crosses the finish line and ignores classification and
+    // completed lap counts. Pit/garage/inactive/retired entries cannot mask it.
+    const trafficDrivers = [
+      driver({ name: 'Player Car', position: 2, currentLapNum: 5, lapDistance: 4950, bestLapTime: 90000 }),
+      driver({ index: 1, name: 'Alex Ahead', position: 20, currentLapNum: 1, lapDistance: 50, bestLapTime: 94000, driverStatus: 3 }),
+      driver({ index: 2, name: 'Bella Behind', position: 1, currentLapNum: 9, lapDistance: 4800, bestLapTime: 70000 }),
+      driver({ index: 3, name: 'Garage Ghost', lapDistance: 4995, driverStatus: undefined }),
+      driver({ index: 4, name: 'Pit Ghost', lapDistance: 4975, pitStatus: 1 }),
+      driver({ index: 5, name: 'Inactive Ghost', lapDistance: 4980, resultStatus: 1 }),
+      driver({ index: 6, name: 'Retired Ghost', lapDistance: 4985, resultStatus: 7 }),
+      driver({ index: 7, name: 'Faraway Car', lapDistance: 2500, position: 15 }),
+    ];
+    const traffic = () => container.querySelector<HTMLElement>('[aria-label="Track Traffic"]');
+    const ahead = () => traffic()?.querySelector('[aria-label="Car ahead on track"]')?.textContent ?? '';
+    const behind = () => traffic()?.querySelector('[aria-label="Car behind on track"]')?.textContent ?? '';
+    await feed(state(trafficDrivers, 'Q1', 'traffic'));
+    await until(() => ahead().includes('Alex Ahead') && ahead().includes('100m'), 'Physical car ahead was replaced by ranking or a stale car.');
+    check(ahead().includes('Out lap') && behind().includes('Bella Behind') && behind().includes('150m'), 'Traffic names, states or rear distance are incorrect.');
+    check(container.querySelector('aside')?.firstElementChild === traffic(), 'Track traffic is not visible at the top of the sidebar.');
+    const moved = trafficDrivers.map((d) => d.index === 1 ? { ...d, lapDistance: 4900 } : d);
+    await feed(state(moved, 'Q1', 'traffic'));
+    await until(() => ahead().includes('Faraway Car') && behind().includes('Alex Ahead'), 'Passing traffic did not update the neighboring cars.');
+    const changedPlayer = state(moved, 'Q1', 'traffic'); changedPlayer.playerIndex = 2;
+    await feed(changedPlayer);
+    check(traffic()?.textContent?.includes('Around Bella Behind') && ahead().includes('Alex Ahead') && ahead().includes('100m'), 'Traffic did not follow the current player.');
+    await feed(state(trafficDrivers.map((d) => d.index === 0 ? { ...d, lapDistance: -50, driverStatus: 3 } : d), 'Q1', 'traffic'));
+    check(ahead().includes('Alex Ahead') && ahead().includes('100m'), 'Negative pre-line distance switched traffic to ranking threats.');
+    await feed(state(trafficDrivers.map((d) => d.index === 0 ? { ...d, lapDistance: 0, driverStatus: undefined } : d), 'Q1', 'traffic'));
+    const threats = container.querySelector('[aria-label="Threat Watch"]');
+    check(threats?.textContent?.includes('best lap difference') && threats.textContent.includes('+4.000s'), 'Garage threat fallback lost its distinct heading or time units.');
+    check(!traffic() && !container.querySelector('[aria-label="Car ahead on track"]'), 'Ranked threats were mislabeled as physical traffic.');
+    const unavailable = state(trafficDrivers, 'Q1', 'traffic'); unavailable.session!.trackLength = 0;
+    await feed(unavailable);
+    check(traffic()?.textContent?.includes('Track position unavailable') && !ahead(), 'Missing track data was presented as a clear track.');
+    await feed(state([trafficDrivers[0]], 'Q1', 'traffic'));
+    check(ahead().includes('No car ahead') && behind().includes('No car behind'), 'A lone on-track player was treated as missing telemetry.');
+    const noPlayer = state(trafficDrivers, 'Q1', 'traffic'); noPlayer.playerIndex = 255;
+    await feed(noPlayer);
+    check(traffic()?.textContent?.includes('No player car'), 'Missing player retained stale traffic.');
+
     // Derived display switches stores, consumes seek prefixes, and prunes same-lap rewinds.
     await feed(state([driver({ position: 3 })], 'Race', 'live'));
     await feed(state([driver({ currentLapNum: 2, lastLapTime: 99000 })], 'Race', 'live'));
@@ -180,6 +220,6 @@ export async function run() {
     check(!container.querySelector('[role="dialog"]'), 'Archive B retained archive A driver detail.');
     store.setPlaybackActive(false); await pause();
     check(container.textContent!.includes('Building read'), 'Leaving replay inherited a replay battle baseline.');
-    return 'Qualifying/replay Chrome: compact wide/narrow classification, 24-car scroll, invalid best, official sectors, identity resets, cutoff and replay isolation passed.';
+    return 'Qualifying/replay Chrome: compact wide/narrow classification, 24-car scroll, physical traffic/garage transitions, invalid best, official sectors, identity resets, cutoff and replay isolation passed.';
   } finally { root.unmount(); container.remove(); store.resetRoom(); }
 }

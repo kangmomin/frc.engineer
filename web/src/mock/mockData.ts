@@ -751,13 +751,7 @@ function buildQualiGarageDriver(index: number, seed: DriverSeed): DriverInfo {
     numUnservedDriveThroughs: 0,
     numUnservedStopGoPenalties: 0,
     lapInvalid: false,
-    // [tradeoff, comp m-7] pitStatus:0(온트랙)+lapDistance:0이라 useTrackGaps(`pitStatus===0`
-    // 필터)가 이 차를 "0m 지점의 온트랙 차"로 오인해 ahead/behind 갭 계산을 오염시킬 수 있다.
-    // pitStatus:1/2(PIT)로 바꾸면 실제로는 더 정확해지지만, classificationRows의
-    // getDriverStatusInfo가 "핏 > 드라이버상태" 우선순위(전 커밋 불변 lift)라 Status 컬럼이
-    // GAR 대신 PIT을 표시하게 되어 M1(driverStatus ?? 0 → GAR) 검증을 스모크에서 가리게 된다 —
-    // 그 트레이드오프를 피해 pitStatus:0을 유지한다(garage 드라이버는 QUALI_GARAGE_INDICES
-    // 2대뿐이라 ahead/behind 오염 영향은 제한적).
+    // pitStatus:0 + 생략된 driverStatus(개러지)는 GAR 표시와 트랙 앞뒤차 제외를 함께 검증한다.
     pitStatus: 0,
     driverStatus: 0, // GARAGE — 아래서 omitempty 부재로 삭제(M1 정규화를 smoke가 실제로 밟게 함)
     resultStatus: 0,

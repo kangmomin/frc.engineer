@@ -21,6 +21,7 @@ import { deriveMyLap } from './derive/myLap';
 import { deriveQualiSegment } from './derive/qualiSegment';
 import { MyLapPanel } from './MyLapPanel';
 import { QualifyingHeader } from './QualifyingHeader';
+import { TrackTrafficPanel } from './TrackTrafficPanel';
 import { buildTryBaseline, computeOverallBestSectors, useSectorAccumulator } from './useSectorAccumulator';
 
 const QUALI_SESSION_RE = /^(Q[1-3]|Short Q|OSQ|SS[1-3]|Short SS|OSS)$/i;
@@ -147,6 +148,7 @@ export function QualifyingView({ controls }: QualifyingViewProps) {
       <main style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 312px', gap: 11 }}>
         <ClassificationPanel rows={rows} detail={`${segment.segment} · ${allDrivers.length} cars`} cutoffLabel={cutoffLabel} />
         <aside style={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 9, overflowY: 'auto' }}>
+          <TrackTrafficPanel lap={myLap} detail={player ? player.name : '—'} />
           <MyLapPanel lap={myLap} detail={player ? player.name : '—'} />
           <CutoffWatchPanel cutoff={cutoffWatch} detail={segment.segment} />
           <WeatherPanel weather={weather} weatherStep={weatherStep} onStepChange={setWeatherStep} />

@@ -81,7 +81,7 @@ function makeQualiState(overrides: Partial<QualifyingState> = {}): QualifyingSta
   return { ...INITIAL_STATE, phase: 'FLYING', attemptNumber: 2, consecutivePushLaps: 1, ...overrides };
 }
 
-const EMPTY_GAP: TrackGap = { gapAheadM: null, gapBehindM: null, aheadDriver: null, behindDriver: null };
+const EMPTY_GAP: TrackGap = { available: false, gapAheadM: null, gapBehindM: null, aheadDriver: null, behindDriver: null };
 
 describe('deriveMyLap — no player (spectating)', () => {
   it('degrades to dashes without crashing', () => {
@@ -174,7 +174,7 @@ describe('deriveMyLap — ahead/behind meters', () => {
     const player = makeDriver();
     const ahead = makeDriver({ index: 7, name: 'Ahead Driver' });
     const behind = makeDriver({ index: 9, name: 'Behind Driver' });
-    const trackGap: TrackGap = { gapAheadM: 120, gapBehindM: 800, aheadDriver: ahead, behindDriver: behind };
+    const trackGap: TrackGap = { available: true, gapAheadM: 120, gapBehindM: 800, aheadDriver: ahead, behindDriver: behind };
     const tryMap = new Map<number, DriverTryState>([
       [7, { label: 'TRY', tone: 'attack', summary: 'Flying', score: 4, sectorDelta1Ms: null, sectorDelta2Ms: null }],
       [9, { label: 'COOL', tone: 'standby', summary: 'In lap', score: -1, sectorDelta1Ms: null, sectorDelta2Ms: null }],
@@ -183,11 +183,14 @@ describe('deriveMyLap — ahead/behind meters', () => {
     const vm = deriveMyLap(player, [], undefined, tryMap, trackGap, makeSession(), codes, makeQualiState());
 
     expect(vm.aheadCode).toBe('AHD');
+    expect(vm.aheadName).toBe('Ahead Driver');
+    expect(vm.trackGapsAvailable).toBe(true);
     expect(vm.aheadGapText).toBe('120m');
     expect(vm.aheadGapColor).toBe('var(--accent-lime)'); // <150 close
     expect(vm.aheadSummary).toBe('Flying');
 
     expect(vm.behindCode).toBe('BHD');
+    expect(vm.behindName).toBe('Behind Driver');
     expect(vm.behindGapText).toBe('800m');
     expect(vm.behindSummary).toBe('In lap');
   });
@@ -206,6 +209,16 @@ describe('deriveMyLap — ahead/behind meters', () => {
     const vm = deriveMyLap(player, [player, other], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
     expect(vm.aroundMode).toBe('track');
     expect(vm.aheadPos).toBe('');
+  });
+
+  it('keeps physical traffic mode before the first line crossing', () => {
+    const player = makeDriver({ lapDistance: -100, driverStatus: 3 });
+    const other = makeDriver({ index: 4, name: 'On Circuit', position: 12, resultStatus: 2 });
+    const gap: TrackGap = { available: true, gapAheadM: 50, gapBehindM: 4950, aheadDriver: other, behindDriver: other };
+    const vm = deriveMyLap(player, [player, other], undefined, new Map(), gap, makeSession(), new Map(), makeQualiState());
+    expect(vm.aroundMode).toBe('track');
+    expect(vm.aheadName).toBe('On Circuit');
+    expect(vm.aheadGapText).toBe('50m');
   });
 });
 
@@ -242,6 +255,15 @@ describe('deriveMyLap — threat watch fallback (player off-track)', () => {
     expect(vm.aroundMode).toBe('track');
     expect(vm.aheadCode).toBe('—');
     expect(vm.aheadSummary).toBe('No car ahead');
+  });
+
+  it('recognizes an omitted garage status even when pitStatus and distance are zero', () => {
+    const player = makeDriver({ driverStatus: undefined, pitStatus: 0, lapDistance: 0 });
+    const other = makeDriver({ index: 4, name: 'Flying Rival', position: 12, resultStatus: 2 });
+    const vm = deriveMyLap(player, [player, other], undefined, new Map(), EMPTY_GAP, makeSession(), new Map(), makeQualiState());
+    expect(vm.aroundMode).toBe('threat');
+    expect(vm.aheadName).toBe('Flying Rival');
+    expect(vm.trackGapsAvailable).toBe(false);
   });
 });
 

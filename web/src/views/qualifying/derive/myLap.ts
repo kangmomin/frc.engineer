@@ -74,13 +74,16 @@ export interface MyLapVM {
   /** 'track' = 물리적 앞뒤차(기존). 'threat' = 플레이어가 트랙 밖이라 슬롯이 위협 랭킹
    * 상위 2대로 대체된 상태(threatWatch.ts) — 갭 값은 거리(m)가 아니라 베스트랩 델타(s). */
   aroundMode: 'track' | 'threat';
+  trackGapsAvailable: boolean;
   aheadCode: string;
+  aheadName: string;
   /** threat 모드 전용 순위 표기(`P16`). track 모드는 빈 문자열. */
   aheadPos: string;
   aheadGapText: string;
   aheadGapColor: string;
   aheadSummary: string;
   behindCode: string;
+  behindName: string;
   behindPos: string;
   behindGapText: string;
   behindGapColor: string;
@@ -105,12 +108,15 @@ const EMPTY_VM: MyLapVM = {
   s3Text: DASH,
   s3Color: 'var(--text-muted)',
   aroundMode: 'track',
+  trackGapsAvailable: false,
   aheadCode: DASH,
+  aheadName: DASH,
   aheadPos: '',
   aheadGapText: DASH,
   aheadGapColor: 'var(--text-muted)',
   aheadSummary: 'No car ahead',
   behindCode: DASH,
+  behindName: DASH,
   behindPos: '',
   behindGapText: DASH,
   behindGapColor: 'var(--text-muted)',
@@ -178,7 +184,7 @@ export function deriveMyLap(
   // 플레이어가 트랙 밖(개러지/핏)이면 앞뒤차 대신 threat watch로 폴백한다 — 퀄리 막판
   // 개러지 대기 중 "누가 어택 중인지"가 통째로 사라지던 공백(useTrackGaps EMPTY_GAP) 대체.
   // 후보 0대면 기존 track 표시(대시)로 degrade — 백엔드 빈 표시와 대칭.
-  const playerOffTrack = player.pitStatus !== 0 || player.lapDistance < 0;
+  const playerOffTrack = player.pitStatus !== 0 || (player.driverStatus ?? 0) === 0;
   const threats = playerOffTrack ? deriveThreatCars(sorted, player, tryMap) : [];
 
   const ahead = trackGap.aheadDriver;
@@ -190,12 +196,13 @@ export function deriveMyLap(
     threat
       ? {
           code: codes.get(threat.driver.index) ?? DASH,
+          name: threat.driver.name,
           pos: `P${threat.driver.position}`,
           gapText: formatThreatDelta(threat.deltaMs),
           gapColor: threatDeltaTone(threat.deltaMs),
           summary: threat.tryState?.summary ?? '',
         }
-      : { code: DASH, pos: '', gapText: DASH, gapColor: 'var(--text-muted)', summary: emptySummary };
+      : { code: DASH, name: DASH, pos: '', gapText: DASH, gapColor: 'var(--text-muted)', summary: emptySummary };
 
   const around =
     threats.length > 0
@@ -208,6 +215,7 @@ export function deriveMyLap(
           aroundMode: 'track' as const,
           aheadSlot: {
             code: ahead ? codes.get(ahead.index) ?? DASH : DASH,
+            name: ahead?.name ?? DASH,
             pos: '',
             gapText: formatDistance(trackGap.gapAheadM),
             gapColor: gapTone(trackGap.gapAheadM),
@@ -215,6 +223,7 @@ export function deriveMyLap(
           },
           behindSlot: {
             code: behind ? codes.get(behind.index) ?? DASH : DASH,
+            name: behind?.name ?? DASH,
             pos: '',
             gapText: formatDistance(trackGap.gapBehindM),
             gapColor: gapTone(trackGap.gapBehindM),
@@ -240,12 +249,15 @@ export function deriveMyLap(
     s3Text: dispS3 > 0 ? formatSectorTime(dispS3) : DASH,
     s3Color: dispS3 > 0 ? sectorTone(dispS3, playerAcc?.bestS3) : 'var(--text-muted)',
     aroundMode: around.aroundMode,
+    trackGapsAvailable: trackGap.available,
     aheadCode: around.aheadSlot.code,
+    aheadName: around.aheadSlot.name,
     aheadPos: around.aheadSlot.pos,
     aheadGapText: around.aheadSlot.gapText,
     aheadGapColor: around.aheadSlot.gapColor,
     aheadSummary: around.aheadSlot.summary,
     behindCode: around.behindSlot.code,
+    behindName: around.behindSlot.name,
     behindPos: around.behindSlot.pos,
     behindGapText: around.behindSlot.gapText,
     behindGapColor: around.behindSlot.gapColor,

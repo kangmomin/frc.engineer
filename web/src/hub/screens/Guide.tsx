@@ -116,7 +116,8 @@ export function Guide({ t, onLaunchLive, onGoOverview, viewOnly = false }: Props
           </InfoCard>
           <InfoCard title="QUALI · Qualifying">
             <li><b>Classification</b>: 폴 대비 기록과 컷오프 아래 탈락권을 봅니다.</li>
-            <li><b>My Lap</b>: 현재 랩 단계, 부분 섹터 델타, 트랙 진행률과 주변 차량을 확인합니다.</li>
+            <li><b>Track Traffic</b>: 순위·랩 기록과 무관하게 트랙 위 앞뒤 차량의 이름, 주행 상태와 거리(m)를 봅니다. 피트에서는 Threat Watch로 순위 위협 차량을 표시합니다.</li>
+            <li><b>My Lap</b>: 현재 랩 단계, 부분 섹터 델타와 트랙 진행률을 확인합니다.</li>
             <li><b>Cutoff Watch</b>: 현재 진출 상태와 컷오프 마진, 다음 행동 안내를 봅니다.</li>
             <li>QUALI 탭은 실제 예선 세션에서만 활성화됩니다.</li>
           </InfoCard>
