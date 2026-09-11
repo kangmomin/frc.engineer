@@ -109,8 +109,15 @@ function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () =>
             <label>총 랩 수<select value={lapsFilter} onChange={e => setLapsFilter(e.target.value)}><option value="">전체 랩 수</option>{[...new Set(corpus.contexts.map(c => c.conditions.totalLaps))].sort((a, b) => a - b).map(value => <option key={value} value={value}>{value}랩</option>)}</select></label>
             <button type="button" onClick={resetFilters}>초기화</button>
           </div>
-          <p className={styles.note} role="status">경기 조건 {visible.length} / {records.length}개</p>
-          {corpus.contexts.length === 0 ? <div className={styles.empty}><h3>이 조건의 기록을 모으고 있습니다</h3><p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p><p>최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 40개의 정상 랩이 필요합니다. 사고·손상·트래픽·SC가 있는 랩은 기준 페이스에서 제외합니다.</p><button onClick={() => setRevision(n => n + 1)}>다시 확인</button></div> : visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
+          <p className={styles.note} role="status">조회 범위의 수집 기록 {corpus.records}건 · 경기 조건 {visible.length} / {records.length}개</p>
+          {corpus.contexts.length === 0 ? <div className={styles.empty}>
+            <h3>{corpus.records === 0 ? '이 조건의 기록을 모으고 있습니다' : '기록은 수집됐지만 비교할 정상 랩이 없습니다'}</h3>
+            {corpus.records === 0
+              ? <p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p>
+              : <><p>수집된 {corpus.records}건에서 경기 조건과 정상 랩이 함께 확인되는 자료를 찾지 못했습니다. 계측 누락이나 손상·트래픽·되감기 등으로 제외된 기록은 비교에 사용하지 않습니다.</p><p>최신 Driver Pack으로 새 레이스를 업로드한 뒤 다시 확인하세요. 기존 기록의 누락된 측정값이나 제외 판정은 자동으로 복구되지 않습니다.</p>{track.format === 'F1 25' && <p>2026 차량을 사용한다면 게임의 UDP 형식도 2026으로 설정해 수집하세요.</p>}</>}
+            <p>전략 비교 계산에는 최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 40개의 정상 랩이 필요합니다. 사고·손상·트래픽·SC가 있는 랩은 기준 페이스에서 제외합니다.</p>
+            <button onClick={() => setRevision(n => n + 1)}>다시 확인</button>
+          </div> : visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
             <button type="button" className={styles.recordButton} aria-pressed={c.id === contextId} onClick={() => setContextId(c.id)}>
               <span className={styles.recordHeading}><strong>조건 {number} · {c.conditions.totalLaps}랩</strong><span>{c.id === contextId ? '선택됨' : '조건 선택'}</span></span>
               <strong>{trackName(c.trackId)}</strong>

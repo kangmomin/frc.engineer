@@ -40,7 +40,11 @@ func capturedStrategy(t *testing.T, statusFirst, overtake, gap bool) *strategy.E
 		status.CarStatusData[23] = packets.CarStatusData{ActualTyreCompound: 16, VisualTyreCompound: 16, TyresAgeLaps: uint8(5 + lapIndex), FuelInTank: float32(96 - at*.015),
 			ERSStoreEnergy: float32(3000000 - 600000*inLap/90), ERSDeployedThisLap: float32(2400000 * inLap / 90), ERSHarvestedThisLapMGUK: float32(1800000 * inLap / 90)}
 		if tick%10 == 0 {
-			send(at, udp.ParsedData{CarDamage: &packets.PacketCarDamageData{}})
+			damage := &packets.PacketCarDamageData{}
+			wear := float32(5 + at/90)
+			damage.CarDamageData[23].TyresWear = [4]float32{wear, wear, wear, wear}
+			damage.CarDamageData[23].TyresDamage = [4]uint8{uint8(wear), uint8(wear), uint8(wear), uint8(wear)}
+			send(at, udp.ParsedData{CarDamage: damage})
 			if statusFirst {
 				send(at, udp.ParsedData{CarStatus: status})
 			}
@@ -125,5 +129,87 @@ func TestStrategyCaptureRejectsMissingSourceAndFlashback(t *testing.T) {
 	}
 	if e := c.snapshot(123); e == nil || !slices.Contains(e.Reasons, "flashback") {
 		t.Fatal("rewind reason must survive a checkpoint with no newly completed laps")
+	}
+}
+
+func TestStrategyDamageDistinguishesTyreWear(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		damage  packets.CarDamageData
+		exclude bool
+	}{
+		// Actual race-clean-start capture, 1.58 seconds after lights out.
+		{"ordinary wear", packets.CarDamageData{TyresWear: [4]float32{1.0448905, 1.0575718}, TyresDamage: [4]uint8{1, 1}}, false},
+		{"integer rounding", packets.CarDamageData{TyresWear: [4]float32{39.5}, TyresDamage: [4]uint8{40}}, false},
+		{"damage beyond wear", packets.CarDamageData{TyresWear: [4]float32{39.5}, TyresDamage: [4]uint8{41}}, true},
+		{"puncture on worn tyre", packets.CarDamageData{TyresWear: [4]float32{99.5}, TyresDamage: [4]uint8{100}}, true},
+		{"wing damage", packets.CarDamageData{FrontLeftWingDamage: 1}, true},
+		{"engine damage", packets.CarDamageData{EngineDamage: 1}, true},
+		{"DRS fault", packets.CarDamageData{DRSFault: 1}, true},
+		{"ERS fault", packets.CarDamageData{ERSFault: 1}, true},
+		{"unknown wear", packets.CarDamageData{TyresWear: [4]float32{float32(math.NaN())}}, true},
+		{"infinite wear", packets.CarDamageData{TyresWear: [4]float32{float32(math.Inf(1))}}, true},
+		{"negative wear", packets.CarDamageData{TyresWear: [4]float32{-1}}, true},
+		{"out of range wear", packets.CarDamageData{TyresWear: [4]float32{101}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := strategyDamaged(tc.damage); got != tc.exclude {
+				t.Fatalf("excluded=%v, want %v", got, tc.exclude)
+			}
+		})
+	}
+}
+
+func TestStrategyCapturePreRaceClockResets(t *testing.T) {
+	c := &strategyCapture{}
+	c.reset(123, 0)
+	c.session = &packets.PacketSessionData{SessionType: 15, TotalLaps: 20}
+	c.evidence.Conditions = strategy.Conditions{PacketFormat: 2026, TotalLaps: 20, SessionType: 15, TrackLengthM: 3337}
+	// Actual consecutive-frame resets from race-edge-cases; no FLBK event and
+	// no timed lap yet, including the reset after the formation lap.
+	for _, times := range [][2]float64{{113.30251, .000008}, {102.26422, .043627}, {6.128495, .067841}} {
+		l := packets.LapData{CurrentLapNum: 1}
+		c.observeLap(times[0], l)
+		c.observeLap(times[1], l)
+		if len(c.evidence.Reasons) != 0 {
+			t.Fatalf("pre-race reset %v disqualified the session: %v", times, c.evidence.Reasons)
+		}
+		if c.current == nil || c.current.startTime != times[1] {
+			t.Fatal("pre-race reset retained an old lap accumulator")
+		}
+	}
+}
+
+func TestStrategyCaptureStillRejectsRealRewinds(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		before    packets.LapData
+		after     packets.LapData
+		completed bool
+		explicit  bool
+	}{
+		{"timed first lap", packets.LapData{CurrentLapNum: 1, CurrentLapTimeInMS: 10000}, packets.LapData{CurrentLapNum: 1}, false, false},
+		{"completed evidence", packets.LapData{CurrentLapNum: 1}, packets.LapData{CurrentLapNum: 1}, true, false},
+		{"reported previous lap", packets.LapData{CurrentLapNum: 1, LastLapTimeInMS: 90000}, packets.LapData{CurrentLapNum: 1}, false, false},
+		{"joined during race", packets.LapData{CurrentLapNum: 3}, packets.LapData{CurrentLapNum: 2}, false, false},
+		{"explicit event before start", packets.LapData{CurrentLapNum: 1}, packets.LapData{CurrentLapNum: 1}, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &strategyCapture{}
+			c.reset(123, 0)
+			c.session = &packets.PacketSessionData{SessionType: 15, TotalLaps: 20}
+			c.evidence.Conditions = strategy.Conditions{PacketFormat: 2026, TotalLaps: 20, SessionType: 15, TrackLengthM: 3337}
+			c.observeLap(100, tc.before)
+			if tc.completed {
+				c.evidence.Laps = []strategy.Lap{{Number: 1, TimeMs: 90000}}
+			}
+			if tc.explicit {
+				c.observe(&udp.ParsedData{Header: &packets.PacketHeader{SessionUID: 123, SessionTime: 100}, Event: &packets.PacketEventData{EventStringCode: packets.EventFlashback}})
+			}
+			c.observeLap(0, tc.after)
+			if !slices.Contains(c.evidence.Reasons, "flashback") || len(c.evidence.Laps) != 0 {
+				t.Fatalf("real rewind retained usable evidence: %+v", c.evidence)
+			}
+		})
 	}
 }

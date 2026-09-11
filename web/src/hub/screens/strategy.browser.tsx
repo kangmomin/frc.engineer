@@ -50,7 +50,7 @@ export async function run() {
         contexts++; if (!allowed || isB) return json({}, 403);
         contextQueries.push(url.searchParams);
         const selectedTrack = url.searchParams.get('trackId');
-        return json({ contexts: [strategyContextFixture, otherContext, wetContext].filter(c => selectedTrack === null || c.trackId === Number(selectedTrack)), records: 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6 });
+        return json({ contexts: [strategyContextFixture, otherContext, wetContext].filter(c => selectedTrack === null || c.trackId === Number(selectedTrack)), records: selectedTrack === '5' ? 0 : 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6 });
       }
       if (url.pathname === '/strategies/simulate') {
         simulations++; if (!allowed || isB) return json({}, 403);
@@ -78,6 +78,7 @@ export async function run() {
     await until(() => host.textContent?.includes('전략 비교하기') === true, 'workbench did not load');
     check(simulations === 0, 'opening strategy auto-ran a comparison');
     check(cards(host).length === 3 && cards(host)[0].getAttribute('aria-pressed') === 'true', 'initial record cards or selection missing');
+    check(host.textContent?.includes('수집 기록 12건 · 경기 조건 3 / 3개'), 'stored record count was confused with eligible conditions');
     check(contextQueries[contextQueries.length - 1]?.get('trackId') === null && host.textContent?.includes('전체 트랙'), 'strategy did not default to all tracks');
     check(cards(host)[0].textContent?.includes('Italy (Monza)') && cards(host)[1].textContent?.includes('Great Britain'), 'all-track cards lost track names');
     selectFilter(host, '트랙', '42');
@@ -91,6 +92,7 @@ export async function run() {
     button(host, '초기화').click(); await until(() => cards(host).length === 3, 'track search reset failed');
     await searchRecords(host, '  그랑프리 V1.23  ');
     check(cards(host).length === 1 && cards(host)[0].textContent?.includes('조건 2'), 'search lost case folding, combined terms, or stable condition number');
+    check(host.textContent?.includes('수집 기록 12건 · 경기 조건 1 / 3개'), 'client-side filtering changed the stored record count');
     check(!host.textContent?.includes('전략 비교하기') && host.textContent?.includes('비교할 조건 카드를 선택하세요'), 'hidden selection retained comparison');
     cards(host)[0].click(); await until(() => host.textContent?.includes('전략 비교하기') === true, 'card selection did not open comparison');
     check(cards(host)[0].getAttribute('aria-pressed') === 'true' && simulations === 0, 'card did not select or auto-ran comparison');
@@ -121,6 +123,7 @@ export async function run() {
     const trackSelect = [...host.querySelectorAll('select')].find(s => [...s.options].some(o => o.textContent === 'Monaco'))!;
     trackSelect.value = '5'; trackSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => host.textContent?.includes('이 조건의 기록을 모으고 있습니다') === true, 'empty context did not render');
+    check(host.textContent?.includes('수집 기록 0건') && !host.textContent?.includes('기록은 수집됐지만'), 'empty corpus was confused with excluded records');
     check(host.querySelector('[aria-label="경기 조건 검색 및 필터"]') && host.textContent?.includes('경기 조건 0 / 0개'), 'empty corpus hid record filters or count');
     check(cards(host).length === 0 && !host.textContent?.includes('전략 비교하기'), 'empty corpus displayed a card or comparison');
     selectFilter(host, '날씨', ''); selectFilter(host, '총 랩 수', ''); selectFilter(host, '차량 성능', 'equal');
@@ -131,6 +134,14 @@ export async function run() {
     const completeSimulation = finishSimulation as unknown as (r: Response) => void; completeSimulation(json(strategyResultFixture)); await pause(60);
     check(!host.textContent?.includes('12랩 종료'), 'late result leaked across track change');
     deferSimulation = false;
+    selectFilter(host, '트랙', '0');
+    await until(() => host.textContent?.includes('기록은 수집됐지만 비교할 정상 랩이 없습니다') === true, 'excluded records were presented as missing uploads');
+    check(host.textContent?.includes('수집 기록 12건 · 경기 조건 0 / 0개') && host.textContent?.includes('제외된 기록은 비교에 사용하지 않습니다'), 'excluded corpus lost its stored count or explanation');
+    check(host.textContent?.includes('2026 차량을 사용한다면 게임의 UDP 형식도 2026으로'), 'legacy-format users received no guidance about missing 2026 measurements');
+    check(!host.textContent?.includes('이 조건의 기록을 모으고 있습니다') && !host.textContent?.includes('전략 비교하기'), 'excluded corpus displayed collection-only copy or comparison');
+    const beforeRefresh = contexts;
+    button(host, '다시 확인').click();
+    await until(() => contexts > beforeRefresh && host.textContent?.includes('기록은 수집됐지만 비교할 정상 랩이 없습니다') === true, 'excluded corpus could not refresh');
     trackSelect.value = '10'; trackSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => host.textContent?.includes('전략 비교하기') === true, 'track return did not load');
     check(cards(host).length === 2 && cards(host).every(c => c.textContent?.includes('Italy (Monza)')), 'single-track selection included another track');
@@ -154,7 +165,7 @@ export async function run() {
     (finishMe as unknown as (r: Response) => void)(json({ ...account, permissions: ['pithub'] })); await pause(60);
     check(!host.querySelector('[aria-label="STRATEGY"]') && !host.textContent?.includes('12랩 종료'), 'late permission grant crossed account boundary');
     check(preferences === 0, 'obsolete opt-in API was called');
-    return 'Strategy browser: record cards, combined search/filters, reset, selection and stale filtered results, permission entry/grant/revoke, manual comparison, units and stale track/account responses passed';
+    return 'Strategy browser: stored/eligible counts, empty/excluded corpus and refresh, record cards, combined search/filters, selection and stale results, permission entry/grant/revoke, manual comparison and units passed';
   } finally {
     root.unmount(); host.remove(); window.fetch = originalFetch;
     if (previousToken === null) localStorage.removeItem(PARENT_TOKEN_KEY); else localStorage.setItem(PARENT_TOKEN_KEY, previousToken);

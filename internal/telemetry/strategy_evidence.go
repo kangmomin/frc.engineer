@@ -216,9 +216,22 @@ func strategyValue(value float32, max float64) *float64 {
 }
 
 func strategyDamaged(d packets.CarDamageData) bool {
-	return d.FrontLeftWingDamage > 0 || d.FrontRightWingDamage > 0 || d.RearWingDamage > 0 || d.FloorDamage > 0 ||
-		d.DiffuserDamage > 0 || d.SidepodDamage > 0 || d.EngineDamage > 0 || d.DRSFault != 0 || d.ERSFault != 0 ||
-		d.TyresDamage[0] > 0 || d.TyresDamage[1] > 0 || d.TyresDamage[2] > 0 || d.TyresDamage[3] > 0
+	if d.FrontLeftWingDamage > 0 || d.FrontRightWingDamage > 0 || d.RearWingDamage > 0 || d.FloorDamage > 0 ||
+		d.DiffuserDamage > 0 || d.SidepodDamage > 0 || d.EngineDamage > 0 || d.DRSFault != 0 || d.ERSFault != 0 {
+		return true
+	}
+	for i, damage := range d.TyresDamage {
+		wear := float64(d.TyresWear[i])
+		if math.IsNaN(wear) || math.IsInf(wear, 0) || wear < 0 || wear > 100 || damage >= 100 {
+			return true
+		}
+		// The game's integer tyre damage includes ordinary tyre wear. Only
+		// damage beyond its rounding range should disqualify a wear sample.
+		if float64(damage) > math.Ceil(wear) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *strategyCapture) startLap(at float64, l packets.LapData) {
@@ -305,7 +318,15 @@ func (c *strategyCapture) observeLap(at float64, l packets.LapData) {
 	}
 	if c.lap != nil && (at < c.lapAt-1 || l.CurrentLapNum < c.lap.CurrentLapNum ||
 		(l.CurrentLapNum == c.lap.CurrentLapNum && l.CurrentLapTimeInMS+500 < c.lap.CurrentLapTimeInMS)) {
-		c.reason("flashback")
+		// Grid/formation starts reset the session clock before any timed lap.
+		// Reset the accumulator without inventing a rewind; an explicit FLBK
+		// event or a rewind after driving remains a session-wide exclusion.
+		preRaceReset := len(c.evidence.Laps) == 0 && c.lap.CurrentLapNum == 1 && l.CurrentLapNum == 1 &&
+			c.lap.CurrentLapTimeInMS == 0 && l.CurrentLapTimeInMS == 0 &&
+			c.lap.LastLapTimeInMS == 0 && l.LastLapTimeInMS == 0
+		if !preRaceReset {
+			c.reason("flashback")
+		}
 		c.current = nil
 		c.pendingStop = nil
 		c.evidence.Laps = []strategy.Lap{}
