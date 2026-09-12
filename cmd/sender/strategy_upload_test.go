@@ -44,6 +44,18 @@ func TestUploadStrategyUsesConfirmedTimingsOnly(t *testing.T) {
 	}
 }
 
+func TestUploadStrategyKeepsLapsWhenOptionalStopIsInvalid(t *testing.T) {
+	s := senderStrategySummary()
+	s.PrivateCapture.Strategy.Stops[0].StationaryMs = 600001
+	req, ok := buildUploadRequest(s, testUploadLogger())
+	if !ok || req.Strategy == nil || len(req.Strategy.Laps) != 30 || len(req.Strategy.Stops) != 0 || strategy.ValidateEvidence(req.Strategy) != nil {
+		t.Fatal("bad optional pit timer discarded every confirmed lap")
+	}
+	if len(s.PrivateCapture.Strategy.Stops) != 1 {
+		t.Fatal("upload mutated stored evidence")
+	}
+}
+
 func TestStrategyUploadIncludedInEveryStorageMode(t *testing.T) {
 	for _, mode := range []rtconfig.DataStorageMode{"", rtconfig.DataStorageModeResultOnly, rtconfig.DataStorageModeSummary, rtconfig.DataStorageModeAdvanced} {
 		t.Run(string(mode), func(t *testing.T) {

@@ -85,6 +85,46 @@ func TestStrategyCaptureLapBoundaryPacketOrders(t *testing.T) {
 	}
 }
 
+func TestStrategyCaptureDelayedLapPreservesRaceButRealRewindDoesNot(t *testing.T) {
+	c := &strategyCapture{}
+	send := func(uid uint64, frame uint32, at float32, lap uint8, current uint32) {
+		p := &udp.ParsedData{Header: &packets.PacketHeader{SessionUID: uid, PacketFormat: 2026,
+			OverallFrameIdentifier: frame, SessionTime: at}, LapData: &packets.PacketLapData{}}
+		p.LapData.LapData[0] = packets.LapData{CurrentLapNum: lap, CurrentLapTimeInMS: current, LastLapTimeInMS: 90000, CarPosition: 1}
+		c.observe(p)
+	}
+	c.observe(&udp.ParsedData{Header: &packets.PacketHeader{SessionUID: 123, PacketFormat: 2026},
+		Session: &packets.PacketSessionData{SessionType: 15, TotalLaps: 10, TrackLength: 4500}})
+	send(123, 10799, 179.98, 2, 89980)
+	send(123, 10800, 180, 3, 0)
+	if len(c.evidence.Laps) != 1 {
+		t.Fatal("fixture did not complete a lap")
+	}
+	send(123, 10799, 179.98, 2, 89980) // Previous lap arrives after its boundary.
+	if len(c.evidence.Laps) != 1 || len(c.evidence.Reasons) != 0 || c.lap.CurrentLapNum != 3 {
+		t.Fatal("delayed lap erased or rewound the capture")
+	}
+	// A newer frame from another packet type must not suppress timing updates.
+	c.observe(&udp.ParsedData{Header: &packets.PacketHeader{SessionUID: 123, OverallFrameIdentifier: 10830, SessionTime: 181.5},
+		Telemetry: &packets.PacketCarTelemetryData{}})
+	send(123, 10820, 181, 3, 1000)
+	send(123, 10801, 180.05, 3, 50) // Same-lap clock regression is also stale.
+	if len(c.evidence.Reasons) != 0 || c.lap.CurrentLapTimeInMS != 1000 {
+		t.Fatal("stale same-lap timing was treated as a flashback")
+	}
+	send(123, 10821, 170, 2, 80000) // Actual flashback advances overall frame.
+	if len(c.evidence.Laps) != 0 || !slices.Contains(c.evidence.Reasons, "flashback") {
+		t.Fatal("actual rewind was accepted as clean evidence")
+	}
+	// A new session starts its frame sequence afresh.
+	c.observe(&udp.ParsedData{Header: &packets.PacketHeader{SessionUID: 124, PacketFormat: 2026},
+		Session: &packets.PacketSessionData{SessionType: 15, TotalLaps: 10, TrackLength: 4500}})
+	send(124, 1, 0, 1, 0)
+	if c.lap == nil || c.lap.CurrentLapNum != 1 || len(c.evidence.Reasons) != 0 {
+		t.Fatal("previous session frame or exclusion leaked into new session")
+	}
+}
+
 func TestProcessorCollectsStrategyWithOptionalOutputsDisabled(t *testing.T) {
 	p := NewProcessor(udp.NewParser(testLogger()), &dashboardTestHub{}, 0, testLogger(), nil)
 	p.SetDashboardEnabled(false)
@@ -101,6 +141,20 @@ func TestProcessorCollectsStrategyWithOptionalOutputsDisabled(t *testing.T) {
 	// Missing measurements remain flagged even though collection is automatic.
 	if !slices.Contains(e.Laps[0].Flags, "source-missing") {
 		t.Fatal("default collection treated absent measurements as clean")
+	}
+}
+
+func TestStrategySnapshotKeepsEarlierLapsAfterBadMeasurement(t *testing.T) {
+	e := capturedStrategy(t, true, false, false)
+	e.Laps[1].TimeMs = 900001
+	e.Stops = []strategy.Stop{{InLap: 2, OutLap: 3, LaneMs: 1000, StationaryMs: 2000}}
+	c := &strategyCapture{uid: 123, evidence: *e}
+	got := c.snapshot(123)
+	if got == nil || len(got.Laps) != 1 || got.Laps[0].Number != 2 || len(got.Laps[0].Flags) != 0 || len(got.Stops) != 0 {
+		t.Fatal("one bad measurement discarded earlier clean evidence")
+	}
+	if len(c.evidence.Laps) != 2 || len(c.evidence.Stops) != 1 {
+		t.Fatal("snapshot mutated the live accumulator")
 	}
 }
 

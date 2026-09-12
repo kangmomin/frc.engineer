@@ -2,7 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HubApp } from '../HubApp';
 import { PARENT_TOKEN_KEY, clearViewAsSession } from '../data/session';
-import { strategyContextFixture, strategyResultFixture } from '../data/strategy.testdata';
+import { strategyContextFixture, strategyCorpusFixture, strategyResultFixture } from '../data/strategy.testdata';
+import type { StrategyContexts } from '../data/strategy';
 
 const pause = (ms = 20) => new Promise<void>(resolve => setTimeout(resolve, ms));
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -25,8 +26,10 @@ export async function run() {
   const root = createRoot(host); const originalFetch = window.fetch; const previousToken = localStorage.getItem(PARENT_TOKEN_KEY);
   const account = { id: 'owner-a', steamId64: '7', persona: 'Strategy A', avatarUrl: '', kind: 'user', verified: true, banned: false, createdAt: '' };
   let allowed = false, contexts = 0, simulations = 0, preferences = 0, deferMe = false, deferSimulation = false;
+  let corpusOverride: StrategyContexts | undefined, deferContexts = false;
   const contextQueries: URLSearchParams[] = [];
   let finishMe: ((r: Response) => void) | null = null, finishSimulation: ((r: Response) => void) | null = null;
+  let finishContexts: ((r: Response) => void) | null = null;
   const grants = () => ['pithub.race.read', 'pithub.race.create', ...(allowed ? ['pithub.strategy.read'] : [])];
   const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
   const otherContext = structuredClone(strategyContextFixture);
@@ -49,6 +52,8 @@ export async function run() {
       if (url.pathname === '/strategies/contexts') {
         contexts++; if (!allowed || isB) return json({}, 403);
         contextQueries.push(url.searchParams);
+        if (deferContexts) return new Promise<Response>(resolve => { finishContexts = resolve; });
+        if (corpusOverride) return json(corpusOverride);
         const selectedTrack = url.searchParams.get('trackId');
         return json({ contexts: [strategyContextFixture, otherContext, wetContext].filter(c => selectedTrack === null || c.trackId === Number(selectedTrack)), records: selectedTrack === '5' ? 0 : 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6 });
       }
@@ -145,6 +150,62 @@ export async function run() {
     trackSelect.value = '10'; trackSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => host.textContent?.includes('전략 비교하기') === true, 'track return did not load');
     check(cards(host).length === 2 && cards(host).every(c => c.textContent?.includes('Italy (Monza)')), 'single-track selection included another track');
+
+    // The original flow above also covers a platform response without the new
+    // optional diagnostics. Now exercise the real collection-status contract.
+    selectFilter(host, '트랙', '');
+    await until(() => cards(host).length === 3, 'all-track collection view did not return');
+    const noData: StrategyContexts = { ...strategyCorpusFixture, contexts: [], records: 0,
+      archiveCoverage: { uploadedRaces: 0, withEvidence: 0, withoutEvidence: 0, latestUploadAt: null, truncated: false, limit: 300 },
+      diagnostics: { collectedLaps: 0, cleanLaps: 0, excludedLaps: 0, excludedRecords: 0, exclusions: [] } };
+    const showCollection = async (next: StrategyContexts, message: string) => {
+      corpusOverride = next;
+      const before = contexts;
+      button(host, '새로고침').click();
+      await until(() => contexts > before && host.textContent?.includes(message) === true, `collection refresh missing: ${message}`);
+    };
+    await showCollection(noData, '이 조건에 업로드된 레이스가 없습니다');
+    check(host.textContent?.includes('로그인과 인터넷 연결') && host.querySelector('[aria-label="레이스 업로드 현황"]'), 'confirmed empty uploads lost status or guidance');
+    await showCollection({ ...noData, archiveCoverage: { ...noData.archiveCoverage!, uploadedRaces: 5, withoutEvidence: 5 } }, '레이스 업로드에 전략 계측이 없습니다');
+    check(host.textContent?.includes('최근 레이스 업로드 5건에는') && !host.textContent?.includes('업로드된 레이스가 없습니다'), 'existing uploads were presented as no data');
+    await showCollection({ ...noData, records: 2, archiveCoverage: { ...noData.archiveCoverage!, uploadedRaces: 2, withEvidence: 2 },
+      diagnostics: { collectedLaps: 14, cleanLaps: 0, excludedLaps: 14, excludedRecords: 2,
+        exclusions: [{ code: 'damage', records: 1, laps: 8 }, { code: 'traffic', records: 1, laps: 8 }, { code: 'flashback', records: 1, laps: 0 }] } },
+    '기록은 수집됐지만 비교할 정상 랩이 없습니다');
+    check(host.querySelector('[aria-label="전략 랩 수집 현황"]')?.textContent?.includes('제외된 랩14랩'), 'overlapping flags replaced distinct excluded count');
+    check(host.textContent?.includes('한 랩에 여러 사유가 겹칠 수 있어') && host.textContent?.includes('되감기0랩1건'), 'exclusion overlap or zero-lap session reasons disappeared');
+    const sparse: StrategyContexts = { ...strategyCorpusFixture, records: 2, minUsers: 4, minSessions: 8, minCleanLaps: 60,
+      contexts: [strategyContextFixture, otherContext].map(c => ({ ...c, users: 1, sessions: 1, cleanLaps: 2 })),
+      archiveCoverage: { ...noData.archiveCoverage!, uploadedRaces: 2, withEvidence: 2 },
+      diagnostics: { collectedLaps: 6, cleanLaps: 4, excludedLaps: 2, excludedRecords: 0, exclusions: [{ code: 'race-start', records: 2, laps: 2 }] } };
+    const simulationsBeforeCollection = simulations;
+    await showCollection(sparse, '2 / 60랩');
+    check(cards(host).length === 2 && simulations === simulationsBeforeCollection, 'small cohorts disappeared or auto-ran analysis');
+    check(host.querySelector<HTMLProgressElement>('[aria-label="정상 랩 최소 기준"]')?.max === 60, 'progress ignored server thresholds');
+    cards(host)[1].click(); await pause(); await searchRecords(host, 'Great Britain');
+    check(cards(host).length === 1, 'collection search did not select a unique record');
+    finishSimulation = null; deferSimulation = true;
+    button(host, '전략 비교하기').click(); await until(() => finishSimulation !== null, 'simulation was not pending before refresh');
+    const refreshes = contexts;
+    button(host, '새로고침').click();
+    await until(() => contexts > refreshes && cards(host).length === 1 && cards(host)[0].getAttribute('aria-pressed') === 'true', 'refresh lost the selected context');
+    check(host.querySelector<HTMLInputElement>('input[type="search"]')?.value === 'Great Britain', 'refresh reset the search filter');
+    (finishSimulation as unknown as (r: Response) => void)(json(strategyResultFixture)); await pause(60);
+    check(!host.textContent?.includes('12랩 종료'), 'late simulation result leaked after refreshing collection data');
+    deferSimulation = false;
+
+    deferContexts = true; button(host, '새로고침').click();
+    await until(() => finishContexts !== null, 'collection query was not pending before changing tracks');
+    deferContexts = false; corpusOverride = noData;
+    selectFilter(host, '트랙', '7');
+    await until(() => host.textContent?.includes('이 조건에 업로드된 레이스가 없습니다') === true, 'new track did not load its collection state');
+    (finishContexts as unknown as (r: Response) => void)(json(sparse)); await pause(60);
+    check(cards(host).length === 0 && !host.textContent?.includes('2 / 60랩'), 'late diagnostics crossed track boundaries');
+    corpusOverride = undefined;
+    selectFilter(host, '트랙', '');
+    await until(() => cards(host).length === 3 && host.textContent?.includes('전략 비교하기') === true, 'legacy response did not return');
+    check(!host.querySelector('[aria-labelledby="strategy-collection-title"]'), 'missing diagnostics were fabricated after refresh');
+
     button(host, '전략 비교하기').click(); await until(() => host.textContent?.includes('12랩 종료') === true, 'result missing before revoke');
     allowed = false; button(host, '전략 비교하기').click();
     await until(() => !host.querySelector('[aria-label="STRATEGY"]') && host.textContent?.includes('관리자에게 권한을 요청하세요') === true, '403 did not remove access');
@@ -165,7 +226,7 @@ export async function run() {
     (finishMe as unknown as (r: Response) => void)(json({ ...account, permissions: ['pithub'] })); await pause(60);
     check(!host.querySelector('[aria-label="STRATEGY"]') && !host.textContent?.includes('12랩 종료'), 'late permission grant crossed account boundary');
     check(preferences === 0, 'obsolete opt-in API was called');
-    return 'Strategy browser: stored/eligible counts, empty/excluded corpus and refresh, record cards, combined search/filters, selection and stale results, permission entry/grant/revoke, manual comparison and units passed';
+    return 'Strategy browser: upload/measurement/eligible counts, exclusions and overlap, optional diagnostics, server progress thresholds, refresh preserving selection and filters, late collection/simulation responses, empty states, permission grant/revoke, manual comparison and units passed';
   } finally {
     root.unmount(); host.remove(); window.fetch = originalFetch;
     if (previousToken === null) localStorage.removeItem(PARENT_TOKEN_KEY); else localStorage.setItem(PARENT_TOKEN_KEY, previousToken);

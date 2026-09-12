@@ -13,6 +13,8 @@
 .filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
 .filters label:first-child { flex: 1; min-width: 150px; }
 .card { border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 22px; margin-bottom: 16px; }
+.cardHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.cardHeading h3 { margin: 0; }
 .recordFilters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 20px; }
 .recordFilters label { flex: 1 1 120px; min-width: 0; }
 .recordFilters .searchField { flex: 2 1 220px; }
@@ -50,6 +52,8 @@
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 14px 0; }
 .metrics div { color: var(--t2); font-size: 12px; }
 .metrics strong { display: block; color: var(--t1); font-size: 21px; font-variant-numeric: tabular-nums; }
+.metrics progress { display: block; width: 100%; height: 6px; margin-top: 8px; accent-color: var(--accInk); }
+.evidenceProgress { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
 .tableWrap { overflow-x: auto; margin: 12px 0; }
 .tableWrap table { border-collapse: collapse; text-align: left; width: 100%; font-size: 12px; white-space: nowrap; }
 .tableWrap :is(th, td) { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); }
@@ -58,6 +62,9 @@
   .inventory { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .metrics { gap: 6px; }
   .metrics strong { font-size: 17px; }
+  .collection .metrics, .evidenceProgress .metrics { grid-template-columns: 1fr; gap: 12px; }
+  .collection .metrics > div, .evidenceProgress .metrics > div { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 12px; }
+  .evidenceProgress progress { grid-column: 1 / -1; margin-top: 0; }
   .empty { padding: 22px; }
   .conditions { grid-template-columns: 1fr; gap: 4px; }
   .conditions dd { margin-bottom: 8px; }

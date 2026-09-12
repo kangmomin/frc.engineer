@@ -17,6 +17,7 @@ import (
 
 type strategyStore interface {
 	LoadStrategyRecords(context.Context, int, string) ([]strategy.Record, bool, error)
+	LoadStrategyArchiveCoverage(context.Context, int, string) (platformsvc.StrategyArchiveCoverage, error)
 }
 
 func (s *server) strategies() strategyStore {
@@ -89,14 +90,22 @@ func (s *server) handleStrategyContexts(w http.ResponseWriter, r *http.Request) 
 	if s.strategyError(w, err) {
 		return
 	}
+	coverage, err := s.strategies().LoadStrategyArchiveCoverage(ctx, track, format)
+	if s.strategyError(w, err) {
+		return
+	}
 	writeJSON(w, http.StatusOK, struct {
-		Contexts    []strategy.Context `json:"contexts"`
-		Records     int                `json:"records"`
-		Truncated   bool               `json:"truncated"`
-		RecordLimit int                `json:"recordLimit"`
-		MinUsers    int                `json:"minUsers"`
-		MinSessions int                `json:"minSessions"`
-	}{strategy.Contexts(records), len(records), truncated, platformsvc.StrategyRecordLimit, strategy.MinUsers, strategy.MinSessions})
+		Contexts        []strategy.Context                  `json:"contexts"`
+		Records         int                                 `json:"records"`
+		Truncated       bool                                `json:"truncated"`
+		RecordLimit     int                                 `json:"recordLimit"`
+		MinUsers        int                                 `json:"minUsers"`
+		MinSessions     int                                 `json:"minSessions"`
+		MinCleanLaps    int                                 `json:"minCleanLaps"`
+		Diagnostics     strategy.Diagnostics                `json:"diagnostics"`
+		ArchiveCoverage platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
+	}{strategy.Contexts(records), len(records), truncated, platformsvc.StrategyRecordLimit, strategy.MinUsers, strategy.MinSessions,
+		strategy.MinCleanLaps, strategy.Diagnose(records), coverage})
 }
 
 func (s *server) handleStrategySimulate(w http.ResponseWriter, r *http.Request) {

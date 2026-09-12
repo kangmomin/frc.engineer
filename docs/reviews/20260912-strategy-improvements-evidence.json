@@ -1,0 +1,181 @@
+{
+  "date": "2026-09-12",
+  "scope": "strategy capture fixes, collection diagnostics API and UI, existing screen design preservation, regression tests",
+  "checks": {
+    "full-regression": {
+      "test_and_subtest_events": {
+        "pass": 874,
+        "skip": 2
+      },
+      "skipped_tests": [
+        "frc.engineer/internal/bandb/TestStoreIntegration",
+        "frc.engineer/internal/platformsvc/TestMySetupsMigrationUpgrade"
+      ],
+      "failures": []
+    },
+    "race-regression": {
+      "test_and_subtest_events": {
+        "pass": 501,
+        "skip": 1
+      },
+      "skipped_tests": [
+        "frc.engineer/internal/platformsvc/TestMySetupsMigrationUpgrade"
+      ],
+      "failures": []
+    },
+    "final-targeted-race": {
+      "test_and_subtest_events": {
+        "pass": 74
+      },
+      "skipped_tests": [],
+      "failures": []
+    },
+    "before_fix_reproduction": {
+      "delayed_lap": "FAIL: delayed lap erased or rewound the capture",
+      "bad_sample": "FAIL: one bad measurement discarded earlier clean evidence",
+      "after_fix": "Both pass with production changes; included in final suite"
+    },
+    "vet": "pass",
+    "windows_sender_build": "GOOS=windows GOARCH=amd64, windowsgui; pass",
+    "diff_check": "pass",
+    "web-regression": {
+      "tests": {
+        "total": 752,
+        "pass": 752,
+        "fail": 0,
+        "skip": 0
+      },
+      "success": true,
+      "command": "npm test -- --reporter=json --outputFile=<temporary report>",
+      "source": "final frontend code, including narrow-screen layout correction"
+    },
+    "web-browser": {
+      "status": "pass",
+      "command": "VITE_PLATFORM_URL=http://strategy.test node scripts/test-webrtc.mjs /src/hub/screens/strategy.browser.tsx",
+      "coverage": [
+        "missing uploads vs missing measurements vs excluded records",
+        "distinct lap counts and overlapping exclusion reasons",
+        "omitted and null diagnostics",
+        "server-provided minimums and small cohorts",
+        "refresh preserves selected context and search filters",
+        "late collection and simulation responses",
+        "permission grant, revoke and account switch",
+        "manual comparison and units"
+      ],
+      "data": "synthetic API responses with the real HubApp lifecycle"
+    },
+    "web-build": "npm run build; pass on final code",
+    "web-typecheck": "npx tsc --noEmit; pass including browser and unit-test sources",
+    "web-layout": {
+      "status": "visually inspected; pass",
+      "viewports_px": [
+        375,
+        1280
+      ],
+      "main_widths_px": [
+        {
+          "viewport": 375,
+          "clientWidth": 301,
+          "scrollWidth": 301
+        },
+        {
+          "viewport": 1280,
+          "clientWidth": 1046,
+          "scrollWidth": 1046
+        }
+      ],
+      "states": [
+        "collection with sparse usable conditions",
+        "selected-condition progress",
+        "excluded records with overlapping reasons"
+      ],
+      "narrow_screen": "new collection metrics and progress use one row per metric; exclusion table scrolls within its existing table container",
+      "design": "existing Strategy cards, type, palette variables, buttons and tables reused"
+    }
+  },
+  "real_captures": [
+    {
+      "name": "race-clean-start",
+      "completed_laps": 11,
+      "usable_laps": 3,
+      "upload_bytes": 9655
+    },
+    {
+      "name": "race-edge-cases",
+      "completed_laps": 3,
+      "usable_laps": 2,
+      "upload_bytes": 6142
+    }
+  ],
+  "real_http": {
+    "uploaded_records": 2,
+    "contexts": 2,
+    "diagnostics": {
+      "collectedLaps": 14,
+      "cleanLaps": 5,
+      "excludedLaps": 9,
+      "excludedRecords": 0,
+      "exclusions": [
+        {
+          "code": "traffic",
+          "records": 2,
+          "laps": 5
+        },
+        {
+          "code": "damage",
+          "records": 1,
+          "laps": 5
+        },
+        {
+          "code": "setup-change",
+          "records": 2,
+          "laps": 4
+        },
+        {
+          "code": "conditions-change",
+          "records": 1,
+          "laps": 3
+        },
+        {
+          "code": "race-start",
+          "records": 2,
+          "laps": 2
+        },
+        {
+          "code": "source-missing",
+          "records": 2,
+          "laps": 2
+        },
+        {
+          "code": "pit",
+          "records": 1,
+          "laps": 2
+        },
+        {
+          "code": "compound-change",
+          "records": 1,
+          "laps": 1
+        }
+      ]
+    },
+    "coverage": {
+      "uploadedRaces": 2,
+      "withEvidence": 2,
+      "withoutEvidence": 0,
+      "truncated": false,
+      "limit": 300
+    }
+  },
+  "claude_ui": {
+    "status": "access denied; UI subsequently completed by Codex with user authorization",
+    "http_status": 403,
+    "reason": "Your organization has disabled Claude subscription access for Claude Code",
+    "api_tokens_used": 0,
+    "frontend_files_changed": true,
+    "user_exception_requested": true,
+    "user_exception_authorized": true,
+    "design_constraint": "match existing screen designs"
+  },
+  "production_data": "Not inspected: no authorized frc production database connection was available. These are local capture and isolated database results.",
+  "cleanup": "completed: owned PostgreSQL, Chrome and Vite stopped; temporary database, capture audit files, CLI logs, overlays, Windows binary, visual-preview module, images and test logs removed; permanent reports and regression tests retained; no commit, push or deployment"
+}

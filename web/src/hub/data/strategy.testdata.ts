@@ -1,10 +1,16 @@
 // Synthetic display fixtures, imported only by strategy regression tests.
-import type { StrategyContext, StrategyResult } from './strategy';
+import type { StrategyContext, StrategyContexts, StrategyResult } from './strategy';
 
 export const strategyContextFixture: StrategyContext = {
   id: 'a'.repeat(32), trackId: 10, conditions: { packetFormat: 2026, gameYear: 25, gameMajor: 1, gameMinor: 22, formula: 13, sessionType: 15, totalLaps: 30, trackLengthM: 4500, teamId: null,
     rules: { equalPerformance: true, gameMode: 7, ruleSet: 1, sessionLength: 5, surfaceType: 1, lowFuelMode: 0, tyreTemperature: 1, pitLaneTyreSim: 0, ersAssist: 0, pitAssist: 0, pitReleaseAssist: 0, pitStopExperience: 1 } },
   weather: 0, trackTempBucket: 30, tractionControl: 0, abs: 0, users: 3, sessions: 12, cleanLaps: 324,
+};
+export const strategyCorpusFixture: StrategyContexts = {
+  contexts: [strategyContextFixture], records: 12, truncated: false, recordLimit: 300, minUsers: 3, minSessions: 6, minCleanLaps: 40,
+  archiveCoverage: { uploadedRaces: 15, withEvidence: 12, withoutEvidence: 3, latestUploadAt: '2026-09-12T03:00:00Z', truncated: false, limit: 300 },
+  diagnostics: { collectedLaps: 360, cleanLaps: 324, excludedLaps: 36, excludedRecords: 0,
+    exclusions: [{ code: 'pit', records: 12, laps: 24 }, { code: 'race-start', records: 12, laps: 12 }] },
 };
 export const strategyResultFixture: StrategyResult = {
   status: 'ready', context: strategyContextFixture, reasons: ['not-backtested', 'small-model-difference'], validation: 'in-sample-only',

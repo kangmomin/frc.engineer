@@ -119,6 +119,11 @@ func TestStrategyUploadToSimulationHTTP(t *testing.T) {
 	}
 	// None of the uploaders have strategy read permission; race upload alone
 	// is sufficient to contribute to the corpus.
+	legacy := platformsvc.UploadRequest{SourceRaceID: "legacy-without-strategy", TrackID: 10, TrackName: "Monza", GameFormat: "F1 26", SessionType: "Race",
+		Laps: []platformsvc.UploadLap{{LapNumber: 1, LapMs: 90000, S1Ms: 30000, S2Ms: 30000, S3Ms: 30000, Tyre: "Soft", Valid: true}}}
+	if code, body := call("POST", "/races", uploads[0], legacy); code != 200 {
+		t.Fatalf("legacy upload: %d %s", code, body)
+	}
 	for i, r := range strategytest.Records() {
 		req := platformsvc.UploadRequest{SourceRaceID: r.RaceID, TrackID: 10, TrackName: "Monza", GameFormat: "F1 26", SessionType: "Race", Strategy: &r.Evidence}
 		for _, l := range r.Evidence.Laps {
@@ -146,10 +151,22 @@ func TestStrategyUploadToSimulationHTTP(t *testing.T) {
 	}
 	code, body := call("GET", "/strategies/contexts"+strategyQuery, web, nil)
 	var data struct {
-		Contexts []strategy.Context `json:"contexts"`
+		Contexts    []strategy.Context                  `json:"contexts"`
+		Records     int                                 `json:"records"`
+		Diagnostics strategy.Diagnostics                `json:"diagnostics"`
+		Coverage    platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
 	}
 	if err := json.Unmarshal(body, &data); err != nil || code != 200 || len(data.Contexts) != 1 {
 		t.Fatalf("contexts: %d %s %v", code, body, err)
+	}
+	if data.Records != 12 || data.Coverage.UploadedRaces != 13 || data.Coverage.WithEvidence != 12 || data.Coverage.WithoutEvidence != 1 ||
+		data.Diagnostics.CollectedLaps != 360 || data.Diagnostics.CleanLaps != data.Contexts[0].CleanLaps {
+		t.Fatalf("legacy upload or usable lap counts disappeared from HTTP diagnostics: %s", body)
+	}
+	for _, id := range accounts {
+		if strings.Contains(string(body), id) {
+			t.Fatal("account identity leaked in collection diagnostics")
+		}
 	}
 	req := strategy.Request{ContextID: data.Contexts[0].ID, MaxStops: 2, AvailableSets: map[string]int{"Soft": 1, "Hard": 1}, RequireTwoCompounds: true}
 	code, body = call("POST", "/strategies/simulate"+strategyQuery, web, req)

@@ -30,6 +30,84 @@ const reasons: Record<string, string> = {
   'small-model-difference': '상위 조합 간 차이가 관측 랩의 오차보다 작습니다. 비슷한 대안으로 보세요.',
 };
 const statusLabels: Record<string, string> = { 'insufficient-data': '기록이 더 필요합니다', unidentifiable: '현재 자료로 순위를 정하기 어렵습니다', 'no-feasible-plan': '비교 가능한 조합이 없습니다' };
+const exclusionLabels: Record<string, string> = {
+  'partial-lap': '일부만 수집된 랩', invalid: '무효 랩', pit: '피트 진입·이탈', 'safety-car': '세이프티카·VSC',
+  incident: '사고', damage: '차량·타이어 손상', traffic: '트래픽·DRS·오버테이크 사용', 'setup-change': '셋업 변경',
+  'weather-change': '날씨 변경', gap: '데이터 수신 단절', flashback: '되감기', 'source-missing': '필수 측정값 누락',
+  penalty: '페널티', paused: '일시 정지', 'conditions-change': '경기 조건 변경', 'race-start': '출발 랩',
+  'missing-conditions': '경기 설정 미확인', 'unsupported-formula': '지원하지 않는 차량 규정', 'missing-setup': '셋업 미확인',
+  'missing-fuel': '연료 측정 누락', 'unknown-tyre': '타이어 종류 미확인', 'compound-change': '랩 도중 타이어 변경',
+  'no-completed-laps': '완료 랩 없음',
+};
+
+export function StrategyCollectionStatus({ corpus }: { corpus: StrategyContexts }) {
+  const { archiveCoverage: coverage, diagnostics: d } = corpus;
+  if (!coverage && !d) return null;
+  return <section className={`${styles.card} ${styles.collection}`} aria-labelledby="strategy-collection-title">
+    <h3 id="strategy-collection-title">수집 현황</h3>
+    {coverage && <>
+      <div className={styles.metrics} aria-label="레이스 업로드 현황">
+        <div>최근 레이스 업로드<strong>{coverage.uploadedRaces.toLocaleString()}건</strong></div>
+        <div>전략 계측 포함<strong>{coverage.withEvidence.toLocaleString()}건</strong></div>
+        <div>전략 계측 없음<strong>{coverage.withoutEvidence.toLocaleString()}건</strong></div>
+      </div>
+      <p className={styles.note}>선택한 트랙·게임의 최근 최대 {coverage.limit}개 업로드 기준입니다.{coverage.truncated ? ' 현재 조회 한도에 도달했습니다.' : ''} 같은 경기의 여러 업로드가 각각 집계될 수 있습니다.
+        {coverage.latestUploadAt && <> 마지막 업로드: <time dateTime={coverage.latestUploadAt}>{new Date(coverage.latestUploadAt).toLocaleString('ko-KR')}</time>.</>}
+      </p>
+    </>}
+    {d && <>
+      <div className={styles.metrics} aria-label="전략 랩 수집 현황">
+        <div>수집된 완료 랩<strong>{d.collectedLaps.toLocaleString()}랩</strong></div>
+        <div>비교 가능한 정상 랩<strong>{d.cleanLaps.toLocaleString()}랩</strong></div>
+        <div>제외된 랩<strong>{d.excludedLaps.toLocaleString()}랩</strong></div>
+      </div>
+      <p className={styles.note}>중복과 조회 한도를 적용한 전략 기록 {corpus.records}건의 랩입니다. 경기 설정까지 확인된 정상 랩을 조건 목록에 표시합니다.{d.excludedRecords > 0 ? ` 이 중 ${d.excludedRecords}건은 비교에 사용할 랩이 없습니다.` : ''}</p>
+      {d.exclusions.length > 0 && <details open={corpus.contexts.length === 0}>
+        <summary>제외 사유 {d.exclusions.length}개 보기</summary>
+        <div className={styles.tableWrap}><table><thead><tr><th>제외 사유</th><th>랩</th><th>전략 기록</th></tr></thead><tbody>{d.exclusions.map(reason => <tr key={reason.code}>
+          <td>{exclusionLabels[reason.code] ?? '기타 제외 사유'}</td><td>{reason.laps.toLocaleString()}랩</td><td>{reason.records.toLocaleString()}건</td>
+        </tr>)}</tbody></table></div>
+        <p className={styles.note}>한 랩에 여러 사유가 겹칠 수 있어 사유별 합계는 제외된 랩 수와 다를 수 있습니다. 완료 랩이 남지 않은 기록은 사유에 0랩으로 표시될 수 있습니다.</p>
+      </details>}
+    </>}
+  </section>;
+}
+
+export function StrategyEvidenceProgress({ context, corpus }: { context: StrategyContext; corpus: Pick<StrategyContexts, 'minUsers' | 'minSessions' | 'minCleanLaps'> }) {
+  const metrics = [
+    { label: '참여자', value: context.users, minimum: corpus.minUsers, unit: '명' },
+    { label: '독립 경기', value: context.sessions, minimum: corpus.minSessions, unit: '경기' },
+    { label: '정상 랩', value: context.cleanLaps, minimum: corpus.minCleanLaps ?? 40, unit: '랩' },
+  ];
+  const enough = metrics.every(m => m.value >= m.minimum);
+  return <div className={styles.evidenceProgress} aria-labelledby="strategy-evidence-title">
+    <h3 id="strategy-evidence-title">선택한 조건의 분석 기준</h3>
+    <div className={styles.metrics}>{metrics.map(m => <div key={m.label}>{m.label}
+      <strong>{m.value.toLocaleString()} / {m.minimum.toLocaleString()}{m.unit}</strong>
+      <progress aria-label={`${m.label} 최소 기준`} max={m.minimum} value={Math.min(m.value, m.minimum)} />
+    </div>)}</div>
+    <p className={styles.note}>{enough ? '최소 수량 기준을 충족했습니다.' : '선택한 조건의 기록이 더 필요합니다.'} 컴파운드별 표본과 타이어 사용 범위도 확인하므로 세 기준을 충족해도 비교 결과가 나오지 않을 수 있습니다.</p>
+  </div>;
+}
+
+export function StrategyEmptyState({ corpus, format, onRefresh }: { corpus: StrategyContexts; format: string; onRefresh: () => void }) {
+  const coverage = corpus.archiveCoverage;
+  const noUploads = corpus.records === 0 && coverage?.uploadedRaces === 0;
+  const noMeasurements = corpus.records === 0 && coverage != null && coverage.withEvidence === 0 && coverage.withoutEvidence > 0;
+  const title = noUploads ? '이 조건에 업로드된 레이스가 없습니다'
+    : noMeasurements ? '레이스 업로드에 전략 계측이 없습니다'
+      : corpus.records === 0 ? '이 조건의 기록을 모으고 있습니다' : '기록은 수집됐지만 비교할 정상 랩이 없습니다';
+  return <div className={styles.empty}>
+    <h3>{title}</h3>
+    {noUploads ? <p>트랙·게임 선택을 확인하세요. Driver Pack에서 로그인과 인터넷 연결을 확인한 뒤 레이스를 마치거나 저장하고 기록을 업로드하세요.</p>
+      : noMeasurements ? <><p>최근 레이스 업로드 {coverage.withoutEvidence}건에는 전략 분석에 필요한 연료·타이어 나이 등의 계측이 첨부되지 않았습니다.</p><p>최신 Driver Pack으로 새 레이스를 수집해 업로드하세요. 기존 업로드에 없던 측정값은 추정해서 채우지 않습니다.</p></>
+        : corpus.records === 0 ? <p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p>
+          : <><p>수집된 {corpus.records}건에서 경기 조건과 정상 랩이 함께 확인되는 자료를 찾지 못했습니다. 계측 누락이나 손상·트래픽·되감기 등으로 제외된 기록은 비교에 사용하지 않습니다.</p><p>제외 사유를 확인하고 같은 경기 조건에서 손상·트래픽·SC 없이 주행한 랩을 더 수집하세요. 필수 측정값이 누락됐다면 최신 Driver Pack과 게임의 UDP 설정을 확인하세요.</p></>}
+    {(noMeasurements || corpus.records > 0) && format === 'F1 25' && <p>2026 차량을 사용한다면 게임의 UDP 형식도 2026으로 설정해 수집하세요.</p>}
+    <p>전략 비교 계산에는 최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 {corpus.minCleanLaps ?? 40}개의 정상 랩이 필요합니다. 정상 랩이 하나라도 있으면 조건 카드부터 표시합니다.</p>
+    <button type="button" onClick={onRefresh}>다시 확인</button>
+  </div>;
+}
 
 export function strategyContextLabel(c: StrategyContext): string {
   const r = c.conditions.rules;
@@ -78,9 +156,12 @@ function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () =>
   const [lapsFilter, setLapsFilter] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true); setCorpus(null); setContextId(''); setError('');
+    setLoading(true); setCorpus(null); setError('');
     void strategyClient.contexts(track, controller.signal).then(data => {
-      if (!controller.signal.aborted) { setCorpus(data); setContextId(data.contexts[0]?.id ?? ''); }
+      if (!controller.signal.aborted) {
+        setCorpus(data);
+        setContextId(previous => data.contexts.some(c => c.id === previous) ? previous : data.contexts[0]?.id ?? '');
+      }
     }).catch(err => {
       if (!controller.signal.aborted) { setError(strategyErrorMessage(err)); if (err instanceof StrategyError && err.status === 403) onDenied(); }
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -99,8 +180,9 @@ function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () =>
     {loading && <div className={styles.empty} role="status">업로드된 경기 조건을 찾고 있습니다…</div>}
     {error && <div className={styles.empty} role="alert"><p>{error}</p><button onClick={() => setRevision(n => n + 1)}>조건 다시 불러오기</button></div>}
     {!loading && !error && corpus && <>
+        <StrategyCollectionStatus corpus={corpus} />
         <section className={styles.card} aria-labelledby="strategy-records-title">
-          <h3 id="strategy-records-title">수집 기록 · 경기 조건</h3>
+          <div className={styles.cardHeading}><h3 id="strategy-records-title">수집 기록 · 경기 조건</h3><button type="button" onClick={() => setRevision(n => n + 1)}>새로고침</button></div>
           <p>같은 경기 조건의 기록을 묶었습니다. 조건 카드를 선택해 전략을 비교하세요.</p>
           <div className={styles.recordFilters} role="search" aria-label="경기 조건 검색 및 필터">
             <label className={styles.searchField}>조건 검색<input type="search" placeholder="서킷, 모드, 팀, 버전, 온도 검색" maxLength={100} value={search} onChange={e => setSearch(e.target.value)} /></label>
@@ -110,14 +192,8 @@ function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () =>
             <button type="button" onClick={resetFilters}>초기화</button>
           </div>
           <p className={styles.note} role="status">조회 범위의 수집 기록 {corpus.records}건 · 경기 조건 {visible.length} / {records.length}개</p>
-          {corpus.contexts.length === 0 ? <div className={styles.empty}>
-            <h3>{corpus.records === 0 ? '이 조건의 기록을 모으고 있습니다' : '기록은 수집됐지만 비교할 정상 랩이 없습니다'}</h3>
-            {corpus.records === 0
-              ? <p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p>
-              : <><p>수집된 {corpus.records}건에서 경기 조건과 정상 랩이 함께 확인되는 자료를 찾지 못했습니다. 계측 누락이나 손상·트래픽·되감기 등으로 제외된 기록은 비교에 사용하지 않습니다.</p><p>최신 Driver Pack으로 새 레이스를 업로드한 뒤 다시 확인하세요. 기존 기록의 누락된 측정값이나 제외 판정은 자동으로 복구되지 않습니다.</p>{track.format === 'F1 25' && <p>2026 차량을 사용한다면 게임의 UDP 형식도 2026으로 설정해 수집하세요.</p>}</>}
-            <p>전략 비교 계산에는 최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 40개의 정상 랩이 필요합니다. 사고·손상·트래픽·SC가 있는 랩은 기준 페이스에서 제외합니다.</p>
-            <button onClick={() => setRevision(n => n + 1)}>다시 확인</button>
-          </div> : visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
+          {corpus.contexts.length === 0 ? <StrategyEmptyState corpus={corpus} format={track.format} onRefresh={() => setRevision(n => n + 1)} />
+            : visible.length === 0 ? <div className={styles.empty}><h3>검색·필터에 맞는 경기 조건이 없습니다</h3><p>검색어나 필터를 바꾸거나 초기화해 전체 조건을 확인하세요.</p></div> : <ul className={styles.recordGrid} aria-label="경기 조건 목록">{visible.map(({ context: c, number }) => <li key={c.id}>
             <button type="button" className={styles.recordButton} aria-pressed={c.id === contextId} onClick={() => setContextId(c.id)}>
               <span className={styles.recordHeading}><strong>조건 {number} · {c.conditions.totalLaps}랩</strong><span>{c.id === contextId ? '선택됨' : '조건 선택'}</span></span>
               <strong>{trackName(c.trackId)}</strong>
@@ -126,7 +202,7 @@ function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () =>
               <span className={styles.recordStats}><span><strong>{c.users}</strong>참여자</span><span><strong>{c.sessions}</strong>독립 경기</span><span><strong>{c.cleanLaps}</strong>정상 랩</span></span>
             </button>
           </li>)}</ul>}
-          {context ? <details key={context.id}><summary>선택한 조건 상세</summary><StrategyContextDetails context={context} /><p>게임 버전·모드·규칙·경기 길이와 물리 설정이 같은 기록끼리만 비교합니다. 드라이버와 고정 셋업 차이는 경기별 기준 페이스로 보정하며, 도중에 셋업이 바뀐 자료는 제외합니다.</p></details> : visible.length > 0 && <p className={styles.note}>비교할 조건 카드를 선택하세요.</p>}
+          {context ? <><StrategyEvidenceProgress context={context} corpus={corpus} /><details key={context.id}><summary>선택한 조건 상세</summary><StrategyContextDetails context={context} /><p>게임 버전·모드·규칙·경기 길이와 물리 설정이 같은 기록끼리만 비교합니다. 드라이버와 고정 셋업 차이는 경기별 기준 페이스로 보정하며, 도중에 셋업이 바뀐 자료는 제외합니다.</p></details></> : visible.length > 0 && <p className={styles.note}>비교할 조건 카드를 선택하세요.</p>}
         </section>
         {context && <Comparison key={`${context.id}:${revision}`} track={{ trackId: context.trackId, format: track.format }} context={context} onDenied={onDenied} />}
       <p className={styles.note}>선택한 {track.trackId === null ? '전체 트랙' : trackName(track.trackId)} · {track.format} 범위에서 최근 최대 {corpus.recordLimit}개 업로드, 사용자별 최대 20경기를 사용합니다.{corpus.truncated ? ' 현재 전체 조회 한도에 도달했습니다.' : ''} 같은 사용자의 같은 경기 재업로드는 한 건으로 처리합니다.</p>

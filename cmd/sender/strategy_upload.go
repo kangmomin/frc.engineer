@@ -23,8 +23,9 @@ func uploadStrategyEvidence(summary *races.RaceSummary) *strategy.Evidence {
 			e.Laps = append(e.Laps, l)
 		}
 	}
-	if len(e.Laps) == 0 || strategy.ValidateEvidence(&e) != nil {
+	valid := strategy.RetainValidSamples(&e)
+	if valid == nil || len(valid.Laps) == 0 {
 		return nil
 	}
-	return &e
+	return valid
 }

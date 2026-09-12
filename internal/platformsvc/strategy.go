@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"time"
 
 	"frc.engineer/internal/strategy"
 )
@@ -12,6 +13,42 @@ import (
 const StrategyRecordLimit = 300
 const AllStrategyTracks = -1
 const strategyRecordsPerUser = 20
+
+// StrategyArchiveCoverage counts recent eligible uploads, including those
+// without strategy measurements. These are upload rows, not independent races.
+type StrategyArchiveCoverage struct {
+	UploadedRaces   int        `json:"uploadedRaces"`
+	WithEvidence    int        `json:"withEvidence"`
+	WithoutEvidence int        `json:"withoutEvidence"`
+	LatestUploadAt  *time.Time `json:"latestUploadAt"`
+	Truncated       bool       `json:"truncated"`
+	Limit           int        `json:"limit"`
+}
+
+func (s *Store) LoadStrategyArchiveCoverage(ctx context.Context, trackID int, format string) (StrategyArchiveCoverage, error) {
+	out := StrategyArchiveCoverage{Limit: StrategyRecordLimit}
+	err := s.pool.QueryRow(ctx, `
+		WITH recent AS (
+			SELECT r.id, r.uploaded_at
+			FROM platform.races r
+			WHERE ($1::integer=-1 OR r.track_id=$1) AND r.game_format=$2 AND r.plausible
+			  AND r.session_type IN ('Race','Race 2','Race 3')
+			  AND NOT EXISTS (SELECT 1 FROM platform.account_bans b WHERE b.account_id=r.account_id)
+			ORDER BY r.uploaded_at DESC,r.id LIMIT $3
+		), sampled AS (
+			SELECT * FROM recent ORDER BY uploaded_at DESC,id LIMIT $4
+		)
+		SELECT count(*), count(st.race_id), max(r.uploaded_at),
+		       (SELECT count(*) > $4 FROM recent)
+		FROM sampled r LEFT JOIN platform.race_strategy st ON st.race_id=r.id`,
+		trackID, format, StrategyRecordLimit+1, StrategyRecordLimit).Scan(
+		&out.UploadedRaces, &out.WithEvidence, &out.LatestUploadAt, &out.Truncated)
+	if err != nil {
+		return out, fmt.Errorf("platformsvc: strategy archive coverage: %w", err)
+	}
+	out.WithoutEvidence = out.UploadedRaces - out.WithEvidence
+	return out, nil
+}
 
 // LoadStrategyRecords reads a bounded, deduplicated cross-user corpus. Banned
 // users are excluded at query time. The payload and all identities remain

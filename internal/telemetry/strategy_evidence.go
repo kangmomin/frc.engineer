@@ -55,6 +55,7 @@ type strategyCapture struct {
 	setupRevision int
 	lap           *packets.LapData
 	lapAt         float64
+	lapFrame      uint32
 	stint         int
 	pendingStop   *strategy.Stop
 	entryStops    uint8
@@ -67,6 +68,7 @@ func (c *strategyCapture) reset(uid uint64, player uint8) {
 	c.current, c.session, c.status, c.damage, c.telemetry, c.setup, c.lap = nil, nil, nil, nil, nil, nil, nil
 	c.setupRevision, c.stint = 0, 1
 	c.statusAt, c.damageAt, c.telemetryAt, c.lapAt = 0, 0, 0, 0
+	c.lapFrame = 0
 	c.pendingStop = nil
 	c.pendingStatus = nil
 	c.overtakeKnown = false
@@ -194,6 +196,13 @@ func (c *strategyCapture) observe(p *udp.ParsedData) {
 		}
 	}
 	if p.LapData != nil {
+		// OverallFrameIdentifier continues through a flashback. A delayed UDP
+		// timing packet must not erase the race as if the player rewound it.
+		// Compare only LapData frames; other packet types arrive independently.
+		if c.lap != nil && int32(h.OverallFrameIdentifier-c.lapFrame) < 0 {
+			return
+		}
+		c.lapFrame = h.OverallFrameIdentifier
 		c.observeLap(at, p.LapData.LapData[i])
 	}
 }
@@ -488,8 +497,5 @@ func (c *strategyCapture) snapshot(uid uint64) *strategy.Evidence {
 	e.Laps = append([]strategy.Lap{}, e.Laps...)
 	e.Stops = append([]strategy.Stop{}, e.Stops...)
 	e.Reasons = append([]string{}, e.Reasons...)
-	if strategy.ValidateEvidence(&e) != nil {
-		return nil
-	}
-	return &e
+	return strategy.RetainValidSamples(&e)
 }

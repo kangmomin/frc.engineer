@@ -15,8 +15,14 @@ import (
 )
 
 type strategyStub struct {
-	loads  int
-	tracks []int
+	loads         int
+	tracks        []int
+	coverageLoads int
+}
+
+func (s *strategyStub) LoadStrategyArchiveCoverage(_ context.Context, _ int, _ string) (platformsvc.StrategyArchiveCoverage, error) {
+	s.coverageLoads++
+	return platformsvc.StrategyArchiveCoverage{UploadedRaces: 15, WithEvidence: 12, WithoutEvidence: 3, Limit: platformsvc.StrategyRecordLimit}, nil
 }
 
 func (s *strategyStub) LoadStrategyRecords(_ context.Context, trackID int, _ string) ([]strategy.Record, bool, error) {
@@ -68,7 +74,7 @@ func TestStrategyGateRunsBeforeCorpus(t *testing.T) {
 					t.Fatalf("gate: %d %s", w.Code, w.Body.String())
 				}
 			}
-			if store.loads != 0 {
+			if store.loads != 0 || store.coverageLoads != 0 {
 				t.Fatal("denied caller reached store")
 			}
 		})
@@ -83,10 +89,22 @@ func TestStrategyPermissionAndHTTPContract(t *testing.T) {
 	call := strategyHTTP(s)
 	w := call("GET", "/strategies/contexts"+strategyQuery, "")
 	var data struct {
-		Contexts []strategy.Context `json:"contexts"`
+		Contexts     []strategy.Context                  `json:"contexts"`
+		Diagnostics  strategy.Diagnostics                `json:"diagnostics"`
+		Coverage     platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
+		MinCleanLaps int                                 `json:"minCleanLaps"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || w.Code != 200 || len(data.Contexts) != 1 {
 		t.Fatalf("contexts: %s %v", w.Body.String(), err)
+	}
+	if data.Diagnostics.CollectedLaps != 360 || data.Diagnostics.CleanLaps != data.Contexts[0].CleanLaps ||
+		data.Coverage.WithoutEvidence != 3 || data.Coverage.UploadedRaces != 15 || data.MinCleanLaps != strategy.MinCleanLaps {
+		t.Fatalf("missing collection diagnostics: %s", w.Body.String())
+	}
+	for _, private := range []string{"driver-", "race-00", "sessionUid", "fuelKg", "setupRevision", "ersStartJ"} {
+		if strings.Contains(w.Body.String(), private) {
+			t.Fatalf("private %s leaked in collection status", private)
+		}
 	}
 	for _, invalid := range []string{"", strategyQuery + "&trackId=7", "?trackId=x&gameFormat=F1+26", "?trackId=-1&gameFormat=F1+26", "?trackId=&gameFormat=F1+26", "?gameFormat=F1+26&gameFormat=F1+25", strategyQuery + "&accountId=other"} {
 		if w := call("GET", "/strategies/contexts"+invalid, ""); w.Code != 400 {

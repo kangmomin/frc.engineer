@@ -21,6 +21,16 @@ export interface StrategyContext {
 }
 export interface StrategyContexts {
   contexts: StrategyContext[]; records: number; truncated: boolean; recordLimit: number; minUsers: number; minSessions: number;
+  // Optional while the web and platform deployments are rolling out separately.
+  minCleanLaps?: number;
+  diagnostics?: {
+    collectedLaps: number; cleanLaps: number; excludedLaps: number; excludedRecords: number;
+    exclusions: { code: string; records: number; laps: number }[];
+  } | null;
+  archiveCoverage?: {
+    uploadedRaces: number; withEvidence: number; withoutEvidence: number;
+    latestUploadAt: string | null; truncated: boolean; limit: number;
+  } | null;
 }
 export interface StrategyRequest {
   contextId: string; maxStops: number; availableSets: Partial<Record<StrategyTyre, number>>; requireTwoCompounds: boolean;
