@@ -111,6 +111,13 @@ jobs:
         env:
           CHROME_BIN: /usr/bin/google-chrome
 
+      - name: Strategy collection browser regressions
+        run: node scripts/test-webrtc.mjs /src/hub/screens/strategy.browser.tsx
+        working-directory: web
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          VITE_PLATFORM_URL: http://strategy.test
+
       - name: Build
         run: npm run build
         working-directory: web
@@ -166,7 +173,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/setup-manager/package-lock.json
       - name: Native Windows storage, cancellation, and Sender regressions
-        run: go test ./cmd/sender ./internal/telemetry ./internal/races ./internal/rtc
+        run: go test ./cmd/sender ./internal/telemetry ./internal/races ./internal/rtc ./internal/udp
       - name: Build Windows GUI Sender
         shell: pwsh
         run: |
