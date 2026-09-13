@@ -46,7 +46,7 @@ func TestDiagnosticsExplainsUnknownConditionsAndSessionExclusions(t *testing.T) 
 		code string
 	}{
 		{"unknown rules", func(e *strategy.Evidence) { e.Conditions.Rules = nil }, "missing-conditions"},
-		{"unknown team", func(e *strategy.Evidence) { e.Conditions.TeamID = nil }, "missing-conditions"},
+		{"unknown realistic team", func(e *strategy.Evidence) { e.Conditions.Rules.EqualPerformance = false; e.Conditions.TeamID = nil }, "missing-conditions"},
 		{"unsupported formula", func(e *strategy.Evidence) { e.Conditions.Formula = 2 }, "unsupported-formula"},
 		{"changed conditions", func(e *strategy.Evidence) { e.Reasons = []string{"conditions-change"} }, "conditions-change"},
 		{"rewound race", func(e *strategy.Evidence) { e.Reasons = []string{"flashback"}; e.Laps = []strategy.Lap{} }, "flashback"},
@@ -63,6 +63,23 @@ func TestDiagnosticsExplainsUnknownConditionsAndSessionExclusions(t *testing.T) 
 				t.Fatalf("unexplained exclusion: %+v", d)
 			}
 		})
+	}
+}
+
+func TestEqualPerformanceDoesNotRequireUnusedTeamIdentity(t *testing.T) {
+	records := strategytest.Records()
+	before := strategy.Contexts(records)
+	for i := range records {
+		records[i].Evidence.Conditions.TeamID = nil
+	}
+	if got := strategy.Contexts(records); !reflect.DeepEqual(got, before) {
+		t.Fatalf("equal-performance observations depend on an unused team: %+v", got)
+	}
+	if diagnostics := strategy.Diagnose(records); diagnostics.CleanLaps != 324 || diagnostics.ExcludedRecords != 0 {
+		t.Fatalf("diagnostics rejected known equal-performance conditions: %+v", diagnostics)
+	}
+	if result := strategy.Analyze(records, strategytest.Request(records)); result.Status != "ready" {
+		t.Fatalf("equal-performance analysis lost known measurements: %+v", result)
 	}
 }
 

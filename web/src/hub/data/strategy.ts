@@ -4,6 +4,12 @@ import type { TrackContext } from './tracks';
 
 export type StrategyTyre = 'Soft' | 'Medium' | 'Hard' | 'Inter' | 'Wet';
 export const STRATEGY_TYRES: StrategyTyre[] = ['Soft', 'Medium', 'Hard', 'Inter', 'Wet'];
+export interface StrategyMinimums { users: number; sessions: number; cleanLaps: number }
+export interface StrategyObservation {
+  trackId: number; tyre: StrategyTyre | ''; uploads: number; laps: number;
+  medianLapMs: number; minLapMs: number; maxLapMs: number;
+  fuelLaps: number; medianFuelKg: number | null;
+}
 export interface StrategyContext {
   id: string;
   trackId: number;
@@ -23,6 +29,8 @@ export interface StrategyContexts {
   contexts: StrategyContext[]; records: number; truncated: boolean; recordLimit: number; minUsers: number; minSessions: number;
   // Optional while the web and platform deployments are rolling out separately.
   minCleanLaps?: number;
+  referenceMinimums?: StrategyMinimums | null;
+  observations?: StrategyObservation[] | null;
   diagnostics?: {
     collectedLaps: number; cleanLaps: number; excludedLaps: number; excludedRecords: number;
     exclusions: { code: string; records: number; laps: number }[];
@@ -34,9 +42,11 @@ export interface StrategyContexts {
 }
 export interface StrategyRequest {
   contextId: string; maxStops: number; availableSets: Partial<Record<StrategyTyre, number>>; requireTwoCompounds: boolean;
+  allowLimitedEvidence?: boolean;
 }
 export interface StrategySegment { deployedJ: number; harvestedJ: number; durationMs: number; meanSpeedKph: number }
 export interface StrategyResult {
+  sampleLevel?: 'standard' | 'limited'; minimumEvidence?: StrategyMinimums;
   status: string; context: StrategyContext | null; reasons: string[]; validation: string;
   compounds: { compound: number; tyre: StrategyTyre; offsetMs: number; ageSlopeMs: number; minAge: number; maxAge: number; users: number; sessions: number; laps: number }[];
   fuelSlopeMsPerKg: number | null; lapMedianAbsoluteErrorMs: number | null;

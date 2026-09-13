@@ -1,5 +1,10 @@
 // Synthetic display fixtures, imported only by strategy regression tests.
-import type { StrategyContext, StrategyContexts, StrategyResult } from './strategy';
+import type { StrategyContext, StrategyContexts, StrategyObservation, StrategyResult } from './strategy';
+
+export const strategyObservationFixture: StrategyObservation = {
+  trackId: 10, tyre: 'Soft', uploads: 5, laps: 120, medianLapMs: 91000, minLapMs: 90000, maxLapMs: 98000,
+  fuelLaps: 80, medianFuelKg: 1.5,
+};
 
 export const strategyContextFixture: StrategyContext = {
   id: 'a'.repeat(32), trackId: 10, conditions: { packetFormat: 2026, gameYear: 25, gameMajor: 1, gameMinor: 22, formula: 13, sessionType: 15, totalLaps: 30, trackLengthM: 4500, teamId: null,

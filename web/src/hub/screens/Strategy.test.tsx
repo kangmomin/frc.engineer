@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { StrategyResultView, StrategyContextDetails, strategyContextLabel, StrategyCollectionStatus, StrategyEvidenceProgress, StrategyEmptyState } from './Strategy';
-import { strategyResultFixture, strategyContextFixture, strategyCorpusFixture } from '../data/strategy.testdata';
+import { StrategyResultView, StrategyContextDetails, strategyContextLabel, StrategyCollectionStatus, StrategyEvidenceProgress, StrategyEmptyState, StrategyObservations } from './Strategy';
+import { strategyResultFixture, strategyContextFixture, strategyCorpusFixture, strategyObservationFixture } from '../data/strategy.testdata';
 
 it('renders measured units, exact pit laps, evidence and accuracy limitations', () => {
   const html = renderToStaticMarkup(<StrategyResultView result={strategyResultFixture} />);
@@ -99,4 +99,54 @@ it('uses server minimums for progress while keeping small cohorts visible', () =
 it('keeps actual counts above the minimum and explains that fitting can still be unavailable', () => {
   const html = renderToStaticMarkup(<StrategyEvidenceProgress context={strategyContextFixture} corpus={{ minUsers: 3, minSessions: 6 }} />);
   for (const label of ['324 / 40랩', 'max="40" value="40"', '최소 수량 기준을 충족했습니다', '세 기준을 충족해도 비교 결과가 나오지 않을 수 있습니다']) expect(html).toContain(label);
+});
+
+it('shows historical measured timings even without eligible contexts or precise fuel', () => {
+  const corpus = { ...strategyCorpusFixture, contexts: [], records: 0,
+    observations: [{ ...strategyObservationFixture, fuelLaps: 0, medianFuelKg: null }] };
+  const html = renderToStaticMarkup(<StrategyObservations corpus={corpus} />);
+  const text = html.replace(/<[^>]*>/g, '');
+  for (const label of ['관측된 타이어·연료', '120랩 / 5건', '91.00초', '90.00–98.00초', '측정 없음', '보정하지 않은 값', 'Italy (Monza)']) expect(text).toContain(label);
+  expect(text).not.toContain('0.00 kg');
+  expect(text).not.toContain('표본 제한');
+});
+
+it('keeps measured fuel zero and missing fuel distinct with a separate sample count', () => {
+  const html = renderToStaticMarkup(<StrategyObservations corpus={{ ...strategyCorpusFixture,
+    observations: [strategyObservationFixture, { ...strategyObservationFixture, tyre: '', medianFuelKg: 0, fuelLaps: 3 }] }} />);
+  const text = html.replace(/<[^>]*>/g, '');
+  for (const label of ['1.50 kg/랩 · 80랩 측정', '0.00 kg/랩 · 3랩 측정', '미확인']) expect(text).toContain(label);
+  expect(text).not.toContain('측정 없음');
+});
+
+it('hides unavailable observations and initially limits a long all-track table', () => {
+  for (const observations of [undefined, null, []]) {
+    expect(renderToStaticMarkup(<StrategyObservations corpus={{ ...strategyCorpusFixture, observations }} />)).toBe('');
+  }
+  const observations = Array.from({ length: 11 }, (_, trackId) => ({ ...strategyObservationFixture, trackId }));
+  const html = renderToStaticMarkup(<StrategyObservations corpus={{ ...strategyCorpusFixture, observations }} />);
+  expect((html.match(/<tr>/g) ?? []).length).toBe(11); // Header and ten initially visible rows.
+  expect(html).toContain('전체 11개 보기');
+});
+
+it('uses reference minimums without calling the larger sample target an accuracy guarantee', () => {
+  const context = { ...strategyContextFixture, users: 1, sessions: 3, cleanLaps: 27 };
+  const html = renderToStaticMarkup(<StrategyEvidenceProgress context={context} corpus={{ minUsers: 3, minSessions: 6, minCleanLaps: 40,
+    referenceMinimums: { users: 1, sessions: 3, cleanLaps: 12 } }} />);
+  for (const label of ['참고용 분석 기준', '1 / 1명', '3 / 3경기', '27 / 12랩', '기본 표본 기준은 3명·6경기·정상 랩 40개', '표본 수는 예측 정확도를 보장하지 않습니다']) expect(html).toContain(label);
+});
+
+it('labels one-user results as reference estimates and displays the actual retained sample', () => {
+  const html = renderToStaticMarkup(<StrategyResultView result={{ ...strategyResultFixture, sampleLevel: 'limited',
+    minimumEvidence: { users: 1, sessions: 3, cleanLaps: 12 }, context: { ...strategyContextFixture, users: 1 } }} />);
+  for (const label of ['참고용 · 표본 제한', '정상 랩 324개 · 1명 · 독립 경기 12개', '12랩 종료', '다른 경기에서의 예측 정확도는 검증되지 않았습니다']) expect(html).toContain(label);
+});
+
+it('explains the server-returned reference minimum without rendering a plan for insufficient data', () => {
+  const html = renderToStaticMarkup(<StrategyResultView result={{ ...strategyResultFixture, status: 'insufficient-data', sampleLevel: 'limited',
+    minimumEvidence: { users: 1, sessions: 4, cleanLaps: 16 }, reasons: ['minimum-evidence'], plans: [] }} />);
+  expect(html).toContain('최소 1명·4경기·정상 랩 16개');
+  expect(html).toContain('타이어 종류별로도 1명·4경기');
+  expect(html).not.toContain('최소 3명·6경기');
+  expect(html).not.toContain('12랩 종료');
 });

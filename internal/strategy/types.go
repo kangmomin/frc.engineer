@@ -11,6 +11,11 @@ const (
 	MinUsers     = 3
 	MinSessions  = 6
 	MinCleanLaps = 40
+
+	// Reference estimates still need three races with at least four laps each.
+	ReferenceMinUsers     = 1
+	ReferenceMinSessions  = 3
+	ReferenceMinCleanLaps = 12
 )
 
 // Rules contains reported game settings that change vehicle or pit behaviour.
@@ -170,14 +175,23 @@ type ERSProfile struct {
 }
 
 type Result struct {
-	Status                   string          `json:"status"`
-	Context                  *Context        `json:"context"`
-	Reasons                  []string        `json:"reasons"`
-	Compounds                []CompoundModel `json:"compounds"`
-	FuelSlopeMsPerKg         *float64        `json:"fuelSlopeMsPerKg"`
-	LapMedianAbsoluteErrorMs *float64        `json:"lapMedianAbsoluteErrorMs"`
-	Pit                      *PitModel       `json:"pit"`
-	Plans                    []Plan          `json:"plans"`
-	ERS                      ERSProfile      `json:"ers"`
-	Validation               string          `json:"validation"`
+	SampleLevel              string           `json:"sampleLevel"`
+	MinimumEvidence          EvidenceMinimums `json:"minimumEvidence"`
+	Status                   string           `json:"status"`
+	Context                  *Context         `json:"context"`
+	Reasons                  []string         `json:"reasons"`
+	Compounds                []CompoundModel  `json:"compounds"`
+	FuelSlopeMsPerKg         *float64         `json:"fuelSlopeMsPerKg"`
+	LapMedianAbsoluteErrorMs *float64         `json:"lapMedianAbsoluteErrorMs"`
+	Pit                      *PitModel        `json:"pit"`
+	Plans                    []Plan           `json:"plans"`
+	ERS                      ERSProfile       `json:"ers"`
+	Validation               string           `json:"validation"`
+}
+
+// EvidenceMinimums describes sample availability, not calibrated accuracy.
+type EvidenceMinimums struct {
+	Users     int `json:"users"`
+	Sessions  int `json:"sessions"`
+	CleanLaps int `json:"cleanLaps"`
 }

@@ -2,8 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HubApp } from '../HubApp';
 import { PARENT_TOKEN_KEY, clearViewAsSession } from '../data/session';
-import { strategyContextFixture, strategyCorpusFixture, strategyResultFixture } from '../data/strategy.testdata';
-import type { StrategyContexts } from '../data/strategy';
+import { strategyContextFixture, strategyCorpusFixture, strategyResultFixture, strategyObservationFixture } from '../data/strategy.testdata';
+import type { StrategyContexts, StrategyResult } from '../data/strategy';
 
 const pause = (ms = 20) => new Promise<void>(resolve => setTimeout(resolve, ms));
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -27,6 +27,7 @@ export async function run() {
   const account = { id: 'owner-a', steamId64: '7', persona: 'Strategy A', avatarUrl: '', kind: 'user', verified: true, banned: false, createdAt: '' };
   let allowed = false, contexts = 0, simulations = 0, preferences = 0, deferMe = false, deferSimulation = false;
   let corpusOverride: StrategyContexts | undefined, deferContexts = false;
+  let simulationOverride: StrategyResult | undefined;
   const contextQueries: URLSearchParams[] = [];
   let finishMe: ((r: Response) => void) | null = null, finishSimulation: ((r: Response) => void) | null = null;
   let finishContexts: ((r: Response) => void) | null = null;
@@ -63,8 +64,9 @@ export async function run() {
         const selected = [strategyContextFixture, otherContext, wetContext].find(c => c.id === body.contextId);
         check(selected && url.searchParams.get('trackId') === String(selected.trackId), 'simulation used the global track instead of the selected card');
         check(body.availableSets.Soft === 1 && body.maxStops === 2 && body.requireTwoCompounds === true, 'form lost explicit tyre constraints');
+        check(body.allowLimitedEvidence === (corpusOverride?.referenceMinimums ? true : undefined), 'client did not negotiate reference support or sent a new field to a legacy server');
         if (deferSimulation) return new Promise<Response>(resolve => { finishSimulation = resolve; });
-        return json(strategyResultFixture);
+        return json(simulationOverride ?? strategyResultFixture);
       }
       if (url.pathname === '/wallet') return json({ balance: 0, initialized: false });
       if (url.pathname === '/ledger' || url.pathname === '/me/races') return json([]);
@@ -168,6 +170,27 @@ export async function run() {
     check(host.textContent?.includes('로그인과 인터넷 연결') && host.querySelector('[aria-label="레이스 업로드 현황"]'), 'confirmed empty uploads lost status or guidance');
     await showCollection({ ...noData, archiveCoverage: { ...noData.archiveCoverage!, uploadedRaces: 5, withoutEvidence: 5 } }, '레이스 업로드에 전략 계측이 없습니다');
     check(host.textContent?.includes('최근 레이스 업로드 5건에는') && !host.textContent?.includes('업로드된 레이스가 없습니다'), 'existing uploads were presented as no data');
+    const referenceMinimums = { users: 1, sessions: 3, cleanLaps: 12 };
+    const historical = { ...noData, referenceMinimums,
+      archiveCoverage: { ...noData.archiveCoverage!, uploadedRaces: 5, withoutEvidence: 5 },
+      observations: [{ ...strategyObservationFixture, fuelLaps: 0, medianFuelKg: null }] };
+    await showCollection(historical, '관측된 타이어·연료');
+    check(cards(host).length === 0 && host.textContent?.includes('120랩 / 5건') && host.textContent?.includes('91.00초') && host.textContent?.includes('측정 없음'), 'legacy archive timings disappeared behind the clean-context gate or fabricated fuel');
+    check(host.textContent?.includes('최소 1명·3개의 서로 다른 경기와 12개의 정상 랩'), 'empty comparison ignored reference minimums');
+    await showCollection({ ...historical, observations: Array.from({ length: 11 }, (_, trackId) => ({ ...strategyObservationFixture, trackId })) }, '전체 11개 보기');
+    const observationRows = () => host.querySelectorAll('[aria-labelledby="strategy-observations-title"] tbody tr');
+    check(observationRows().length === 10, 'all-track observations rendered an unbounded initial table');
+    button(host, '전체 11개 보기').click(); await until(() => observationRows().length === 11, 'observation expansion failed');
+    button(host, '처음 10개만 보기').click(); await until(() => observationRows().length === 10, 'observation collapse failed');
+    const referenceContext = { ...strategyContextFixture, users: 1 };
+    await showCollection({ ...strategyCorpusFixture, contexts: [referenceContext], referenceMinimums, observations: [strategyObservationFixture] }, '324 / 12랩');
+    simulationOverride = { ...strategyResultFixture, context: referenceContext, sampleLevel: 'limited', minimumEvidence: referenceMinimums,
+      compounds: strategyResultFixture.compounds.map(compound => ({ ...compound, users: 1 })),
+      pit: { ...strategyResultFixture.pit!, users: 1 }, ers: { ...strategyResultFixture.ers, users: 1, status: 'insufficient-data', segments: [] } };
+    button(host, '전략 비교하기').click();
+    await until(() => host.textContent?.includes('참고용 · 표본 제한') === true && host.textContent?.includes('12랩 종료') === true, 'one-user reference result did not render');
+    check(host.textContent?.includes('정상 랩 324개 · 1명 · 독립 경기 12개') && host.textContent?.includes('1.50 kg/랩 · 80랩 측정'), 'reference counts or measured fuel sample count disappeared');
+    simulationOverride = undefined;
     await showCollection({ ...noData, records: 2, archiveCoverage: { ...noData.archiveCoverage!, uploadedRaces: 2, withEvidence: 2 },
       diagnostics: { collectedLaps: 14, cleanLaps: 0, excludedLaps: 14, excludedRecords: 2,
         exclusions: [{ code: 'damage', records: 1, laps: 8 }, { code: 'traffic', records: 1, laps: 8 }, { code: 'flashback', records: 1, laps: 0 }] } },
@@ -199,8 +222,8 @@ export async function run() {
     deferContexts = false; corpusOverride = noData;
     selectFilter(host, '트랙', '7');
     await until(() => host.textContent?.includes('이 조건에 업로드된 레이스가 없습니다') === true, 'new track did not load its collection state');
-    (finishContexts as unknown as (r: Response) => void)(json(sparse)); await pause(60);
-    check(cards(host).length === 0 && !host.textContent?.includes('2 / 60랩'), 'late diagnostics crossed track boundaries');
+    (finishContexts as unknown as (r: Response) => void)(json({ ...sparse, observations: [strategyObservationFixture] })); await pause(60);
+    check(cards(host).length === 0 && !host.textContent?.includes('2 / 60랩') && !host.querySelector('[aria-labelledby="strategy-observations-title"]'), 'late diagnostics or observations crossed track boundaries');
     corpusOverride = undefined;
     selectFilter(host, '트랙', '');
     await until(() => cards(host).length === 3 && host.textContent?.includes('전략 비교하기') === true, 'legacy response did not return');
@@ -226,7 +249,7 @@ export async function run() {
     (finishMe as unknown as (r: Response) => void)(json({ ...account, permissions: ['pithub'] })); await pause(60);
     check(!host.querySelector('[aria-label="STRATEGY"]') && !host.textContent?.includes('12랩 종료'), 'late permission grant crossed account boundary');
     check(preferences === 0, 'obsolete opt-in API was called');
-    return 'Strategy browser: upload/measurement/eligible counts, exclusions and overlap, optional diagnostics, server progress thresholds, refresh preserving selection and filters, late collection/simulation responses, empty states, permission grant/revoke, manual comparison and units passed';
+    return 'Strategy browser: historical observations without clean contexts, fuel absence/sample counts, bounded expandable table, labelled one-user reference results, optional metadata, server thresholds, refresh/late-response isolation, permissions and manual comparison passed';
   } finally {
     root.unmount(); host.remove(); window.fetch = originalFetch;
     if (previousToken === null) localStorage.removeItem(PARENT_TOKEN_KEY); else localStorage.setItem(PARENT_TOKEN_KEY, previousToken);

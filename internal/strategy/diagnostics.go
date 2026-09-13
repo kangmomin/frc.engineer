@@ -27,7 +27,7 @@ func Diagnose(records []Record) Diagnostics {
 		for _, reason := range e.Reasons {
 			recordReasons[reason] = true
 		}
-		if e.Conditions.Rules == nil || e.Conditions.TeamID == nil {
+		if e.Conditions.Rules == nil || (!e.Conditions.Rules.EqualPerformance && e.Conditions.TeamID == nil) {
 			recordReasons["missing-conditions"] = true
 		}
 		if e.Conditions.Formula != 0 && e.Conditions.Formula != 13 {

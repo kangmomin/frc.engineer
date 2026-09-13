@@ -1,0 +1,72 @@
+{
+  "date": "2026-09-13",
+  "scope": "strategy historical observations, limited-sample reference estimates, traffic lap attribution",
+  "go": {
+    "command": "go test -race -p 1 ./... -count=1 -json",
+    "passed_test_and_subtest_events": 909,
+    "failed": 0,
+    "skipped": 0,
+    "owned_postgresql": 17,
+    "integration_and_upgrade_and_bans_enabled": true
+  },
+  "web": {
+    "passed": 758,
+    "failed": 0,
+    "skipped": 0,
+    "typecheck": "passed",
+    "lint": {
+      "errors": 0,
+      "warnings": 3
+    },
+    "build": "passed",
+    "strategy_browser": "passed"
+  },
+  "static": {
+    "related_go_vet": "passed",
+    "sender_windows_gui_cross_build": "PE32+ executable (GUI) x86-64",
+    "git_diff_check": "passed"
+  },
+  "regressions": {
+    "capture": "DRS and 2026 overtake before/after timing, delayed active after fresh inactive, brief activation, bounded queue, reset epoch, immutable published flags",
+    "repository": "legacy lap timings without fuel; track/game/race/ban/valid-lap scopes; exact fuel lap/time/tyre match, own count and null; latest 300 uploads and 150000 timing rows",
+    "analysis": "one-user 12-race synthetic fixture with 324 usable laps returns two labelled reference plans; identical standard result, strict old-client default, duplicate/singular/missing-measurement/contaminated/sparse/pit/inventory guards",
+    "http": "real authenticated HTTP and PostgreSQL legacy-only observation before new evidence, permissions/revocation and full simulation",
+    "browser": "legacy observations despite empty contexts, optional metadata, server-negotiated limited request, fuel absent/count, bounded expandable table, one-user label, manual simulate and stale-response isolation"
+  },
+  "visual": [
+    {
+      "viewport": 375,
+      "main_client_width": 301,
+      "main_scroll_width": 301,
+      "table_scroll_width": 566
+    },
+    {
+      "viewport": 1280,
+      "main_client_width": 1046,
+      "main_scroll_width": 1046,
+      "table_scroll_width": 952
+    }
+  ],
+  "independent_review": {
+    "pre_review": "fresh context; no blockers after freshness/original-corpus/strict-fuel/minimum-copy refinements",
+    "post_review": "shared Flags backing array issue fixed by clone before append/sort, verified by immutable-snapshot regression"
+  },
+  "assumptions": [
+    "Reference threshold of 1 user / 3 independent races / 12 retained clean laps is an initial product policy, not validated prediction accuracy."
+  ],
+  "limits": [
+    "Production authenticated user records were not accessed.",
+    "Timing observations are not fuel/weather/traffic/pit adjusted.",
+    "Historical missing fuel is not reconstructed.",
+    "Reference plans still require identifiable model, adequate per-compound range, pit evidence and feasible inventory."
+  ],
+  "cleanup": {
+    "owned_postgresql_stopped_and_deleted": true,
+    "temporary_browser_suite_removed": true,
+    "temporary_build_binary_and_visual_harness_removed": true
+  },
+  "release": {
+    "planned_version": "4.61.0",
+    "state": "pending"
+  }
+}

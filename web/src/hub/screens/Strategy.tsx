@@ -20,7 +20,6 @@ const pitExperiences = ['자동', '중계', '몰입형'];
 const modeLabel = (id: number) => gameModes[id] ?? `모드 ${id}`;
 const rulesLabel = (id: number) => ruleSets[id] ?? `규칙 ${id}`;
 const reasons: Record<string, string> = {
-  'minimum-evidence': '실제 계산에 사용할 수 있는 기록이 부족합니다. 컴파운드별로 최소 3명·6경기와 충분한 타이어 사용 랩 범위가 필요합니다.',
   'fuel-age-not-identifiable': '연료 감소와 타이어 사용에 따른 변화를 분리할 수 없어 순위를 보류합니다.',
   'unstable-pace-model': '랩 페이스의 편차가 크거나 계산이 불안정해 순위를 보류합니다.',
   'nonlinear-tyre-profile': '타이어 사용에 따른 변화가 현재 계산 범위를 벗어납니다.',
@@ -39,6 +38,24 @@ const exclusionLabels: Record<string, string> = {
   'missing-fuel': '연료 측정 누락', 'unknown-tyre': '타이어 종류 미확인', 'compound-change': '랩 도중 타이어 변경',
   'no-completed-laps': '완료 랩 없음',
 };
+
+export function StrategyObservations({ corpus }: { corpus: StrategyContexts }) {
+  const [expanded, setExpanded] = useState(false);
+  const observations = corpus.observations;
+  if (!observations?.length) return null;
+  const rows = expanded ? observations : observations.slice(0, 10);
+  return <section className={styles.card} aria-labelledby="strategy-observations-title">
+    <div className={styles.eyebrow}>실제 업로드 기록</div><h3 id="strategy-observations-title">관측된 타이어·연료</h3>
+    <p>과거 업로드를 포함한 타이어별 주행 기록입니다. 연료는 실제 측정값이 있는 랩만 집계합니다.</p>
+    <div className={styles.tableWrap}><table><thead><tr><th>서킷</th><th>타이어</th><th>랩타임 중앙값</th><th>유효 랩 / 업로드</th><th>관측 랩 범위</th><th>연료 사용 중앙값</th></tr></thead><tbody>{rows.map(row => <tr key={`${row.trackId}:${row.tyre}`}>
+      <td>{trackName(row.trackId)}</td><td>{tyreLabels[row.tyre as StrategyTyre] ?? '미확인'}</td>
+      <td>{seconds(row.medianLapMs)}초</td><td>{row.laps.toLocaleString()}랩 / {row.uploads.toLocaleString()}건</td>
+      <td>{seconds(row.minLapMs)}–{seconds(row.maxLapMs)}초</td><td>{row.medianFuelKg == null ? '측정 없음' : <>{row.medianFuelKg.toFixed(2)} kg/랩 · {row.fuelLaps.toLocaleString()}랩 측정</>}</td>
+    </tr>)}</tbody></table></div>
+    {observations.length > 10 && <button type="button" onClick={() => setExpanded(value => !value)}>{expanded ? '처음 10개만 보기' : `전체 ${observations.length}개 보기`}</button>}
+    <p className={styles.note}>선택한 트랙·게임의 최근 최대 {corpus.archiveCoverage?.limit ?? corpus.recordLimit}개 레이스 업로드 기준이며, 같은 경기의 여러 업로드가 포함될 수 있습니다. 랩타임은 연료·날씨·트래픽·피트 영향을 보정하지 않은 값으로 타이어 성능 순위가 아닙니다. 연료는 제외 사유 없이 측정된 랩만 집계합니다.</p>
+  </section>;
+}
 
 export function StrategyCollectionStatus({ corpus }: { corpus: StrategyContexts }) {
   const { archiveCoverage: coverage, diagnostics: d } = corpus;
@@ -73,25 +90,28 @@ export function StrategyCollectionStatus({ corpus }: { corpus: StrategyContexts 
   </section>;
 }
 
-export function StrategyEvidenceProgress({ context, corpus }: { context: StrategyContext; corpus: Pick<StrategyContexts, 'minUsers' | 'minSessions' | 'minCleanLaps'> }) {
+export function StrategyEvidenceProgress({ context, corpus }: { context: StrategyContext; corpus: Pick<StrategyContexts, 'minUsers' | 'minSessions' | 'minCleanLaps' | 'referenceMinimums'> }) {
+  const minimums = corpus.referenceMinimums ?? { users: corpus.minUsers, sessions: corpus.minSessions, cleanLaps: corpus.minCleanLaps ?? 40 };
   const metrics = [
-    { label: '참여자', value: context.users, minimum: corpus.minUsers, unit: '명' },
-    { label: '독립 경기', value: context.sessions, minimum: corpus.minSessions, unit: '경기' },
-    { label: '정상 랩', value: context.cleanLaps, minimum: corpus.minCleanLaps ?? 40, unit: '랩' },
+    { label: '참여자', value: context.users, minimum: minimums.users, unit: '명' },
+    { label: '독립 경기', value: context.sessions, minimum: minimums.sessions, unit: '경기' },
+    { label: '정상 랩', value: context.cleanLaps, minimum: minimums.cleanLaps, unit: '랩' },
   ];
   const enough = metrics.every(m => m.value >= m.minimum);
   return <div className={styles.evidenceProgress} aria-labelledby="strategy-evidence-title">
-    <h3 id="strategy-evidence-title">선택한 조건의 분석 기준</h3>
+    <h3 id="strategy-evidence-title">선택한 조건의 {corpus.referenceMinimums ? '참고용 ' : ''}분석 기준</h3>
     <div className={styles.metrics}>{metrics.map(m => <div key={m.label}>{m.label}
       <strong>{m.value.toLocaleString()} / {m.minimum.toLocaleString()}{m.unit}</strong>
       <progress aria-label={`${m.label} 최소 기준`} max={m.minimum} value={Math.min(m.value, m.minimum)} />
     </div>)}</div>
     <p className={styles.note}>{enough ? '최소 수량 기준을 충족했습니다.' : '선택한 조건의 기록이 더 필요합니다.'} 컴파운드별 표본과 타이어 사용 범위도 확인하므로 세 기준을 충족해도 비교 결과가 나오지 않을 수 있습니다.</p>
+    {corpus.referenceMinimums && <p className={styles.note}>한 사람의 서로 다른 경기로도 참고용 계산을 시작할 수 있습니다. 기본 표본 기준은 {corpus.minUsers}명·{corpus.minSessions}경기·정상 랩 {corpus.minCleanLaps ?? 40}개이며, 그보다 적으면 결과에 ‘표본 제한’을 표시합니다. 표본 수는 예측 정확도를 보장하지 않습니다.</p>}
   </div>;
 }
 
 export function StrategyEmptyState({ corpus, format, onRefresh }: { corpus: StrategyContexts; format: string; onRefresh: () => void }) {
   const coverage = corpus.archiveCoverage;
+  const minimums = corpus.referenceMinimums ?? { users: corpus.minUsers, sessions: corpus.minSessions, cleanLaps: corpus.minCleanLaps ?? 40 };
   const noUploads = corpus.records === 0 && coverage?.uploadedRaces === 0;
   const noMeasurements = corpus.records === 0 && coverage != null && coverage.withEvidence === 0 && coverage.withoutEvidence > 0;
   const title = noUploads ? '이 조건에 업로드된 레이스가 없습니다'
@@ -99,12 +119,13 @@ export function StrategyEmptyState({ corpus, format, onRefresh }: { corpus: Stra
       : corpus.records === 0 ? '이 조건의 기록을 모으고 있습니다' : '기록은 수집됐지만 비교할 정상 랩이 없습니다';
   return <div className={styles.empty}>
     <h3>{title}</h3>
+    {!!corpus.observations?.length && <p>저장된 랩타임·타이어 정보는 위의 관측 표에서 확인할 수 있습니다.</p>}
     {noUploads ? <p>트랙·게임 선택을 확인하세요. Driver Pack에서 로그인과 인터넷 연결을 확인한 뒤 레이스를 마치거나 저장하고 기록을 업로드하세요.</p>
       : noMeasurements ? <><p>최근 레이스 업로드 {coverage.withoutEvidence}건에는 전략 분석에 필요한 연료·타이어 나이 등의 계측이 첨부되지 않았습니다.</p><p>최신 Driver Pack으로 새 레이스를 수집해 업로드하세요. 기존 업로드에 없던 측정값은 추정해서 채우지 않습니다.</p></>
         : corpus.records === 0 ? <p>전략 수집을 지원하는 Driver Pack으로 레이스 기록을 업로드하면 자료가 쌓입니다. 기존 업로드에 없던 연료·타이어 나이·차량 설정은 추정해서 채우지 않습니다.</p>
           : <><p>수집된 {corpus.records}건에서 경기 조건과 정상 랩이 함께 확인되는 자료를 찾지 못했습니다. 계측 누락이나 손상·트래픽·되감기 등으로 제외된 기록은 비교에 사용하지 않습니다.</p><p>제외 사유를 확인하고 같은 경기 조건에서 손상·트래픽·SC 없이 주행한 랩을 더 수집하세요. 필수 측정값이 누락됐다면 최신 Driver Pack과 게임의 UDP 설정을 확인하세요.</p></>}
     {(noMeasurements || corpus.records > 0) && format === 'F1 25' && <p>2026 차량을 사용한다면 게임의 UDP 형식도 2026으로 설정해 수집하세요.</p>}
-    <p>전략 비교 계산에는 최소 {corpus.minUsers}명·{corpus.minSessions}개의 서로 다른 경기와 {corpus.minCleanLaps ?? 40}개의 정상 랩이 필요합니다. 정상 랩이 하나라도 있으면 조건 카드부터 표시합니다.</p>
+    <p>{corpus.referenceMinimums ? '참고용 전략' : '전략'} 비교 계산에는 최소 {minimums.users}명·{minimums.sessions}개의 서로 다른 경기와 {minimums.cleanLaps}개의 정상 랩이 필요합니다. 정상 랩이 하나라도 있으면 조건 카드부터 표시합니다.</p>
     <button type="button" onClick={onRefresh}>다시 확인</button>
   </div>;
 }
@@ -180,6 +201,7 @@ function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () =>
     {loading && <div className={styles.empty} role="status">업로드된 경기 조건을 찾고 있습니다…</div>}
     {error && <div className={styles.empty} role="alert"><p>{error}</p><button onClick={() => setRevision(n => n + 1)}>조건 다시 불러오기</button></div>}
     {!loading && !error && corpus && <>
+        <StrategyObservations corpus={corpus} />
         <StrategyCollectionStatus corpus={corpus} />
         <section className={styles.card} aria-labelledby="strategy-records-title">
           <div className={styles.cardHeading}><h3 id="strategy-records-title">수집 기록 · 경기 조건</h3><button type="button" onClick={() => setRevision(n => n + 1)}>새로고침</button></div>
@@ -204,13 +226,13 @@ function Workbench({ track, onDenied }: { track: StrategyFilter; onDenied: () =>
           </li>)}</ul>}
           {context ? <><StrategyEvidenceProgress context={context} corpus={corpus} /><details key={context.id}><summary>선택한 조건 상세</summary><StrategyContextDetails context={context} /><p>게임 버전·모드·규칙·경기 길이와 물리 설정이 같은 기록끼리만 비교합니다. 드라이버와 고정 셋업 차이는 경기별 기준 페이스로 보정하며, 도중에 셋업이 바뀐 자료는 제외합니다.</p></details></> : visible.length > 0 && <p className={styles.note}>비교할 조건 카드를 선택하세요.</p>}
         </section>
-        {context && <Comparison key={`${context.id}:${revision}`} track={{ trackId: context.trackId, format: track.format }} context={context} onDenied={onDenied} />}
-      <p className={styles.note}>선택한 {track.trackId === null ? '전체 트랙' : trackName(track.trackId)} · {track.format} 범위에서 최근 최대 {corpus.recordLimit}개 업로드, 사용자별 최대 20경기를 사용합니다.{corpus.truncated ? ' 현재 전체 조회 한도에 도달했습니다.' : ''} 같은 사용자의 같은 경기 재업로드는 한 건으로 처리합니다.</p>
+        {context && <Comparison key={`${context.id}:${revision}`} track={{ trackId: context.trackId, format: track.format }} context={context} allowLimitedEvidence={!!corpus.referenceMinimums} onDenied={onDenied} />}
+      <p className={styles.note}>정밀 계측을 이용한 전략 계산은 선택한 {track.trackId === null ? '전체 트랙' : trackName(track.trackId)} · {track.format} 범위에서 최근 최대 {corpus.recordLimit}개 업로드, 사용자별 최대 20경기를 사용합니다.{corpus.truncated ? ' 현재 전체 조회 한도에 도달했습니다.' : ''} 같은 사용자의 같은 경기 재업로드는 한 건으로 처리합니다.</p>
     </>}
   </>;
 }
 
-function Comparison({ track, context, onDenied }: { track: TrackContext; context: StrategyContext; onDenied: () => void }) {
+function Comparison({ track, context, allowLimitedEvidence, onDenied }: { track: TrackContext; context: StrategyContext; allowLimitedEvidence: boolean; onDenied: () => void }) {
   const wet = context.weather >= 3;
   // Editable starting inventory, never inferred from an upload.
   const [sets, setSets] = useState<StrategyRequest['availableSets']>(wet ? { Inter: 2, Wet: 1 } : { Soft: 1, Medium: 1, Hard: 1 });
@@ -226,7 +248,8 @@ function Comparison({ track, context, onDenied }: { track: TrackContext; context
     invalidate();
     const controller = new AbortController(); pending.current = controller; setBusy(true);
     try {
-      const data = await strategyClient.simulate(track, { contextId: context.id, maxStops, availableSets: sets, requireTwoCompounds: twoCompounds }, controller.signal);
+      const data = await strategyClient.simulate(track, { contextId: context.id, maxStops, availableSets: sets, requireTwoCompounds: twoCompounds,
+        ...(allowLimitedEvidence ? { allowLimitedEvidence: true } : {}) }, controller.signal);
       if (!controller.signal.aborted) setResult(data);
     } catch (err) {
       if (!controller.signal.aborted) { setError(strategyErrorMessage(err)); if (err instanceof StrategyError && err.status === 403) onDenied(); }
@@ -244,9 +267,13 @@ function Comparison({ track, context, onDenied }: { track: TrackContext; context
 }
 
 export function StrategyResultView({ result: r }: { result: StrategyResult }) {
+  const minimums = r.minimumEvidence ?? { users: 3, sessions: 6, cleanLaps: 40 };
+  const readyTitle = r.sampleLevel === 'limited' ? '참고용 타이어·피트 조합' : '관측 자료에서 비용이 낮은 조합';
   return <div className={styles.results} aria-live="polite">
-    <div className={styles.card}><div className={styles.eyebrow}>타이어 · 피트</div><h3>{r.status === 'ready' ? '관측 자료에서 비용이 낮은 조합' : statusLabels[r.status] ?? '비교할 수 없습니다'}</h3>
+    <div className={styles.card}><div className={styles.eyebrow}>{r.sampleLevel === 'limited' ? '참고용 · 표본 제한' : '타이어 · 피트'}</div><h3>{r.status === 'ready' ? readyTitle : statusLabels[r.status] ?? '비교할 수 없습니다'}</h3>
       {r.context && <p>계산에 사용한 정상 랩 {r.context.cleanLaps}개 · {r.context.users}명 · 독립 경기 {r.context.sessions}개</p>}
+      {r.sampleLevel === 'limited' && <p className={styles.note}>참여자나 경기 수가 제한된 참고용 분석입니다. 같은 기록에 맞춘 계산이며 다른 경기에서의 예측 정확도는 검증되지 않았습니다.</p>}
+      {r.reasons.includes('minimum-evidence') && <p className={styles.note}>실제 계산에 사용할 수 있는 기록이 부족합니다. 최소 {minimums.users}명·{minimums.sessions}경기·정상 랩 {minimums.cleanLaps}개가 필요합니다. 타이어 종류별로도 {minimums.users}명·{minimums.sessions}경기와 3랩 이상의 타이어 사용 나이 범위를 확인합니다.</p>}
       {r.reasons.filter(reason => reasons[reason]).map(reason => <p key={reason} className={styles.note}>{reasons[reason]}</p>)}
       {r.status === 'ready' && <><p>첫 조합과의 계산상 차이입니다. 실제 완주 시간이나 확정된 최적 전략을 뜻하지 않습니다.</p>
         <ol className={styles.plans}>{r.plans.map((plan, i) => <li key={i}><div className={styles.planHeading}><strong>{i + 1}. {plan.stints.map(s => tyreLabels[s.tyre]).join(' → ')}</strong><span>{i === 0 ? '비교 기준' : `+${seconds(plan.deltaMs)}초`}</span></div>

@@ -124,16 +124,6 @@ func TestStrategyUploadToSimulationHTTP(t *testing.T) {
 	if code, body := call("POST", "/races", uploads[0], legacy); code != 200 {
 		t.Fatalf("legacy upload: %d %s", code, body)
 	}
-	for i, r := range strategytest.Records() {
-		req := platformsvc.UploadRequest{SourceRaceID: r.RaceID, TrackID: 10, TrackName: "Monza", GameFormat: "F1 26", SessionType: "Race", Strategy: &r.Evidence}
-		for _, l := range r.Evidence.Laps {
-			ms := uint32(l.TimeMs)
-			req.Laps = append(req.Laps, platformsvc.UploadLap{LapNumber: l.Number, LapMs: ms, S1Ms: ms / 3, S2Ms: ms / 3, S3Ms: ms - 2*(ms/3), Tyre: l.Tyre, Valid: true})
-		}
-		if code, body := call("POST", "/races", uploads[i%3], req); code != 200 {
-			t.Fatalf("upload %d: %d %s", i, code, body)
-		}
-	}
 	roleName := fmt.Sprintf("strat-test-%d", time.Now().UnixNano())
 	if _, err := store.CreateRole(ctx, roleName, "Strategy test"); err != nil {
 		t.Fatal(err)
@@ -150,11 +140,31 @@ func TestStrategyUploadToSimulationHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, body := call("GET", "/strategies/contexts"+strategyQuery, web, nil)
+	var historical struct {
+		Contexts     []strategy.Context                `json:"contexts"`
+		Observations []platformsvc.StrategyObservation `json:"observations"`
+	}
+	if err := json.Unmarshal(body, &historical); err != nil || code != 200 || len(historical.Contexts) != 0 || len(historical.Observations) != 1 ||
+		historical.Observations[0].Laps != 1 || historical.Observations[0].MedianLapMs != 90000 || historical.Observations[0].MedianFuelKg != nil {
+		t.Fatalf("historical upload did not appear before any precise capture: %d %s %v", code, body, err)
+	}
+	for i, r := range strategytest.Records() {
+		req := platformsvc.UploadRequest{SourceRaceID: r.RaceID, TrackID: 10, TrackName: "Monza", GameFormat: "F1 26", SessionType: "Race", Strategy: &r.Evidence}
+		for _, l := range r.Evidence.Laps {
+			ms := uint32(l.TimeMs)
+			req.Laps = append(req.Laps, platformsvc.UploadLap{LapNumber: l.Number, LapMs: ms, S1Ms: ms / 3, S2Ms: ms / 3, S3Ms: ms - 2*(ms/3), Tyre: l.Tyre, Valid: true})
+		}
+		if code, body := call("POST", "/races", uploads[i%3], req); code != 200 {
+			t.Fatalf("upload %d: %d %s", i, code, body)
+		}
+	}
+	code, body = call("GET", "/strategies/contexts"+strategyQuery, web, nil)
 	var data struct {
-		Contexts    []strategy.Context                  `json:"contexts"`
-		Records     int                                 `json:"records"`
-		Diagnostics strategy.Diagnostics                `json:"diagnostics"`
-		Coverage    platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
+		Contexts     []strategy.Context                  `json:"contexts"`
+		Records      int                                 `json:"records"`
+		Diagnostics  strategy.Diagnostics                `json:"diagnostics"`
+		Coverage     platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
+		Observations []platformsvc.StrategyObservation   `json:"observations"`
 	}
 	if err := json.Unmarshal(body, &data); err != nil || code != 200 || len(data.Contexts) != 1 {
 		t.Fatalf("contexts: %d %s %v", code, body, err)
@@ -162,6 +172,14 @@ func TestStrategyUploadToSimulationHTTP(t *testing.T) {
 	if data.Records != 12 || data.Coverage.UploadedRaces != 13 || data.Coverage.WithEvidence != 12 || data.Coverage.WithoutEvidence != 1 ||
 		data.Diagnostics.CollectedLaps != 360 || data.Diagnostics.CleanLaps != data.Contexts[0].CleanLaps {
 		t.Fatalf("legacy upload or usable lap counts disappeared from HTTP diagnostics: %s", body)
+	}
+	var observedLaps, fuelLaps int
+	for _, observation := range data.Observations {
+		observedLaps += observation.Laps
+		fuelLaps += observation.FuelLaps
+	}
+	if len(data.Observations) != 2 || observedLaps != 361 || fuelLaps != 324 {
+		t.Fatalf("historical and precise observation counts diverged: %+v", data.Observations)
 	}
 	for _, id := range accounts {
 		if strings.Contains(string(body), id) {

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 )
@@ -17,7 +18,7 @@ func clean(l Lap) bool {
 func contextFor(record Record, l Lap) (Context, bool) {
 	e := record.Evidence
 	c := e.Conditions
-	if c.Rules == nil || c.TeamID == nil || len(e.Reasons) != 0 ||
+	if c.Rules == nil || (!c.Rules.EqualPerformance && c.TeamID == nil) || len(e.Reasons) != 0 ||
 		(c.Formula != 0 && c.Formula != 13) || l.SetupRevision == 0 {
 		return Context{}, false
 	}
@@ -111,8 +112,25 @@ type raceData struct {
 // Fuel and tyre age are fitted together. Singular designs deliberately produce
 // no ranking rather than inventing a fuel/age correction.
 func Analyze(records []Record, request Request) Result {
+	return analyze(records, request, EvidenceMinimums{MinUsers, MinSessions, MinCleanLaps}, "standard")
+}
+
+// AnalyzeWithLimitedEvidence permits reference estimates from several races
+// even when only one driver contributed. The estimator and physical checks are
+// identical; a limited sample is explicitly labelled and never called validated.
+// Retry only the count gate, not a failed fit or an impossible tyre inventory.
+func AnalyzeWithLimitedEvidence(records []Record, request Request) Result {
+	out := Analyze(records, request)
+	if out.Status != "insufficient-data" || !slices.Contains(out.Reasons, "minimum-evidence") {
+		return out
+	}
+	return analyze(records, request, EvidenceMinimums{ReferenceMinUsers, ReferenceMinSessions, ReferenceMinCleanLaps}, "limited")
+}
+
+func analyze(records []Record, request Request, minimums EvidenceMinimums, sampleLevel string) Result {
 	out := Result{Status: "insufficient-data", Reasons: []string{}, Compounds: []CompoundModel{}, Plans: []Plan{},
-		ERS: ERSProfile{Status: "insufficient-data", Segments: []EnergySector{}}, Validation: "in-sample-only"}
+		ERS: ERSProfile{Status: "insufficient-data", Segments: []EnergySector{}}, Validation: "in-sample-only",
+		SampleLevel: sampleLevel, MinimumEvidence: minimums}
 	if ValidateRequest(request) != nil {
 		out.Status = "invalid-request"
 		return out
@@ -177,7 +195,7 @@ func Analyze(records []Record, request Request) Result {
 		out.Compounds = []CompoundModel{}
 		for id, m := range counts {
 			m.Users, m.Sessions = len(compoundIDs[id].users), len(compoundIDs[id].sessions)
-			if m.Users >= MinUsers && m.Sessions >= MinSessions && m.MaxAge-m.MinAge >= 3 {
+			if m.Users >= minimums.Users && m.Sessions >= minimums.Sessions && m.MaxAge-m.MinAge >= 3 {
 				out.Compounds = append(out.Compounds, *m)
 			}
 		}
@@ -214,7 +232,7 @@ func Analyze(records []Record, request Request) Result {
 		out.Context.CleanLaps = lapCount
 		break
 	}
-	if out.Context.Users < MinUsers || out.Context.Sessions < MinSessions || out.Context.CleanLaps < MinCleanLaps || len(out.Compounds) == 0 {
+	if out.Context.Users < minimums.Users || out.Context.Sessions < minimums.Sessions || out.Context.CleanLaps < minimums.CleanLaps || len(out.Compounds) == 0 {
 		out.Reasons = append(out.Reasons, "minimum-evidence")
 		return out
 	}
@@ -276,7 +294,7 @@ func Analyze(records []Record, request Request) Result {
 		out.Reasons = append(out.Reasons, "unstable-pace-model")
 		return out
 	}
-	out.Pit = pitModel(races, models, beta, request.ContextID)
+	out.Pit = pitModel(races, models, beta, request.ContextID, minimums.Users)
 	if request.MaxStops > 0 && out.Pit == nil {
 		out.Reasons = append(out.Reasons, "pit-evidence-missing")
 	}
@@ -484,7 +502,7 @@ func weightedMAD(values, weights []float64, center float64) float64 {
 	return weightedMedian(d, weights)
 }
 
-func pitModel(races []raceData, models map[int]int, beta []float64, contextID string) *PitModel {
+func pitModel(races []raceData, models map[int]int, beta []float64, contextID string, minUsers int) *PitModel {
 	records := []Record{}
 	values := []float64{}
 	ids := newIdentities()
@@ -538,7 +556,7 @@ func pitModel(races []raceData, models map[int]int, beta []float64, contextID st
 			ids.add(r.record)
 		}
 	}
-	if len(ids.users) < MinUsers || len(ids.sessions) < 3 {
+	if len(ids.users) < minUsers || len(ids.sessions) < 3 {
 		return nil
 	}
 	weights := recordWeights(records)

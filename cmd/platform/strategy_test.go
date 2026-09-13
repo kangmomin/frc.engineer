@@ -15,9 +15,16 @@ import (
 )
 
 type strategyStub struct {
-	loads         int
-	tracks        []int
-	coverageLoads int
+	loads            int
+	tracks           []int
+	coverageLoads    int
+	observationLoads int
+	oneUser          bool
+}
+
+func (s *strategyStub) LoadStrategyObservations(_ context.Context, trackID int, _ string) ([]platformsvc.StrategyObservation, error) {
+	s.observationLoads++
+	return []platformsvc.StrategyObservation{{TrackID: trackID, Tyre: "Soft", Uploads: 12, Laps: 120, MedianLapMs: 92000, MinLapMs: 91000, MaxLapMs: 95000}}, nil
 }
 
 func (s *strategyStub) LoadStrategyArchiveCoverage(_ context.Context, _ int, _ string) (platformsvc.StrategyArchiveCoverage, error) {
@@ -29,6 +36,11 @@ func (s *strategyStub) LoadStrategyRecords(_ context.Context, trackID int, _ str
 	s.loads++
 	s.tracks = append(s.tracks, trackID)
 	records := strategytest.Records()
+	if s.oneUser {
+		for i := range records {
+			records[i].AccountID = "one-driver"
+		}
+	}
 	if trackID == platformsvc.AllStrategyTracks {
 		other := strategytest.Records()
 		for i := range other {
@@ -37,6 +49,34 @@ func (s *strategyStub) LoadStrategyRecords(_ context.Context, trackID int, _ str
 		records = append(records, other...)
 	}
 	return records, false, nil
+}
+
+func TestStrategyHTTPReturnsLabelledReferenceForOneUser(t *testing.T) {
+	s := &server{strategyStore: &strategyStub{oneUser: true}, authenticateForTest: func(context.Context, *http.Request) (platformsvc.Principal, error) {
+		return platformsvc.Principal{AccountID: "owner", Scope: platformsvc.ScopeWeb, Permissions: []string{"pithub.strategy"}}, nil
+	}}
+	req := struct {
+		strategy.Request
+		AllowLimitedEvidence bool `json:"allowLimitedEvidence"`
+	}{strategytest.Request(strategytest.Records()), true}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := strategyHTTP(s)("POST", "/strategies/simulate"+strategyQuery, string(raw))
+	var result strategy.Result
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || result.Status != "ready" ||
+		result.SampleLevel != "limited" || result.MinimumEvidence.Users != 1 || result.Context.Users != 1 || len(result.Plans) == 0 {
+		t.Fatalf("HTTP did not enable labelled reference estimates: %d %s %v", w.Code, w.Body.String(), err)
+	}
+	legacy, err := json.Marshal(req.Request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = strategyHTTP(s)("POST", "/strategies/simulate"+strategyQuery, string(legacy))
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil || w.Code != 200 || result.Status != "insufficient-data" || result.SampleLevel != "standard" || len(result.Plans) != 0 {
+		t.Fatalf("legacy client received an unlabelled limited-sample plan: %d %s %v", w.Code, w.Body.String(), err)
+	}
 }
 
 func strategyHTTP(s *server) func(string, string, string) *httptest.ResponseRecorder {
@@ -74,7 +114,7 @@ func TestStrategyGateRunsBeforeCorpus(t *testing.T) {
 					t.Fatalf("gate: %d %s", w.Code, w.Body.String())
 				}
 			}
-			if store.loads != 0 || store.coverageLoads != 0 {
+			if store.loads != 0 || store.coverageLoads != 0 || store.observationLoads != 0 {
 				t.Fatal("denied caller reached store")
 			}
 		})
@@ -89,10 +129,12 @@ func TestStrategyPermissionAndHTTPContract(t *testing.T) {
 	call := strategyHTTP(s)
 	w := call("GET", "/strategies/contexts"+strategyQuery, "")
 	var data struct {
-		Contexts     []strategy.Context                  `json:"contexts"`
-		Diagnostics  strategy.Diagnostics                `json:"diagnostics"`
-		Coverage     platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
-		MinCleanLaps int                                 `json:"minCleanLaps"`
+		Contexts          []strategy.Context                  `json:"contexts"`
+		Diagnostics       strategy.Diagnostics                `json:"diagnostics"`
+		Coverage          platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
+		MinCleanLaps      int                                 `json:"minCleanLaps"`
+		Observations      []platformsvc.StrategyObservation   `json:"observations"`
+		ReferenceMinimums strategy.EvidenceMinimums           `json:"referenceMinimums"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || w.Code != 200 || len(data.Contexts) != 1 {
 		t.Fatalf("contexts: %s %v", w.Body.String(), err)
@@ -100,6 +142,10 @@ func TestStrategyPermissionAndHTTPContract(t *testing.T) {
 	if data.Diagnostics.CollectedLaps != 360 || data.Diagnostics.CleanLaps != data.Contexts[0].CleanLaps ||
 		data.Coverage.WithoutEvidence != 3 || data.Coverage.UploadedRaces != 15 || data.MinCleanLaps != strategy.MinCleanLaps {
 		t.Fatalf("missing collection diagnostics: %s", w.Body.String())
+	}
+	if len(data.Observations) != 1 || data.Observations[0].Laps != 120 || data.Observations[0].MedianFuelKg != nil ||
+		data.ReferenceMinimums != (strategy.EvidenceMinimums{Users: 1, Sessions: 3, CleanLaps: 12}) {
+		t.Fatalf("missing observations or reference minimums: %s", w.Body.String())
 	}
 	for _, private := range []string{"driver-", "race-00", "sessionUid", "fuelKg", "setupRevision", "ersStartJ"} {
 		if strings.Contains(w.Body.String(), private) {

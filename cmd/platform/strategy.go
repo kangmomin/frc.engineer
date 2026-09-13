@@ -18,6 +18,7 @@ import (
 type strategyStore interface {
 	LoadStrategyRecords(context.Context, int, string) ([]strategy.Record, bool, error)
 	LoadStrategyArchiveCoverage(context.Context, int, string) (platformsvc.StrategyArchiveCoverage, error)
+	LoadStrategyObservations(context.Context, int, string) ([]platformsvc.StrategyObservation, error)
 }
 
 func (s *server) strategies() strategyStore {
@@ -94,18 +95,25 @@ func (s *server) handleStrategyContexts(w http.ResponseWriter, r *http.Request) 
 	if s.strategyError(w, err) {
 		return
 	}
+	observations, err := s.strategies().LoadStrategyObservations(ctx, track, format)
+	if s.strategyError(w, err) {
+		return
+	}
 	writeJSON(w, http.StatusOK, struct {
-		Contexts        []strategy.Context                  `json:"contexts"`
-		Records         int                                 `json:"records"`
-		Truncated       bool                                `json:"truncated"`
-		RecordLimit     int                                 `json:"recordLimit"`
-		MinUsers        int                                 `json:"minUsers"`
-		MinSessions     int                                 `json:"minSessions"`
-		MinCleanLaps    int                                 `json:"minCleanLaps"`
-		Diagnostics     strategy.Diagnostics                `json:"diagnostics"`
-		ArchiveCoverage platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
+		Contexts          []strategy.Context                  `json:"contexts"`
+		Records           int                                 `json:"records"`
+		Truncated         bool                                `json:"truncated"`
+		RecordLimit       int                                 `json:"recordLimit"`
+		MinUsers          int                                 `json:"minUsers"`
+		MinSessions       int                                 `json:"minSessions"`
+		MinCleanLaps      int                                 `json:"minCleanLaps"`
+		Diagnostics       strategy.Diagnostics                `json:"diagnostics"`
+		ArchiveCoverage   platformsvc.StrategyArchiveCoverage `json:"archiveCoverage"`
+		Observations      []platformsvc.StrategyObservation   `json:"observations"`
+		ReferenceMinimums strategy.EvidenceMinimums           `json:"referenceMinimums"`
 	}{strategy.Contexts(records), len(records), truncated, platformsvc.StrategyRecordLimit, strategy.MinUsers, strategy.MinSessions,
-		strategy.MinCleanLaps, strategy.Diagnose(records), coverage})
+		strategy.MinCleanLaps, strategy.Diagnose(records), coverage, observations,
+		strategy.EvidenceMinimums{Users: strategy.ReferenceMinUsers, Sessions: strategy.ReferenceMinSessions, CleanLaps: strategy.ReferenceMinCleanLaps}})
 }
 
 func (s *server) handleStrategySimulate(w http.ResponseWriter, r *http.Request) {
@@ -120,10 +128,11 @@ func (s *server) handleStrategySimulate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		ContextID           string         `json:"contextId"`
-		MaxStops            *int           `json:"maxStops"`
-		AvailableSets       map[string]int `json:"availableSets"`
-		RequireTwoCompounds *bool          `json:"requireTwoCompounds"`
+		ContextID            string         `json:"contextId"`
+		MaxStops             *int           `json:"maxStops"`
+		AvailableSets        map[string]int `json:"availableSets"`
+		RequireTwoCompounds  *bool          `json:"requireTwoCompounds"`
+		AllowLimitedEvidence bool           `json:"allowLimitedEvidence"`
 	}
 	if strategyJSON(w, r, &body) != nil || body.MaxStops == nil || body.RequireTwoCompounds == nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -138,7 +147,14 @@ func (s *server) handleStrategySimulate(w http.ResponseWriter, r *http.Request) 
 	if s.strategyError(w, err) {
 		return
 	}
-	out := strategy.Analyze(records, request)
+	// Older clients cannot label limited samples. They retain the strict result
+	// until a client that understands the reference metadata explicitly opts in.
+	var out strategy.Result
+	if body.AllowLimitedEvidence {
+		out = strategy.AnalyzeWithLimitedEvidence(records, request)
+	} else {
+		out = strategy.Analyze(records, request)
+	}
 	if out.Status == "context-not-found" {
 		http.Error(w, "strategy context not found", http.StatusNotFound)
 		return
