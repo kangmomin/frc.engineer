@@ -35,6 +35,11 @@ type strategyEnergySample struct {
 	time, distance, deployed, harvested float64
 }
 
+type strategyLapWindow struct {
+	start, end float64
+	index      int
+}
+
 type strategyCapture struct {
 	mu            sync.Mutex
 	evidence      strategy.Evidence
@@ -60,6 +65,13 @@ type strategyCapture struct {
 	pendingStop   *strategy.Stop
 	entryStops    uint8
 	inPit         bool
+
+	epochFrame           uint32
+	epochKnown           bool
+	lapWindows           []strategyLapWindow
+	pendingTraffic       []float64
+	trafficOverflow      bool
+	trafficOverflowUntil float64
 }
 
 func (c *strategyCapture) reset(uid uint64, player uint8) {
@@ -69,6 +81,9 @@ func (c *strategyCapture) reset(uid uint64, player uint8) {
 	c.setupRevision, c.stint = 0, 1
 	c.statusAt, c.damageAt, c.telemetryAt, c.lapAt = 0, 0, 0, 0
 	c.lapFrame = 0
+	c.epochKnown = false
+	c.lapWindows, c.pendingTraffic = nil, nil
+	c.trafficOverflow, c.trafficOverflowUntil = false, 0
 	c.pendingStop = nil
 	c.pendingStatus = nil
 	c.overtakeKnown = false
@@ -98,6 +113,10 @@ func (c *strategyCapture) observe(p *udp.ParsedData) {
 	}
 	if c.uid != h.SessionUID || c.player != h.PlayerCarIndex {
 		c.reset(h.SessionUID, h.PlayerCarIndex)
+	}
+	// Packets queued before a clock reset belong to the previous timing epoch.
+	if c.epochKnown && int32(h.OverallFrameIdentifier-c.epochFrame) < 0 {
+		return
 	}
 	i := int(c.player)
 	if p.Session != nil {
@@ -152,16 +171,19 @@ func (c *strategyCapture) observe(p *udp.ParsedData) {
 	}
 	if p.Telemetry != nil {
 		t := p.Telemetry.CarTelemetryData[i]
-		c.telemetry = &t
-		c.telemetryAt = at
-		if c.current != nil && t.DRS == 1 {
-			c.current.flags["traffic"] = true
+		if c.telemetry == nil || at >= c.telemetryAt {
+			c.telemetry, c.telemetryAt = &t, at
+		}
+		if t.DRS == 1 {
+			c.observeTraffic(at)
 		}
 	}
 	if p.CarTelemetry2 != nil {
-		c.overtakeKnown, c.overtakeAt = true, at
-		if c.current != nil && p.CarTelemetry2.CarTelemetry2Data[i].OvertakeActive != 0 {
-			c.current.flags["traffic"] = true
+		if !c.overtakeKnown || at >= c.overtakeAt {
+			c.overtakeKnown, c.overtakeAt = true, at
+		}
+		if p.CarTelemetry2.CarTelemetry2Data[i].OvertakeActive != 0 {
+			c.observeTraffic(at)
 		}
 	}
 	if p.CarStatus != nil {
@@ -205,6 +227,58 @@ func (c *strategyCapture) observe(p *udp.ParsedData) {
 		c.lapFrame = h.OverallFrameIdentifier
 		c.observeLap(at, p.LapData.LapData[i])
 	}
+}
+
+// Active samples can precede timing at a lap boundary, or arrive late after it.
+// Keep their timestamps until timing assigns the lap; inactive samples must not
+// overwrite a brief activation. Windows refer only to the bounded saved laps.
+func (c *strategyCapture) observeTraffic(at float64) {
+	if c.lap != nil && at <= c.lapAt {
+		c.markTraffic(at)
+		return
+	}
+	if len(c.pendingTraffic) < 256 {
+		c.pendingTraffic = append(c.pendingTraffic, at)
+		return
+	}
+	c.trafficOverflow = true
+	c.trafficOverflowUntil = max(c.trafficOverflowUntil, at)
+}
+
+func (c *strategyCapture) markTraffic(at float64) {
+	if c.current != nil && at >= c.current.startTime-0.001 {
+		c.current.flags["traffic"] = true
+		return
+	}
+	for i := len(c.lapWindows) - 1; i >= 0; i-- {
+		window := c.lapWindows[i]
+		if at < window.start-0.001 || at >= window.end-0.001 {
+			continue
+		}
+		lap := &c.evidence.Laps[window.index]
+		for _, flag := range lap.Flags {
+			if flag == "traffic" {
+				return
+			}
+		}
+		// Published snapshots share the old flag slice. Replace it before sort
+		// so a late sample cannot mutate a summary being saved or uploaded.
+		lap.Flags = append(append([]string(nil), lap.Flags...), "traffic")
+		sort.Strings(lap.Flags)
+		return
+	}
+}
+
+func (c *strategyCapture) drainTraffic(before float64) {
+	pending := c.pendingTraffic[:0]
+	for _, at := range c.pendingTraffic {
+		if at < before {
+			c.markTraffic(at)
+		} else {
+			pending = append(pending, at)
+		}
+	}
+	c.pendingTraffic = pending
 }
 
 func strategyRules(r *packets.SessionStrategyRules) *strategy.Rules {
@@ -342,8 +416,17 @@ func (c *strategyCapture) observeLap(at float64, l packets.LapData) {
 		c.evidence.Stops = []strategy.Stop{}
 		c.status, c.pendingStatus = nil, nil
 		c.statusAt = 0
+		c.epochFrame, c.epochKnown = c.lapFrame, true
+		c.lapWindows, c.pendingTraffic = nil, nil
+		c.trafficOverflow, c.trafficOverflowUntil = false, 0
+		c.telemetry, c.telemetryAt = nil, 0
+		c.overtakeKnown, c.overtakeAt = false, 0
 	}
 	boundary := at - float64(l.CurrentLapTimeInMS)/1000
+	c.drainTraffic(boundary - 0.001)
+	if c.trafficOverflow && c.current != nil {
+		c.current.flags["gap"] = true
+	}
 	if c.pendingStatus != nil && c.pendingStatus.at < boundary && c.pendingStatus.at <= at {
 		c.applyStatus(c.pendingStatus.at, c.pendingStatus.data)
 		c.pendingStatus = nil
@@ -372,6 +455,7 @@ func (c *strategyCapture) observeLap(at float64, l packets.LapData) {
 			}
 			sort.Strings(x.lap.Flags)
 			if len(c.evidence.Laps) < strategy.MaxLaps {
+				c.lapWindows = append(c.lapWindows, strategyLapWindow{x.startTime, boundary, len(c.evidence.Laps)})
 				c.evidence.Laps = append(c.evidence.Laps, x.lap)
 			}
 		}
@@ -386,6 +470,13 @@ func (c *strategyCapture) observeLap(at float64, l packets.LapData) {
 		c.startLap(at, l)
 	}
 	x := c.current
+	c.drainTraffic(at + 0.001)
+	if c.trafficOverflow {
+		x.flags["gap"] = true
+		if at >= c.trafficOverflowUntil {
+			c.trafficOverflow, c.trafficOverflowUntil = false, 0
+		}
+	}
 	if c.lap != nil && at-c.lapAt > .25 {
 		x.flags["gap"] = true
 	}
