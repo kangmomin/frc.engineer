@@ -128,6 +128,27 @@ type SafetyCarEvent struct {
 
 func (SafetyCarEvent) eventDetails() {}
 
+// ButtonsEvent carries the bit flags of the buttons currently pressed. The
+// game sends it whenever the button status changes.
+type ButtonsEvent struct {
+	ButtonStatus uint32
+}
+
+func (ButtonsEvent) eventDetails() {}
+
+// ButtonUDPAction1 is the bit for "UDP Action 1". Actions 1-12 occupy the
+// consecutive bits 0x00100000 through 0x80000000; the player binds them to
+// wheel buttons in the game's control settings.
+const ButtonUDPAction1 uint32 = 0x00100000
+
+// UDPActionMask returns the button bit for UDP Action n (1-12), or 0.
+func UDPActionMask(n int) uint32 {
+	if n < 1 || n > 12 {
+		return 0
+	}
+	return ButtonUDPAction1 << uint(n-1)
+}
+
 // CollisionEvent contains collision data
 type CollisionEvent struct {
 	Vehicle1Idx uint8
@@ -269,8 +290,16 @@ func ParseEventPacket(data []byte, header *PacketHeader) (*PacketEventData, erro
 			VehicleIdx: data[offset], // numLights reused as VehicleIdx field
 		}
 
+	case EventButtonStatus:
+		if len(data) < offset+4 {
+			return nil, fmt.Errorf("packet too small for button event details")
+		}
+		pkt.EventDetails = &ButtonsEvent{
+			ButtonStatus: uint32(data[offset]) | uint32(data[offset+1])<<8 | uint32(data[offset+2])<<16 | uint32(data[offset+3])<<24,
+		}
+
 	default:
-		// Events without details (SSTA, SEND, DRSE, CHQF, LGOT, RDFL, BUTN, FLBK)
+		// Events without details (SSTA, SEND, DRSE, CHQF, LGOT, RDFL, FLBK)
 	}
 
 	return pkt, nil

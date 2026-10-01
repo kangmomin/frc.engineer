@@ -69,8 +69,15 @@ func TestNormalizeOverlayHotkeysAllowsClearing(t *testing.T) {
 
 func TestDefaultedOverlayHotkeys(t *testing.T) {
 	got := defaultedOverlayHotkeys(nil)
-	if got != defaultOverlayHotkeys {
-		t.Fatalf("defaultedOverlayHotkeys(nil) = %#v, want %#v", got, defaultOverlayHotkeys)
+	want := defaultOverlayHotkeys
+	if got.Radar != want.Radar || got.Weather != want.Weather || got.Strategy != want.Strategy ||
+		got.Radio == nil || *got.Radio != defaultRadioHotkey {
+		t.Fatalf("defaultedOverlayHotkeys(nil) = %#v, want %#v", got, want)
+	}
+	// The default must be a copy: callers may not alias the package default.
+	*got.Radio = "X"
+	if *defaultOverlayHotkeys.Radio != defaultRadioHotkey {
+		t.Fatal("default radio hotkey aliased")
 	}
 }
 
@@ -97,9 +104,37 @@ func TestApplyOverlayState(t *testing.T) {
 	weather := &testOverlayController{active: true}
 	strategy := &testOverlayController{active: false}
 
-	state := applyOverlayState(overlayState{Radar: true, Weather: false, Strategy: true}, radar, weather, strategy)
+	radio := &testOverlayController{active: true}
+
+	state := applyOverlayState(overlayState{Radar: true, Weather: false, Strategy: true}, radar, weather, strategy, radio)
 	if !state.Radar || state.Weather || !state.Strategy {
 		t.Fatalf("unexpected state %#v", state)
+	}
+	// A client without the radio key must not close the radio overlay.
+	if state.Radio == nil || !*state.Radio || !radio.active {
+		t.Fatalf("radio overlay changed by legacy apply: %#v", state.Radio)
+	}
+	state = applyOverlayState(overlayState{Radio: boolPtr(false)}, radar, weather, strategy, radio)
+	if state.Radio == nil || *state.Radio || radio.active {
+		t.Fatalf("explicit radio=false ignored: %#v", state.Radio)
+	}
+}
+
+func TestOverlayHotkeysRadioCompatibility(t *testing.T) {
+	legacy := defaultedOverlayHotkeys(&overlayHotkeys{Radar: "Alt+1"})
+	if legacy.Radio == nil || *legacy.Radio != defaultRadioHotkey {
+		t.Fatalf("saved config without radio key must get the default: %#v", legacy.Radio)
+	}
+	cleared := defaultedOverlayHotkeys(&overlayHotkeys{Radio: stringPtr("")})
+	if cleared.Radio == nil || *cleared.Radio != "" {
+		t.Fatalf("explicitly cleared radio hotkey restored: %#v", cleared.Radio)
+	}
+	merged := mergeOverlayHotkeys(overlayHotkeys{Radar: " Alt+9 "}, overlayHotkeys{Radio: stringPtr("Ctrl+R")})
+	if merged.Radar != "Alt+9" || merged.Radio == nil || *merged.Radio != "Ctrl+R" {
+		t.Fatalf("older client dropped radio hotkey: %#v", merged)
+	}
+	if got := defaultedOverlayWindowSettings(nil).Radio; got.X != defaultRadioX || got.Scale != defaultOverlayScale {
+		t.Fatalf("radio window defaults %#v", got)
 	}
 }
 

@@ -42,8 +42,10 @@ import {
 import { fetchJsonWithSenderDebug } from "./senderDebug";
 import { DriverIntercomPanel } from "./DriverIntercomPanel";
 import { useDriverIntercom } from "./useDriverIntercom";
+import { useEngineerRadio } from "./useEngineerRadio";
+import { EngineerRadioPanel } from "./EngineerRadioPanel";
 
-type SectionId = "setup-manager" | "sender" | "overlay" | "intercom";
+type SectionId = "setup-manager" | "sender" | "overlay" | "intercom" | "radio";
 type SetupWorkspaceId = "builder" | "analysis";
 type Severity = "high" | "med" | "low";
 type SenderStorageMode = "resultOnly" | "summary" | "advanced";
@@ -74,6 +76,7 @@ interface SenderStatus {
   radarActive?: boolean;
   weatherActive?: boolean;
   strategyActive?: boolean;
+  radioActive?: boolean;
   roomCode?: string;
   roomId?: string;
   roomName?: string;
@@ -136,18 +139,23 @@ interface OverlayState {
   radar: boolean;
   weather: boolean;
   strategy: boolean;
+  radio: boolean;
 }
 
-interface OverlayPreset extends OverlayState {
+// radio is optional: presets saved before the engineer radio overlay existed
+// have no radio key and must leave that overlay as it is when applied.
+interface OverlayPreset extends Omit<OverlayState, "radio"> {
   id: string;
   name: string;
   savedAtLocal?: string;
+  radio?: boolean;
 }
 
 interface OverlayHotkeys {
   radar: string;
   weather: string;
   strategy: string;
+  radio: string;
 }
 
 interface SenderForwardTargetResponse {
@@ -215,11 +223,12 @@ const EMPTY_SENDER_STORAGE_INFO: SenderStorageInfo = {
   effective: "",
   usingCustom: false,
 };
-const DEFAULT_OVERLAY_STATE: OverlayState = { radar: false, weather: false, strategy: false };
+const DEFAULT_OVERLAY_STATE: OverlayState = { radar: false, weather: false, strategy: false, radio: false };
 const DEFAULT_OVERLAY_HOTKEYS: OverlayHotkeys = {
   radar: "Alt+Shift+1",
   weather: "Alt+Shift+2",
   strategy: "Alt+Shift+3",
+  radio: "Alt+Shift+4",
 };
 const DEFAULT_SENDER_CONFIG: SenderConfigDraft = {
   udpPort: "20777",
@@ -262,11 +271,15 @@ const SECTION_COPY: Record<SectionId, { title: string; detail: string }> = {
   },
   overlay: {
     title: "Overlay",
-    detail: "Radar, weather, and strategy overlay state, presets, and hotkey management.",
+    detail: "Radar, weather, strategy, and engineer radio overlay state, presets, and hotkey management.",
   },
   intercom: {
     title: "Intercom",
     detail: "Hands-free driver radio, team membership, microphone, and live route state.",
+  },
+  radio: {
+    title: "Engineer",
+    detail: "Virtual race engineer: spoken calls from live telemetry, briefings, questions, and the optional decision model.",
   },
 };
 
@@ -398,6 +411,7 @@ function normalizeOverlayHotkeysInput(source?: Partial<OverlayHotkeys> | null): 
     radar: source?.radar?.trim() || DEFAULT_OVERLAY_HOTKEYS.radar,
     weather: source?.weather?.trim() || DEFAULT_OVERLAY_HOTKEYS.weather,
     strategy: source?.strategy?.trim() || DEFAULT_OVERLAY_HOTKEYS.strategy,
+    radio: source?.radio?.trim() || DEFAULT_OVERLAY_HOTKEYS.radio,
   };
 }
 
@@ -426,6 +440,7 @@ function normalizeOverlayPresetsInput(source?: OverlayPreset[] | null): OverlayP
       radar: Boolean(preset.radar),
       weather: Boolean(preset.weather),
       strategy: Boolean(preset.strategy),
+      ...(typeof preset.radio === "boolean" ? { radio: preset.radio } : {}),
     });
   }
   return next.slice(0, 12);
@@ -1137,6 +1152,7 @@ export function F1SetupManager() {
   const [section, setSection] = useState<SectionId>("setup-manager");
   const [setupWorkspace, setSetupWorkspace] = useState<SetupWorkspaceId>("builder");
   const senderUrl = DEFAULT_SENDER_URL;
+  const engineerRadio = useEngineerRadio(senderUrl, driverIntercom.state);
   const engineerDashboardUrl = DEFAULT_ENGINEER_DASHBOARD_URL;
   const [senderConfig, setSenderConfig] = useState<SenderConfigDraft>(DEFAULT_SENDER_CONFIG);
   const [senderStorageInfo, setSenderStorageInfo] = useState<SenderStorageInfo>(EMPTY_SENDER_STORAGE_INFO);
@@ -1526,8 +1542,9 @@ export function F1SetupManager() {
       radar: Boolean(senderStatus?.radarActive),
       weather: Boolean(senderStatus?.weatherActive),
       strategy: Boolean(senderStatus?.strategyActive),
+      radio: Boolean(senderStatus?.radioActive),
     });
-  }, [senderStatus?.radarActive, senderStatus?.weatherActive, senderStatus?.strategyActive]);
+  }, [senderStatus?.radarActive, senderStatus?.weatherActive, senderStatus?.strategyActive, senderStatus?.radioActive]);
 
   useEffect(() => {
     let active = true;
@@ -1795,7 +1812,7 @@ export function F1SetupManager() {
     await persistComparison({ before: null, after: null });
   };
 
-  const applyOverlayStateUpdate = async (nextState: OverlayState, successMessage: string) => {
+  const applyOverlayStateUpdate = async (nextState: Omit<OverlayState, "radio"> & { radio?: boolean }, successMessage: string) => {
     setApplyingOverlay(true);
     setOverlayError(null);
     setOverlayNotice(null);
@@ -1813,6 +1830,7 @@ export function F1SetupManager() {
         radar: Boolean((data as OverlayState | null)?.radar),
         weather: Boolean((data as OverlayState | null)?.weather),
         strategy: Boolean((data as OverlayState | null)?.strategy),
+        radio: Boolean((data as OverlayState | null)?.radio),
       };
       setOverlayState(appliedState);
       setOverlayNotice(successMessage);
@@ -1852,6 +1870,7 @@ export function F1SetupManager() {
       radar: overlayState.radar,
       weather: overlayState.weather,
       strategy: overlayState.strategy,
+      radio: overlayState.radio,
     };
     const nextPresets = [...overlayPresets];
     if (existingIndex >= 0) {
@@ -1882,6 +1901,7 @@ export function F1SetupManager() {
         radar: preset.radar,
         weather: preset.weather,
         strategy: preset.strategy,
+        ...(typeof preset.radio === "boolean" ? { radio: preset.radio } : {}),
       },
       `Preset ${preset.name} applied.`,
     );
@@ -1948,7 +1968,7 @@ export function F1SetupManager() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {(["setup-manager", "sender", "overlay", "intercom"] as const).map((item) => (
+          {(["setup-manager", "sender", "overlay", "intercom", "radio"] as const).map((item) => (
             <button
               key={item}
               onClick={() => setSection(item)}
@@ -2741,11 +2761,12 @@ export function F1SetupManager() {
                 </div>
               ) : null}
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                 {([
                   { key: "radar" as const, label: "Radar", accent: P.accent },
                   { key: "weather" as const, label: "Weather", accent: P.accent2 },
                   { key: "strategy" as const, label: "Strategy", accent: "#ff8f4d" },
+                  { key: "radio" as const, label: "Engineer Radio", accent: "#ffc800" },
                 ]).map((item) => (
                   <div key={item.key} style={{ padding: 12, borderRadius: 4, background: P.surface2, border: `1px solid ${P.border}` }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 10 }}>
@@ -2796,6 +2817,7 @@ export function F1SetupManager() {
                               { label: "Radar", active: preset.radar },
                               { label: "Weather", active: preset.weather },
                               { label: "Strategy", active: preset.strategy },
+                              ...(typeof preset.radio === "boolean" ? [{ label: "Radio", active: preset.radio }] : []),
                             ]).map((item) => (
                               <span key={`${preset.id}-${item.label}`} style={{ padding: "3px 7px", borderRadius: 999, background: item.active ? "rgba(0,229,255,0.12)" : "rgba(59,73,76,0.18)", color: item.active ? P.accent : P.muted, fontSize: 9, fontFamily: P.mono }}>
                                 {item.label}
@@ -2820,11 +2842,12 @@ export function F1SetupManager() {
               <div style={{ fontSize: 11, color: P.muted, marginBottom: 12, lineHeight: 1.6 }}>
                 Global overlay hotkeys stay active while F1 Driver Pack is running. Use combos like <span style={{ color: P.text }}>Alt+Shift+1</span> or <span style={{ color: P.text }}>Ctrl+Alt+R</span>.
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
                 {([
                   { key: "radar" as const, label: "Radar" },
                   { key: "weather" as const, label: "Weather" },
                   { key: "strategy" as const, label: "Strategy" },
+                  { key: "radio" as const, label: "Radio" },
                 ]).map((item) => (
                   <div key={item.key} style={{ display: "grid", gap: 6 }}>
                     <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>{item.label}</div>
@@ -2844,7 +2867,7 @@ export function F1SetupManager() {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ fontSize: 11, color: P.muted }}>
-                  Saved: Radar {overlayHotkeys.radar} / Weather {overlayHotkeys.weather} / Strategy {overlayHotkeys.strategy}
+                  Saved: Radar {overlayHotkeys.radar} / Weather {overlayHotkeys.weather} / Strategy {overlayHotkeys.strategy} / Radio {overlayHotkeys.radio}
                 </div>
                 <button onClick={() => void saveOverlayHotkeySettings()} disabled={savingOverlayConfig} style={{ width: 120, padding: "10px 12px", borderRadius: 4, border: "none", background: P.accent2, color: P.bg, fontFamily: P.mono, cursor: savingOverlayConfig ? "wait" : "pointer" }}>
                   SAVE
@@ -2862,6 +2885,12 @@ export function F1SetupManager() {
                 devices={driverIntercom.devices}
                 theme={P}
               />
+            </Panel>
+          ) : null}
+
+          {section === "radio" ? (
+            <Panel title="ENGINEER RADIO">
+              <EngineerRadioPanel senderUrl={senderUrl} radio={engineerRadio} theme={P} />
             </Panel>
           ) : null}
         </main>

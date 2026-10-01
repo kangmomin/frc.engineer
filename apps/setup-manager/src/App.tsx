@@ -12,12 +12,14 @@ interface OverlayHotkeySyncResult {
     radar?: string;
     weather?: string;
     strategy?: string;
+    radio?: string;
   };
   errors: string[];
   registered: {
     radar: boolean;
     weather: boolean;
     strategy: boolean;
+    radio?: boolean;
   };
 }
 

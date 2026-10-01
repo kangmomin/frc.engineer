@@ -188,6 +188,7 @@ async function postSenderToggle(kind) {
     radar: '/api/radar/toggle',
     weather: '/api/weather/toggle',
     strategy: '/api/strategy/toggle',
+    radio: '/api/radio/toggle',
   };
   const endpoint = endpointMap[kind];
   if (!endpoint) {
@@ -219,6 +220,7 @@ function registerOverlayHotkeys(hotkeys) {
     radar: normalizeHotkeyValue(hotkeys?.radar),
     weather: normalizeHotkeyValue(hotkeys?.weather),
     strategy: normalizeHotkeyValue(hotkeys?.strategy),
+    radio: normalizeHotkeyValue(hotkeys?.radio),
   };
   const errors = [];
   const seenAccelerators = new Map();
@@ -262,6 +264,7 @@ function registerOverlayHotkeys(hotkeys) {
       radar: Boolean(registeredOverlayHotkeys.radar),
       weather: Boolean(registeredOverlayHotkeys.weather),
       strategy: Boolean(registeredOverlayHotkeys.strategy),
+      radio: Boolean(registeredOverlayHotkeys.radio),
     },
   };
 }
@@ -744,6 +747,9 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
+      // The engineer radio voice keeps speaking while the driver pack is
+      // minimized during a race; throttled timers would delay held calls.
+      backgroundThrottling: false,
     },
     icon: path.join(__dirname, 'icon.ico'),
     show: false,

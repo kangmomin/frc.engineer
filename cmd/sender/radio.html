@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engineer Radio</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Noto+Sans+KR:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0b; color: #e5e2e3;
+    font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    overflow: hidden; user-select: none; -webkit-app-region: drag;
+    height: 100vh; display: flex; flex-direction: column;
+  }
+  body.transparent { background: transparent; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #1a1a1a; }
+  .title { font-family: 'Orbitron', sans-serif; font-size: 0.7rem; color: #00d2ff; letter-spacing: 2px; }
+  .status { font-family: 'Orbitron', sans-serif; font-size: 0.5rem; letter-spacing: 1px; color: #333; }
+  .calls { flex: 1; padding: 10px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .call { border-left: 4px solid #00d2ff; padding: 2px 0 2px 10px; transition: opacity 0.4s; }
+  .call.latest .text { font-size: 1.15rem; font-weight: 700; line-height: 1.35; }
+  .call.old { opacity: 0.55; }
+  .call.old .text { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .p3 { border-color: #ff525c; } .p2 { border-color: #ffc800; } .p1 { border-color: #00d2ff; } .p0 { border-color: #849396; }
+  .meta { font-size: 0.65rem; color: #849396; margin-top: 2px; }
+  .idle { color: #555; font-size: 0.9rem; }
+  .voice { -webkit-app-region: no-drag; margin: 0 16px 12px; padding: 6px 10px; background: #00363d; color: #e5e2e3; border: 1px solid #00d2ff; border-radius: 4px; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="header"><span class="title">ENGINEER RADIO</span><span class="status" id="status">CONNECTING</span></div>
+<div class="calls" id="calls"><div class="idle">대기 중</div></div>
+<button class="voice" id="voice" hidden>음성 켜기 · Enable voice</button>
+<script>
+(function() {
+  var params = new URLSearchParams(location.search);
+  if (params.get('transparent') === '1') document.body.classList.add('transparent');
+  var callsEl = document.getElementById('calls');
+  var statusEl = document.getElementById('status');
+  var voiceBtn = document.getElementById('voice');
+  var shown = [];
+  var lang = 'ko';
+  var voiceOn = false;
+  var basisLabels = { ko: { game: '게임 값', measured: '측정', heuristic: '휴리스틱' }, en: { game: 'game', measured: 'measured', heuristic: 'heuristic' } };
+
+  // Voice is opt-in (?voice=1) and needs one click: browsers block speech
+  // without a user gesture. OBS sources stay silent by default.
+  if (params.get('voice') === '1' && 'speechSynthesis' in window) {
+    voiceBtn.hidden = false;
+    voiceBtn.onclick = function() { voiceOn = true; voiceBtn.hidden = true; speak({ text: lang === 'en' ? 'Voice on.' : '음성 켜짐.', priority: 2 }); };
+  }
+
+  function speak(c) {
+    if (!voiceOn) return;
+    var u = new SpeechSynthesisUtterance(c.text);
+    u.lang = lang === 'en' ? 'en-GB' : 'ko-KR';
+    if (c.priority >= 3) window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  function render() {
+    var now = Date.now();
+    shown = shown.filter(function(c) { return now - c.at < 15000; }).slice(0, 3);
+    if (!shown.length) { callsEl.innerHTML = '<div class="idle">' + (lang === 'en' ? 'Standing by' : '대기 중') + '</div>'; return; }
+    callsEl.innerHTML = shown.map(function(c, i) {
+      var meta = c.lap ? 'L' + c.lap : '';
+      var labels = basisLabels[lang] || basisLabels.ko;
+      if (c.basis && labels[c.basis]) meta += (meta ? ' · ' : '') + labels[c.basis];
+      return '<div class="call p' + c.priority + (i === 0 ? ' latest' : ' old') + '"><div class="text">' + esc(c.text) + '</div>' +
+        (i === 0 && meta ? '<div class="meta">' + esc(meta) + '</div>' : '') + '</div>';
+    }).join('');
+  }
+
+  function add(c, quiet) {
+    c.at = Date.now();
+    shown.unshift(c);
+    render();
+    if (!quiet) speak(c);
+  }
+
+  function connect() {
+    statusEl.textContent = 'CONNECTING'; statusEl.style.color = '#333';
+    var es = new EventSource('/api/radio/stream');
+    es.addEventListener('hello', function(e) {
+      statusEl.textContent = 'LIVE'; statusEl.style.color = '#00d2ff';
+      try {
+        var h = JSON.parse(e.data);
+        lang = h.language || 'ko';
+        shown = [];
+        (h.active || []).slice().reverse().forEach(function(c) { add(c, true); });
+        render();
+      } catch (err) {}
+    });
+    es.addEventListener('call', function(e) { try { add(JSON.parse(e.data)); } catch (err) {} });
+    es.onerror = function() { statusEl.textContent = 'RECONNECTING'; statusEl.style.color = '#e74c3c'; es.close(); setTimeout(connect, 2000); };
+  }
+  setInterval(render, 1000);
+  connect();
+})();
+</script>
+</body>
+</html>

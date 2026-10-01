@@ -1,6 +1,6 @@
 # Feature Scope and Roadmap
 
-현재 `frc.engineer`의 사용자 화면과 다음 작업을 정리한다. 기준일: 2026-09-06.
+현재 `frc.engineer`의 사용자 화면과 다음 작업을 정리한다. 기준일: 2026-10-01.
 
 ## 현재 제공하는 기능
 
@@ -30,7 +30,9 @@
 - 오버레이 및 로컬 설정 API, 레이스 목록·상세·삭제·리플레이 스트림 API.
 - 개인 최고 랩 저장과 `getBestLap` 응답을 유지한다. Sender의 원시 best-lap trace는 파일 저장을 켠 Advanced 모드에서만 저장한다. 트랙 0(Australia)을 지원하고, 새 세션에서 트랙별 기록을 다시 읽는다. 이 API의 전용 Web 비교 화면은 현재 활성화되어 있지 않다.
 
-주요 파일: `cmd/sender/main.go`, `cmd/server/main.go`, `internal/telemetry/processor.go`, `internal/races/storage.go`.
+- **가상 엔지니어 라디오**: 실시간 텔레메트리로 피트 윈도우·연료·타이어·손상·SC·페널티·앞뒤차·날씨 콜을 만들고, 우선순위·제동 보류·간격 규칙으로 내보낸다. 네이티브 `radio` 오버레이, OBS용 `/radio` 페이지, 휠 버튼(UDP Action) 브리핑·다시 듣기, 텍스트 질문 응답을 제공한다. 선택적으로 Jev·laya 결정 모델을 섀도·적용 모드로 붙인다. 상세: `docs/api/engineer-radio.md`.
+
+주요 파일: `cmd/sender/main.go`, `cmd/server/main.go`, `internal/telemetry/processor.go`, `internal/races/storage.go`, `internal/engineer/`.
 
 ### Minmo Driver Pack (Setup Manager + Sender)
 
@@ -38,12 +40,14 @@
 - Sender 실행·종료·재시작, 업데이트 설치 전 종료 대기.
 - **Session Analysis**: 저장 세션 목록, 유효 랩·섹터·타이어 분석, 랩 비교와 손실 구간 표시.
 - 드라이버 인터컴과 로컬 설정.
+- **Engineer**: 가상 엔지니어 라디오 설정, Windows 음성 출력(인터컴 발화 중 보류), 브리핑·질문, 결정 모델 설정과 기록 확인.
 
 주요 파일:
 
 - `apps/setup-manager/src/F1SetupManager.tsx`
 - `apps/setup-manager/src/SessionAnalysisSection.tsx`
 - `apps/setup-manager/src/DriverIntercomPanel.tsx`
+- `apps/setup-manager/src/EngineerRadioPanel.tsx`
 - `apps/setup-manager/electron/main.cjs`
 
 ## 후속 작업 기준
@@ -53,6 +57,7 @@
 1. 이번 감사의 수정 사항을 실제 게임의 장시간 세션, flashback, 네트워크 변경 환경에서 확인한다. 자동 회귀 검사와 현장 확인 결과를 구분한다.
 2. 표준 F1 외의 커스텀 그리드·F2·특수 예선은 별도 규칙이 확인될 때 확장한다. UDP 배열 용량만으로 참가 규모를 추정하지 않는다.
 3. 개인 최고 랩 비교 API의 신규 UI는 별도 요구사항으로 결정한다.
-4. 툴체인·Electron·전송 의존성 패치, PostgreSQL 통합 검사, Chrome WebRTC 검사 및 Windows 네이티브 검사를 CI에서 유지한다.
+4. 가상 엔지니어 라디오의 음성 질문(STT), 사람 엔지니어 지시 카드(C16), 결정 모델 적용 범위 확대는 섀도 기록으로 불일치율·지연을 측정한 뒤 별도로 결정한다.
+5. 툴체인·Electron·전송 의존성 패치, PostgreSQL 통합 검사, Chrome WebRTC 검사 및 Windows 네이티브 검사를 CI에서 유지한다.
 
 이번 감사 원문은 `docs/reviews/20260906-project-audit.md`, 수정과 검증 상태는 `docs/reviews/20260906-remediation-status.md`에 기록한다.

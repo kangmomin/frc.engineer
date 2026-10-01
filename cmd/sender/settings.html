@@ -833,6 +833,20 @@
          onclick="toggleStrategy()">
         Strategy Overlay
       </button>
+      <button id="radioBtn" style="
+        background:#1a1a1a;border:1px solid #00d2ff33;border-radius:4px;
+        color:#00d2ff;font-family:'Orbitron',sans-serif;font-size:0.65rem;
+        letter-spacing:1.5px;text-transform:uppercase;padding:8px 20px;
+        cursor:pointer;transition:background 0.2s,border-color 0.2s;margin-left:8px;
+      " onmouseover="this.style.background='#00d2ff15';this.style.borderColor='#00d2ff'"
+         onmouseout="this.style.background='#1a1a1a';this.style.borderColor='#00d2ff33'"
+         onclick="toggleRadio()">
+        Radio Overlay
+      </button>
+    </div>
+    <div class="hotkey-note" style="margin-top:10px;text-align:center;">
+      Engineer radio: <a href="/radio?voice=1" target="_blank" style="color:#00d2ff;">open radio page with voice</a>
+      · OBS source: <span style="color:#bac9cc;">/radio?transparent=1</span>
     </div>
   </div>
 
@@ -866,6 +880,12 @@
           <input class="hotkey-readout" id="strategyHotkey" type="text" readonly>
           <button class="mini-btn capture" id="captureStrategyHotkey" type="button">Capture</button>
           <button class="mini-btn warn" id="clearStrategyHotkey" type="button">Clear</button>
+        </div>
+        <div class="hotkey-row">
+          <span class="hotkey-label">Radio</span>
+          <input class="hotkey-readout" id="radioHotkey" type="text" readonly>
+          <button class="mini-btn capture" id="captureRadioHotkey" type="button">Capture</button>
+          <button class="mini-btn warn" id="clearRadioHotkey" type="button">Clear</button>
         </div>
       </div>
       <div class="preset-list" id="presetList" style="margin-top:14px;"></div>
@@ -1079,6 +1099,9 @@
   const $clearRadarHotkey = document.getElementById('clearRadarHotkey');
   const $clearWeatherHotkey = document.getElementById('clearWeatherHotkey');
   const $clearStrategyHotkey = document.getElementById('clearStrategyHotkey');
+  const $radioHotkey = document.getElementById('radioHotkey');
+  const $captureRadioHotkey = document.getElementById('captureRadioHotkey');
+  const $clearRadioHotkey = document.getElementById('clearRadioHotkey');
   const $engineerDashboardUrl = document.getElementById('engineerDashboardUrl');
   const $saveInviteSettingsBtn = document.getElementById('saveInviteSettingsBtn');
   const $inviteLink = document.getElementById('inviteLink');
@@ -1097,11 +1120,13 @@
     radar: 'Alt+Shift+1',
     weather: 'Alt+Shift+2',
     strategy: 'Alt+Shift+3',
+    radio: 'Alt+Shift+4',
   };
   let currentOverlayState = {
     radar: false,
     weather: false,
     strategy: false,
+    radio: false,
   };
   let currentTrack = null;
   let currentTrackPreview = null;
@@ -1203,6 +1228,7 @@
       radar: normalizeHotkeyValue(fallback?.radar || ''),
       weather: normalizeHotkeyValue(fallback?.weather || ''),
       strategy: normalizeHotkeyValue(fallback?.strategy || ''),
+      radio: normalizeHotkeyValue(fallback?.radio || ''),
     };
     if (!source || typeof source !== 'object') {
       return next;
@@ -1215,6 +1241,9 @@
     }
     if (hasOwnValue(source, 'strategy')) {
       next.strategy = normalizeHotkeyValue(source.strategy);
+    }
+    if (hasOwnValue(source, 'radio')) {
+      next.radio = normalizeHotkeyValue(source.radio);
     }
     return next;
   }
@@ -1261,10 +1290,12 @@
       radar: !!state.radar,
       weather: !!state.weather,
       strategy: !!state.strategy,
+      radio: !!state.radio,
     };
     updateRadarBtn(currentOverlayState.radar);
     updateWeatherBtn(currentOverlayState.weather);
     updateStrategyBtn(currentOverlayState.strategy);
+    updateRadioBtn(currentOverlayState.radio);
     renderOverlayStatePills();
   }
 
@@ -1273,6 +1304,7 @@
       ['Radar', currentOverlayState.radar],
       ['Weather', currentOverlayState.weather],
       ['Strategy', currentOverlayState.strategy],
+      ['Radio', currentOverlayState.radio],
     ];
     $overlayStatePills.innerHTML = items.map(([label, active]) => (
       `<span class="overlay-pill ${active ? 'active' : ''}">${label} ${active ? 'On' : 'Off'}</span>`
@@ -1283,11 +1315,13 @@
     $radarHotkey.value = overlayHotkeys.radar || 'Unassigned';
     $weatherHotkey.value = overlayHotkeys.weather || 'Unassigned';
     $strategyHotkey.value = overlayHotkeys.strategy || 'Unassigned';
+    $radioHotkey.value = overlayHotkeys.radio || 'Unassigned';
 
     const captureButtons = {
       radar: $captureRadarHotkey,
       weather: $captureWeatherHotkey,
       strategy: $captureStrategyHotkey,
+      radio: $captureRadioHotkey,
     };
     Object.entries(captureButtons).forEach(([kind, button]) => {
       button.classList.toggle('active', recordingHotkeyKind === kind);
@@ -1312,6 +1346,7 @@
             <span class="preset-chip ${preset.radar ? 'active' : ''}">Radar</span>
             <span class="preset-chip ${preset.weather ? 'active' : ''}">Weather</span>
             <span class="preset-chip ${preset.strategy ? 'active' : ''}">Strategy</span>
+            <span class="preset-chip ${preset.radio ? 'active' : ''}">Radio</span>
           </div>
         </div>
         <div class="preset-actions">
@@ -1447,6 +1482,8 @@
           radar: !!preset.radar,
           weather: !!preset.weather,
           strategy: !!preset.strategy,
+          // Presets saved before the radio overlay have no radio key: leave it as is.
+          ...(typeof preset.radio === 'boolean' ? { radio: preset.radio } : {}),
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -1806,6 +1843,7 @@
         radar: !!d.radarActive,
         weather: !!d.weatherActive,
         strategy: !!d.strategyActive,
+        radio: !!d.radioActive,
       });
 
       const nextTrack = d.currentTrack || null;
@@ -1980,6 +2018,7 @@
       radar: currentOverlayState.radar,
       weather: currentOverlayState.weather,
       strategy: currentOverlayState.strategy,
+      radio: currentOverlayState.radio,
     };
     if (existingIndex >= 0) {
       overlayPresets.splice(existingIndex, 1);
@@ -2011,6 +2050,7 @@
   $captureRadarHotkey.addEventListener('click', () => startHotkeyCapture('radar'));
   $captureWeatherHotkey.addEventListener('click', () => startHotkeyCapture('weather'));
   $captureStrategyHotkey.addEventListener('click', () => startHotkeyCapture('strategy'));
+  $captureRadioHotkey.addEventListener('click', () => startHotkeyCapture('radio'));
 
   async function clearHotkey(kind, label) {
     overlayHotkeys[kind] = '';
@@ -2024,6 +2064,7 @@
   $clearRadarHotkey.addEventListener('click', () => clearHotkey('radar', 'Radar'));
   $clearWeatherHotkey.addEventListener('click', () => clearHotkey('weather', 'Weather'));
   $clearStrategyHotkey.addEventListener('click', () => clearHotkey('strategy', 'Strategy'));
+  $clearRadioHotkey.addEventListener('click', () => clearHotkey('radio', 'Radio'));
 
   window.addEventListener('keydown', async (event) => {
     if (event.repeat) return;
@@ -2065,6 +2106,11 @@
     if (combo === normalizeHotkeyValue(overlayHotkeys.strategy)) {
       event.preventDefault();
       toggleStrategy();
+      return;
+    }
+    if (combo === normalizeHotkeyValue(overlayHotkeys.radio)) {
+      event.preventDefault();
+      toggleRadio();
     }
   });
 
@@ -2114,6 +2160,22 @@
       btn.style.borderColor = '#00d2ff33';
       btn.style.background = '#1a1a1a';
       btn.textContent = 'Strategy Overlay';
+    }
+  }
+  // Engineer radio overlay toggle
+  async function toggleRadio() {
+    await toggleOverlay('/api/radio/toggle', 'radio', 'Radio');
+  }
+  function updateRadioBtn(active) {
+    const btn = document.getElementById('radioBtn');
+    if (active) {
+      btn.style.borderColor = '#00d2ff';
+      btn.style.background = '#00d2ff20';
+      btn.textContent = 'Close Radio';
+    } else {
+      btn.style.borderColor = '#00d2ff33';
+      btn.style.background = '#1a1a1a';
+      btn.textContent = 'Radio Overlay';
     }
   }
   // ── Platform upload (Pitwall Cloud pairing) ──

@@ -12,10 +12,14 @@ const (
 	maxOverlayPresets           = 12
 )
 
+// overlayState is the on/off state of every overlay. Radio is a pointer so a
+// client or preset written before the engineer radio overlay existed (no
+// "radio" key) leaves that overlay as it is instead of closing it.
 type overlayState struct {
-	Radar    bool `json:"radar"`
-	Weather  bool `json:"weather"`
-	Strategy bool `json:"strategy"`
+	Radar    bool  `json:"radar"`
+	Weather  bool  `json:"weather"`
+	Strategy bool  `json:"strategy"`
+	Radio    *bool `json:"radio,omitempty"`
 }
 
 type overlayPreset struct {
@@ -25,12 +29,16 @@ type overlayPreset struct {
 	Radar        bool   `json:"radar"`
 	Weather      bool   `json:"weather"`
 	Strategy     bool   `json:"strategy"`
+	Radio        *bool  `json:"radio,omitempty"`
 }
 
+// overlayHotkeys: Radio nil means "not sent" (older client) and keeps the
+// current binding; an empty string clears it.
 type overlayHotkeys struct {
-	Radar    string `json:"radar"`
-	Weather  string `json:"weather"`
-	Strategy string `json:"strategy"`
+	Radar    string  `json:"radar"`
+	Weather  string  `json:"weather"`
+	Strategy string  `json:"strategy"`
+	Radio    *string `json:"radio,omitempty"`
 }
 
 type overlayWindowState struct {
@@ -45,6 +53,7 @@ type overlayWindowSettings struct {
 	Radar    overlayWindowState `json:"radar,omitempty"`
 	Weather  overlayWindowState `json:"weather,omitempty"`
 	Strategy overlayWindowState `json:"strategy,omitempty"`
+	Radio    overlayWindowState `json:"radio,omitempty"`
 }
 
 type inviteInfo struct {
@@ -61,11 +70,18 @@ type overlayController interface {
 	IsRunning() bool
 }
 
+const defaultRadioHotkey = "Alt+Shift+4"
+
 var defaultOverlayHotkeys = overlayHotkeys{
 	Radar:    "Alt+Shift+1",
 	Weather:  "Alt+Shift+2",
 	Strategy: "Alt+Shift+3",
+	Radio:    stringPtr(defaultRadioHotkey),
 }
+
+func stringPtr(s string) *string { return &s }
+
+func boolPtr(b bool) *bool { return &b }
 
 const (
 	defaultOverlayAlpha = 230
@@ -77,6 +93,8 @@ const (
 	defaultWeatherY     = 200
 	defaultStrategyX    = 160
 	defaultStrategyY    = 160
+	defaultRadioX       = 160
+	defaultRadioY       = 520
 	defaultOverlayScale = 1.0
 	defaultRadarRangeM  = 80.0
 	minOverlayScale     = 0.6
@@ -126,18 +144,36 @@ func preferHTTPDashboardURL(raw string) bool {
 }
 
 func normalizeOverlayHotkeys(in overlayHotkeys) overlayHotkeys {
-	return overlayHotkeys{
+	out := overlayHotkeys{
 		Radar:    strings.TrimSpace(in.Radar),
 		Weather:  strings.TrimSpace(in.Weather),
 		Strategy: strings.TrimSpace(in.Strategy),
 	}
+	if in.Radio != nil {
+		out.Radio = stringPtr(strings.TrimSpace(*in.Radio))
+	}
+	return out
 }
 
 func defaultedOverlayHotkeys(saved *overlayHotkeys) overlayHotkeys {
 	if saved == nil {
-		return defaultOverlayHotkeys
+		return normalizeOverlayHotkeys(defaultOverlayHotkeys)
 	}
-	return normalizeOverlayHotkeys(*saved)
+	out := normalizeOverlayHotkeys(*saved)
+	if out.Radio == nil {
+		out.Radio = stringPtr(defaultRadioHotkey)
+	}
+	return out
+}
+
+// mergeOverlayHotkeys keeps the current radio binding when an older client
+// sends hotkeys without the radio key.
+func mergeOverlayHotkeys(next, current overlayHotkeys) overlayHotkeys {
+	next = normalizeOverlayHotkeys(next)
+	if next.Radio == nil && current.Radio != nil {
+		next.Radio = stringPtr(*current.Radio)
+	}
+	return next
 }
 
 func cloneOverlayHotkeys(saved overlayHotkeys) *overlayHotkeys {
@@ -165,6 +201,12 @@ func defaultedOverlayWindowSettings(saved *overlayWindowSettings) overlayWindowS
 			Alpha: defaultOverlayAlpha,
 			Scale: defaultOverlayScale,
 		},
+		Radio: overlayWindowState{
+			X:     defaultRadioX,
+			Y:     defaultRadioY,
+			Alpha: defaultOverlayAlpha,
+			Scale: defaultOverlayScale,
+		},
 	}
 	if saved == nil {
 		return defaults
@@ -174,6 +216,7 @@ func defaultedOverlayWindowSettings(saved *overlayWindowSettings) overlayWindowS
 		Radar:    normalizeOverlayWindowState("radar", saved.Radar, defaults.Radar),
 		Weather:  normalizeOverlayWindowState("weather", saved.Weather, defaults.Weather),
 		Strategy: normalizeOverlayWindowState("strategy", saved.Strategy, defaults.Strategy),
+		Radio:    normalizeOverlayWindowState("radio", saved.Radio, defaults.Radio),
 	}
 }
 
@@ -247,11 +290,12 @@ func normalizeOverlayPresets(in []overlayPreset) []overlayPreset {
 	return out
 }
 
-func currentOverlayState(radar, weather, strategy overlayController) overlayState {
+func currentOverlayState(radar, weather, strategy, radio overlayController) overlayState {
 	return overlayState{
 		Radar:    radar != nil && radar.IsRunning(),
 		Weather:  weather != nil && weather.IsRunning(),
 		Strategy: strategy != nil && strategy.IsRunning(),
+		Radio:    boolPtr(radio != nil && radio.IsRunning()),
 	}
 }
 
@@ -265,11 +309,18 @@ func ensureOverlayState(controller overlayController, active bool) bool {
 	return controller.Toggle()
 }
 
-func applyOverlayState(state overlayState, radar, weather, strategy overlayController) overlayState {
+// applyOverlayState drives every overlay to state. A missing radio key keeps
+// the radio overlay as it is.
+func applyOverlayState(state overlayState, radar, weather, strategy, radio overlayController) overlayState {
+	radioActive := radio != nil && radio.IsRunning()
+	if state.Radio != nil {
+		radioActive = ensureOverlayState(radio, *state.Radio)
+	}
 	return overlayState{
 		Radar:    ensureOverlayState(radar, state.Radar),
 		Weather:  ensureOverlayState(weather, state.Weather),
 		Strategy: ensureOverlayState(strategy, state.Strategy),
+		Radio:    boolPtr(radioActive),
 	}
 }
 

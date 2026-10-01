@@ -173,7 +173,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/setup-manager/package-lock.json
       - name: Native Windows storage, cancellation, and Sender regressions
-        run: go test ./cmd/sender ./internal/telemetry ./internal/races ./internal/rtc ./internal/udp
+        run: go test ./cmd/sender ./internal/telemetry ./internal/races ./internal/rtc ./internal/udp ./internal/engineer/...
       - name: Build Windows GUI Sender
         shell: pwsh
         run: |

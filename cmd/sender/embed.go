@@ -16,3 +16,6 @@ var strategyHTML []byte
 
 //go:embed icon.ico
 var trayIconBytes []byte
+
+//go:embed radio.html
+var radioHTML []byte

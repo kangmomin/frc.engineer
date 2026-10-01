@@ -61,6 +61,11 @@ type RaceSummarySaveCallback func(sessionUID uint64, counts RaceSummaryCounts, t
 // PitwallStateObserver is invoked when a new pitwall snapshot is emitted.
 type PitwallStateObserver func(sessionUID uint64, capturedAt time.Time, state *dto.PitwallState)
 
+// EventObserver receives every parsed event packet (including codes the
+// processor itself ignores, such as BUTN, SCAR, DRSE/DRSD and OVTK) after the
+// ban gate. It runs on the processor goroutine and must not block.
+type EventObserver func(playerIndex uint8, event *packets.PacketEventData)
+
 // Processor processes telemetry data and broadcasts to WebSocket clients
 type Processor struct {
 	parser          *udp.Parser
@@ -129,6 +134,7 @@ type Processor struct {
 	replaySession     *dto.SessionInfo
 	replayLastFrameTS int64
 	pitwallObserver   PitwallStateObserver
+	eventObserver     EventObserver
 
 	// Nickname ban gate (player-nickname hard ban)
 	banLookup        func(playerName string) bool
@@ -231,6 +237,13 @@ func (p *Processor) SetPitwallStateObserver(observer PitwallStateObserver) {
 	p.mu.Lock()
 	p.pitwallObserver = observer
 	p.mu.Unlock()
+}
+
+// SetEventObserver installs a callback for every parsed event packet. Must be
+// called before Start (same no-mutex happens-before as SetBanChecker). It is
+// invoked from the processor goroutine after the ban gate, so it must not block.
+func (p *Processor) SetEventObserver(fn EventObserver) {
+	p.eventObserver = fn
 }
 
 // SetBanChecker installs the predicate used to test the player nickname against
@@ -541,6 +554,9 @@ func (p *Processor) processPacket(data []byte) {
 	// Handle event packets (penalties, warnings, race control)
 	if parsed.Event != nil {
 		p.handleEventPacket(parsed)
+		if p.eventObserver != nil && parsed.Header != nil {
+			p.eventObserver(parsed.Header.PlayerCarIndex, parsed.Event)
+		}
 	}
 
 	// Broadcast positions at full rate (60Hz) over fast channel

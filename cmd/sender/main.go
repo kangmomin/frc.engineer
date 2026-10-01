@@ -26,6 +26,7 @@ import (
 	"frc.engineer/internal/banlist"
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/engineer"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rbac"
 	"frc.engineer/internal/rtc"
@@ -67,6 +68,9 @@ type senderConfig struct {
 	// 기본 false(루프백 전용) — 켜면 설정 API도 LAN에 노출되므로 명시적 선택일 때만.
 	// 변경은 재시작 후 적용.
 	OverlayLanBind bool `json:"overlayLanBind,omitempty"`
+	// Engineer is the virtual race engineer (radio) configuration. The
+	// decision model API key is stored here like UploadToken and never echoed.
+	Engineer *engineer.Settings `json:"engineer,omitempty"`
 }
 
 const senderLogTailMaxBytes int64 = 64 * 1024
@@ -520,6 +524,31 @@ func main() {
 		return defaultStrategyConfig
 	}
 	processor.PitwallManager().SetSenderState(buildSenderState(cfgSaveFiles, cfgTrackRecording, cfgDataStorageMode))
+
+	// Virtual race engineer: radio calls from live telemetry for solo drivers.
+	radioSettings := engineer.DefaultSettings()
+	if saved := savedConfig; saved != nil && saved.Engineer != nil {
+		radioSettings = *saved.Engineer
+	}
+	radioPM := processor.PitwallManager()
+	radioEngine := engineer.New(engineer.Config{
+		Logger: logger,
+		Inputs: func() engineer.Inputs {
+			in := radioPM.PlayerInputs()
+			return engineer.Inputs{Valid: in.Valid, SpeedKPH: in.SpeedKPH, Brake: in.Brake, Steer: in.Steer, PitStatus: in.PitStatus}
+		},
+		Strategy: func() *dto.StrategyOverlayData {
+			cfg := getStrategyConfig(radioPM.CurrentTrackID())
+			return radioPM.BuildStrategyOverlayData(cfg.PitTimeLossMs, cfg.UndercutDifficulty)
+		},
+		DecisionLogPath: resolveSenderStoragePath("logs", "engineer-decisions.jsonl"),
+	}, radioSettings)
+	cfgEngineer := radioEngine.Settings()
+	processor.SetPitwallStateObserver(func(sessionUID uint64, capturedAt time.Time, state *dto.PitwallState) {
+		compareMonitor.Observe(sessionUID, capturedAt, state)
+		radioEngine.ObserveState(sessionUID, capturedAt, state)
+	})
+	processor.SetEventObserver(radioEngine.ObserveEvent)
 	var raceStorage *races.FileStorage
 	if saveFiles {
 		rs, err := races.NewFileStorage(resolveSenderStoragePath("data", "races"), logger)
@@ -1167,6 +1196,7 @@ func main() {
 	// Start components
 	go udpListener.Start(ctx)
 	go processor.Start(ctx, udpListener.Packets())
+	go radioEngine.Run(ctx)
 
 	// Poll the central ban list (signaling server) and refresh the local store.
 	// Fail-open: on fetch errors we keep the previous list rather than unbanning.
@@ -1222,6 +1252,7 @@ func main() {
 	buildSenderConfigSnapshot := func() senderConfig {
 		forwardTargets := append([]rtconfig.ForwardTarget(nil), cfgForwardTargets...)
 		presets := append([]overlayPreset(nil), cfgOverlayPresets...)
+		engineerCopy := cfgEngineer
 		return senderConfig{
 			UDPPort:              cfgUDPPort,
 			RoomName:             cfgRoomName,
@@ -1237,6 +1268,7 @@ func main() {
 			PlatformBaseURL:      cfgPlatformBaseURL,
 			UploadToken:          cfgUploadToken,
 			OverlayLanBind:       cfgOverlayLanBind,
+			Engineer:             &engineerCopy,
 		}
 	}
 
@@ -1249,6 +1281,8 @@ func main() {
 			cfgOverlayWindows.Weather = normalizeOverlayWindowState(kind, state, overlayWindowDefaults.Weather)
 		case "strategy":
 			cfgOverlayWindows.Strategy = normalizeOverlayWindowState(kind, state, overlayWindowDefaults.Strategy)
+		case "radio":
+			cfgOverlayWindows.Radio = normalizeOverlayWindowState(kind, state, overlayWindowDefaults.Radio)
 		default:
 			cfgMu.Unlock()
 			return
@@ -1311,6 +1345,35 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/strategy/toggle", func(w http.ResponseWriter, r *http.Request) {
 		active := strategyOv.Toggle()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"active": active})
+	})
+
+	radioAPI := &engineerAPI{eng: radioEngine, persist: func(next engineer.Settings) error {
+		cfgMu.Lock()
+		cfgEngineer = next
+		persisted := buildSenderConfigSnapshot()
+		cfgMu.Unlock()
+		return saveSenderConfig(persisted)
+	}}
+	mux.HandleFunc("GET /radio", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(radioHTML)
+	})
+	mux.HandleFunc("GET /api/radio/stream", radioAPI.stream)
+	mux.HandleFunc("GET /api/radio/settings", radioAPI.getSettings)
+	mux.HandleFunc("PUT /api/radio/settings", radioAPI.putSettings)
+	mux.HandleFunc("GET /api/radio/recent", radioAPI.recent)
+	mux.HandleFunc("GET /api/radio/decisions", radioAPI.decisions)
+	mux.HandleFunc("POST /api/radio/briefing", radioAPI.briefing)
+	mux.HandleFunc("POST /api/radio/repeat", radioAPI.repeat)
+	mux.HandleFunc("POST /api/radio/test", radioAPI.test)
+	mux.HandleFunc("POST /api/radio/ask", radioAPI.ask)
+	radioOv := newRadioOverlay(radioEngine, cfgOverlayWindows.Radio, func(state overlayWindowState) {
+		persistOverlayWindow("radio", state)
+	})
+	mux.HandleFunc("POST /api/radio/toggle", func(w http.ResponseWriter, r *http.Request) {
+		active := radioOv.Toggle()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"active": active})
 	})
@@ -1399,6 +1462,7 @@ func main() {
 			"paired":             paired,
 			"permissions":        perms,
 			"strategyActive":     strategyOv.IsRunning(),
+			"radioActive":        radioOv.IsRunning(),
 			"invite":             invite,
 			"peers":              peers,
 		}
@@ -1733,9 +1797,9 @@ func main() {
 
 		nextDashboardURL := normalizeEngineerDashboardURL("")
 		nextPresets := normalizeOverlayPresets(body.OverlayPresets)
-		nextHotkeys := normalizeOverlayHotkeys(body.OverlayHotkeys)
 
 		cfgMu.Lock()
+		nextHotkeys := mergeOverlayHotkeys(body.OverlayHotkeys, cfgOverlayHotkeys)
 		cfgEngineerDashboardURL = nextDashboardURL
 		cfgOverlayPresets = nextPresets
 		cfgOverlayHotkeys = nextHotkeys
@@ -1763,7 +1827,7 @@ func main() {
 			return
 		}
 
-		applied := applyOverlayState(desired, radarOv, weatherOv, strategyOv)
+		applied := applyOverlayState(desired, radarOv, weatherOv, strategyOv, radioOv)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(applied)
 	})
