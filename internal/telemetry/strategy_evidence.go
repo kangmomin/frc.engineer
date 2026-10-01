@@ -204,13 +204,13 @@ func (c *strategyCapture) observe(p *udp.ParsedData) {
 				c.current.energyBad = true
 			}
 		case packets.EventCollision:
-			if e, ok := p.Event.EventDetails.(packets.CollisionEvent); ok && (e.Vehicle1Idx == c.player || e.Vehicle2Idx == c.player) {
+			if e, ok := p.Event.EventDetails.(*packets.CollisionEvent); ok && e != nil && (e.Vehicle1Idx == c.player || e.Vehicle2Idx == c.player) {
 				if c.current != nil {
 					c.current.flags["incident"] = true
 				}
 			}
 		case packets.EventPenalty:
-			if e, ok := p.Event.EventDetails.(packets.PenaltyEvent); ok && e.VehicleIdx == c.player {
+			if e, ok := p.Event.EventDetails.(*packets.PenaltyEvent); ok && e != nil && e.VehicleIdx == c.player {
 				if c.current != nil {
 					c.current.flags["penalty"] = true
 				}

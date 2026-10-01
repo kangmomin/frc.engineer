@@ -267,3 +267,25 @@ func TestStrategyCaptureStillRejectsRealRewinds(t *testing.T) {
 		})
 	}
 }
+
+// The UDP parser stores event details as pointers. Evidence capture must flag
+// the player's lap for both pointer-typed collision and penalty events.
+func TestStrategyCaptureFlagsPlayerCollisionAndPenaltyEvents(t *testing.T) {
+	for _, tc := range []struct {
+		flag    string
+		code    string
+		details packets.EventDetails
+	}{
+		{"incident", packets.EventCollision, &packets.CollisionEvent{Vehicle1Idx: 4, Vehicle2Idx: 7}},
+		{"penalty", packets.EventPenalty, &packets.PenaltyEvent{VehicleIdx: 7}},
+	} {
+		c := &strategyCapture{}
+		c.reset(123, 7)
+		c.current = &strategyLapCapture{flags: map[string]bool{}}
+		header := &packets.PacketHeader{SessionUID: 123, PlayerCarIndex: 7, SessionTime: 10}
+		c.observe(&udp.ParsedData{Header: header, Event: &packets.PacketEventData{EventStringCode: tc.code, EventDetails: tc.details}})
+		if !c.current.flags[tc.flag] {
+			t.Fatalf("%s event did not flag the current lap", tc.code)
+		}
+	}
+}
