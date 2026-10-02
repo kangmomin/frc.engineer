@@ -30,7 +30,7 @@
 - 오버레이 및 로컬 설정 API, 레이스 목록·상세·삭제·리플레이 스트림 API.
 - 개인 최고 랩 저장과 `getBestLap` 응답을 유지한다. Sender의 원시 best-lap trace는 파일 저장을 켠 Advanced 모드에서만 저장한다. 트랙 0(Australia)을 지원하고, 새 세션에서 트랙별 기록을 다시 읽는다. 이 API의 전용 Web 비교 화면은 현재 활성화되어 있지 않다.
 
-- **가상 엔지니어 라디오**: 실시간 텔레메트리로 피트 윈도우·연료·타이어·손상·SC·페널티·앞뒤차·날씨 콜을 만들고, 우선순위·제동 보류·간격 규칙으로 내보낸다. 네이티브 `radio` 오버레이, OBS용 `/radio` 페이지, 휠 버튼(UDP Action) 브리핑·다시 듣기, 텍스트 질문 응답을 제공한다. 선택적으로 Jev·laya 결정 모델을 섀도·적용 모드로 붙인다. 상세: `docs/api/engineer-radio.md`.
+- **가상 엔지니어 라디오**: 실시간 텔레메트리로 피트 윈도우·연료·타이어·손상·SC·페널티·앞뒤차·날씨 콜을 만들고, 우선순위·제동 보류·간격 규칙으로 내보낸다. 네이티브 `radio` 오버레이, OBS용 `/radio` 페이지, 휠 버튼(UDP Action) 브리핑·다시 듣기, 텍스트 질문 응답을 제공한다. Jev·laya 결정 모델을 섀도·적용 모드로 붙인다. 권한(`sender.engineer-decision.create`)이 있는 계정은 플랫폼이 보관한 키로 섀도 모드가 기본 제공된다. 상세: `docs/api/engineer-radio.md`.
 
 주요 파일: `cmd/sender/main.go`, `cmd/server/main.go`, `internal/telemetry/processor.go`, `internal/races/storage.go`, `internal/engineer/`.
 

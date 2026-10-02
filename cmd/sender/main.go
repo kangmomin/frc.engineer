@@ -27,6 +27,7 @@ import (
 	rtconfig "frc.engineer/internal/config"
 	"frc.engineer/internal/dto"
 	"frc.engineer/internal/engineer"
+	"frc.engineer/internal/engineer/decision"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/rbac"
 	"frc.engineer/internal/rtc"
@@ -528,7 +529,7 @@ func main() {
 	// Virtual race engineer: radio calls from live telemetry for solo drivers.
 	radioSettings := engineer.DefaultSettings()
 	if saved := savedConfig; saved != nil && saved.Engineer != nil {
-		radioSettings = *saved.Engineer
+		radioSettings = engineer.UpgradeSaved(*saved.Engineer)
 	}
 	radioPM := processor.PitwallManager()
 	radioEngine := engineer.New(engineer.Config{
@@ -544,6 +545,11 @@ func main() {
 		DecisionLogPath: resolveSenderStoragePath("logs", "engineer-decisions.jsonl"),
 	}, radioSettings)
 	cfgEngineer := radioEngine.Settings()
+	if cfgUploadToken == "" {
+		radioEngine.SetRelay(decision.Relay{}, decisionRelayUnpaired)
+	} else {
+		radioEngine.SetRelay(decision.Relay{}, decisionRelayChecking)
+	}
 	processor.SetPitwallStateObserver(func(sessionUID uint64, capturedAt time.Time, state *dto.PitwallState) {
 		compareMonitor.Observe(sessionUID, capturedAt, state)
 		radioEngine.ObserveState(sessionUID, capturedAt, state)
@@ -1026,6 +1032,57 @@ func main() {
 		}
 	}
 
+	// setDecisionRelay applies a relay result unless the device was re-paired
+	// meanwhile. cfgMu is held so a stale result cannot land after the
+	// re-pair reset.
+	setDecisionRelay := func(token string, relay decision.Relay, reason string) {
+		cfgMu.Lock()
+		defer cfgMu.Unlock()
+		if cfgUploadToken == token {
+			radioEngine.SetRelay(relay, reason)
+		}
+	}
+
+	// syncDecisionRelay turns on the platform decision relay for an account
+	// that holds the grant, once the server confirms it has a key. Unlike the
+	// advisory gates it fails closed: every request spends the server's model
+	// budget, so it stays off until the grant is confirmed.
+	syncDecisionRelay := func(token string, perms []string) {
+		if !rbac.HasPermission(perms, rbac.PermEngineerDecisionCreate) {
+			setDecisionRelay(token, decision.Relay{}, "플랫폼 결정 모델 권한 없음")
+			return
+		}
+		cfgMu.Lock()
+		base := cfgPlatformBaseURL
+		cfgMu.Unlock()
+		for _, delay := range []time.Duration{0, 10 * time.Second, 30 * time.Second} {
+			if delay > 0 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(delay):
+				}
+			}
+			fctx, fcancel := context.WithTimeout(ctx, uploadHTTPTimeout)
+			available, status, err := fetchDecisionRelayConfig(fctx, base, token)
+			fcancel()
+			switch {
+			case err == nil && available:
+				logger.Info("platform decision relay available")
+				setDecisionRelay(token, decision.Relay{BaseURL: base, Token: token}, "")
+				return
+			case err == nil:
+				setDecisionRelay(token, decision.Relay{}, "서버가 결정 모델을 제공하지 않음")
+				return
+			case status != 0:
+				setDecisionRelay(token, decision.Relay{}, fmt.Sprintf("플랫폼 결정 모델 확인 실패 (HTTP %d)", status))
+				return
+			}
+			logger.Warn("decision relay config network error, will retry", "error", err)
+		}
+		setDecisionRelay(token, decision.Relay{}, "플랫폼 연결 실패")
+	}
+
 	// refreshPermissions fetches the paired account's grant nodes once ("앱 기동
 	// 시 업데이트 확인과 같은 타이밍" — boot and re-pair, no periodic re-check;
 	// the platform enforces for real on every request, this is advisory UX).
@@ -1053,15 +1110,18 @@ func main() {
 			fcancel()
 			if err == nil {
 				applyPermissions(token, perms)
+				syncDecisionRelay(token, perms)
 				return
 			}
 			if status != 0 {
 				logger.Warn("permissions fetch rejected — advisory gates stay open (fail-open)",
 					"status", status, "error", err)
+				setDecisionRelay(token, decision.Relay{}, fmt.Sprintf("권한 확인 실패 (HTTP %d)", status))
 				return
 			}
 			logger.Warn("permissions fetch network error, will retry", "error", err)
 		}
+		setDecisionRelay(token, decision.Relay{}, "플랫폼 연결 실패")
 	}
 
 	if shouldBeConnected() {
@@ -1616,6 +1676,7 @@ func main() {
 		// (새 계정은 fetch 성공 전까지 fail-open; 이전 거부가 이월되지 않음).
 		cfgPermissions = nil
 		cfgPermsFetched = false
+		radioEngine.SetRelay(decision.Relay{}, decisionRelayChecking)
 		saveErr := saveSenderConfig(buildSenderConfigSnapshot())
 		cfgMu.Unlock()
 		if saveErr != nil {

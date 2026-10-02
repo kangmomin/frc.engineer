@@ -140,8 +140,24 @@ func DefaultSettings() Settings {
 		},
 		BrakeGate:       true,
 		TyreWearWarnPct: 60,
-		Decision:        decision.Config{Mode: decision.ModeOff}.Normalize(),
+		// The platform relay is offered by default in shadow mode: it only
+		// records what the model would do. It stays unavailable until the
+		// paired account holds the RBAC grant and the server has a key.
+		Decision: decision.Config{Mode: decision.ModeShadow, Provider: decision.ProviderPlatform,
+			TimeoutMs: decision.PlatformTimeoutMs}.Normalize(),
 	}
+}
+
+// UpgradeSaved adapts settings saved by an older sender. Before providers
+// existed the model stayed off unless the driver entered an endpoint, so an
+// install without one gets the platform default instead.
+func UpgradeSaved(s Settings) Settings {
+	if s.Decision.Provider == "" && strings.TrimSpace(s.Decision.URL) == "" {
+		d := DefaultSettings().Decision
+		d.LogDecisions = s.Decision.LogDecisions
+		s.Decision = d
+	}
+	return s
 }
 
 // Normalize clamps fields to valid values.

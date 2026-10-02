@@ -21,7 +21,8 @@ func TestValidatePrivacyPolicy(t *testing.T) {
 		{Config{Mode: ModeShadow, URL: "http://api.typesafe.ai", AllowRemote: true}, false},
 		{Config{Mode: ModeShadow, URL: "https://user:pw@api.typesafe.ai", AllowRemote: true}, false},
 		{Config{Mode: ModeShadow, URL: "ftp://127.0.0.1"}, false},
-		{Config{Mode: ModeShadow, URL: ""}, false},
+		{Config{Mode: ModeShadow, Provider: ProviderCustom, URL: ""}, false},
+		{Config{Mode: ModeShadow, Provider: ProviderPlatform}, true},
 		{Config{Mode: ModeOff, URL: "garbage"}, true},
 	} {
 		if err := tc.cfg.Normalize().Validate(); (err == nil) != tc.ok {
@@ -97,5 +98,62 @@ func TestAskDoesNotFollowRedirects(t *testing.T) {
 func TestNewClientDisabled(t *testing.T) {
 	if _, err := NewClient(Config{Mode: ModeOff, URL: "http://127.0.0.1"}); err != ErrDisabled {
 		t.Fatalf("want ErrDisabled, got %v", err)
+	}
+}
+
+func TestNormalizeInfersProviderFromLegacySettings(t *testing.T) {
+	if c := (Config{Mode: ModeShadow, URL: "http://127.0.0.1:8000"}).Normalize(); c.Provider != ProviderCustom {
+		t.Fatalf("legacy endpoint must stay custom: %+v", c)
+	}
+	if c := (Config{Mode: ModeOff}).Normalize(); c.Provider != ProviderPlatform || c.Mode != ModeOff {
+		t.Fatalf("legacy empty config: %+v", c)
+	}
+}
+
+func TestPlatformClientUsesRelayAndDeviceToken(t *testing.T) {
+	var got Request
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api"+RelayPath || r.Header.Get("Authorization") != "Bearer device-token" {
+			http.Error(w, "bad", http.StatusBadRequest)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"model":"jev","answers":{"speak":{"type":"noul","noul":0.4}}}`))
+	}))
+	defer srv.Close()
+	cfg := Config{Mode: ModeShadow, Provider: ProviderPlatform, URL: "http://ignored", APIKey: "user-key", Model: "user-model"}
+	c, err := NewPlatformClient(cfg, Relay{BaseURL: srv.URL + "/api/", Token: "device-token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Ask(context.Background(), "s", map[string]Question{"speak": {Type: "noul", Instructions: "?"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "" {
+		t.Fatalf("platform client must let the server pick the model: %+v", got)
+	}
+}
+
+func TestPlatformClientRequirements(t *testing.T) {
+	cfg := Config{Mode: ModeShadow, Provider: ProviderPlatform}
+	for _, tc := range []struct {
+		relay Relay
+		ok    bool
+	}{
+		{Relay{BaseURL: "https://api.frc.engineer", Token: "t"}, true},
+		{Relay{BaseURL: "http://127.0.0.1:8090", Token: "t"}, true},
+		{Relay{BaseURL: "http://api.frc.engineer", Token: "t"}, false},
+		{Relay{BaseURL: "https://api.frc.engineer"}, false},
+		{Relay{BaseURL: "https://u:p@api.frc.engineer", Token: "t"}, false},
+	} {
+		if _, err := NewPlatformClient(cfg, tc.relay); (err == nil) != tc.ok {
+			t.Errorf("%+v: err=%v want ok=%v", tc.relay, err, tc.ok)
+		}
+	}
+	if _, err := NewPlatformClient(Config{Mode: ModeOff, Provider: ProviderPlatform}, Relay{BaseURL: "https://a.b", Token: "t"}); err != ErrDisabled {
+		t.Fatalf("off mode: %v", err)
+	}
+	if _, err := NewClient(cfg); err != ErrDisabled {
+		t.Fatalf("custom constructor must ignore the platform provider: %v", err)
 	}
 }

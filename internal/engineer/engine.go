@@ -2,6 +2,7 @@ package engineer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -67,6 +68,12 @@ type Engine struct {
 	decisionCount  uint64
 	decisionErrors uint64
 	shadowSkipped  uint64
+
+	// relay is the platform relay for the platform provider; relayReason
+	// says why it is unavailable when it has no token.
+	relay               decision.Relay
+	relayReason         string
+	decisionUnavailable string
 }
 
 // New builds an engine with the given settings (normalized).
@@ -106,21 +113,59 @@ func (e *Engine) Settings() Settings {
 // SetSettings validates and applies settings, rebuilding the model client.
 func (e *Engine) SetSettings(s Settings) error {
 	s = s.Normalize()
-	var client *decision.Client
-	if s.Decision.Mode != decision.ModeOff {
-		c, err := decision.NewClient(s.Decision)
-		if err != nil && err != decision.ErrDisabled {
-			return err
-		}
-		client = c
-	}
 	e.mu.Lock()
+	client, unavailable, err := buildDecider(s.Decision, e.relay, e.relayReason)
+	if err != nil {
+		e.mu.Unlock()
+		return err
+	}
 	e.settings = s
 	e.decider = client
 	e.deciderErr = ""
+	e.decisionUnavailable = unavailable
 	e.mu.Unlock()
 	e.signal()
 	return nil
+}
+
+// SetRelay updates the platform relay. A relay without a token disables the
+// platform provider; reason is shown to the driver. Custom endpoints are not
+// affected.
+func (e *Engine) SetRelay(relay decision.Relay, reason string) {
+	e.mu.Lock()
+	e.relay, e.relayReason = relay, reason
+	if e.settings.Decision.Provider == decision.ProviderPlatform {
+		client, unavailable, _ := buildDecider(e.settings.Decision, relay, reason)
+		e.decider, e.deciderErr, e.decisionUnavailable = client, "", unavailable
+	}
+	e.mu.Unlock()
+	e.signal()
+}
+
+// buildDecider returns the model client for cfg. Only an invalid custom
+// endpoint is an error; an unavailable platform relay is a status.
+func buildDecider(cfg decision.Config, relay decision.Relay, reason string) (*decision.Client, string, error) {
+	if cfg.Mode == decision.ModeOff {
+		return nil, "", nil
+	}
+	if cfg.Provider == decision.ProviderPlatform {
+		if relay.Token == "" {
+			if reason == "" {
+				reason = "platform relay unavailable"
+			}
+			return nil, reason, nil
+		}
+		c, err := decision.NewPlatformClient(cfg, relay)
+		if err != nil {
+			return nil, err.Error(), nil
+		}
+		return c, "", nil
+	}
+	c, err := decision.NewClient(cfg)
+	if errors.Is(err, decision.ErrDisabled) {
+		return nil, "", nil
+	}
+	return c, "", err
 }
 
 // ObserveState is a telemetry.PitwallStateObserver. It copies what the rules
@@ -458,12 +503,16 @@ type Status struct {
 	Suppressed       uint64     `json:"suppressed"`
 	Subscribers      int        `json:"subscribers"`
 	DecisionMode     string     `json:"decisionMode"`
+	DecisionProvider string     `json:"decisionProvider"`
 	DecisionReady    bool       `json:"decisionReady"`
 	DecisionLastErr  string     `json:"decisionLastError,omitempty"`
 	DecisionCount    uint64     `json:"decisionCount"`
 	DecisionErrors   uint64     `json:"decisionErrors"`
 	ShadowSkipped    uint64     `json:"shadowSkipped"`
 	DecisionDisagree int        `json:"decisionDisagree"`
+
+	// DecisionUnavailable explains why the platform relay is not ready.
+	DecisionUnavailable string `json:"decisionUnavailable,omitempty"`
 }
 
 // Status returns runtime counters.
@@ -474,7 +523,8 @@ func (e *Engine) Status() Status {
 	st := Status{
 		Enabled: e.settings.Enabled, Stale: e.staleLocked(now), Queued: len(e.q.items),
 		Released: e.q.released, Dropped: e.q.dropped, Suppressed: e.suppressed, Subscribers: len(e.subs),
-		DecisionMode: string(e.settings.Decision.Mode), DecisionReady: e.decider != nil,
+		DecisionMode: string(e.settings.Decision.Mode), DecisionProvider: string(e.settings.Decision.Provider),
+		DecisionReady: e.decider != nil, DecisionUnavailable: e.decisionUnavailable,
 		DecisionLastErr: e.deciderErr, DecisionCount: e.decisionCount, DecisionErrors: e.decisionErrors,
 		ShadowSkipped: e.shadowSkipped,
 	}

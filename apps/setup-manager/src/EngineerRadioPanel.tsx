@@ -126,6 +126,7 @@ export function EngineerRadioPanel({ senderUrl, radio, theme: P }: Props) {
   const setDecision = <K extends keyof RadioSettings["decision"]>(key: K, value: RadioSettings["decision"][K]) =>
     setDraft((d) => (d ? { ...d, decision: { ...d.decision, [key]: value } } : d));
   const status = view?.status;
+  const platform = draft?.decision.provider === "platform";
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -269,19 +270,37 @@ export function EngineerRadioPanel({ senderUrl, radio, theme: P }: Props) {
                 </select>
               </label>
               <label style={{ display: "grid", gap: 4 }}>
+                <span style={label}>Provider</span>
+                <select value={draft.decision.provider} onChange={(e) => setDecision("provider", e.target.value as RadioSettings["decision"]["provider"])} style={input}>
+                  <option value="platform">플랫폼 기본 제공 (권한 필요)</option>
+                  <option value="custom">직접 설정 (내 Jev 키 · laya)</option>
+                </select>
+              </label>
+            </div>
+            {platform ? (
+              <div style={{ fontSize: 10, color: P.muted, lineHeight: 1.6 }}>
+                페어링된 계정에 플랫폼 결정 모델 권한이 있으면 플랫폼 서버가 보관한 키로 Jev를 호출합니다. 키는 이 PC에 저장되지 않습니다.
+                레이스 상황 요약과 콜 문장이 플랫폼 서버를 거쳐 결정 모델로 전송되며, 드라이버 이름은 보내지 않습니다.
+              </div>
+            ) : (
+              <label style={{ display: "grid", gap: 4 }}>
                 <span style={label}>Endpoint URL</span>
                 <input value={draft.decision.url} onChange={(e) => setDecision("url", e.target.value)} placeholder="http://127.0.0.1:8000 (laya-serve) · https://api.typesafe.ai (Jev)" style={input} />
               </label>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 8 }}>
-              <label style={{ display: "grid", gap: 4 }}>
-                <span style={label}>API key {view?.hasApiKey ? "(저장됨)" : ""}</span>
-                <input type="password" value={apiKeyDraft} onChange={(e) => setApiKeyDraft(e.target.value)} placeholder={view?.hasApiKey ? "비워 두면 기존 키 유지" : "Bearer key"} style={input} />
-              </label>
-              <label style={{ display: "grid", gap: 4 }}>
-                <span style={label}>Model</span>
-                <input value={draft.decision.model ?? ""} onChange={(e) => setDecision("model", e.target.value)} placeholder="optional" style={input} />
-              </label>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: platform ? "1fr 1fr" : "2fr 1fr 1fr 1fr", gap: 8 }}>
+              {platform ? null : (
+                <>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={label}>API key {view?.hasApiKey ? "(저장됨)" : ""}</span>
+                    <input type="password" value={apiKeyDraft} onChange={(e) => setApiKeyDraft(e.target.value)} placeholder={view?.hasApiKey ? "비워 두면 기존 키 유지" : "Bearer key"} style={input} />
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={label}>Model</span>
+                    <input value={draft.decision.model ?? ""} onChange={(e) => setDecision("model", e.target.value)} placeholder="optional" style={input} />
+                  </label>
+                </>
+              )}
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={label}>Timeout ms</span>
                 <input type="number" min={200} max={10000} value={draft.decision.timeoutMs} onChange={(e) => setDecision("timeoutMs", Number(e.target.value))} style={input} />
@@ -291,18 +310,20 @@ export function EngineerRadioPanel({ senderUrl, radio, theme: P }: Props) {
                 <input type="number" min={0.05} max={0.95} step={0.05} value={draft.decision.speakThreshold} onChange={(e) => setDecision("speakThreshold", Number(e.target.value))} style={input} />
               </label>
             </div>
-            <Check checked={draft.decision.allowRemote} onChange={(v) => setDecision("allowRemote", v)} theme={P}>
-              외부 서버 허용 (HTTPS 필수). 켜면 레이스 상황 요약과 콜 문장이 해당 서버로 전송됩니다. 드라이버 이름은 보내지 않습니다.
-            </Check>
+            {platform ? null : (
+              <Check checked={draft.decision.allowRemote} onChange={(v) => setDecision("allowRemote", v)} theme={P}>
+                외부 서버 허용 (HTTPS 필수). 켜면 레이스 상황 요약과 콜 문장이 해당 서버로 전송됩니다. 드라이버 이름은 보내지 않습니다.
+              </Check>
+            )}
             <Check checked={draft.decision.logDecisions} onChange={(v) => setDecision("logDecisions", v)} theme={P}>
               결정 기록을 sender logs/engineer-decisions.jsonl 에 저장
             </Check>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <button disabled={saving} style={button(P.accent2)} onClick={() => void save()}>SAVE</button>
-              {view?.hasApiKey ? <button disabled={saving} style={button(P.dim, P.text)} onClick={() => void save(true)}>CLEAR KEY</button> : null}
+              {view?.hasApiKey && !platform ? <button disabled={saving} style={button(P.dim, P.text)} onClick={() => void save(true)}>CLEAR KEY</button> : null}
               {status ? (
                 <span style={{ fontSize: 10, color: status.decisionLastError ? P.danger : P.muted }}>
-                  {status.decisionReady ? "ready" : "not configured"} · {status.decisionCount} decisions · {status.decisionErrors} errors
+                  {status.decisionReady ? "ready" : status.decisionUnavailable ?? "not configured"} · {status.decisionCount} decisions · {status.decisionErrors} errors
                   {status.shadowSkipped ? ` · ${status.shadowSkipped} skipped` : ""}
                   {status.decisionLastError ? ` · ${status.decisionLastError}` : ""}
                 </span>
