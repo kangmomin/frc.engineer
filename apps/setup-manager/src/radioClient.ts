@@ -20,9 +20,12 @@ export interface RadioCall {
 }
 
 export type RadioDecisionMode = "off" | "shadow" | "enforce";
+// platform: 플랫폼 relay(서버 보관 키, RBAC 권한 필요) · custom: 사용자 엔드포인트·키
+export type RadioDecisionProvider = "platform" | "custom";
 
 export interface RadioDecisionConfig {
   mode: RadioDecisionMode;
+  provider: RadioDecisionProvider;
   url: string;
   apiKey?: string;
   model?: string;
@@ -66,7 +69,10 @@ export interface RadioStatus {
   suppressed: number;
   subscribers: number;
   decisionMode: RadioDecisionMode;
+  decisionProvider: RadioDecisionProvider;
   decisionReady: boolean;
+  // 플랫폼 relay를 쓸 수 없는 이유(페어링·권한·서버 미설정)
+  decisionUnavailable?: string;
   decisionLastError?: string;
   decisionCount: number;
   decisionErrors: number;

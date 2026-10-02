@@ -57,6 +57,9 @@ const (
 	PermRBACDelete        = "pithub.rbac.delete"
 	PermBroadcastCreate   = "pitwall.broadcast.create"
 	PermSetupRead         = "sender.setup.read"
+	// PermEngineerDecisionCreate lets a paired sender use the platform's
+	// decision-model relay (server-held Jev key). Never a default user grant.
+	PermEngineerDecisionCreate = "sender.engineer-decision.create"
 )
 
 // maxNodeLen mirrors permissions_name_format_chk in 009_rbac.sql.
@@ -78,6 +81,7 @@ var seedMids = []string{
 	"pithub.feedback-inbox", "pithub.view-as", "pithub.rbac", "pitwall.broadcast", "sender.setup",
 	"pithub.update-log",
 	"pithub.strategy",
+	"sender.engineer-decision",
 }
 
 var seedLeaves = []string{
@@ -92,6 +96,7 @@ var seedLeaves = []string{
 	PermViewAsCreate,
 	PermRBACCreate, PermRBACRead, PermRBACUpdate, PermRBACDelete,
 	PermBroadcastCreate, PermSetupRead,
+	PermEngineerDecisionCreate,
 }
 
 // AllSeededNodes returns the complete seeded permission catalog (roots, mid

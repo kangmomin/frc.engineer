@@ -492,6 +492,60 @@ func TestEnforceFailsOpenWhenModelDown(t *testing.T) {
 	}
 }
 
+func TestPlatformRelayDefaultsToShadowAfterGrant(t *testing.T) {
+	srv := modelServer(t, 0.05, IntentWeather)
+	defer srv.Close()
+	h := newHarness(t, nil)
+	if st := h.e.Status(); st.DecisionMode != "shadow" || st.DecisionProvider != "platform" || st.DecisionReady || st.DecisionUnavailable == "" {
+		t.Fatalf("default must be an unavailable platform shadow: %+v", st)
+	}
+	h.e.SetRelay(decision.Relay{}, "no grant")
+	if st := h.e.Status(); st.DecisionUnavailable != "no grant" {
+		t.Fatalf("reason not shown: %+v", st)
+	}
+	h.e.SetRelay(decision.Relay{BaseURL: srv.URL, Token: "device"}, "")
+	if st := h.e.Status(); !st.DecisionReady || st.DecisionUnavailable != "" {
+		t.Fatalf("relay not used: %+v", st)
+	}
+	h.emit()
+	h.me().Penalties = 5
+	h.emit()
+	if c := h.drain(2); !hasKey(c, "pen.5") {
+		t.Fatalf("platform shadow changed output: %s", keys(c))
+	}
+	waitFor(t, func() bool { return len(h.e.Decisions()) == 1 })
+	if d := h.e.Decisions()[0]; d.Mode != "shadow" || d.Applied || d.ModelAction != "suppress" {
+		t.Fatalf("shadow record: %+v", d)
+	}
+	// A custom endpoint ignores the relay entirely.
+	s := h.e.Settings()
+	s.Decision = decision.Config{Mode: decision.ModeShadow, Provider: decision.ProviderCustom}
+	if err := h.e.SetSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	if st := h.e.Status(); st.DecisionReady {
+		t.Fatalf("custom provider without URL used the relay: %+v", st)
+	}
+}
+
+func TestUpgradeSavedSettings(t *testing.T) {
+	legacy := DefaultSettings()
+	legacy.Decision = decision.Config{Mode: decision.ModeOff, LogDecisions: true}
+	got := UpgradeSaved(legacy).Normalize().Decision
+	if got.Provider != decision.ProviderPlatform || got.Mode != decision.ModeShadow || !got.LogDecisions || got.TimeoutMs != decision.PlatformTimeoutMs {
+		t.Fatalf("legacy default not upgraded: %+v", got)
+	}
+	legacy.Decision = decision.Config{Mode: decision.ModeEnforce, URL: "http://127.0.0.1:8000"}
+	if got := UpgradeSaved(legacy).Normalize().Decision; got.Provider != decision.ProviderCustom || got.Mode != decision.ModeEnforce {
+		t.Fatalf("legacy endpoint changed: %+v", got)
+	}
+	off := DefaultSettings()
+	off.Decision.Mode = decision.ModeOff
+	if got := UpgradeSaved(off.Normalize()).Decision; got.Mode != decision.ModeOff {
+		t.Fatalf("explicit opt-out overridden: %+v", got)
+	}
+}
+
 func TestSetSettingsRejectsUnsafeRemoteModel(t *testing.T) {
 	h := newHarness(t, nil)
 	s := h.e.Settings()

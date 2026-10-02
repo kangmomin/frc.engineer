@@ -14,7 +14,9 @@ flowchart LR
     Q -- SSE /api/radio/stream --> DP[Driver Pack 음성]
     Q --> OV[radio 네이티브 오버레이]
     Q -- SSE --> OBS[/radio 페이지]
-    Eng -. 선택: shadow/enforce .-> DM[Jev 또는 laya-serve]
+    Eng -. platform: 기기 토큰 .-> Relay[플랫폼 relay · RBAC · 서버 키]
+    Relay -. 서버 보관 키 .-> DM[Jev 또는 laya-serve]
+    Eng -. custom: 사용자 키 .-> DM
 ```
 
 ## 콜 종류
@@ -44,14 +46,50 @@ flowchart LR
 
 | 모드 | 동작 |
 |---|---|
-| `off` | 기본값. 모델 호출 없음 |
-| `shadow` | 나간 콜과 질문에 대해 모델을 호출하고 기록만 한다 |
+| `off` | 모델 호출 없음 |
+| `shadow` | 기본값. 나간 콜과 질문에 대해 모델을 호출하고 기록만 한다 |
 | `enforce` | 비긴급 규칙 콜을 내보내기 전 `speak` 확률이 임계값(기본 0.35) 미만이면 생략한다. 질문은 의도 확률 0.5 이상일 때 모델 분류를 쓴다 |
+
+### 제공자 (`decision.provider`)
+
+| 제공자 | 호출 대상 | 키 |
+|---|---|---|
+| `platform` | 기본값. 플랫폼 `POST /engineer/decision` relay | 플랫폼 서버 환경변수. 기기 토큰으로 인증하며 키는 PC에 저장되지 않는다 |
+| `custom` | 사용자가 입력한 엔드포인트 | 사용자 API 키 (`sender-config.json`) |
+
+- `platform`은 페어링된 계정이 `sender.engineer-decision.create` 권한을 가지고, 플랫폼이 키를 설정했을 때만 동작한다. 일반 `user` 역할에는 부여하지 않는다. 관리자가 ACCESS 화면에서 역할에 권한을 추가하고 사용자에게 배정한다(관리자는 `sender` 상위 권한으로 상속).
+- Sender는 기동·재페어링 때 `/permissions`를 확인하고, 권한이 있으면 `GET /engineer/decision/config`로 서버 제공 여부를 확인한다. 다른 자문 게이트와 달리 **권한이 확인되기 전에는 호출하지 않는다**(fail-closed). 이유는 상태 줄에 표시한다(페어링 필요, 권한 없음, 서버 미제공 등).
+- 이전 버전 설정 중 엔드포인트를 입력하지 않은 설정은 `platform` + `shadow`로 올린다. 엔드포인트가 있던 설정은 `custom`으로 그대로 둔다. 명시적으로 `off`로 저장하면 유지한다.
+- `platform` 기본 타임아웃은 3000ms다(플랫폼을 한 번 거치므로 `custom` 기본 1500ms보다 길다).
+
+### 플랫폼 relay (`cmd/platform`)
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET | `/engineer/decision/config` | `{available}`. 키가 설정됐는지만 알려 준다 |
+| POST | `/engineer/decision` | 본문은 아래 와이어와 같다. 서버 키·서버 모델로 전달하고 응답을 그대로 돌려준다 |
+
+- 두 경로 모두 업로드(기기) 토큰, 정지되지 않은 계정, `sender.engineer-decision.create` 권한이 필요하다. 웹 세션·View As는 거부한다.
+- 질문 id는 `speak`·`urgency`·`intent`만, 최대 4개, 본문 32KiB까지 받는다. 서버 키가 범용 프록시로 쓰이지 않게 하기 위함이다. 클라이언트의 `model`은 무시한다.
+- 계정당 분당 요청 수를 메모리에서 제한한다(기본 30, 초과 시 429). 모델 오류는 502, 타임아웃은 504다. 키 미설정이면 503이다.
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `PLATFORM_ENGINEER_DECISION_URL` | 없음 | 결정 모델 엔드포인트(Jev). 경로가 없으면 `/v1/systemone`을 붙인다. 원격 호스트는 HTTPS 필수 |
+| `PLATFORM_ENGINEER_DECISION_API_KEY` | 없음 | 결정 모델 키. URL과 함께 설정해야 한다. 둘 다 비우면 relay를 끈다 |
+| `PLATFORM_ENGINEER_DECISION_MODEL` | 없음 | 요청에 넣을 모델 이름(선택) |
+| `PLATFORM_ENGINEER_DECISION_TIMEOUT_MS` | `2500` | 모델 호출 타임아웃(200~10000) |
+| `PLATFORM_ENGINEER_DECISION_RATE_PER_MIN` | `30` | 계정당 분당 요청 수 |
+
+URL·키 중 하나만 있거나 숫자 값이 잘못되면 플랫폼이 기동하지 않는다. 키 교체·제공 중단은 환경변수를 바꾸고 재시작하면 된다.
+
+### 와이어
 
 - 와이어: `POST {url}/v1/systemone`, 본문 `{state, questions, model?}`, 헤더 `Authorization: Bearer <apiKey>`. laya-serve(`pip install "laya[serve]"`, 기본 `0.0.0.0:8000`)와 같은 형식이다. Jev의 정확한 경로는 공식 문서로 확인해 URL에 경로를 포함해 넣을 수 있다.
 - 질문: `speak`(noul)과 `urgency`(score) 두 개를 한 요청으로 보낸다. 의도 분류는 `intent`(choice) 하나다.
 - 상태: 콜 문장·분류·우선순위, 세션·랩·순위·SC·날씨·앞뒤 갭(초), 최근 콜 3개. 드라이버 이름은 보내지 않는다.
-- 개인정보: 루프백·사설망 주소는 항상 허용한다. 그 외 호스트는 `allowRemote`와 HTTPS가 모두 필요하다. 리다이렉트는 따르지 않는다. API 키는 `sender-config.json`에 저장하고 API 응답에 돌려주지 않는다.
+- 개인정보(`custom`): 루프백·사설망 주소는 항상 허용한다. 그 외 호스트는 `allowRemote`와 HTTPS가 모두 필요하다. 리다이렉트는 따르지 않는다. API 키는 `sender-config.json`에 저장하고 API 응답에 돌려주지 않는다.
+- 개인정보(`platform`): 같은 상태 요약이 플랫폼을 거쳐 결정 모델로 간다. 플랫폼 relay는 HTTPS만 쓴다(개발용 루프백·사설망 제외).
 - 요청은 한 번에 하나만 보낸다. 오류·타임아웃은 규칙대로 말한다.
 - `logDecisions`를 켜면 `logs/engineer-decisions.jsonl`에 기록한다(5MB에서 `.1`로 회전). 섀도 기록은 모델 도입 판단과 laya 파인튠 데이터의 근거로 쓴다.
 
@@ -60,7 +98,7 @@ flowchart LR
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/api/radio/stream` | SSE. `event: hello`(언어·활성 콜), `event: call`(나간 콜), 15초 하트비트 |
-| GET | `/api/radio/settings` | `{settings, hasApiKey, status}`. `settings.decision.apiKey`는 항상 비어 있다 |
+| GET | `/api/radio/settings` | `{settings, hasApiKey, status}`. `settings.decision.apiKey`는 항상 비어 있다. `status.decisionProvider`·`status.decisionUnavailable`(플랫폼 relay를 못 쓰는 이유) 포함 |
 | PUT | `/api/radio/settings` | 설정 전체 교체. `decision.apiKey`가 비면 기존 키 유지, `clearApiKey: true`면 삭제. 원격 URL 정책 위반은 400 |
 | GET | `/api/radio/recent` | 최근 나간 콜 30개와 화면용 활성 콜 |
 | GET | `/api/radio/decisions` | 최근 모델 결정 200개와 상태 |
@@ -84,7 +122,7 @@ flowchart LR
 | `brakeGate` | `true` | 제동·코너 중 비긴급 콜 보류 |
 | `briefingButton`, `repeatButton` | `0` | 게임 컨트롤의 "UDP Action" 번호(1~12). 0은 끔 |
 | `tyreWearWarnPct` | `60` | 30~95 |
-| `decision` | `mode: off` | 위 결정 모델 설정 |
+| `decision` | `provider: platform`, `mode: shadow` | 위 결정 모델 설정 |
 
 Driver Pack의 음성 설정(켜기·음성·속도·볼륨)은 Electron `user-settings.json`의 `frc_engineer_radio_voice`에 저장한다. 기본은 꺼짐이다.
 

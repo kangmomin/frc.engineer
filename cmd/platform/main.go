@@ -40,6 +40,12 @@ func main() {
 		logger.Error("invalid automation configuration", "error", err)
 		os.Exit(1)
 	}
+	engineerDecision, err := parseEngineerDecisionRelay(os.Getenv)
+	if err != nil {
+		logger.Error("invalid engineer decision relay configuration", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("engineer decision relay", "enabled", engineerDecision != nil)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -109,7 +115,7 @@ func main() {
 	)
 	secureCookies := strings.HasPrefix(baseURL, "https://")
 
-	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies, updateLogAutomation: automation}
+	srv := &server{store: store, steam: steam, log: logger, frontendURL: frontendURL, secureCookies: secureCookies, updateLogAutomation: automation, engineerDecision: engineerDecision}
 
 	allowedOrigins := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
 
@@ -156,6 +162,7 @@ func main() {
 	mux.HandleFunc("GET /me/race-analyses/{id}/incidents/{index}", srv.handleMyRaceAnalysisIncident)
 	registerRaceAnalysisShareRoutes(mux, srv)
 	registerStrategyRoutes(mux, srv)
+	registerEngineerDecisionRoutes(mux, srv)
 	mux.HandleFunc("GET /me/setups", srv.handleMySetups)
 	mux.HandleFunc("GET /me/setups/{id}", srv.handleMySetup)
 	mux.HandleFunc("POST /me/setups/{id}", srv.handleUpdateMySetup)
@@ -223,6 +230,8 @@ type server struct {
 	frontendURL         string
 	secureCookies       bool
 	updateLogAutomation *updateLogAutomationConfig
+	// engineerDecision is the decision-model relay; nil when not configured.
+	engineerDecision *engineerDecisionRelay
 	// These narrow seams keep owner-analysis auth/404 behavior testable without
 	// a disposable database. Production leaves these nil and uses store directly.
 	raceAnalysisReader  raceAnalysisReader

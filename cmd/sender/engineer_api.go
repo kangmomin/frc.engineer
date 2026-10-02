@@ -11,6 +11,12 @@ import (
 
 const engineerSSEHeartbeat = 15 * time.Second
 
+// Platform decision relay states shown before the permission check finishes.
+const (
+	decisionRelayUnpaired = "기기 페어링 필요"
+	decisionRelayChecking = "플랫폼 권한 확인 중"
+)
+
 // engineerAPI serves the virtual engineer's local HTTP endpoints. Routes are
 // registered in main.go (route patterns must stay string literals there).
 type engineerAPI struct {

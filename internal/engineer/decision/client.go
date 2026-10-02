@@ -3,6 +3,11 @@
 // back calibrated probabilities. The open-source laya server (laya-serve)
 // implements the same protocol, so one client covers both.
 //
+// Two providers exist. "custom" calls an endpoint the driver configured with
+// their own key. "platform" calls the frc.engineer platform relay with the
+// device's upload token; the platform holds the Jev key and forwards the same
+// wire body, so the key never reaches the driver's PC.
+//
 // The engineer never lets a model compute numbers. Gaps, wear and fuel are
 // evaluated in code; the model only judges whether an already-built message
 // is worth saying now, and which fixed intent a driver question maps to.
@@ -34,6 +39,24 @@ const (
 	ModeEnforce Mode = "enforce"
 )
 
+// Provider selects who serves decisions.
+type Provider string
+
+const (
+	// ProviderPlatform uses the platform relay (server-held key, RBAC gated).
+	ProviderPlatform Provider = "platform"
+	// ProviderCustom uses the driver's own endpoint and key.
+	ProviderCustom Provider = "custom"
+)
+
+// RelayPath is the platform relay route, relative to the platform base URL.
+const RelayPath = "/engineer/decision"
+
+// PlatformTimeoutMs is the default timeout for the platform provider. The
+// relay adds one hop in front of a US-hosted model, so the custom default is
+// too tight.
+const PlatformTimeoutMs = 3000
+
 const (
 	defaultPath       = "/v1/systemone"
 	defaultTimeoutMs  = 1500
@@ -47,14 +70,15 @@ const (
 // Config is the persisted model configuration. APIKey is write-only from the
 // HTTP API's point of view; callers must not echo it back.
 type Config struct {
-	Mode           Mode    `json:"mode"`
-	URL            string  `json:"url"`
-	APIKey         string  `json:"apiKey,omitempty"`
-	Model          string  `json:"model,omitempty"`
-	TimeoutMs      int     `json:"timeoutMs"`
-	AllowRemote    bool    `json:"allowRemote"`
-	SpeakThreshold float64 `json:"speakThreshold"`
-	LogDecisions   bool    `json:"logDecisions"`
+	Mode           Mode     `json:"mode"`
+	Provider       Provider `json:"provider"`
+	URL            string   `json:"url"`
+	APIKey         string   `json:"apiKey,omitempty"`
+	Model          string   `json:"model,omitempty"`
+	TimeoutMs      int      `json:"timeoutMs"`
+	AllowRemote    bool     `json:"allowRemote"`
+	SpeakThreshold float64  `json:"speakThreshold"`
+	LogDecisions   bool     `json:"logDecisions"`
 }
 
 // Normalize clamps values and fills defaults. It never validates the URL;
@@ -66,6 +90,15 @@ func (c Config) Normalize() Config {
 		c.Mode = ModeOff
 	}
 	c.URL = strings.TrimSpace(c.URL)
+	switch c.Provider {
+	case ProviderPlatform, ProviderCustom:
+	default:
+		// Settings saved before providers existed only had the custom fields.
+		c.Provider = ProviderPlatform
+		if c.URL != "" {
+			c.Provider = ProviderCustom
+		}
+	}
 	c.APIKey = strings.TrimSpace(c.APIKey)
 	c.Model = strings.TrimSpace(c.Model)
 	if c.TimeoutMs == 0 {
@@ -84,8 +117,9 @@ var ErrDisabled = errors.New("decision model disabled")
 // Validate checks that the endpoint is usable under the privacy policy:
 // loopback and private-network hosts are always allowed; any other host
 // requires AllowRemote and HTTPS so an API key never travels in clear text.
+// The platform provider has no user endpoint to check; see NewPlatformClient.
 func (c Config) Validate() error {
-	if c.Mode == ModeOff {
+	if c.Mode == ModeOff || c.Provider == ProviderPlatform {
 		return nil
 	}
 	if c.URL == "" {
@@ -183,24 +217,65 @@ func (a Answer) TopLabel() (string, float64) {
 
 // Client calls a Jev-compatible endpoint.
 type Client struct {
-	cfg  Config
-	http *http.Client
+	cfg      Config
+	endpoint string
+	token    string
+	http     *http.Client
 }
 
-// NewClient returns a client for cfg, or ErrDisabled / a validation error.
+// NewClient returns a client for a custom endpoint, or ErrDisabled / a
+// validation error.
 func NewClient(cfg Config) (*Client, error) {
 	cfg = cfg.Normalize()
-	if cfg.Mode == ModeOff || cfg.URL == "" {
+	if cfg.Mode == ModeOff || cfg.Provider != ProviderCustom || cfg.URL == "" {
 		return nil, ErrDisabled
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	return &Client{cfg: cfg, http: &http.Client{
+	endpoint, err := cfg.Endpoint()
+	if err != nil {
+		return nil, err
+	}
+	return newClient(cfg, endpoint, cfg.APIKey), nil
+}
+
+// Relay is the platform relay a paired device may use.
+type Relay struct {
+	BaseURL string
+	Token   string
+}
+
+// NewPlatformClient returns a client that calls the platform relay with the
+// device token. The platform picks the model, so cfg.Model is not sent.
+// Loopback and private hosts may use http for development; anything else
+// must use https because the device token rides in the header.
+func NewPlatformClient(cfg Config, relay Relay) (*Client, error) {
+	cfg = cfg.Normalize()
+	if cfg.Mode == ModeOff || cfg.Provider != ProviderPlatform {
+		return nil, ErrDisabled
+	}
+	if relay.Token == "" {
+		return nil, errors.New("device is not paired")
+	}
+	u, err := url.Parse(strings.TrimRight(relay.BaseURL, "/"))
+	if err != nil || u.Host == "" || u.User != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return nil, errors.New("invalid platform URL")
+	}
+	if u.Scheme != "https" && !isLocalHost(u.Hostname()) {
+		return nil, errors.New("platform relay must use https")
+	}
+	u.Path += RelayPath
+	cfg.Model = ""
+	return newClient(cfg, u.String(), relay.Token), nil
+}
+
+func newClient(cfg Config, endpoint, token string) *Client {
+	return &Client{cfg: cfg, endpoint: endpoint, token: token, http: &http.Client{
 		Timeout: time.Duration(cfg.TimeoutMs) * time.Millisecond,
 		// Never follow redirects: the Authorization header must not leak.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}}, nil
+	}}
 }
 
 // Config returns the normalized configuration the client was built with.
@@ -213,23 +288,19 @@ func (c *Client) Ask(ctx context.Context, state any, questions map[string]Questi
 			return nil, fmt.Errorf("question %s too long", id)
 		}
 	}
-	endpoint, err := c.cfg.Endpoint()
-	if err != nil {
-		return nil, err
-	}
 	body, err := json.Marshal(Request{State: state, Questions: questions, Model: c.cfg.Model})
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(c.cfg.TimeoutMs)*time.Millisecond)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

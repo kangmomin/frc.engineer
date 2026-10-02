@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"frc.engineer/internal/dto"
+	"frc.engineer/internal/engineer/decision"
 	"frc.engineer/internal/races"
 	"frc.engineer/internal/strategy"
 )
@@ -286,6 +287,32 @@ func fetchPermissions(ctx context.Context, baseURL, token string) ([]string, int
 		return nil, resp.StatusCode, fmt.Errorf("permissions fetch: malformed response")
 	}
 	return out.Permissions, resp.StatusCode, nil
+}
+
+// fetchDecisionRelayConfig asks the platform whether its decision-model relay
+// has a key configured (GET /engineer/decision/config). status follows
+// fetchPermissions: 0 for network-class failures, else the HTTP status.
+func fetchDecisionRelayConfig(ctx context.Context, baseURL, token string) (bool, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+decision.RelayPath+"/config", nil)
+	if err != nil {
+		return false, 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := (&http.Client{Timeout: uploadHTTPTimeout}).Do(req)
+	if err != nil {
+		return false, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, resp.StatusCode, fmt.Errorf("decision relay config: status %d", resp.StatusCode)
+	}
+	var out struct {
+		Available bool `json:"available"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<12)).Decode(&out); err != nil {
+		return false, resp.StatusCode, fmt.Errorf("decision relay config: malformed response")
+	}
+	return out.Available, resp.StatusCode, nil
 }
 
 // exchangePairing swaps a pairing code for an upload-scope device token.

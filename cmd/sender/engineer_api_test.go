@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"frc.engineer/internal/engineer"
+	"frc.engineer/internal/engineer/decision"
 )
 
 func newRadioTestServer(t *testing.T) (*httptest.Server, *engineer.Engine, *[]engineer.Settings, context.CancelFunc) {
@@ -124,4 +125,44 @@ func TestRadioAskAndStream(t *testing.T) {
 		t.Fatalf("empty question status %d", bad.StatusCode)
 	}
 	bad.Body.Close()
+}
+
+func TestFetchDecisionRelayConfig(t *testing.T) {
+	available := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/engineer/decision/config" || r.Header.Get("Authorization") != "Bearer device" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]bool{"available": available})
+	}))
+	defer srv.Close()
+	if ok, status, err := fetchDecisionRelayConfig(context.Background(), srv.URL, "device"); !ok || status != 200 || err != nil {
+		t.Fatalf("available: %v %d %v", ok, status, err)
+	}
+	available = false
+	if ok, _, err := fetchDecisionRelayConfig(context.Background(), srv.URL, "device"); ok || err != nil {
+		t.Fatalf("unavailable: %v %v", ok, err)
+	}
+	if _, status, err := fetchDecisionRelayConfig(context.Background(), srv.URL, "other"); status != http.StatusForbidden || err == nil {
+		t.Fatalf("forbidden: %d %v", status, err)
+	}
+}
+
+func TestRadioSettingsReportPlatformRelayStatus(t *testing.T) {
+	srv, eng, _, _ := newRadioTestServer(t)
+	eng.SetRelay(decision.Relay{}, decisionRelayChecking)
+	resp, err := http.Get(srv.URL + "/api/radio/settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var view engineerSettingsView
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Settings.Decision.Provider != "platform" || view.Status.DecisionProvider != "platform" ||
+		view.Status.DecisionUnavailable != decisionRelayChecking || view.Status.DecisionReady {
+		t.Fatalf("view: %+v", view)
+	}
 }
