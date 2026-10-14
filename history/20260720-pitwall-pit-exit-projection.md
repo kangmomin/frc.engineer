@@ -27,3 +27,9 @@
 - **수정 내역**: `web/src/views/pitwall/derive/pitExit{,.test}.ts`(신규, 테스트 13), `PitExitPanel.tsx`(신규), `PitWallView.tsx`(pitLossMs 파생 + 패널 마운트), `useDisplayPrefs.ts`/`DisplaySettings.tsx`(`pitExit` PanelKey/칩, 기본 표시). 전체 테스트 371개 green, tsc/eslint clean, prod 빌드 성공.
 
 - **재발 시 대응**: "S3에 언더컷 초를 넣자" → 결정 2 인용(Codex blocker). "피트 중에도 계산 갭 보이자" → 결정 3 인용(이중계산·양 리뷰어 합의). "DNF 있으면 왜 근사로 뜨나 / 활성 판정 바꾸자" → 결정 4 인용. "안 멈춘 차를 타이어 나이로 잡자" → 결정 5 인용. "피트 중에 시나리오가 왜 안 열리나" → 기각된 대안 마지막 항목 인용.
+
+## 후속 결정 (2026-10-14) — headline 우선순위 변경
+
+- 결정 6의 "게임 projection이 있으면 headline 우선"을 **뒤집는다**: headline은 표시된 피트로스로 계산한 추정 순위,
+  게임 projection은 `game P#` 보조 표기(피트 중에는 기존대로 게임값만). 근거·상세는
+  `20260720-pitwall-pit-loss-measured-and-server-avg.md`의 2026-10-14 후속 결정 참고.

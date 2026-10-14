@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DriverInfo, SessionInfo } from '../../../types/telemetry';
-import { derivePitExit } from './pitExit';
+import { derivePitExit, resolvePitLoss, type PitLossInputs } from './pitExit';
 
 function makeDriver(overrides: Partial<DriverInfo> = {}): DriverInfo {
   return {
@@ -280,5 +280,52 @@ describe('derivePitExit — pit-loss source', () => {
     expect(vm.pitting).toBe(true);
     expect(vm.pitLossText).toBeNull();
     expect(vm.pitLossSource).toBe('track'); // pitLossText가 null이면 출처 표기도 억제
+  });
+});
+
+describe('resolvePitLoss — priority chain', () => {
+  const base: PitLossInputs = {
+    measuredLaneMs: undefined,
+    measuredStopMs: undefined,
+    trackLossSec: 21,
+    trackSettled: true,
+    userSec: 18,
+    userOverride: false,
+    useLive: true,
+    wingChange: false,
+    wingExtraSec: 7,
+  };
+
+  it('uses track baseline when no override and no live measurement', () => {
+    expect(resolvePitLoss(base)).toEqual({ ms: 21_000, source: 'track', wingMs: 0 });
+  });
+
+  it('user override wins over live and track (entered value applies immediately)', () => {
+    const r = resolvePitLoss({ ...base, userOverride: true, measuredLaneMs: 26_000, measuredStopMs: 2_500 });
+    expect(r).toEqual({ ms: 18_000, source: 'user', wingMs: 0 });
+  });
+
+  it('uses live measurement when enabled, ignores it when disabled', () => {
+    const live = { ...base, measuredLaneMs: 26_000, measuredStopMs: 2_500 };
+    expect(resolvePitLoss(live)).toMatchObject({ ms: 26_000, source: 'measured' });
+    expect(resolvePitLoss({ ...live, useLive: false })).toMatchObject({ ms: 21_000, source: 'track' });
+  });
+
+  it('normalizes a measured wing stop to tyres-only before re-adding the wing toggle', () => {
+    const wingStop = { ...base, measuredLaneMs: 33_000, measuredStopMs: 9_500 };
+    expect(resolvePitLoss(wingStop).ms).toBe(26_000);
+    expect(resolvePitLoss({ ...wingStop, wingChange: true })).toEqual({ ms: 33_000, source: 'measured', wingMs: 7_000 });
+  });
+
+  it('adds wing-change time on top of any source', () => {
+    expect(resolvePitLoss({ ...base, wingChange: true })).toEqual({ ms: 28_000, source: 'track', wingMs: 7_000 });
+    expect(resolvePitLoss({ ...base, userOverride: true, wingChange: true }).ms).toBe(25_000);
+  });
+
+  it('falls back to user value only once the track lookup has settled', () => {
+    const noTrack = { ...base, trackLossSec: null };
+    expect(resolvePitLoss(noTrack)).toMatchObject({ ms: 18_000, source: 'user' });
+    expect(resolvePitLoss({ ...noTrack, trackSettled: false })).toEqual({ ms: null, source: 'track', wingMs: 0 });
+    expect(resolvePitLoss({ ...noTrack, trackSettled: false, wingChange: true }).ms).toBeNull();
   });
 });

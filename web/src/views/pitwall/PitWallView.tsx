@@ -13,7 +13,7 @@ import { buildCornerMarks, wrapPct } from '../../ui/TrackStrip.derive';
 import { COL_ORDER } from './columns';
 import { deriveLeaderboardRows } from './derive/leaderboardRows';
 import { deriveMyCar } from './derive/myCar';
-import { derivePitExit, pitExitUnavailableReason, type PitLossSource } from './derive/pitExit';
+import { derivePitExit, pitExitUnavailableReason, resolvePitLoss } from './derive/pitExit';
 import { deriveTyreDetail } from './derive/tyreDetail';
 import { deriveWeather } from './derive/weather';
 import { DisplaySettings } from './DisplaySettings';
@@ -98,23 +98,35 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
   // 각 derive 함수는 session=null/drivers=[]에 안전하므로 게이트 이전에 호출해도 무방하다.
   const rows = useMemo(() => deriveLeaderboardRows(drivers, player, is2026, session, lapHistory), [drivers, player, is2026, session, lapHistory]);
   const myCar = useMemo(() => deriveMyCar(player, drivers, session), [player, drivers, session]);
-  // 피트로스: 트랙 baseline(strategyGuide) 우선, 트랙값 부재가 '확정'(ready/unavailable)되면
-  // 사용자 폴백값(초→ms)을 쓴다. 로딩 중(idle/loading)엔 null 유지 → 폴백값이 먼저 떴다가
-  // 트랙값으로 점프하지 않는다. fallback 플래그로 출처를 pitExit VM에 전달(anti-fabrication 표기).
-  const pitLoss = useMemo(() => {
-    // 실측 최우선: 플레이어가 이미 피트했으면 마지막 스톱의 실측 레인 체류를 피트로스로 쓴다.
-    const measured = player?.measuredPitLaneMs;
-    if (measured != null && Number.isFinite(measured) && measured > 0) {
-      return { ms: measured as number | null, source: 'measured' as PitLossSource };
+  // 이번 스톱 윙 교체 예정(비영속 세션 상태). 켠 채로 피트인→피트아웃하면 자동으로 끈다.
+  const [wingChange, setWingChange] = useState(false);
+  const playerInPit = (player?.pitStatus ?? 0) > 0;
+  const wasInPitRef = useRef(false);
+  useEffect(() => {
+    if (playerInPit) {
+      wasInPitRef.current = true;
+    } else if (wasInPitRef.current) {
+      wasInPitRef.current = false;
+      setWingChange(false);
     }
-    const s = strategyGuide.data?.track.race_strategy?.pit_stop_time_lost_s;
-    const trackMs = s != null && Number.isFinite(s) && s > 0 ? s * 1000 : null;
-    if (trackMs != null) return { ms: trackMs as number | null, source: 'track' as PitLossSource };
-    if (strategyGuide.status === 'ready' || strategyGuide.status === 'unavailable') {
-      return { ms: prefs.pitLossSec * 1000, source: 'user' as PitLossSource };
-    }
-    return { ms: null as number | null, source: 'track' as PitLossSource };
-  }, [player, strategyGuide.data, strategyGuide.status, prefs.pitLossSec]);
+  }, [playerInPit]);
+  // 피트로스: 사용자 입력(override) → 실측(live, 설정 시) → 트랙 baseline → 사용자 폴백, 윙 교체 시 가산.
+  // 트랙값 로딩 중(idle/loading)엔 폴백으로 점프하지 않는다. 출처는 pitExit VM에 전달(anti-fabrication 표기).
+  const pitLoss = useMemo(
+    () =>
+      resolvePitLoss({
+        measuredLaneMs: player?.measuredPitLaneMs,
+        measuredStopMs: player?.measuredPitStopMs,
+        trackLossSec: strategyGuide.data?.track.race_strategy?.pit_stop_time_lost_s,
+        trackSettled: strategyGuide.status === 'ready' || strategyGuide.status === 'unavailable',
+        userSec: prefs.pitLossSec,
+        userOverride: prefs.pitLossOverride,
+        useLive: prefs.useLivePitLoss,
+        wingChange,
+        wingExtraSec: prefs.wingExtraSec,
+      }),
+    [player?.measuredPitLaneMs, player?.measuredPitStopMs, strategyGuide.data, strategyGuide.status, prefs.pitLossSec, prefs.pitLossOverride, prefs.useLivePitLoss, wingChange, prefs.wingExtraSec],
+  );
   const pitExit = useMemo(() => derivePitExit(player, drivers, pitLoss.ms, session, pitLoss.source), [player, drivers, pitLoss, session]);
   // Pit Exit 패널이 "Pit-loss data unavailable"로 뜨는 사유를 콘솔에 남긴다. 매 프레임 도배를
   // 피하려 pitExit이 null일 때의 사유가 '바뀔 때만' 로그한다(useMemo로 사유 문자열 안정화).
@@ -195,6 +207,12 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
           is2026={is2026}
           pitLossSec={prefs.pitLossSec}
           onChangePitLossSec={prefs.setPitLossSec}
+          pitLossOverride={prefs.pitLossOverride}
+          onClearPitLossOverride={prefs.clearPitLossOverride}
+          useLivePitLoss={prefs.useLivePitLoss}
+          onChangeUseLivePitLoss={prefs.setUseLivePitLoss}
+          wingExtraSec={prefs.wingExtraSec}
+          onChangeWingExtraSec={prefs.setWingExtraSec}
           onClose={closeSettings}
         />
       )}
@@ -219,7 +237,9 @@ export function PitWallView({ controls, request }: PitWallViewProps) {
         </div>
         <aside style={{ minHeight: 0, display: 'flex', flexDirection: 'column', gap: 9, overflowY: 'auto' }}>
           {prefs.panels.myCar && <MyCarPanel car={myCar} detail={player ? player.name : '—'} />}
-          {prefs.panels.pitExit && <PitExitPanel vm={pitExit} />}
+          {prefs.panels.pitExit && (
+            <PitExitPanel vm={pitExit} wingChange={wingChange} wingExtraSec={prefs.wingExtraSec} onToggleWing={() => setWingChange((v) => !v)} />
+          )}
           {prefs.panels.predictor && <TyrePredictorPanel player={player} />}
           {prefs.panels.weather && (
             <WeatherPanel weather={weather} weatherStep={prefs.weatherStep} onStepChange={prefs.setWeatherStep} />

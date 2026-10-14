@@ -30,6 +30,10 @@ export const PIT_LOSS_MIN_SEC = 5;
 export const PIT_LOSS_MAX_SEC = 60;
 /** 기본 폴백 피트로스(초). sender defaultStrategyConfig.PitTimeLossMs(22000ms)와 일치. */
 export const DEFAULT_PIT_LOSS_SEC = 22;
+/** 윙 교체 추가 시간 설정 범위/기본값(초). 타이어-only(~2.5s) 대비 윙 교체 정지(~9-10s) 차이. */
+export const WING_EXTRA_MIN_SEC = 1;
+export const WING_EXTRA_MAX_SEC = 30;
+export const DEFAULT_WING_EXTRA_SEC = 7;
 
 /** FIX-3: 값 타입까지 검증한다(문자열 등 이물 값이 boolean 자리에 섞이는 것을 방지). */
 function validateCols(parsed: unknown): Record<ColumnKey, boolean> | null {
@@ -73,6 +77,14 @@ function validatePitLossSec(parsed: unknown): number | null {
   return typeof parsed === 'number' && Number.isFinite(parsed) ? clamp(parsed, PIT_LOSS_MIN_SEC, PIT_LOSS_MAX_SEC) : null;
 }
 
+function validateBool(parsed: unknown): boolean | null {
+  return typeof parsed === 'boolean' ? parsed : null;
+}
+
+function validateWingExtraSec(parsed: unknown): number | null {
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? clamp(parsed, WING_EXTRA_MIN_SEC, WING_EXTRA_MAX_SEC) : null;
+}
+
 export interface DisplayPrefs {
   cols: Record<ColumnKey, boolean>;
   toggleCol: (key: ColumnKey) => void;
@@ -84,9 +96,20 @@ export interface DisplayPrefs {
   togglePanel: (key: PanelKey) => void;
   weatherStep: number;
   setWeatherStep: (step: number) => void;
-  /** 트랙 데이터 결측 시 쓰는 폴백 피트로스(초). */
+  /** 사용자 입력 피트로스(초). override 시 최우선, 아니면 트랙 데이터 결측 시 폴백. */
   pitLossSec: number;
+  /** 값을 커밋하면 override가 켜진다(입력 즉시 적용). */
   setPitLossSec: (sec: number) => void;
+  /** 사용자 입력값이 실측/트랙값보다 우선하는지. */
+  pitLossOverride: boolean;
+  /** override 해제 → 자동(실측/트랙) 모드 복귀. */
+  clearPitLossOverride: () => void;
+  /** 내 마지막 스톱 실측(live) 피트로스를 예측에 쓸지. */
+  useLivePitLoss: boolean;
+  setUseLivePitLoss: (on: boolean) => void;
+  /** 윙 교체 추가 시간(초). */
+  wingExtraSec: number;
+  setWingExtraSec: (sec: number) => void;
 }
 
 interface DragState {
@@ -105,6 +128,9 @@ export function useDisplayPrefs(): DisplayPrefs {
   const [panels, setPanels] = useLocalStorage<Record<PanelKey, boolean>>('pw_panels', DEFAULT_PANEL_VISIBILITY, validatePanels);
   const [weatherStep, setWeatherStep] = useLocalStorage<number>('pw_wstep', 5, validateWeatherStep);
   const [pitLossSec, setPitLossSecRaw] = useLocalStorage<number>('pw_pitloss', DEFAULT_PIT_LOSS_SEC, validatePitLossSec);
+  const [pitLossOverride, setPitLossOverride] = useLocalStorage<boolean>('pw_pitloss_override', false, validateBool);
+  const [useLivePitLoss, setUseLivePitLoss] = useLocalStorage<boolean>('pw_pitloss_live', true, validateBool);
+  const [wingExtraSec, setWingExtraSecRaw] = useLocalStorage<number>('pw_wing_extra', DEFAULT_WING_EXTRA_SEC, validateWingExtraSec);
   // 드래그 중 실시간 시각 폭(비영속, plain state). pointermove마다 이 state만 갱신하고,
   // 영속 colW(및 그에 딸린 localStorage write)는 pointerup 1회로만 커밋한다(FIX-3/comp-H1:
   // 매 프레임 컨테이너 전체 재렌더 + localStorage 동기 write가 발생하던 hot-path 제거).
@@ -115,7 +141,13 @@ export function useDisplayPrefs(): DisplayPrefs {
   const resetWidths = () => setColW({});
   // 유한값만 clamp해 커밋한다(NaN/빈 입력이 pitLossMs=NaN으로 흘러 패널이 unavailable로 회귀하는 것을 방지).
   const setPitLossSec = (sec: number) => {
-    if (Number.isFinite(sec)) setPitLossSecRaw(clamp(sec, PIT_LOSS_MIN_SEC, PIT_LOSS_MAX_SEC));
+    if (!Number.isFinite(sec)) return;
+    setPitLossSecRaw(clamp(sec, PIT_LOSS_MIN_SEC, PIT_LOSS_MAX_SEC));
+    setPitLossOverride(true);
+  };
+  const clearPitLossOverride = () => setPitLossOverride(false);
+  const setWingExtraSec = (sec: number) => {
+    if (Number.isFinite(sec)) setWingExtraSecRaw(clamp(sec, WING_EXTRA_MIN_SEC, WING_EXTRA_MAX_SEC));
   };
 
   /** 키보드 리사이즈(←/→ ±10px 등)용. 드래그와 동일하게 clamp를 재사용하고, no-op이면 setColW를 생략한다. */
@@ -174,5 +206,6 @@ export function useDisplayPrefs(): DisplayPrefs {
     return result;
   }, [colW, dragState]);
 
-  return { cols, toggleCol, colW: resolvedColW, startResize, nudgeWidth, resetWidths, panels, togglePanel, weatherStep, setWeatherStep, pitLossSec, setPitLossSec };
+  return { cols, toggleCol, colW: resolvedColW, startResize, nudgeWidth, resetWidths, panels, togglePanel, weatherStep, setWeatherStep,
+    pitLossSec, setPitLossSec, pitLossOverride, clearPitLossOverride, useLivePitLoss, setUseLivePitLoss, wingExtraSec, setWingExtraSec };
 }

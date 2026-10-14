@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { clamp } from '../../utils/formatters';
 import { COL_ORDER, columnChipLabel, type ColumnKey } from './columns';
 import { DISPLAY_SETTINGS_ID } from './PitWallHeader';
-import { PIT_LOSS_MAX_SEC, PIT_LOSS_MIN_SEC, type PanelKey } from './useDisplayPrefs';
+import { PIT_LOSS_MAX_SEC, PIT_LOSS_MIN_SEC, WING_EXTRA_MAX_SEC, WING_EXTRA_MIN_SEC, type PanelKey } from './useDisplayPrefs';
 
 const PANELS_SECTION_LABEL_ID = 'pitwall-settings-panels-label';
 const COLUMNS_SECTION_LABEL_ID = 'pitwall-settings-columns-label';
 const PITLOSS_SECTION_LABEL_ID = 'pitwall-settings-pitloss-label';
+const WING_EXTRA_LABEL_ID = 'pitwall-settings-wing-extra-label';
 
 const PANEL_CHIPS: Array<{ key: PanelKey; label: string }> = [
   { key: 'myCar', label: 'My Car' },
@@ -37,10 +38,62 @@ export interface DisplaySettingsProps {
   onTogglePanel: (key: PanelKey) => void;
   onResetWidths: () => void;
   is2026: boolean;
-  /** 트랙 데이터 결측 시 쓰는 폴백 피트로스(초). */
+  /** 사용자 입력 피트로스(초). 커밋하면 override로 최우선 적용. */
   pitLossSec: number;
   onChangePitLossSec: (sec: number) => void;
+  pitLossOverride: boolean;
+  onClearPitLossOverride: () => void;
+  useLivePitLoss: boolean;
+  onChangeUseLivePitLoss: (on: boolean) => void;
+  wingExtraSec: number;
+  onChangeWingExtraSec: (sec: number) => void;
   onClose: () => void;
+}
+
+const numberInputStyle: React.CSSProperties = { width: 72, padding: '6px 9px', borderRadius: 'var(--radius-sm)', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', color: 'var(--text-primary)', fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 13 };
+
+/**
+ * 초 단위 숫자 입력. 타이핑 중엔 draft로 두고 blur/Enter에서만 커밋한다(E1): 빈 값/NaN이면
+ * 커밋하지 않고 마지막 유효값으로 되돌린다. 편집하지 않은 채 blur만 한 경우는 커밋하지 않는다
+ * (포커스만 스쳐도 피트로스 override가 켜지는 것 방지).
+ */
+function SecondsField({ value, min, max, labelledBy, onCommit }: { value: number; min: number; max: number; labelledBy: string; onCommit: (sec: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+  const commit = (raw: string) => {
+    if (!dirty) return;
+    setDirty(false);
+    const v = Number(raw);
+    if (Number.isFinite(v) && raw.trim() !== '') {
+      const clamped = clamp(v, min, max);
+      onCommit(clamped);
+      setDraft(String(clamped));
+    } else {
+      setDraft(String(value));
+    }
+  };
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={0.5}
+      value={draft}
+      aria-labelledby={labelledBy}
+      onChange={(e) => {
+        setDraft(e.currentTarget.value);
+        setDirty(true);
+      }}
+      onBlur={(e) => commit(e.currentTarget.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      style={numberInputStyle}
+    />
+  );
 }
 
 /**
@@ -48,7 +101,11 @@ export interface DisplaySettingsProps {
  * DEFER(gameFormat이 authoritative, cockpit 데이터는 저빈도라 rate override 가치 낮음) —
  * 컬럼 가시성/패널 가시성/컬럼폭 리셋만 남긴다.
  */
-export function DisplaySettings({ cols, onToggleCol, panels, onTogglePanel, onResetWidths, is2026, pitLossSec, onChangePitLossSec, onClose }: DisplaySettingsProps) {
+export function DisplaySettings({
+  cols, onToggleCol, panels, onTogglePanel, onResetWidths, is2026,
+  pitLossSec, onChangePitLossSec, pitLossOverride, onClearPitLossOverride, useLivePitLoss, onChangeUseLivePitLoss, wingExtraSec, onChangeWingExtraSec,
+  onClose,
+}: DisplaySettingsProps) {
   // 비-모달 팝오버(Spec FIX-6) — aria-modal/focus-trap 없이 Escape로만 닫는다. 트리거
   // 버튼으로의 포커스 복귀는 이 컴포넌트를 언마운트하는 부모(PitWallView)의 onClose 책임이다.
   useEffect(() => {
@@ -58,24 +115,6 @@ export function DisplaySettings({ cols, onToggleCol, panels, onTogglePanel, onRe
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
-
-  // 피트로스 입력은 타이핑 중 draft로 두고, blur/Enter에서만 커밋한다(E1): 빈 값/NaN이면
-  // 커밋하지 않고 마지막 유효값으로 되돌린다 — NaN이 pitLossMs로 흘러 패널이 unavailable로
-  // 회귀하는 것을 막는다.
-  const [pitLossDraft, setPitLossDraft] = useState(String(pitLossSec));
-  useEffect(() => {
-    setPitLossDraft(String(pitLossSec));
-  }, [pitLossSec]);
-  const commitPitLoss = (raw: string) => {
-    const v = Number(raw);
-    if (Number.isFinite(v) && raw.trim() !== '') {
-      const clamped = clamp(v, PIT_LOSS_MIN_SEC, PIT_LOSS_MAX_SEC);
-      onChangePitLossSec(clamped);
-      setPitLossDraft(String(clamped));
-    } else {
-      setPitLossDraft(String(pitLossSec));
-    }
-  };
 
   return (
     <div
@@ -137,23 +176,30 @@ export function DisplaySettings({ cols, onToggleCol, panels, onTogglePanel, onRe
       <div role="group" aria-labelledby={PITLOSS_SECTION_LABEL_ID} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--bg-panel-border)', paddingTop: 12 }}>
         <span id={PITLOSS_SECTION_LABEL_ID} style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Pit Stop</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="number"
-            min={PIT_LOSS_MIN_SEC}
-            max={PIT_LOSS_MAX_SEC}
-            step={0.5}
-            value={pitLossDraft}
-            aria-labelledby={PITLOSS_SECTION_LABEL_ID}
-            onChange={(e) => setPitLossDraft(e.currentTarget.value)}
-            onBlur={(e) => commitPitLoss(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-            style={{ width: 72, padding: '6px 9px', borderRadius: 'var(--radius-sm)', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', color: 'var(--text-primary)', fontFamily: 'var(--font-racing)', fontWeight: 700, fontSize: 13 }}
-          />
+          <SecondsField value={pitLossSec} min={PIT_LOSS_MIN_SEC} max={PIT_LOSS_MAX_SEC} labelledBy={PITLOSS_SECTION_LABEL_ID} onCommit={onChangePitLossSec} />
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>sec</span>
+          {pitLossOverride && (
+            <button type="button" onClick={onClearPitLossOverride} style={{ ...chipStyle(false), marginLeft: 'auto', padding: '4px 10px' }}>
+              Auto
+            </button>
+          )}
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.45 }}>
+          {pitLossOverride
+            ? 'Manual pit-loss — applied now, overrides live and track values. Press Auto to go back.'
+            : 'Auto: live (if enabled) → track data → this value. Enter a value to override.'}
+        </div>
+        <button type="button" aria-pressed={useLivePitLoss} onClick={() => onChangeUseLivePitLoss(!useLivePitLoss)} style={{ ...chipStyle(useLivePitLoss), alignSelf: 'flex-start' }}>
+          Use live pit-loss
+        </button>
+        <div style={{ fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.45 }}>
+          After your stop, the measured pit-lane time is used. It includes driving through the lane, so it can read a few seconds high.
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span id={WING_EXTRA_LABEL_ID} style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Wing change +</span>
+          <SecondsField value={wingExtraSec} min={WING_EXTRA_MIN_SEC} max={WING_EXTRA_MAX_SEC} labelledBy={WING_EXTRA_LABEL_ID} onCommit={onChangeWingExtraSec} />
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>sec</span>
         </div>
-        <div style={{ fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.45 }}>Fallback pit-loss used when track data is unavailable.</div>
       </div>
     </div>
   );

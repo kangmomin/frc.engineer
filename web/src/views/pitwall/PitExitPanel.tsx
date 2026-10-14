@@ -54,12 +54,45 @@ function NeighborTile({ dir, n }: { dir: '▲' | '▼'; n: PitExitNeighbor | nul
   );
 }
 
+function WingToggle({ on, extraSec, onToggle }: { on: boolean; extraSec: number; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onToggle}
+      title="Adds wing-change time to the pit-loss for this stop. Turns off automatically after you exit the pits."
+      style={{
+        cursor: 'pointer',
+        alignSelf: 'flex-start',
+        fontWeight: 700,
+        fontSize: 10.5,
+        letterSpacing: '.04em',
+        padding: '4px 10px',
+        borderRadius: 999,
+        background: on ? 'var(--accent)' : 'transparent',
+        color: on ? '#0c0c0d' : 'var(--text-muted)',
+        border: `1px solid ${on ? 'var(--accent)' : 'var(--bg-panel-border)'}`,
+      }}
+    >
+      WING CHANGE {on ? 'ON' : 'OFF'} · +{extraSec}s
+    </button>
+  );
+}
+
+export interface PitExitPanelProps {
+  vm: PitExitVM | null;
+  /** 이번 스톱 윙 교체 예정(피트아웃 시 자동 해제). */
+  wingChange: boolean;
+  wingExtraSec: number;
+  onToggleWing: () => void;
+}
+
 /**
  * "지금 박스하면 어디로 나오는가" 패널. derivePitExit VM만 받는 순수 컴포넌트다.
  * 시나리오는 <details>로 접히고, 이미 피트 중(vm.pitting)이면 강제로 열려 게임 projection을
  * 보여준다(계산 갭은 이중계산이라 억제 — Codex REVISE). 모든 수치는 추정임을 라벨로 명시한다.
  */
-export function PitExitPanel({ vm }: { vm: PitExitVM | null }) {
+export function PitExitPanel({ vm, wingChange, wingExtraSec, onToggleWing }: PitExitPanelProps) {
   if (!vm) {
     return (
       <Shell>
@@ -84,22 +117,23 @@ export function PitExitPanel({ vm }: { vm: PitExitVM | null }) {
           <span style={{ fontSize: 9.5, color: 'var(--text-muted)', marginLeft: 'auto' }}>{vm.gameRejoin != null ? 'game' : 'in pit lane'}</span>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-          Pre-stop scenarios hidden — pit-loss is now live.
+          Pre-stop scenarios hidden — pit-loss is now live.{wingChange ? ' Wing change resets on pit exit.' : ''}
         </div>
       </Shell>
     );
   }
 
-  const posText = vm.gameRejoin != null ? `P${vm.gameRejoin}` : `${vm.approximate ? '~' : ''}P${vm.estPosition}`;
-  const posTag = vm.gameRejoin != null ? 'game' : vm.approximate ? 'est · partial grid' : 'est';
-  const showEstAside = vm.gameRejoin != null && vm.gameRejoin !== vm.estPosition;
+  // headline은 표시된 피트로스로 계산한 추정 순위다(입력/윙 토글이 즉시 반영). 게임 projection은
+  // 게임 자체 피트로스 모델이라 사용자 입력과 무관 — 보조 표기로만 둔다.
+  const posText = `${vm.approximate ? '~' : ''}P${vm.estPosition}`;
+  const posTag = vm.approximate ? 'est · partial grid' : 'est';
   const sp = vm.space ? SPACE_STYLE[vm.space] : null;
   // 출처 표기(anti-fabrication): 실측=live, 사용자 폴백=set, 트랙 baseline=무표기.
   const lossTag = vm.pitLossSource === 'measured' ? ' (live)' : vm.pitLossSource === 'user' ? ' (set)' : '';
 
   return (
     <Shell>
-      <PanelTitle title="Pit Exit" tone="tertiary" detail={`If boxing now · loss ${vm.pitLossText ?? '—'}${lossTag}`} />
+      <PanelTitle title="Pit Exit" tone="tertiary" detail={`If boxing now · loss ${vm.pitLossText ?? '—'}${lossTag}${wingChange ? ' +wing' : ''}`} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 11px', background: 'rgba(14,14,15,.5)', border: '1px solid var(--bg-panel-border)', borderRadius: 'var(--radius-md)' }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -108,12 +142,14 @@ export function PitExitPanel({ vm }: { vm: PitExitVM | null }) {
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right', display: 'flex', flexDirection: 'column', gap: 3 }}>
           <span style={{ fontSize: 9, letterSpacing: '.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{posTag}</span>
-          {showEstAside && <span style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>est ~P{vm.estPosition}</span>}
+          {vm.gameRejoin != null && <span style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>game P{vm.gameRejoin}</span>}
           {sp && (
             <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 800, fontSize: 11, letterSpacing: '.04em', color: sp.text, background: sp.bg, border: `1px solid ${sp.border}`, borderRadius: 2, padding: '2px 6px' }}>{sp.label}</span>
           )}
         </div>
       </div>
+
+      <WingToggle on={wingChange} extraSec={wingExtraSec} onToggle={onToggleWing} />
 
       <div style={{ display: 'flex', gap: 7 }}>
         <NeighborTile dir="▲" n={vm.ahead} />

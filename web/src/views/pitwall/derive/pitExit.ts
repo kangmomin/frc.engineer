@@ -12,8 +12,67 @@ export const DRS_WINDOW_MS = 1000;
 
 export type PitExitSpace = 'clear' | 'traffic' | 'drs';
 
-/** pitLoss 값의 출처(표기 구분용, anti-fabrication). measured=실측, track=트랙 baseline, user=사용자 폴백. */
+/** pitLoss 값의 출처(표기 구분용, anti-fabrication). measured=실측, track=트랙 baseline, user=사용자 입력. */
 export type PitLossSource = 'measured' | 'track' | 'user';
+
+/** 윙 교체 스톱 판정 정지시간 하한(ms). 서버 분류 임계값 pitWingMinMs(internal/platformsvc/pitloss.go)와 동일. */
+export const WING_STOP_MIN_MS = 7000;
+
+export interface PitLossInputs {
+  /** 플레이어 마지막 확정 스톱의 레인 체류(ms). */
+  measuredLaneMs?: number;
+  /** 플레이어 마지막 확정 스톱의 정지 작업(ms). */
+  measuredStopMs?: number;
+  /** 트랙 baseline 피트로스(초). */
+  trackLossSec?: number | null;
+  /** 트랙 baseline 조회가 끝났는지(ready/unavailable). 로딩 중엔 사용자 폴백으로 점프하지 않는다. */
+  trackSettled: boolean;
+  /** 사용자 입력 피트로스(초). */
+  userSec: number;
+  /** 사용자가 값을 직접 기입함 → 실측/트랙보다 우선. */
+  userOverride: boolean;
+  /** 실측(live) 피트로스 사용 여부. */
+  useLive: boolean;
+  /** 이번 스톱에 윙 교체 예정. */
+  wingChange: boolean;
+  /** 윙 교체 추가 시간(초). */
+  wingExtraSec: number;
+}
+
+export interface ResolvedPitLoss {
+  /** 예측에 쓰는 총 피트로스(ms, 윙 교체 가산 포함). 결정 불가면 null. */
+  ms: number | null;
+  source: PitLossSource;
+  /** 총 피트로스에 가산된 윙 교체 시간(ms). */
+  wingMs: number;
+}
+
+const validPos = (v: number | null | undefined): v is number => v != null && Number.isFinite(v) && v > 0;
+
+/**
+ * 피트로스 우선순위: 사용자 입력(override) → 실측(live, 설정 시) → 트랙 baseline → 사용자 폴백.
+ * 실측 스톱이 윙 교체였으면 윙 추가분을 빼 타이어-only 기준으로 정규화한 뒤, 이번 스톱 윙 교체 여부로 다시 가산한다
+ * (윙 스톱 실측 + 윙 토글의 이중 가산 방지).
+ */
+export function resolvePitLoss(i: PitLossInputs): ResolvedPitLoss {
+  const wingExtraMs = validPos(i.wingExtraSec) ? i.wingExtraSec * 1000 : 0;
+  let base: { ms: number | null; source: PitLossSource };
+  if (i.userOverride && validPos(i.userSec)) {
+    base = { ms: i.userSec * 1000, source: 'user' };
+  } else if (i.useLive && validPos(i.measuredLaneMs)) {
+    const wingStop = validPos(i.measuredStopMs) && i.measuredStopMs >= WING_STOP_MIN_MS;
+    const normalized = wingStop ? i.measuredLaneMs - wingExtraMs : i.measuredLaneMs;
+    base = { ms: normalized > 0 ? normalized : i.measuredLaneMs, source: 'measured' };
+  } else if (validPos(i.trackLossSec)) {
+    base = { ms: i.trackLossSec * 1000, source: 'track' };
+  } else if (i.trackSettled && validPos(i.userSec)) {
+    base = { ms: i.userSec * 1000, source: 'user' };
+  } else {
+    base = { ms: null, source: 'track' };
+  }
+  const wingMs = base.ms != null && i.wingChange ? wingExtraMs : 0;
+  return { ms: base.ms != null ? base.ms + wingMs : null, source: base.source, wingMs };
+}
 
 export interface PitExitNeighbor {
   code: string;
@@ -43,9 +102,9 @@ export interface PitExitVM {
   pitLossText: string | null;
   /** pitLoss 값의 출처(표기 구분용, anti-fabrication): 실측/트랙 baseline/사용자 폴백. */
   pitLossSource: PitLossSource;
-  /** 게임 자체 재합류 예상 순위(있으면 headline, "game"으로 라벨). */
+  /** 게임 자체 재합류 예상 순위(참고용 보조 표기, "game"으로 라벨). 피트 중에만 headline. */
   gameRejoin: number | null;
-  /** 균일 피트로스 추정 순위("est."). coverage 불완전 시 approximate. */
+  /** 균일 피트로스 추정 순위(headline, "est."). 표시된 피트로스를 그대로 반영. coverage 불완전 시 approximate. */
   estPosition: number;
   /** 온트랙 라이벌 중 갭 결측이 있어 정확 순위/스페이싱을 보장 못 함. */
   approximate: boolean;
