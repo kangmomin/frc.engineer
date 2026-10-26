@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   buildConditionMismatch,
@@ -22,24 +22,12 @@ import {
 } from "./sessionAnalysis";
 import { fetchJsonWithSenderDebug } from "./senderDebug";
 import { AnalysisTraceExplorer } from "./AnalysisTraceExplorer";
+import { Button, Card, Grid, Hint, MetricTile, Notice, Panel, Select, Spread, T, type Tone } from "./ui";
 
-interface DriverPackTheme {
-  bg: string;
-  surface: string;
-  surface2: string;
-  border: string;
-  accent: string;
-  accent2: string;
-  danger: string;
-  text: string;
-  muted: string;
-  dim: string;
-  mono: string;
-  sans: string;
-}
+// 트레이스 차트(SVG)용 토큰 — 차트 컴포넌트는 테스트에서 임의 색을 주입할 수 있도록 theme prop을 유지한다.
+const CHART_THEME = { surface2: T.inset, text: T.text, muted: T.muted, accent: T.accent, accent2: T.lime, border: T.borderStrong, bg: T.bg };
 
 interface SessionAnalysisSectionProps {
-  theme: DriverPackTheme;
   analysisUrl: string;
 }
 
@@ -49,7 +37,7 @@ export function SessionAnalysisSection(props: SessionAnalysisSectionProps) {
   return <SessionAnalysisBody key={JSON.stringify([url, generation])} {...props} analysisUrl={url} generation={generation} onReload={() => setGeneration(n => n + 1)} />;
 }
 
-function SessionAnalysisBody({ theme, analysisUrl, generation, onReload }: SessionAnalysisSectionProps & { generation: number; onReload: () => void }) {
+function SessionAnalysisBody({ analysisUrl, generation, onReload }: SessionAnalysisSectionProps & { generation: number; onReload: () => void }) {
   const [sessions, setSessions] = useState<AnalysisSessionInfo[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -188,32 +176,38 @@ function SessionAnalysisBody({ theme, analysisUrl, generation, onReload }: Sessi
   const distanceAxis = baselineResult?.comparison?.distances ?? [];
   const comparisonAxis = comparisonResult?.comparison?.distances ?? [];
 
+  const traceCharts: Array<{ title: string; baseline: Array<number | null>; comparison: Array<number | null>; formatter: (value: number) => string; min?: number; max?: number }> =
+    baselineLap && comparisonLap
+      ? [
+          { title: "Speed", baseline: baselineLap.trace.speed, comparison: comparisonLap.trace.speed, formatter: (value) => `${value.toFixed(0)} km/h` },
+          { title: "Throttle", baseline: toPercentSeries(baselineLap.trace.throttle), comparison: toPercentSeries(comparisonLap.trace.throttle), formatter: (value) => `${value.toFixed(0)}%`, min: 0, max: 100 },
+          { title: "Brake", baseline: toPercentSeries(baselineLap.trace.brake), comparison: toPercentSeries(comparisonLap.trace.brake), formatter: (value) => `${value.toFixed(0)}%`, min: 0, max: 100 },
+          { title: "Understeer Trend", baseline: baselineLap.trace.understeer, comparison: comparisonLap.trace.understeer, formatter: (value) => `${value.toFixed(1)}%`, min: 0 },
+          { title: "Oversteer Trend", baseline: baselineLap.trace.oversteer, comparison: comparisonLap.trace.oversteer, formatter: (value) => `${value.toFixed(1)}%`, min: 0 },
+        ]
+      : [];
+
   return (
     <>
-      <Panel theme={theme} title="SESSION ANALYSIS">
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontSize: 11, color: theme.muted, lineHeight: 1.6 }}>
-            Compare locally recorded laps by physical distance. Observed time differences and inputs can guide practice; they do not prove the cause of a slower lap.
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-            <input aria-label="Analysis server URL" value={analysisUrl} readOnly style={inputStyle(theme)} />
-            <button
-              onClick={onReload}
-              style={secondaryButton(theme)}
-            >
-              REFRESH
-            </button>
-          </div>
-          {sessionsError ? <Banner theme={theme} tone="danger">{sessionsError}</Banner> : null}
-          {sessionsLoading ? <div style={{ fontSize: 11, color: theme.muted }}>Loading session list...</div> : null}
-        </div>
+      <Panel
+        title="Session Analysis"
+        detail={sessionsLoading ? "Loading sessions" : `${sessions.length} sessions`}
+        actions={
+          <Button size="sm" variant="ghost" onClick={onReload}>
+            Refresh
+          </Button>
+        }
+      >
+        <Hint>
+          Compare locally recorded laps by physical distance. Observed time differences and inputs can guide practice; they do not prove the cause of a slower lap.
+        </Hint>
+        {sessionsError ? <Notice tone="error">{sessionsError}</Notice> : null}
       </Panel>
 
-      <Panel theme={theme} title="SESSION PICKER">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <Panel title="Session Picker">
+        <Grid cols={2} gap={12}>
           <SessionSelectorCard
-            theme={theme}
-            title="BASELINE"
+            title="Baseline"
             sessions={sessions}
             selectedDir={baselineDir}
             onSessionChange={(value) => {
@@ -227,8 +221,7 @@ function SessionAnalysisBody({ theme, analysisUrl, generation, onReload }: Sessi
             error={baselineDir ? analysisErrors[baselineDir] ?? null : null}
           />
           <SessionSelectorCard
-            theme={theme}
-            title="COMPARE"
+            title="Compare"
             sessions={sessions}
             selectedDir={comparisonDir}
             onSessionChange={(value) => {
@@ -241,102 +234,48 @@ function SessionAnalysisBody({ theme, analysisUrl, generation, onReload }: Sessi
             loading={Boolean(comparisonDir && analysisLoading[comparisonDir])}
             error={comparisonDir ? analysisErrors[comparisonDir] ?? null : null}
           />
-        </div>
+        </Grid>
       </Panel>
 
-      {mismatchWarning ? (
-        <Banner theme={theme} tone="warn">
-          {mismatchWarning}
-        </Banner>
-      ) : null}
+      {mismatchWarning ? <Notice tone="warn">{mismatchWarning}</Notice> : null}
 
-      <Panel theme={theme} title="LAP COMPARISON">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+      <Panel title="Lap Comparison" detail="Compare − Baseline">
+        <Grid cols={3}>
           {summaryTiles.map((tile) => (
-            <DeltaTile key={tile.label} theme={theme} label={tile.label} delta={tile.delta} />
+            <MetricTile key={tile.label} compact label={tile.label} value={tile.delta.text} tone={deltaTone(tile.delta)} />
           ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <LapSummaryCard theme={theme} title="BASELINE" session={baselineSession} lap={baselineLap} />
-          <LapSummaryCard theme={theme} title="COMPARE" session={comparisonSession} lap={comparisonLap} />
-        </div>
+        </Grid>
+        <Grid cols={2}>
+          <LapSummaryCard title="Baseline" session={baselineSession} lap={baselineLap} />
+          <LapSummaryCard title="Compare" session={comparisonSession} lap={comparisonLap} />
+        </Grid>
       </Panel>
 
-      <Panel theme={theme} title="NATIVE TRACE EXPLORER">
+      <Panel title="Native Trace Explorer">
         <AnalysisTraceExplorer key={JSON.stringify([analysisUrl, generation, baselineDir, baselineLapNum, comparisonDir, comparisonLapNum])}
-          theme={theme} url={analysisUrl} generation={generation} baselineDir={baselineDir} baselineLap={baselineLapNum}
+          theme={CHART_THEME} url={analysisUrl} generation={generation} baselineDir={baselineDir} baselineLap={baselineLapNum}
           comparisonDir={comparisonDir} comparisonLap={comparisonLapNum} />
       </Panel>
-      <Panel theme={theme} title="COARSE TRACES">
-        <p style={{ color: theme.muted, fontSize: 11 }}>Binned averages: baseline {baselineResult?.comparison?.distanceBinM ?? '—'} m; compare {comparisonResult?.comparison?.distanceBinM ?? '—'} m. Fine input peaks may be absent.</p>
-        {baselineLap && comparisonLap && distanceAxis.length ? (
-          <div style={{ display: "grid", gap: 12 }}>
+      <Panel title="Coarse Traces" detail="Binned averages">
+        <Hint>Binned averages: baseline {baselineResult?.comparison?.distanceBinM ?? '—'} m; compare {comparisonResult?.comparison?.distanceBinM ?? '—'} m. Fine input peaks may be absent.</Hint>
+        {traceCharts.length && distanceAxis.length ? (
+          traceCharts.map((chart) => (
             <TraceOverlayChart
-              theme={theme}
-              title="Speed"
+              key={chart.title}
+              title={chart.title}
               distances={distanceAxis}
               comparisonDistances={comparisonAxis}
-              baseline={baselineLap.trace.speed}
-              comparison={comparisonLap.trace.speed}
+              baseline={chart.baseline}
+              comparison={chart.comparison}
               baselineLabel="Baseline"
               comparisonLabel="Compare"
-              formatter={(value) => `${value.toFixed(0)} km/h`}
+              formatter={chart.formatter}
+              min={chart.min}
+              max={chart.max}
             />
-            <TraceOverlayChart
-              theme={theme}
-              title="Throttle"
-              distances={distanceAxis}
-              comparisonDistances={comparisonAxis}
-              baseline={toPercentSeries(baselineLap.trace.throttle)}
-              comparison={toPercentSeries(comparisonLap.trace.throttle)}
-              baselineLabel="Baseline"
-              comparisonLabel="Compare"
-              formatter={(value) => `${value.toFixed(0)}%`}
-              min={0}
-              max={100}
-            />
-            <TraceOverlayChart
-              theme={theme}
-              title="Brake"
-              distances={distanceAxis}
-              comparisonDistances={comparisonAxis}
-              baseline={toPercentSeries(baselineLap.trace.brake)}
-              comparison={toPercentSeries(comparisonLap.trace.brake)}
-              baselineLabel="Baseline"
-              comparisonLabel="Compare"
-              formatter={(value) => `${value.toFixed(0)}%`}
-              min={0}
-              max={100}
-            />
-            <TraceOverlayChart
-              theme={theme}
-              title="Understeer Trend"
-              distances={distanceAxis}
-              comparisonDistances={comparisonAxis}
-              baseline={baselineLap.trace.understeer}
-              comparison={comparisonLap.trace.understeer}
-              baselineLabel="Baseline"
-              comparisonLabel="Compare"
-              formatter={(value) => `${value.toFixed(1)}%`}
-              min={0}
-            />
-            <TraceOverlayChart
-              theme={theme}
-              title="Oversteer Trend"
-              distances={distanceAxis}
-              comparisonDistances={comparisonAxis}
-              baseline={baselineLap.trace.oversteer}
-              comparison={comparisonLap.trace.oversteer}
-              baselineLabel="Baseline"
-              comparisonLabel="Compare"
-              formatter={(value) => `${value.toFixed(1)}%`}
-              min={0}
-            />
-          </div>
+          ))
         ) : (
-          <div style={{ fontSize: 11, color: theme.muted }}>
-            Select two analysis-ready sessions and laps to render trace overlays.
-          </div>
+          <Hint>Select two analysis-ready sessions and laps to render trace overlays.</Hint>
         )}
       </Panel>
     </>
@@ -382,8 +321,13 @@ function SessionAnalysisBody({ theme, analysisUrl, generation, onReload }: Sessi
   }
 }
 
+function deltaTone(delta: ComparisonDelta): Tone {
+  if (delta.direction === "better") return "tertiary";
+  if (delta.direction === "worse") return "secondary";
+  return "neutral";
+}
+
 function SessionSelectorCard({
-  theme,
   title,
   sessions,
   selectedDir,
@@ -394,7 +338,6 @@ function SessionSelectorCard({
   loading,
   error,
 }: {
-  theme: DriverPackTheme;
   title: string;
   sessions: AnalysisSessionInfo[];
   selectedDir: string | null;
@@ -409,130 +352,67 @@ function SessionSelectorCard({
   const laps = result?.comparison?.laps ?? [];
 
   return (
-    <div style={{ borderRadius: 4, background: theme.surface2, padding: 12, display: "grid", gap: 10 }}>
-      <div style={{ fontSize: 11, fontFamily: theme.mono, fontWeight: 700 }}>{title}</div>
-      <select
-        aria-label={`${title} session`}
-        value={selectedDir ?? ""}
-        onChange={(event) => onSessionChange(event.target.value || null)}
-        style={selectStyle(theme)}
-      >
+    <Card title={title} aside={loading ? <Hint>Loading analysis…</Hint> : null}>
+      <Select aria-label={`${title.toUpperCase()} session`} value={selectedDir ?? ""} onChange={(event) => onSessionChange(event.target.value || null)}>
         <option value="">Select session</option>
         {sessions.map((session) => (
           <option key={session.directory} value={session.directory}>
             {session.trackName ?? session.directory} / {session.sessionType ?? "Unknown"}{session.analysisAvailable ? "" : " / incomplete"}
           </option>
         ))}
-      </select>
-      <select
-        aria-label={`${title} lap`}
-        value={selectedLapNum ?? ""}
-        onChange={(event) => onLapChange(event.target.value ? Number(event.target.value) : null)}
-        style={selectStyle(theme)}
-        disabled={!laps.length}
-      >
+      </Select>
+      <Select aria-label={`${title.toUpperCase()} lap`} value={selectedLapNum ?? ""} onChange={(event) => onLapChange(event.target.value ? Number(event.target.value) : null)} disabled={!laps.length}>
         <option value="">Select lap</option>
         {laps.map((lap) => (
           <option key={lap.lapNum} value={lap.lapNum}>
             Lap {lap.lapNum} / {formatLapTime(lap.lapTimeMs)}
           </option>
         ))}
-      </select>
+      </Select>
 
       {selectedSession ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <MiniStat theme={theme} label="Track" value={selectedSession.trackName ?? "--"} />
-          <MiniStat theme={theme} label="Weather" value={formatWeatherLabel(selectedSession.weather)} />
-          <MiniStat theme={theme} label="Session" value={selectedSession.sessionType ?? "--"} />
-          <MiniStat theme={theme} label="Track Temp" value={formatTrackTemp(selectedSession.trackTemp)} />
-        </div>
+        <Grid cols={2}>
+          <MetricTile compact label="Track" value={selectedSession.trackName ?? "--"} tone="neutral" />
+          <MetricTile compact label="Weather" value={formatWeatherLabel(selectedSession.weather)} tone="neutral" />
+          <MetricTile compact label="Session" value={selectedSession.sessionType ?? "--"} tone="neutral" />
+          <MetricTile compact label="Track Temp" value={formatTrackTemp(selectedSession.trackTemp)} tone="neutral" />
+        </Grid>
       ) : null}
 
-      {loading ? <div style={{ fontSize: 10, color: theme.muted }}>Loading analysis...</div> : null}
-      {error ? <Banner theme={theme} tone="danger">{error}</Banner> : null}
-    </div>
+      {error ? <Notice tone="error">{error}</Notice> : null}
+    </Card>
   );
 }
 
 function LapSummaryCard({
-  theme,
   title,
   session,
   lap,
 }: {
-  theme: DriverPackTheme;
   title: string;
   session: AnalysisSessionInfo | null;
   lap: ComparisonLap | null;
 }) {
   return (
-    <div style={{ borderRadius: 4, background: theme.surface2, padding: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontFamily: theme.mono, fontWeight: 700 }}>{title}</div>
-        <div style={{ fontSize: 10, color: theme.muted }}>{session?.timestamp ?? "--"}</div>
-      </div>
-      <div style={{ fontSize: 11, color: theme.muted, lineHeight: 1.6, marginBottom: 10 }}>
+    <Card title={title} aside={<Hint>{session?.timestamp ?? "--"}</Hint>}>
+      <Hint>
         {session?.trackName ?? "Unknown Track"} / {session?.sessionType ?? "Session"} / {formatWeatherLabel(session?.weather)}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-        <MiniStat theme={theme} label="Lap Time" value={formatLapTime(lap?.lapTimeMs)} />
-        <MiniStat theme={theme} label="S1" value={formatLapTime(lap?.sector1Ms)} />
-        <MiniStat theme={theme} label="S2" value={formatLapTime(lap?.sector2Ms)} />
-        <MiniStat theme={theme} label="S3" value={formatLapTime(lap?.sector3Ms)} />
-        <MiniStat theme={theme} label="Tyres / age" value={`${lap?.compound ?? "--"} / ${lap?.tireAge ?? "--"}`} />
-        <MiniStat theme={theme} label="Heavy braking (lockup unconfirmed)" value={lap?.lockupCount === null || lap?.lockupCount === undefined ? "--" : String(lap.lockupCount)} />
-        <MiniStat theme={theme} label="Under" value={formatPercent(lap?.understeerPct)} />
-        <MiniStat theme={theme} label="Over" value={formatPercent(lap?.oversteerPct)} />
-      </div>
-    </div>
-  );
-}
-
-function DeltaTile({
-  theme,
-  label,
-  delta,
-}: {
-  theme: DriverPackTheme;
-  label: string;
-  delta: ComparisonDelta;
-}) {
-  const color =
-    delta.direction === "better"
-      ? theme.accent2
-      : delta.direction === "worse"
-        ? theme.danger
-        : delta.direction === "same"
-          ? theme.muted
-          : theme.text;
-
-  return (
-    <div style={{ padding: 12, borderRadius: 4, background: theme.surface2 }}>
-      <div style={{ fontSize: 10, color: theme.muted, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 700, color }}>{delta.text}</div>
-    </div>
-  );
-}
-
-function MiniStat({
-  theme,
-  label,
-  value,
-}: {
-  theme: DriverPackTheme;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div style={{ padding: "8px 10px", borderRadius: 4, background: "rgba(255,255,255,0.04)" }}>
-      <div style={{ fontSize: 9, color: theme.muted, marginBottom: 4, fontFamily: theme.mono }}>{label}</div>
-      <div style={{ fontSize: 12, fontWeight: 700 }}>{value}</div>
-    </div>
+      </Hint>
+      <Grid cols={2}>
+        <MetricTile compact label="Lap Time" value={formatLapTime(lap?.lapTimeMs)} tone="primary" />
+        <MetricTile compact label="S1" value={formatLapTime(lap?.sector1Ms)} tone="neutral" />
+        <MetricTile compact label="S2" value={formatLapTime(lap?.sector2Ms)} tone="neutral" />
+        <MetricTile compact label="S3" value={formatLapTime(lap?.sector3Ms)} tone="neutral" />
+        <MetricTile compact label="Tyres / age" value={`${lap?.compound ?? "--"} / ${lap?.tireAge ?? "--"}`} tone="neutral" />
+        <MetricTile compact label="Heavy braking" note="Lockup unconfirmed" value={lap?.lockupCount === null || lap?.lockupCount === undefined ? "--" : String(lap.lockupCount)} tone="neutral" />
+        <MetricTile compact label="Under" value={formatPercent(lap?.understeerPct)} tone="neutral" />
+        <MetricTile compact label="Over" value={formatPercent(lap?.oversteerPct)} tone="neutral" />
+      </Grid>
+    </Card>
   );
 }
 
 function TraceOverlayChart({
-  theme,
   title,
   distances,
   comparisonDistances,
@@ -544,7 +424,6 @@ function TraceOverlayChart({
   min,
   max,
 }: {
-  theme: DriverPackTheme;
   title: string;
   distances: number[];
   comparisonDistances: number[];
@@ -567,124 +446,38 @@ function TraceOverlayChart({
   const comparisonPath = buildSeriesPath(comparisonDistances, comparison, width, height, minValue, safeMax, xMax);
 
   return (
-    <div style={{ borderRadius: 4, background: theme.surface2, padding: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700 }}>{title}</div>
-          <div style={{ fontSize: 10, color: theme.muted }}>{formatter(safeMax)} peak / {formatter(minValue)} floor</div>
+    <Card
+      title={title}
+      aside={
+        <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 10.5, color: T.muted }}>
+          <LegendSwatch color={T.accent} label={`${baselineLabel} — solid`} />
+          <LegendSwatch color={T.lime} label={`${comparisonLabel} – dashed`} />
         </div>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 10, color: theme.muted }}>
-          <LegendSwatch color={theme.accent} label={`${baselineLabel} — solid`} />
-          <LegendSwatch color={theme.accent2} label={`${comparisonLabel} – dashed`} />
-        </div>
-      </div>
+      }
+    >
+      <Hint style={{ fontSize: 10.5 }}>{formatter(safeMax)} peak / {formatter(minValue)} floor</Hint>
       <svg role="img" aria-label={`${title} coarse distance trace`} viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
-        <rect x="0" y="0" width={width} height={height} fill="transparent" />
         {[0.25, 0.5, 0.75].map((ratio) => (
-          <line key={ratio} x1="0" x2={width} y1={height * ratio} y2={height * ratio} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+          <line key={ratio} x1="0" x2={width} y1={height * ratio} y2={height * ratio} stroke="rgba(132, 147, 150, 0.1)" strokeWidth="1" />
         ))}
-        <path d={baselinePath} fill="none" stroke={theme.accent} strokeWidth="3" strokeLinecap="round" />
-        <path d={comparisonPath} fill="none" stroke={theme.accent2} strokeDasharray="8 5" strokeWidth="3" strokeLinecap="round" />
+        <path d={baselinePath} fill="none" style={{ stroke: T.accent }} strokeWidth="3" strokeLinecap="round" />
+        <path d={comparisonPath} fill="none" style={{ stroke: T.lime }} strokeDasharray="8 5" strokeWidth="3" strokeLinecap="round" />
       </svg>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 10, color: theme.muted }}>
+      <Spread style={{ fontSize: 10.5, color: T.muted }}>
         <span>Start</span>
         <span>{distances.length ? `${distances[distances.length - 1].toFixed(0)}m` : "--"}</span>
-      </div>
-    </div>
-  );
-}
-
-function Banner({
-  theme,
-  tone,
-  children,
-}: {
-  theme: DriverPackTheme;
-  tone: "warn" | "danger";
-  children: string;
-}) {
-  const color = tone === "danger" ? theme.danger : theme.accent2;
-  return (
-    <div style={{ padding: "10px 12px", borderRadius: 4, border: `1px solid ${color}33`, background: `${color}12`, color }}>
-      {children}
-    </div>
+      </Spread>
+    </Card>
   );
 }
 
 function LegendSwatch({ color, label }: { color: string; label: string }) {
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-      <span style={{ width: 10, height: 10, borderRadius: "50%", background: color, display: "inline-block" }} />
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+      <span style={{ width: 10, height: 3, borderRadius: 2, background: color, display: "inline-block" }} />
       <span>{label}</span>
-    </div>
+    </span>
   );
-}
-
-function Panel({
-  theme,
-  title,
-  children,
-}: {
-  theme: DriverPackTheme;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "12px 16px 10px", borderBottom: `1px solid ${theme.border}`, fontSize: 12, fontFamily: theme.mono, fontWeight: 700, letterSpacing: 2, color: theme.muted }}>
-        {title}
-      </div>
-      <div style={{ padding: "14px 16px", minWidth: 0, overflowX: "auto", overflowY: "visible" }}>{children}</div>
-    </section>
-  );
-}
-
-function inputStyle(theme: DriverPackTheme): CSSProperties {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 4,
-    border: `1px solid ${theme.border}`,
-    background: theme.surface2,
-    color: theme.text,
-    fontFamily: theme.mono,
-  };
-}
-
-function selectStyle(theme: DriverPackTheme): CSSProperties {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 4,
-    border: `1px solid ${theme.border}`,
-    background: theme.bg,
-    color: theme.text,
-    fontFamily: theme.mono,
-  };
-}
-
-function primaryButton(theme: DriverPackTheme): CSSProperties {
-  return {
-    padding: "10px 12px",
-    borderRadius: 4,
-    border: "none",
-    background: theme.accent,
-    color: theme.bg,
-    cursor: "pointer",
-    fontFamily: theme.mono,
-  };
-}
-
-function secondaryButton(theme: DriverPackTheme): CSSProperties {
-  return {
-    padding: "10px 12px",
-    borderRadius: 4,
-    border: `1px solid ${theme.border}`,
-    background: "transparent",
-    color: theme.text,
-    cursor: "pointer",
-    fontFamily: theme.mono,
-  };
 }
 
 function toPercentSeries(series: Array<number | null>): Array<number | null> {

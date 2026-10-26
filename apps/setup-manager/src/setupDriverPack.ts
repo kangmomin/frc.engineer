@@ -50,27 +50,6 @@ export interface SavedRecommendation {
   trackTemp?: number | null;
 }
 
-export interface LapComparisonSnapshot {
-  slot: "before" | "after";
-  source: "live" | "race-result";
-  capturedAtLocal: string;
-  track: string | null;
-  weather: WeatherMode;
-  team: string | null;
-  setupKey: SetupKey | null;
-  setupLabel: string | null;
-  sessionType: string | null;
-  trackTemp: number | null;
-  bestLapTime: number | null;
-  lastLapTime: number | null;
-  topSpeed: number | null;
-}
-
-export interface LapComparisonState {
-  before: LapComparisonSnapshot | null;
-  after: LapComparisonSnapshot | null;
-}
-
 const TEAM_ID_TO_NAME: Record<number, string> = {
   0: "Mercedes",
   1: "Ferrari",
@@ -283,44 +262,4 @@ export function findSavedRecommendation(
 
 export function removeSavedRecommendation(list: SavedRecommendation[], id: string): SavedRecommendation[] {
   return list.filter((entry) => entry.id !== id);
-}
-
-export function normalizeLapComparisonState(value: unknown): LapComparisonState {
-  if (!value || typeof value !== "object") {
-    return { before: null, after: null };
-  }
-
-  const raw = value as Partial<LapComparisonState>;
-  return {
-    before: normalizeLapComparisonSnapshot(raw.before, "before"),
-    after: normalizeLapComparisonSnapshot(raw.after, "after"),
-  };
-}
-
-function normalizeLapComparisonSnapshot(
-  value: unknown,
-  slot: "before" | "after",
-): LapComparisonSnapshot | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<LapComparisonSnapshot>;
-  const weather = candidate.weather === "dry" || candidate.weather === "rain" ? candidate.weather : null;
-  const source = candidate.source === "race-result" ? "race-result" : "live";
-  return {
-    slot,
-    source,
-    capturedAtLocal: candidate.capturedAtLocal || formatSavedAtLocal(),
-    track: candidate.track ?? null,
-    weather,
-    team: candidate.team ?? null,
-    setupKey: candidate.setupKey ?? null,
-    setupLabel: candidate.setupLabel ?? null,
-    sessionType: candidate.sessionType ?? null,
-    trackTemp: typeof candidate.trackTemp === "number" ? candidate.trackTemp : null,
-    bestLapTime: typeof candidate.bestLapTime === "number" ? candidate.bestLapTime : null,
-    lastLapTime: typeof candidate.lastLapTime === "number" ? candidate.lastLapTime : null,
-    topSpeed: typeof candidate.topSpeed === "number" ? candidate.topSpeed : null,
-  };
 }
