@@ -6,51 +6,42 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from "react";
-import { PanelTitle } from "../../../../web/src/ui/PanelTitle";
-import type { Tone } from "../../../../web/src/ui/types";
 import styles from "./kit.module.css";
 
 function cx(...names: Array<string | false | null | undefined>): string {
   return names.filter(Boolean).join(" ");
 }
 
-/** 패널: bg-panel 표면 + MinmoPitwallUI PanelTitle. */
+/** hub 카드: 제목(굵게) + 보조 설명 + 우측 액션. */
 export function Panel({
   title,
-  tone = "primary",
   detail,
   actions,
   children,
 }: {
   title: string;
-  tone?: Tone;
   detail?: string;
   actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className={styles.panel}>
-      <PanelTitle title={title} tone={tone} detail={detail} endContent={actions} />
+      <div className={styles.panelHead}>
+        <div style={{ minWidth: 0 }}>
+          <div className={styles.panelTitle}>{title}</div>
+          {detail ? <div className={styles.panelDetail}>{detail}</div> : null}
+        </div>
+        {actions ? <div className={styles.panelActions}>{actions}</div> : null}
+      </div>
       <div className={styles.panelBody}>{children}</div>
     </section>
   );
 }
 
 /** 패널 안의 하위 묶음. */
-export function Card({
-  title,
-  aside,
-  selectedColor,
-  children,
-}: {
-  title?: string;
-  aside?: ReactNode;
-  /** 선택 상태를 강조할 테두리 색(예: 세팅 메타 색). */
-  selectedColor?: string;
-  children: ReactNode;
-}) {
+export function Card({ title, aside, children }: { title?: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <div className={styles.card} style={selectedColor ? { borderColor: selectedColor } : undefined}>
+    <div className={styles.card}>
       {title || aside ? (
         <div className={styles.cardHead}>
           {title ? <span className={styles.eyebrow}>{title}</span> : <span />}
@@ -64,10 +55,6 @@ export function Card({
 
 export function Hint({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return <div className={styles.hint} style={style}>{children}</div>;
-}
-
-export function Label({ children }: { children: ReactNode }) {
-  return <span className={styles.label}>{children}</span>;
 }
 
 /** 등폭 컬럼 그리드. */
@@ -89,6 +76,27 @@ export function Spread({ children, style }: { children: ReactNode; style?: CSSPr
   return <div className={styles.spread} style={style}>{children}</div>;
 }
 
+/** primary = 액센트, secondary = 경고/오류, tertiary = 정상, neutral = 기본 글자색. */
+export type Tone = "primary" | "secondary" | "tertiary" | "neutral";
+
+const METRIC_TONE: Record<Tone, string> = {
+  primary: styles.tonePrimary,
+  secondary: styles.toneSecondary,
+  tertiary: styles.toneTertiary,
+  neutral: styles.toneNeutral,
+};
+
+/** hub 지표 타일: MONO 라벨 + 굵은 값. */
+export function MetricTile({ label, value, tone = "neutral", note }: { label: string; value: string; tone?: Tone; note?: string }) {
+  return (
+    <div className={cx(styles.metric, METRIC_TONE[tone])}>
+      <span className={styles.label}>{label}</span>
+      <strong className={styles.metricValue} title={value}>{value}</strong>
+      {note ? <small className={styles.metricNote}>{note}</small> : null}
+    </div>
+  );
+}
+
 type ButtonVariant = "primary" | "go" | "danger" | "ghost";
 
 export function Button({
@@ -108,44 +116,7 @@ export function Button({
   );
 }
 
-/** shell/NavTabs와 같은 세그먼트 탭. */
-export function Segmented<T extends string>({
-  items,
-  value,
-  onChange,
-  activeTone = "accent",
-  ariaLabel,
-}: {
-  items: ReadonlyArray<{ id: T; label: string }>;
-  value: T;
-  onChange: (id: T) => void;
-  activeTone?: "red" | "accent";
-  ariaLabel?: string;
-}) {
-  return (
-    <div className={styles.segmented} role="tablist" aria-label={ariaLabel}>
-      {items.map((item) => {
-        const active = item.id === value;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            className={cx(styles.segment, active && styles.segmentActive, active && (activeTone === "red" ? styles.activeRed : styles.activeAccent))}
-            onClick={() => {
-              if (!active) onChange(item.id);
-            }}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** 선택형 타일 버튼(트랙·팀·모드 등). */
+/** 선택형 타일 버튼. */
 export function OptionButton({
   selected,
   title,
@@ -253,7 +224,7 @@ const PILL_TONE: Record<PillTone, string> = {
   muted: styles.toneMuted,
 };
 
-/** 점 + 라벨 상태 pill(pitwall 헤더 status pill 패턴). */
+/** 점 + MONO 라벨 상태 박스(hub TopBar 크레딧 박스 패턴). */
 export function StatusPill({ tone, label }: { tone: PillTone; label: string }) {
   return (
     <span className={cx(styles.pill, PILL_TONE[tone])}>
@@ -271,9 +242,10 @@ export function Badge({ color, children }: { color?: string; children: ReactNode
   );
 }
 
+/** 낮을수록 좋은 값(타이어 마모 등)의 진행 막대. */
 export function MetricBar({ value, min, max }: { value: number; min: number; max: number }) {
   const percent = Math.max(0, Math.min(100, ((value - min) / (max - min || 1)) * 100));
-  const color = percent < 33 ? "var(--accent)" : percent < 66 ? "var(--accent-lime)" : "var(--accent-red)";
+  const color = percent < 33 ? "var(--ok)" : percent < 66 ? "var(--warn)" : "var(--negRed)";
   return (
     <div className={styles.bar}>
       <div className={styles.barFill} style={{ width: `${percent}%`, background: color }} />
@@ -289,10 +261,3 @@ export function Modal({ zIndex, children }: { zIndex: number; children: ReactNod
     </div>
   );
 }
-
-/** 입력·버튼 스타일 클래스를 직접 써야 하는 밀집 화면용(트레이스 탐색기). */
-export const kitClass = {
-  input: styles.input,
-  button: cx(styles.button, styles.ghost, styles.sm),
-  hint: styles.hint,
-};

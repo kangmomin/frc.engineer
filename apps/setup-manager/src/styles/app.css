@@ -1,14 +1,60 @@
-/* Driver Pack 전역 보정 — 토큰·reset·body는 web/src/styles/theme.css가 제공한다. */
+/* Driver Pack 전역 — 색 변수는 ui/theme.ts가 hub 팔레트로 :root에 넣는다. */
+:root {
+  --font-sans: 'IBM Plex Sans KR', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #root {
   height: 100%;
 }
 
-::selection {
-  background: rgba(0, 229, 255, 0.25);
-  color: #fff;
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--t1);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
 }
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+ol,
+ul {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accSoft);
+}
+
+a {
+  color: var(--accInk);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #c2c8d0; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #aab1bb; }
+::-webkit-scrollbar-track { background: transparent; }
 
 /* Windows 타이틀바 오버레이 드래그 영역 */
 .electron-drag {
@@ -20,8 +66,4 @@ body,
   right: 0;
   z-index: 9999;
   pointer-events: none;
-}
-
-a {
-  color: var(--accent);
 }

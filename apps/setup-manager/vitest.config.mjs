@@ -6,5 +6,5 @@ export default {
     'react-dom': fileURLToPath(new URL('./node_modules/react-dom', import.meta.url)),
   } },
   esbuild: { jsx: 'automatic' },
-  test: { environment: 'node', include: ['tests/analysis*.test.{ts,tsx}', 'tests/radio*.test.{ts,tsx}'] },
+  test: { environment: 'node', include: ['tests/*.test.{ts,tsx}'] },
 };

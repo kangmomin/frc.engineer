@@ -1,5 +1,5 @@
 import { Component, useState, useEffect, type ReactNode } from 'react';
-import { F1SetupManager } from './F1SetupManager';
+import { DriverPack } from './DriverPack';
 import { Button, Hint, Modal, Notice, Panel } from './ui';
 
 interface SenderStorageInfo {
@@ -81,17 +81,17 @@ function UpdateBanner() {
     const percent = installing ? 100 : update.percent || 0;
     return (
       <Modal zIndex={30000}>
-        <Panel title="Mandatory Update" detail="필수 업데이트" tone="secondary">
+        <Panel title="필수 업데이트" detail="Mandatory Update">
           <Hint>
             {installing
               ? '설치를 시작합니다. 앱이 곧 자동으로 재시작됩니다.'
               : `새 버전 v${update.version} 을 내려받는 중입니다. 완료되면 자동으로 설치·재시작됩니다.`}
           </Hint>
           <div>
-            <div style={{ height: 4, borderRadius: 2, background: 'rgba(0,229,255,0.1)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+            <div style={{ height: 5, borderRadius: 999, background: 'var(--barbase)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${percent}%`, background: 'var(--acc)', transition: 'width 0.3s' }} />
             </div>
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-racing)', fontWeight: 700 }}>
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--t2)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
               {installing ? '설치 준비 중...' : `${percent}%`}
             </div>
           </div>
@@ -109,8 +109,8 @@ function UpdateBanner() {
 
   if (update.status === 'downloading') {
     return (
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(0,229,255,0.1)', zIndex: 10000 }}>
-        <div style={{ height: '100%', width: `${update.percent || 0}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 3, background: 'var(--barbase)', zIndex: 10000 }}>
+        <div style={{ height: '100%', width: `${update.percent || 0}%`, background: 'var(--acc)', transition: 'width 0.3s' }} />
       </div>
     );
   }
@@ -156,7 +156,7 @@ function UpdateBanner() {
 
 function BottomBar({ children }: { children: ReactNode }) {
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10000, padding: '8px 16px', background: 'var(--bg-panel)', borderTop: '1px solid var(--bg-panel-border)', backdropFilter: 'blur(8px)' }}>
+    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10000, padding: '8px 16px', background: 'var(--rail)', borderTop: '1px solid var(--line)', boxShadow: '0 -6px 18px rgba(0, 0, 0, 0.06)' }}>
       {children}
     </div>
   );
@@ -168,10 +168,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 40, fontSize: 13, background: 'var(--bg-primary)', height: '100%', overflow: 'auto' }}>
-          <h2 style={{ color: 'var(--accent-red)', fontFamily: 'var(--font-racing)', marginBottom: 16 }}>Runtime Error</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>{this.state.error.message}</pre>
-          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: 8, fontSize: 11 }}>{this.state.error.stack}</pre>
+        <div style={{ padding: 40, fontSize: 13, background: 'var(--bg)', height: '100%', overflow: 'auto' }}>
+          <h2 style={{ color: 'var(--negRed)', fontSize: 20, fontWeight: 800, margin: '0 0 16px' }}>Runtime Error</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--t1)', fontFamily: 'var(--font-mono)' }}>{this.state.error.message}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--t3)', marginTop: 8, fontSize: 11, fontFamily: 'var(--font-mono)' }}>{this.state.error.stack}</pre>
         </div>
       );
     }
@@ -183,7 +183,7 @@ export default function App() {
   return (
     <>
       <ErrorBoundary>
-        <F1SetupManager />
+        <DriverPack />
       </ErrorBoundary>
       {/* 본체가 죽어도 강제 업데이트 게이트는 살아 있어야 한다 — 경계 밖에 둔다 */}
       <UpdateBanner />

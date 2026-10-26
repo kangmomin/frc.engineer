@@ -8,7 +8,7 @@ import {
   type RadioSettingsView,
 } from "./radioClient";
 import type { EngineerRadio } from "./useEngineerRadio";
-import { Button, Card, Check, Field, Grid, Hint, MetricTile, Notice, Range, Row, Select, TextInput, type Tone } from "./ui";
+import { Button, Check, Field, Grid, Hint, MetricTile, Notice, Panel, Range, Row, Select, TextInput, type Tone } from "./ui";
 
 interface Props {
   senderUrl: string;
@@ -27,7 +27,7 @@ const CATEGORY_LABELS: Array<[keyof RadioCategories, string]> = [
 ];
 
 // 0 정보 · 1 보통 · 2 중요 · 3 긴급
-const PRIORITY_COLORS = ["var(--text-muted)", "var(--accent)", "#ffc800", "var(--accent-red)"];
+const PRIORITY_COLORS = ["var(--t3)", "var(--accInk)", "var(--warn)", "var(--negRed)"];
 const BASIS_LABELS: Record<string, string> = { game: "게임 값", measured: "측정", heuristic: "휴리스틱" };
 
 function formatTime(iso?: string): string {
@@ -121,25 +121,26 @@ export function EngineerRadioPanel({ senderUrl, radio }: Props) {
       {error ? <Notice tone="error">{error}</Notice> : null}
       {notice ? <Notice tone="success">{notice}</Notice> : null}
 
-      <Grid cols={4}>
-        <MetricTile compact label="Stream" value={streamLive ? "Live" : radio.status} tone={streamLive ? "primary" : "secondary"} />
-        <MetricTile compact label="Telemetry" value={!status ? "--" : status.stale ? "Waiting" : status.sessionType || "Live"} tone={telemetryLive ? "tertiary" : "neutral"} />
-        <MetricTile
-          compact
-          label="Voice"
-          value={!radio.speechSupported ? "Unsupported" : radio.prefs.enabled ? (radio.intercomBusy ? "Held · intercom" : "On") : "Off"}
-          tone={voiceTone}
-        />
-        <MetricTile compact label="Calls" value={status ? `${status.released} sent · ${status.suppressed} cut` : "--"} tone="neutral" />
-      </Grid>
+      <Panel title="Radio Status" detail="실시간 텔레메트리로 만든 콜을 우선순위·제동 보류 규칙에 따라 내보냅니다.">
+        <Grid cols={4}>
+          <MetricTile label="Stream" value={streamLive ? "Live" : radio.status} tone={streamLive ? "primary" : "secondary"} />
+          <MetricTile label="Telemetry" value={!status ? "--" : status.stale ? "Waiting" : status.sessionType || "Live"} tone={telemetryLive ? "tertiary" : "neutral"} />
+          <MetricTile
+            label="Voice"
+            value={!radio.speechSupported ? "Unsupported" : radio.prefs.enabled ? (radio.intercomBusy ? "Held · intercom" : "On") : "Off"}
+            tone={voiceTone}
+          />
+          <MetricTile label="Calls" value={status ? `${status.released} sent · ${status.suppressed} cut` : "--"} tone="neutral" />
+        </Grid>
 
-      <Row>
-        <Button variant="go" onClick={() => void run(() => radioApi.briefing(senderUrl), "브리핑을 요청했습니다.")}>Briefing</Button>
-        <Button onClick={() => void run(() => radioApi.repeat(senderUrl), "마지막 콜을 다시 보냅니다.")}>Repeat Last</Button>
-        <Button variant="ghost" onClick={() => void run(() => radioApi.test(senderUrl), "라디오 체크를 보냈습니다.")}>Radio Check</Button>
-      </Row>
+        <Row>
+          <Button variant="go" onClick={() => void run(() => radioApi.briefing(senderUrl), "브리핑을 요청했습니다.")}>Briefing</Button>
+          <Button onClick={() => void run(() => radioApi.repeat(senderUrl), "마지막 콜을 다시 보냅니다.")}>Repeat Last</Button>
+          <Button variant="ghost" onClick={() => void run(() => radioApi.test(senderUrl), "라디오 체크를 보냈습니다.")}>Radio Check</Button>
+        </Row>
+      </Panel>
 
-      <Card title="음성 출력">
+      <Panel title="음성 출력" detail="Windows 음성으로 엔지니어 콜을 읽어 줍니다.">
         {!radio.speechSupported ? (
           <Notice tone="error">이 환경은 음성 합성을 지원하지 않습니다.</Notice>
         ) : (
@@ -166,10 +167,10 @@ export function EngineerRadioPanel({ senderUrl, radio }: Props) {
             <Hint>Windows에 설치된 음성(SAPI5)을 씁니다. 한국어 음성이 없으면 Windows 설정 → 시간 및 언어 → 음성에서 추가하세요.</Hint>
           </>
         )}
-      </Card>
+      </Panel>
 
       {draft ? (
-        <Card title="엔지니어 설정">
+        <Panel title="엔지니어 설정" detail="자동 콜 범위·언어·휠 버튼">
           <Check checked={draft.enabled} onChange={(v) => set("enabled", v)}>자동 콜 켜기 (꺼도 브리핑·질문 응답은 동작)</Check>
           <Grid cols={3}>
             <Field label="Language">
@@ -211,10 +212,10 @@ export function EngineerRadioPanel({ senderUrl, radio }: Props) {
           <div>
             <Button variant="go" disabled={saving} busy={saving} onClick={() => void save()}>Save</Button>
           </div>
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card title="엔지니어에게 질문">
+      <Panel title="엔지니어에게 질문" detail="텍스트로 묻고 실시간 값으로 답을 받습니다.">
         <div style={{ display: "flex", gap: 8 }}>
           <TextInput value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void ask(); }} placeholder="예: 뒤차 몇 초야? / 연료 어때? / 피트 언제?" aria-label="엔지니어에게 질문" />
           <Button onClick={() => void ask()}>Ask</Button>
@@ -229,10 +230,10 @@ export function EngineerRadioPanel({ senderUrl, radio }: Props) {
           </div>
         ) : null}
         <Hint>답은 항상 실시간 텔레메트리 값으로 만들고, 값이 없으면 모른다고 답합니다. 음성 질문(STT)은 아직 지원하지 않습니다.</Hint>
-      </Card>
+      </Panel>
 
       {draft ? (
-        <Card title="결정 모델 (Jev · laya)">
+        <Panel title="결정 모델" detail="Jev · laya — 콜 여부와 질문 의도만 판단합니다.">
           <Hint>
             숫자 계산은 항상 규칙 엔진이 합니다. 모델은 "지금 말할 가치가 있는지"와 질문 의도만 판단합니다.
             섀도 모드는 결과를 기록만 하고, 적용 모드는 긴급하지 않은 콜을 생략할 수 있습니다. 모델 오류 시 항상 규칙대로 말합니다.
@@ -292,7 +293,7 @@ export function EngineerRadioPanel({ senderUrl, radio }: Props) {
             <Button variant="go" disabled={saving} busy={saving} onClick={() => void save()}>Save</Button>
             {view?.hasApiKey && !platform ? <Button variant="ghost" disabled={saving} onClick={() => void save(true)}>Clear Key</Button> : null}
             {status ? (
-              <span style={{ fontSize: 11, color: status.decisionLastError ? "var(--accent-red)" : "var(--text-muted)" }}>
+              <span style={{ fontSize: 11, color: status.decisionLastError ? "var(--negRed)" : "var(--t3)" }}>
                 {status.decisionReady ? "ready" : status.decisionUnavailable ?? "not configured"} · {status.decisionCount} decisions · {status.decisionErrors} errors
                 {status.shadowSkipped ? ` · ${status.shadowSkipped} skipped` : ""}
                 {status.decisionLastError ? ` · ${status.decisionLastError}` : ""}
@@ -302,25 +303,25 @@ export function EngineerRadioPanel({ senderUrl, radio }: Props) {
           {decisions.length ? (
             <div style={{ display: "grid", gap: 4 }}>
               {decisions.map((d, i) => (
-                <div key={`${d.at}-${i}`} style={{ fontSize: 10.5, color: d.error ? "var(--accent-red)" : "var(--text-muted)", fontFamily: "var(--font-racing)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div key={`${d.at}-${i}`} style={{ fontSize: 10.5, color: d.error ? "var(--negRed)" : "var(--t3)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {formatTime(d.at)} · {d.mode} · {d.kind === "speak" ? `${d.modelAction}${d.speakProb !== undefined ? ` ${Math.round(d.speakProb * 100)}%` : ""}` : `intent ${d.intent ?? "-"}`}
                   {d.applied ? " · applied" : ""} · {d.latencyMs}ms · {d.error ?? d.input ?? ""}
                 </div>
               ))}
             </div>
           ) : null}
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card title="최근 콜">
+      <Panel title="최근 콜" detail="최근에 내보낸 엔지니어 콜">
         {radio.calls.length ? (
           <div style={{ display: "grid", gap: 8 }}>
             {radio.calls.map((call) => (
               <div key={call.id} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-                <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: PRIORITY_COLORS[call.priority] ?? "var(--text-muted)" }} />
+                <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: PRIORITY_COLORS[call.priority] ?? "var(--t3)" }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, lineHeight: 1.5 }}>{call.text}</div>
-                  <div style={{ fontSize: 10, letterSpacing: "0.06em", color: "var(--text-muted)", fontFamily: "var(--font-racing)" }}>
+                  <div style={{ fontSize: 10, letterSpacing: "0.06em", color: "var(--t3)", fontFamily: "var(--font-mono)" }}>
                     {formatTime(call.releasedAt)}{call.lap ? ` · L${call.lap}` : ""} · {call.category}
                     {call.basis ? ` · ${BASIS_LABELS[call.basis] ?? call.basis}` : ""}
                   </div>
@@ -331,7 +332,7 @@ export function EngineerRadioPanel({ senderUrl, radio }: Props) {
         ) : (
           <Hint>아직 콜이 없습니다. 레이스 세션에서 텔레메트리가 들어오면 표시됩니다.</Hint>
         )}
-      </Card>
+      </Panel>
     </>
   );
 }

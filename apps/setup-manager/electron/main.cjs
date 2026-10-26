@@ -837,11 +837,11 @@ function setupAutoUpdater(win) {
 // ─── Window ───
 function createWindow() {
   const winOpts = {
-    width: 680,
-    height: 960,
-    minWidth: 560,
-    minHeight: 700,
-    backgroundColor: '#131314',
+    width: 1120,
+    height: 860,
+    minWidth: 760,
+    minHeight: 620,
+    backgroundColor: '#edeff2',
     titleBarStyle: 'hidden',
     webPreferences: {
       nodeIntegration: false,
@@ -856,7 +856,7 @@ function createWindow() {
   };
 
   if (isWin) {
-    winOpts.titleBarOverlay = { color: '#131314', symbolColor: '#849396', height: 32 };
+    winOpts.titleBarOverlay = { color: '#ffffff', symbolColor: '#565b66', height: 32 };
   }
 
   const win = new BrowserWindow(winOpts);
