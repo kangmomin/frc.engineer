@@ -35,3 +35,7 @@
   - Sender의 프리셋 API·저장 필드 제거: 다른 소비자 확인 없이 API를 바꾸지 않는다. Driver Pack이 더 쓰지 않을 뿐이다.
 - **수정 내역**: `apps/setup-manager/src/{F1SetupManager,App,main,SessionAnalysisSection,AnalysisTrace*,EngineerRadioPanel,DriverIntercomPanel}.tsx`, 신규 `src/ui/`·`src/hooks/`·`src/sections/`·`src/lib/`·`src/styles/app.css`, `setupDriverPack.ts`(랩 비교 타입·정규화 제거), `index.html`(중복 전역 스타일 제거), `vite.config.ts`, `tsconfig.json`
 - **재발 시 대응**: 동일 이슈 재제기 시 본 문서 인용으로 종결
+
+## 후속 (2026-10-26)
+
+같은 날 디자인 기준을 PitHub(웹 허브)로 바꾸고 Setup Builder·Session Analysis를 제거했다. 위 3·4번의 pitwall 토큰 공유와 세션 분석 관련 내용은 [20261026-driver-pack-pithub-design.md](20261026-driver-pack-pithub-design.md)로 대체됐다.

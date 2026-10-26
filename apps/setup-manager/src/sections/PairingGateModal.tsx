@@ -45,16 +45,15 @@ export function PairingGateModal({
 
   return (
     <Modal zIndex={20000}>
-      <Panel title="Device Pairing" detail="기기 페어링이 필요합니다">
-        <Hint>Driver Pack을 사용하려면 웹 허브 계정과 기기 페어링이 필요합니다.</Hint>
-        <ol style={{ paddingLeft: 18, fontSize: 12, lineHeight: 1.8, color: "var(--text-secondary)" }}>
+      <Panel title="디바이스 페어링" detail="Driver Pack을 사용하려면 PitHub 계정과 기기 페어링이 필요합니다.">
+        <ol style={{ paddingLeft: 18, fontSize: 12.5, lineHeight: 1.8, color: "var(--t2)" }}>
           <li>
             <a href={platformBaseUrl} target="_blank" rel="noopener noreferrer">
               {platformBaseUrl}
             </a>
             에 접속해 Steam으로 로그인하세요.
           </li>
-          <li>상단 메뉴 PROFILE → "디바이스 페어링" 카드에서 "페어링 코드 생성"을 클릭하세요.</li>
+          <li>왼쪽 메뉴 PROFILE → "디바이스 페어링" 카드에서 "페어링 코드 생성"을 클릭하세요.</li>
           <li>생성된 코드를 아래 입력란에 붙여넣고 "인증"을 누르세요. (코드는 10분간 유효하며 1회만 사용할 수 있습니다)</li>
         </ol>
 

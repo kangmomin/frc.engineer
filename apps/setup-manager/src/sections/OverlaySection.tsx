@@ -13,7 +13,7 @@ export function OverlaySection({ overlay }: { overlay: OverlayControls }) {
 
   return (
     <>
-      <Panel title="Overlays" detail="Native overlays on the sender host">
+      <Panel title="Overlays" detail="Sender가 실행 중인 PC의 게임 화면 위에 표시됩니다.">
         {overlay.error ? <Notice tone="error">{overlay.error}</Notice> : null}
         {overlay.notice ? <Notice tone="success">{overlay.notice}</Notice> : null}
         <Grid cols={2}>
@@ -23,13 +23,13 @@ export function OverlaySection({ overlay }: { overlay: OverlayControls }) {
               <Card key={item.key}>
                 <Spread>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: "var(--font-racing)", fontSize: 14, fontWeight: 700 }}>{item.label}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{item.label}</div>
                     <Hint>{item.detail}</Hint>
                   </div>
                   <StatusPill tone={active ? item.tone : "muted"} label={active ? "ON" : "OFF"} />
                 </Spread>
                 <Spread>
-                  <Hint style={{ fontSize: 10.5 }}>Hotkey {hotkeys[item.key]}</Hint>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, letterSpacing: "0.04em", color: "var(--t3)" }}>HOTKEY {hotkeys[item.key]}</span>
                   <Button size="sm" variant={active ? "ghost" : "primary"} onClick={() => void overlay.toggle(item.key)} disabled={overlay.applying} busy={overlay.applying}>
                     {active ? "Close" : "Open"}
                   </Button>
@@ -40,10 +40,9 @@ export function OverlaySection({ overlay }: { overlay: OverlayControls }) {
         </Grid>
       </Panel>
 
-      <Panel title="Hotkeys">
+      <Panel title="Hotkeys" detail="Driver Pack이 실행 중인 동안 전역으로 동작합니다.">
         <Hint>
-          Global overlay hotkeys stay active while F1 Driver Pack is running. Use combos like <strong style={{ color: "var(--text-primary)" }}>Alt+Shift+1</strong> or{" "}
-          <strong style={{ color: "var(--text-primary)" }}>Ctrl+Alt+R</strong>.
+          Use combos like <strong style={{ color: "var(--t1)" }}>Alt+Shift+1</strong> or <strong style={{ color: "var(--t1)" }}>Ctrl+Alt+R</strong>.
         </Hint>
         <Grid cols={4}>
           {OVERLAYS.map((item) => (

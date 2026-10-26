@@ -26,9 +26,9 @@ export function DriverIntercomPanel({ runtime, state, devices }: Props) {
   return (
     <>
       <Grid cols={3}>
-        <MetricTile compact label="Bridge" value={state.status === 'unavailable' ? 'Unavailable' : 'Ready'} tone={state.status === 'unavailable' ? 'secondary' : 'primary'} />
-        <MetricTile compact label="Membership" value={joined ? 'Joined' : state.status} tone={joined ? 'tertiary' : 'neutral'} />
-        <MetricTile compact label="Microphone" value={state.locallyMuted ? 'Muted' : state.microphoneStatus} tone={micBad ? 'secondary' : 'primary'} />
+        <MetricTile label="Bridge" value={state.status === 'unavailable' ? 'Unavailable' : 'Ready'} tone={state.status === 'unavailable' ? 'secondary' : 'primary'} />
+        <MetricTile label="Membership" value={joined ? 'Joined' : state.status} tone={joined ? 'tertiary' : 'neutral'} />
+        <MetricTile label="Microphone" value={state.locallyMuted ? 'Muted' : state.microphoneStatus} tone={micBad ? 'secondary' : 'primary'} />
       </Grid>
 
       {!joined ? (
@@ -66,8 +66,8 @@ export function DriverIntercomPanel({ runtime, state, devices }: Props) {
       ) : (
         <>
           <Card>
-            <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, color: 'var(--accent)', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>GROUP {state.groupCode} <HelpTag label="Group code" text={INTERCOM_HELP.groupCode} /></div>
-            {state.chiefCode ? <div style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, color: 'var(--accent-lime)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>CHIEF CODE {state.chiefCode} <HelpTag label="Chief code" text={INTERCOM_HELP.chiefCode} /></div> : null}
+            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accInk)', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>GROUP {state.groupCode} <HelpTag label="Group code" text={INTERCOM_HELP.groupCode} /></div>
+            {state.chiefCode ? <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--ok)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>CHIEF CODE {state.chiefCode} <HelpTag label="Chief code" text={INTERCOM_HELP.chiefCode} /></div> : null}
             <Hint>Share these codes through your trusted team channel. The chief code is shown only to the group creator.</Hint>
           </Card>
           <Row>
@@ -109,7 +109,7 @@ export function DriverIntercomPanel({ runtime, state, devices }: Props) {
             <Card key={participant.id}>
               <Spread>
                 <span style={{ fontSize: 12.5 }}>{participant.displayName} · {participant.role}</span>
-                <span style={{ fontFamily: 'var(--font-racing)', fontWeight: 700, letterSpacing: '0.08em', fontSize: 10.5, color: participant.speaking ? 'var(--accent-lime)' : participant.forcedMuted ? 'var(--accent-red)' : 'var(--text-muted)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '0.08em', fontSize: 10.5, color: participant.speaking ? 'var(--ok)' : participant.forcedMuted ? 'var(--negRed)' : 'var(--t3)' }}>
                   {participant.forcedMuted ? 'FORCED MUTE' : participant.speaking ? 'SPEAKING' : participant.online ? 'ONLINE' : 'OFFLINE'}
                 </span>
               </Spread>

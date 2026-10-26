@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { SENDER_TRACK_MAP, TRACKS } from "../../../../shared/setup-manager/catalog";
 import { fetchJsonWithSenderDebug } from "../senderDebug";
-import { resolveTrackName, type SenderRaceResult } from "../setupDriverPack";
 import { DEFAULT_PLATFORM_BASE_URL, normalizeSenderUrl } from "../lib/senderApi";
 import type { SenderPlayer, SenderSession, SenderStatus } from "../lib/senderTypes";
 
@@ -11,7 +9,6 @@ export function useSenderConnection(senderUrl: string) {
   const [status, setStatus] = useState<SenderStatus | null>(null);
   const [session, setSession] = useState<SenderSession | null>(null);
   const [player, setPlayer] = useState<SenderPlayer | null>(null);
-  const [latestRaceResult, setLatestRaceResult] = useState<SenderRaceResult | null>(null);
 
   useEffect(() => {
     const normalized = normalizeSenderUrl(senderUrl);
@@ -55,26 +52,6 @@ export function useSenderConnection(senderUrl: string) {
         setSession(null);
         setPlayer(null);
       }
-
-      try {
-        const { status, data } = await fetchJsonWithSenderDebug<SenderRaceResult | { error?: string }>(
-          normalized,
-          "/api/races/latest",
-          "latest-race-result",
-          { allowStatuses: [404], init: { signal: AbortSignal.timeout(5000) } },
-        );
-        if (status === 404) {
-          if (!isCurrent()) return;
-          setLatestRaceResult(null);
-          return;
-        }
-        const nextResult = data as SenderRaceResult;
-        if (!isCurrent()) return;
-        setLatestRaceResult(nextResult);
-      } catch {
-        if (!isCurrent()) return;
-        setLatestRaceResult(null);
-      }
     };
 
     // setTimeout 체이닝으로 이전 poll이 끝난 뒤에만 다음 poll 예약 (in-flight 중복 방지)
@@ -92,10 +69,9 @@ export function useSenderConnection(senderUrl: string) {
     };
   }, [senderUrl]);
 
-  const rawTrack = status?.currentTrack?.name ?? session?.trackName ?? null;
-  const detectedTrack = resolveTrackName(rawTrack, SENDER_TRACK_MAP, TRACKS);
+  const trackName = status?.currentTrack?.name?.trim() || session?.trackName?.trim() || null;
 
-  return { connected, status, session, player, detectedTrack, latestRaceResult };
+  return { connected, status, session, player, trackName };
 }
 
 interface SenderUploadStatus {

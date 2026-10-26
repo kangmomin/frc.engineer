@@ -41,9 +41,6 @@ export interface SenderStatus {
   paired?: boolean;
   // null/부재 = UDP 수신 중, 객체 = 포트 점유로 바인드 대기 중(sender가 3초마다 자동 재시도)
   udpBindError?: SenderUdpBindError | null;
-  // 플랫폼 권한(자문 게이트 전용): null/부재 = 미확인 → fail-open(허용),
-  // 배열 = 그랜트 노드 원본(hasPermission으로 매칭 — includes 금지)
-  permissions?: string[] | null;
 }
 
 export interface SenderUdpBindError {

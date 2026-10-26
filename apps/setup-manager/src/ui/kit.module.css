@@ -1,19 +1,46 @@
 /*
- * Driver Pack UI kit — MinmoPitwallUI(web/src/ui) 토큰과 패턴을 따른다.
- * 색·폰트·간격은 web/src/styles/theme.css의 CSS 변수만 쓴다.
+ * Driver Pack UI kit — PitHub(web/src/hub) 화면의 카드·버튼·입력 패턴을 따른다.
+ * 색은 ui/theme.ts가 :root에 펼친 hub 팔레트 변수(--panel, --line, --t1, --acc …)만 쓴다.
  */
 
-/* ── Panel ── */
+/* ── Panel (hub Card: 흰 표면 + 1px 라인 + 12px 라운드) ── */
 .panel {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.panelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px 14px;
-  background: var(--bg-panel);
-  border: 1px solid var(--bg-panel-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+}
+
+.panelTitle {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--t1);
+}
+
+.panelDetail {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--t2);
+}
+
+.panelActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .panelBody {
@@ -29,10 +56,10 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 11px 12px;
-  background: rgba(14, 14, 15, 0.52);
-  border: 1px solid var(--bg-panel-border);
-  border-radius: var(--radius-md);
+  padding: 13px 15px;
+  background: var(--inset);
+  border: 1px solid var(--linesoft);
+  border-radius: 10px;
 }
 
 .cardHead {
@@ -43,32 +70,36 @@
 }
 
 .eyebrow {
-  font-size: 10.5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--t2);
 }
 
 /* ── Text helpers ── */
 .hint {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.6;
-  color: var(--text-muted);
+  color: var(--t2);
 }
 
 .label {
-  font-size: 10.5px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--t3);
 }
 
 .grid {
   min-width: 0;
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .row {
@@ -86,34 +117,70 @@
   gap: 10px;
 }
 
-/* ── Button ── */
+/* ── MetricTile (hub Overview 지표 타일) ── */
+.metric {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 13px;
+  background: var(--panel2);
+  border-radius: 9px;
+}
+
+.metricValue {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--tone, var(--t1));
+}
+
+.metricNote {
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.tonePrimary {
+  --tone: var(--accInk);
+}
+
+.toneSecondary {
+  --tone: var(--negRed);
+}
+
+.toneTertiary {
+  --tone: var(--ok);
+}
+
+.toneNeutral {
+  --tone: var(--t1);
+}
+
+/* ── Button (hub Profile 버튼: MONO + 8~9px 라운드) ── */
 .button {
   flex: none;
-  font-family: var(--font-racing);
+  font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
   white-space: nowrap;
-  padding: 8px 13px;
-  border-radius: var(--radius-sm);
+  padding: 9px 16px;
+  border-radius: 8px;
   border: 1px solid transparent;
-  color: #0c0c0d;
   cursor: pointer;
   transition: filter 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .button:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  filter: brightness(0.95);
 }
 
 .button:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -123,80 +190,34 @@
 }
 
 .sm {
-  font-size: 10px;
-  padding: 5px 10px;
+  font-size: 10.5px;
+  padding: 6px 11px;
 }
 
 .primary {
-  background: var(--accent);
+  background: var(--acc);
+  color: var(--onAcc);
 }
 
 .go {
-  background: var(--accent-lime);
+  background: var(--ok);
+  color: #ffffff;
 }
 
 .danger {
-  background: var(--accent-red);
+  background: var(--negRed);
+  color: #ffffff;
 }
 
 .ghost {
-  background: transparent;
-  border-color: var(--border-color);
-  color: var(--text-secondary);
+  background: var(--panel2);
+  border-color: var(--line2);
+  color: var(--t1);
 }
 
 .ghost:hover:not(:disabled) {
   filter: none;
-  color: var(--text-primary);
-  border-color: rgba(0, 229, 255, 0.35);
-}
-
-/* ── Segmented (shell/NavTabs 패턴) ── */
-.segmented {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  padding: 3px;
-  background: rgba(14, 14, 15, 0.6);
-  border: 1px solid var(--bg-panel-border);
-  border-radius: var(--radius-md);
-}
-
-.segment {
-  font-family: var(--font-racing);
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  padding: 5px 11px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.segment:hover:not(.segmentActive) {
-  color: var(--text-secondary);
-}
-
-.segment:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.segmentActive {
-  color: #0c0c0d;
-  cursor: default;
-}
-
-.activeRed {
-  background: var(--accent-red);
-}
-
-.activeAccent {
-  background: var(--accent);
+  border-color: var(--accBorder);
 }
 
 /* ── OptionButton (선택형 타일) ── */
@@ -205,26 +226,21 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 3px;
-  padding: 9px 11px;
+  gap: 4px;
+  padding: 11px 13px;
   text-align: left;
   font: inherit;
-  color: var(--text-primary);
-  background: rgba(14, 14, 15, 0.52);
-  border: 1px solid var(--bg-panel-border);
-  border-radius: var(--radius-md);
+  color: var(--t1);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .option:hover:not(:disabled):not(.optionSelected) {
-  border-color: var(--border-color);
-  background: rgba(42, 42, 43, 0.6);
-}
-
-.option:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  border-color: var(--accBorder);
+  transform: translateY(-1px);
 }
 
 .option:disabled {
@@ -233,57 +249,64 @@
 }
 
 .optionSelected {
-  border-color: var(--accent);
-  background: var(--bg-panel-accent);
+  border-color: var(--acc);
+  background: var(--accSoft);
 }
 
 .optionTitle {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 700;
   line-height: 1.3;
 }
 
 .optionSelected .optionTitle {
-  color: var(--accent);
+  color: var(--accInk);
 }
 
 .optionMeta {
-  font-size: 10px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
   line-height: 1.4;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--t3);
 }
 
-/* ── Field / inputs ── */
+/* ── Field / inputs (hub 검색 입력 패턴) ── */
 .field {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .input {
   width: 100%;
   min-width: 0;
-  padding: 8px 10px;
-  font-family: var(--font-racing);
+  min-height: 38px;
+  padding: 8px 11px;
+  font: inherit;
   font-size: 13px;
-  color: var(--text-primary);
-  background: rgba(14, 14, 15, 0.6);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  color: var(--t1);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.15);
+  border-color: var(--acc);
+  background: var(--panel);
+  box-shadow: 0 0 0 3px var(--accSoft);
 }
 
 .input:read-only {
-  color: var(--text-secondary);
+  color: var(--t2);
+}
+
+.input:read-only:focus {
+  background: var(--panel2);
 }
 
 .input:disabled {
@@ -291,8 +314,7 @@
 }
 
 .input::placeholder {
-  color: var(--text-muted);
-  opacity: 0.7;
+  color: var(--t3);
 }
 
 select.input {
@@ -301,7 +323,7 @@ select.input {
 
 .range {
   width: 100%;
-  accent-color: var(--accent);
+  accent-color: var(--acc);
 }
 
 /* ── Check ── */
@@ -309,119 +331,119 @@ select.input {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.5;
-  color: var(--text-secondary);
+  color: var(--t1);
   cursor: pointer;
 }
 
 .check input {
   flex: none;
-  margin-top: 2px;
-  accent-color: var(--accent);
+  margin-top: 3px;
+  accent-color: var(--acc);
 }
 
 .checkBoxed {
   align-items: center;
-  padding: 7px 11px;
-  background: rgba(14, 14, 15, 0.52);
-  border: 1px solid var(--bg-panel-border);
-  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .checkBoxed input {
   margin-top: 0;
 }
 
-/* ── Notice (CutoffWatch advice 패턴: 좌측 강조선 + 옅은 틴트) ── */
+/* ── Notice (좌측 강조선 + 옅은 틴트) ── */
 .notice {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 8px 11px;
-  border-radius: var(--radius-sm);
+  padding: 10px 13px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent);
   border-left: 3px solid var(--tone);
-  background: color-mix(in srgb, var(--tone) 8%, transparent);
-  font-size: 12px;
+  background: color-mix(in srgb, var(--tone) 7%, var(--panel));
+  font-size: 12.5px;
   line-height: 1.55;
-  color: var(--text-secondary);
+  color: var(--t2);
 }
 
 .noticeTitle {
-  font-family: var(--font-racing);
   font-weight: 700;
-  letter-spacing: 0.04em;
   color: var(--tone);
 }
 
 .toneError {
-  --tone: var(--accent-red);
+  --tone: var(--negRed);
 }
 
 .toneInfo {
-  --tone: var(--accent);
+  --tone: var(--accInk);
 }
 
 .toneSuccess {
-  --tone: var(--accent-lime);
+  --tone: var(--ok);
 }
 
 .toneWarn {
-  --tone: var(--accent-soft);
+  --tone: var(--warn);
 }
 
-/* ── StatusPill (헤더 상태 pill 패턴) ── */
+.toneMuted {
+  --tone: var(--t3);
+}
+
+/* ── StatusPill (hub TopBar 크레딧 박스 패턴) ── */
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 10px;
-  border-radius: var(--radius-md);
-  background: rgba(14, 14, 15, 0.55);
-  border: 1px solid color-mix(in srgb, var(--tone) 38%, transparent);
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
   white-space: nowrap;
 }
 
 .pillDot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--tone);
-  box-shadow: 0 0 10px var(--tone);
 }
 
 .pillLabel {
-  font-family: var(--font-racing);
+  font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  color: var(--tone);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--t1);
 }
 
-.toneMuted {
-  --tone: var(--text-muted);
-}
-
-/* ── Badge ── */
+/* ── Badge (hub Profile 배지) ── */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--tone, var(--text-secondary));
-  background: color-mix(in srgb, var(--tone, var(--text-muted)) 14%, transparent);
+  color: var(--tone, var(--t2));
+  background: color-mix(in srgb, var(--tone, var(--t3)) 12%, var(--panel));
 }
 
 /* ── MetricBar ── */
 .bar {
-  height: 4px;
+  height: 5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--barbase);
   overflow: hidden;
 }
 
@@ -430,7 +452,7 @@ select.input {
   border-radius: 999px;
 }
 
-/* ── Modal ── */
+/* ── Modal (hub 업데이트 다이얼로그 backdrop) ── */
 .overlay {
   position: fixed;
   inset: 0;
@@ -438,11 +460,12 @@ select.input {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(6, 8, 10, 0.78);
-  backdrop-filter: blur(6px);
+  background: rgba(15, 23, 42, 0.5);
 }
 
 .modal {
   width: 100%;
-  max-width: 460px;
+  max-width: 480px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.14);
+  border-radius: 12px;
 }
