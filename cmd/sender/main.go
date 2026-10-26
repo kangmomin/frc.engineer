@@ -397,7 +397,8 @@ func main() {
 	// Create UDP listener & parser
 	udpListener, err := udp.NewListener(udpPort, 2048, logger)
 	if err != nil {
-		logger.Error("failed to create UDP listener", "error", err)
+		logger.Error("failed to create UDP listener", "port", udpPort, "error", err)
+		announceStartupError(embeddedDriverPack, newPortStartupError(startupErrorUDPPort, "udp", udpPort, err, true))
 		os.Exit(1)
 	}
 	parser := udp.NewParser(logger)
@@ -2183,6 +2184,7 @@ func main() {
 			bindHost = ":"
 			logger.Warn("settings/overlay server binding on ALL interfaces (overlayLanBind=true) — settings API is reachable from the LAN")
 		}
+		var lastErr error
 		for attempt := range maxAttempts {
 			port := basePort + attempt
 			actualSettingsPort = fmt.Sprintf("%d", port)
@@ -2190,8 +2192,11 @@ func main() {
 			logger.Info("settings server starting", "port", actualSettingsPort, "lanBind", cfgOverlayLanBind)
 			err := settingsSrv.ListenAndServe()
 			if err != nil && err != http.ErrServerClosed {
+				lastErr = err
 				if embeddedDriverPack {
 					logger.Error("embedded settings server failed", "port", port, "error", err)
+					// UDP 텔레메트리 송출은 계속되므로 프로세스는 유지하고 Driver Pack에 알리기만 한다.
+					announceStartupError(true, newPortStartupError(startupErrorSettingsPort, "tcp", port, err, false))
 					return
 				}
 				logger.Warn("settings server port in use, trying next", "port", port, "error", err)
@@ -2200,6 +2205,7 @@ func main() {
 			return
 		}
 		logger.Error("settings server failed after 10 port attempts")
+		announceStartupError(false, newPortStartupError(startupErrorSettingsPort, "tcp", basePort, lastErr, false))
 	}()
 
 	logger.Info("sender started",

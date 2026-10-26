@@ -41,6 +41,7 @@ function mainProcess(t) {
     const child = new EventEmitter();
     Object.assign(child, { pid: children.length + 1, exitCode: null, signalCode: null, commands: [] });
     child.stdin = new EventEmitter();
+    child.stderr = new EventEmitter();
     child.stdin.writable = true;
     child.stdin.end = (command) => { child.commands.push(command); child.stdin.writable = false; };
     child.exit = () => {
@@ -50,9 +51,17 @@ function mainProcess(t) {
     children.push(child);
     return child;
   };
+  const dialogs = [];
+  const dialogResponses = [];
   const electron = {
     app, ipcMain, BrowserWindow: { getAllWindows: () => [] },
     globalShortcut: { isRegistered: () => false },
+    dialog: {
+      showMessageBox: async (...args) => {
+        dialogs.push(args.at(-1));
+        return { response: dialogResponses.shift() ?? 1 };
+      },
+    },
   };
   const mockedFS = {
     existsSync: (file) => file.endsWith('frc-pitwall-sender.exe'),
@@ -74,7 +83,7 @@ function mainProcess(t) {
   vm.runInContext('startSender(); setupAutoUpdater({});', context);
   t.after(() => children.forEach((child) => { if (child.exitCode === null) child.exit(); }));
   return {
-    app, ipcMain, autoUpdater, children, installs, timers,
+    app, ipcMain, autoUpdater, children, installs, timers, dialogs, dialogResponses,
     restart: () => handlers.get('restart-sender')(),
     get quits() { return quits; },
   };
@@ -207,3 +216,31 @@ for (const failure of ['error-before-exit', 'installer-throws', 'watchdog']) {
     if (failure === 'error-before-exit') assert.deepEqual(main.installs, []);
   });
 }
+
+const udpInUse = 'FRC_SENDER_STARTUP_ERROR {"code":"udp_port_unavailable","protocol":"udp","port":20777,"reason":"in_use","detail":"bind: address already in use","fatal":true}\n';
+
+test('Sender port conflict shows an alert and retry launches a new Sender', async (t) => {
+  const main = mainProcess(t);
+  main.dialogResponses.push(0);
+  // Split mid-line: stderr chunks do not respect line boundaries.
+  main.children[0].stderr.emit('data', Buffer.from(udpInUse.slice(0, 30)));
+  main.children[0].stderr.emit('data', Buffer.from(udpInUse.slice(30)));
+  main.children[0].exit();
+  await settle();
+  await settle();
+  assert.equal(main.dialogs.length, 1);
+  assert.match(main.dialogs[0].message, /UDP 포트 20777/);
+  assert.deepEqual([...main.dialogs[0].buttons], ['다시 시도', '닫기']);
+  assert.equal(main.children.length, 2);
+});
+
+test('closing the Sender port alert does not relaunch the Sender', async (t) => {
+  const main = mainProcess(t);
+  main.dialogResponses.push(1);
+  main.children[0].stderr.emit('data', Buffer.from(udpInUse));
+  main.children[0].exit();
+  await settle();
+  await settle();
+  assert.equal(main.dialogs.length, 1);
+  assert.equal(main.children.length, 1);
+});

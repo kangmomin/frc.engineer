@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { stopSenderProcess } = require('./sender-lifecycle.cjs');
+const { createStartupErrorParser, describeStartupError } = require('./sender-startup-error.cjs');
 const {
   isTrustedMicrophoneCheck,
   isTrustedMicrophoneRequest,
@@ -441,6 +442,10 @@ function startSender() {
   senderProcess = proc;
   proc.stdout?.on('data', d => console.log('[sender]', d.toString().trim()));
   proc.stderr?.on('data', d => console.error('[sender]', d.toString().trim()));
+  proc.stderr?.on('data', createStartupErrorParser((error) => {
+    console.error('[sender] Startup error:', JSON.stringify(error));
+    void showSenderStartupError(error);
+  }));
   proc.on('error', err => console.error('[sender] Failed to start:', err.message));
   proc.on('exit', (code, signal) => {
     console.log(`[sender] Exited: code=${code} signal=${signal}`);
@@ -480,7 +485,7 @@ function stopSender() {
   return senderStopPromise;
 }
 
-ipcMain.handle('restart-sender', async () => {
+async function restartSender() {
   // 게이트를 우회해 sender 를 되살리는 경로 차단
   if (isUpdateGateActive() || senderInstallPending) {
     console.log('[sender] Restart blocked: mandatory update in progress');
@@ -492,7 +497,53 @@ ipcMain.handle('restart-sender', async () => {
     return;
   }
   startSender();
-});
+}
+
+ipcMain.handle('restart-sender', () => restartSender());
+
+// 포트 충돌 등으로 sender 가 조용히 죽으면 UI 는 Offline 만 보이고 페어링 창도 뜨지 않으므로 알림창으로 원인을 알린다
+let senderStartupDialogOpen = false;
+
+// sender 는 창보다 먼저 기동되므로, 창이 뜬 뒤 그 위에 모달로 띄운다
+function waitForVisibleWindow() {
+  const win = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
+  if (!win) return Promise.resolve(null);
+  if (win.isVisible()) return Promise.resolve(win);
+  return new Promise((resolve) => {
+    const onShow = () => { win.removeListener('closed', onClosed); resolve(win); };
+    const onClosed = () => { win.removeListener('show', onShow); resolve(null); };
+    win.once('show', onShow);
+    win.once('closed', onClosed);
+  });
+}
+
+async function showSenderStartupError(error) {
+  const text = describeStartupError(error);
+  if (!text || senderStartupDialogOpen || isQuitting) return;
+  senderStartupDialogOpen = true;
+  try {
+    const parent = await waitForVisibleWindow();
+    if (isQuitting) return;
+    const options = {
+      type: 'error',
+      title: text.title,
+      message: text.message,
+      detail: text.detail,
+      buttons: ['다시 시도', '닫기'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    };
+    const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    if (response === 0) {
+      await restartSender();
+    }
+  } catch (dialogError) {
+    console.error('[sender] Startup error dialog failed:', dialogError instanceof Error ? dialogError.message : String(dialogError));
+  } finally {
+    senderStartupDialogOpen = false;
+  }
+}
 
 // ─── Auto-updater ───
 const UPDATE_FAILURES_KEY = 'mandatory_update_failures';
