@@ -36,7 +36,8 @@
 
 ### Minmo Driver Pack (Setup Manager + Sender)
 
-- 트랙별 차량 세팅 조회, 텔레메트리 대조, setup feedback 및 AI 분석 진입.
+- 트랙별 차량 세팅 조회, 라이브 녹화 기반 setup feedback 및 AI 분석 진입.
+- UI는 pitwall 디자인 시스템(MinmoPitwallUI: `web/src/styles/theme.css` 토큰 + `web/src/ui`)을 공유한다. 데스크톱 전용 입력·버튼은 같은 토큰으로 만든 `apps/setup-manager/src/ui`를 쓴다.
 - Sender 실행·종료·재시작, 업데이트 설치 전 종료 대기.
 - **Session Analysis**: 저장 세션 목록, 유효 랩·섹터·타이어 분석, 랩 비교와 손실 구간 표시.
 - 드라이버 인터컴과 로컬 설정.
@@ -44,7 +45,7 @@
 
 주요 파일:
 
-- `apps/setup-manager/src/F1SetupManager.tsx`
+- `apps/setup-manager/src/F1SetupManager.tsx` (셸) · `src/sections/` (화면) · `src/hooks/` (Sender 연결·설정·오버레이·Setup Builder)
 - `apps/setup-manager/src/SessionAnalysisSection.tsx`
 - `apps/setup-manager/src/DriverIntercomPanel.tsx`
 - `apps/setup-manager/src/EngineerRadioPanel.tsx`

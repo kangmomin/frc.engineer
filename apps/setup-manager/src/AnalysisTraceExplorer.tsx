@@ -3,6 +3,7 @@ import { CHANNELS, channelRuns, channelRecorded, compatibility, deltaRuns, finit
 import { fetchTrace, traceRequestKey } from './analysisRequests';
 import { knownApexes, observePhases, practiceActions } from './analysisPhases';
 import { ObservedMap, TraceChart, type TraceTheme } from './AnalysisTraceCharts';
+import { kitClass } from './ui';
 
 export function AnalysisTraceExplorer({ theme, url, generation, baselineDir, baselineLap, comparisonDir, comparisonLap }: {
   theme: TraceTheme; url: string; generation: number; baselineDir: string | null; baselineLap: number | null; comparisonDir: string | null; comparisonLap: number | null;
@@ -60,8 +61,6 @@ export function AnalysisTraceExplorer({ theme, url, generation, baselineDir, bas
   const validRange = from.trim() !== '' && to.trim() !== '' && finite(inputRange.fromM) && finite(inputRange.toM) && inputRange.fromM >= (extent?.fromM ?? 0) && inputRange.fromM < inputRange.toM && (!extent || inputRange.toM <= extent.toM);
   const manualCost = check.ok && validRange ? intervalCost(timing[0], timing[1], inputRange) : null;
   const jump = (window: TraceRange, focus = window.fromM) => { setFrom(String(window.fromM)); setTo(String(window.toM)); setCursor(focus); setRange({ fromM: window.fromM, toM: window.toM }); };
-  const inputStyle = { background: theme.bg, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 4, padding: 7, maxWidth: '100%' };
-  const buttonStyle = { ...inputStyle, cursor: 'pointer' };
   return <div style={{ display: 'grid', gap: 14, fontSize: 12 }}>
     <p>{check.message}</p>
     {[aState, bState].map((state, side) => <div key={side}>
@@ -79,27 +78,27 @@ export function AnalysisTraceExplorer({ theme, url, generation, baselineDir, bas
     </div>)}
     {[aState, bState].some(state => state?.error?.code === 'trace_too_large') && <div role="status">
       This lap exceeds the native sample or payload limit. Select a smaller distance window; no samples will be averaged or truncated.
-      {extent && <button style={buttonStyle} onClick={() => jump({ fromM: extent.fromM, toM: Math.min(extent.toM, extent.fromM + (extent.toM - extent.fromM) / 4) })}>Load first quarter window</button>}
+      {extent && <button type="button" className={kitClass.button} onClick={() => jump({ fromM: extent.fromM, toM: Math.min(extent.toM, extent.fromM + (extent.toM - extent.fromM) / 4) })}>Load first quarter window</button>}
     </div>}
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
-      <label>From (m)<br /><input aria-label="Window from metres" type="number" value={from} onChange={e => setFrom(e.target.value)} style={inputStyle} /></label>
-      <label>To (m)<br /><input aria-label="Window to metres" type="number" value={to} onChange={e => setTo(e.target.value)} style={inputStyle} /></label>
-      <button style={buttonStyle} disabled={!validRange} onClick={() => jump(inputRange)}>Load window</button>
-      <button style={buttonStyle} disabled={!extent} onClick={() => { setRange(null); if (extent) { setFrom(String(extent.fromM)); setTo(String(extent.toM)); setCursor(extent.fromM); } }}>Reset full lap</button>
-      <button style={buttonStyle} disabled={!extent} onClick={() => extent && jump({ fromM: Math.max(extent.fromM, cursor - 100), toM: Math.min(extent.toM, cursor + 100) }, cursor)}>Zoom ±100 m around cursor</button>
+      <label>From (m)<br /><input aria-label="Window from metres" type="number" value={from} onChange={e => setFrom(e.target.value)} className={kitClass.input} style={{ width: 'auto', maxWidth: '100%' }} /></label>
+      <label>To (m)<br /><input aria-label="Window to metres" type="number" value={to} onChange={e => setTo(e.target.value)} className={kitClass.input} style={{ width: 'auto', maxWidth: '100%' }} /></label>
+      <button type="button" className={kitClass.button} disabled={!validRange} onClick={() => jump(inputRange)}>Load window</button>
+      <button type="button" className={kitClass.button} disabled={!extent} onClick={() => { setRange(null); if (extent) { setFrom(String(extent.fromM)); setTo(String(extent.toM)); setCursor(extent.fromM); } }}>Reset full lap</button>
+      <button type="button" className={kitClass.button} disabled={!extent} onClick={() => extent && jump({ fromM: Math.max(extent.fromM, cursor - 100), toM: Math.min(extent.toM, cursor + 100) }, cursor)}>Zoom ±100 m around cursor</button>
     </div>
     <div>Manual interval Δt change: {manualCost === null ? 'unavailable — both clocks must cover the entire interval continuously' : `${manualCost >= 0 ? '+' : ''}${manualCost.toFixed(3)} s`}.</div>
     {view && view.toM > view.fromM && <>
       <label>Shared distance cursor (m)<input aria-label="Shared distance cursor" type="range" min={view.fromM} max={view.toM} step="0.1" value={cursor} onChange={e => setCursor(Number(e.target.value))} style={{ width: '100%' }} /></label>
-      <label>Cursor metres <input aria-label="Cursor metres" type="number" min={view.fromM} max={view.toM} step="0.1" value={Number(cursor.toFixed(2))} style={inputStyle} onChange={e => { if (e.target.value !== '' && finite(e.target.valueAsNumber)) setCursor(Math.max(view.fromM, Math.min(view.toM, e.target.valueAsNumber))); }} /></label>
-      {apexes.length > 0 && <label>Known apex anchor <select aria-label="Known apex anchor" style={inputStyle} value="" onChange={e => { const apex = apexes[Number(e.target.value)]; if (apex) { setCursor(apex.distance); if (apex.distance < view.fromM || apex.distance > view.toM) jump({ fromM: Math.max(0, apex.distance - 100), toM: Math.min(a!.trackLengthM!, apex.distance + 100) }, apex.distance); } }}><option value="">Choose apex (not phase boundary)</option>{apexes.map((apex, i) => <option key={`${apex.number}-${i}`} value={i}>T{apex.number} · {apex.distance.toFixed(0)} m</option>)}</select></label>}
+      <label>Cursor metres <input aria-label="Cursor metres" type="number" min={view.fromM} max={view.toM} step="0.1" value={Number(cursor.toFixed(2))} className={kitClass.input} style={{ width: 'auto', maxWidth: '100%' }} onChange={e => { if (e.target.value !== '' && finite(e.target.valueAsNumber)) setCursor(Math.max(view.fromM, Math.min(view.toM, e.target.valueAsNumber))); }} /></label>
+      {apexes.length > 0 && <label>Known apex anchor <select aria-label="Known apex anchor" className={kitClass.input} style={{ width: 'auto', maxWidth: '100%' }} value="" onChange={e => { const apex = apexes[Number(e.target.value)]; if (apex) { setCursor(apex.distance); if (apex.distance < view.fromM || apex.distance > view.toM) jump({ fromM: Math.max(0, apex.distance - 100), toM: Math.min(a!.trackLengthM!, apex.distance + 100) }, apex.distance); } }}><option value="">Choose apex (not phase boundary)</option>{apexes.map((apex, i) => <option key={`${apex.number}-${i}`} value={i}>T{apex.number} · {apex.distance.toFixed(0)} m</option>)}</select></label>}
       {check.ok && <>
         <TraceChart derived title="Distance Δt (Compare − Baseline)" unit="s" a={delta} range={view} cursor={cursor} setCursor={setCursor} theme={theme} />
         <p>Cursor Δt: {valueAt(delta, cursor)?.toFixed(3) ?? 'unavailable'} s. Official finish Δt (lastLapTime, separate from the curve): {((b!.finish.elapsedMs - a!.finish.elapsedMs) / 1000).toFixed(3)} s.</p>
         <ObservedMap a={a} b={b} range={view} cursor={cursor} theme={theme} />
       </>}
       {!check.ok && <>{a && <ObservedMap a={a} range={view} cursor={cursor} theme={theme} />}{b && <ObservedMap b={b} range={view} cursor={cursor} theme={theme} />}</>}
-      <fieldset style={{ border: `1px solid ${theme.border}`, display: 'flex', flexWrap: 'wrap', gap: 12 }}><legend>Native channels</legend>
+      <fieldset style={{ border: `1px solid ${theme.border}`, borderRadius: 'var(--radius-md)', padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 12 }}><legend>Native channels</legend>
         {channels.map(channel => { const available = channel.recordedA || channel.recordedB; return <label key={channel.key}><input type="checkbox" checked={selected.includes(channel.key)} disabled={!available} onChange={e => setSelected(current => e.target.checked ? [...current, channel.key] : current.filter(key => key !== channel.key))} /> {channel.label}{!available ? ' — Not recorded' : !channel.recordedA ? ' — Baseline unavailable' : !channel.recordedB ? ' — Compare unavailable' : !channel.a.length || !channel.b.length ? ' — Some recorded values lack distance alignment' : ''}</label>; })}
       </fieldset>
       {channels.filter(channel => selected.includes(channel.key)).map(channel => <TraceChart key={channel.key} title={channel.label} unit={channel.unit} a={channel.a} b={channel.b} range={view} cursor={cursor} setCursor={setCursor} theme={theme} step={channel.key === 'gear'} dots={channel.key === 'fuelKg' || channel.key === 'ersJ'} />)}
@@ -112,12 +111,12 @@ export function AnalysisTraceExplorer({ theme, url, generation, baselineDir, bas
     <div><strong>Next practice experiments ({actions.length}/3)</strong>
       <p>Heuristic observations suggest experiments; they do not establish causality or guarantee improvement. Manual phase validation and actual re-drive effectiveness remain unverified. Invalid laps or incomplete timing intervals suppress automatic actions.</p>
       {actions.length === 0 && <p>No supported positive time-loss intervals for automatic practice actions.</p>}
-      {actions.map((action, i) => <article key={`${action.corner}-${action.label}-${i}`} style={{ background: theme.surface2, padding: 12, marginTop: 8 }}>
+      {actions.map((action, i) => <article key={`${action.corner}-${action.label}-${i}`} style={{ background: theme.surface2, border: `1px solid ${theme.border}`, borderRadius: 'var(--radius-md)', padding: 12, marginTop: 8, display: 'grid', gap: 6 }}>
         <strong>{action.corner} · {action.label}</strong>
         <p>Observed interval loss: +{action.costS!.toFixed(3)} s across {action.fromM.toFixed(1)}–{action.toM.toFixed(1)} m. {action.landmarks}.</p>
         <p>Experiment: {action.experiment}</p>
         <p>Remeasure: compare Δt change over this same interval on a valid lap under similar tyre, weather, and session conditions.</p>
-        <button style={buttonStyle} onClick={() => jump(action)}>Inspect practice interval</button>
+        <button type="button" className={kitClass.button} onClick={() => jump(action)}>Inspect practice interval</button>
       </article>)}
     </div>
   </div>;

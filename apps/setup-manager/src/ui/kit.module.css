@@ -1,0 +1,448 @@
+/*
+ * Driver Pack UI kit — MinmoPitwallUI(web/src/ui) 토큰과 패턴을 따른다.
+ * 색·폰트·간격은 web/src/styles/theme.css의 CSS 변수만 쓴다.
+ */
+
+/* ── Panel ── */
+.panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+.panelBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Inset card (패널 안의 하위 묶음) ── */
+.card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px 12px;
+  background: rgba(14, 14, 15, 0.52);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.eyebrow {
+  font-size: 10.5px;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ── Text helpers ── */
+.hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.label {
+  font-size: 10.5px;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.grid {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.spread {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* ── Button ── */
+.button {
+  flex: none;
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 8px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  color: #0c0c0d;
+  cursor: pointer;
+  transition: filter 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.busy,
+.busy:disabled {
+  cursor: wait;
+}
+
+.sm {
+  font-size: 10px;
+  padding: 5px 10px;
+}
+
+.primary {
+  background: var(--accent);
+}
+
+.go {
+  background: var(--accent-lime);
+}
+
+.danger {
+  background: var(--accent-red);
+}
+
+.ghost {
+  background: transparent;
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  filter: none;
+  color: var(--text-primary);
+  border-color: rgba(0, 229, 255, 0.35);
+}
+
+/* ── Segmented (shell/NavTabs 패턴) ── */
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  background: rgba(14, 14, 15, 0.6);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+}
+
+.segment {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  padding: 5px 11px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.segment:hover:not(.segmentActive) {
+  color: var(--text-secondary);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.segmentActive {
+  color: #0c0c0d;
+  cursor: default;
+}
+
+.activeRed {
+  background: var(--accent-red);
+}
+
+.activeAccent {
+  background: var(--accent);
+}
+
+/* ── OptionButton (선택형 타일) ── */
+.option {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 9px 11px;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  background: rgba(14, 14, 15, 0.52);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.option:hover:not(:disabled):not(.optionSelected) {
+  border-color: var(--border-color);
+  background: rgba(42, 42, 43, 0.6);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.optionSelected {
+  border-color: var(--accent);
+  background: var(--bg-panel-accent);
+}
+
+.optionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.optionSelected .optionTitle {
+  color: var(--accent);
+}
+
+.optionMeta {
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Field / inputs ── */
+.field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  font-family: var(--font-racing);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: rgba(14, 14, 15, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.15);
+}
+
+.input:read-only {
+  color: var(--text-secondary);
+}
+
+.input:disabled {
+  opacity: 0.5;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+select.input {
+  cursor: pointer;
+}
+
+.range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* ── Check ── */
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.check input {
+  flex: none;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.checkBoxed {
+  align-items: center;
+  padding: 7px 11px;
+  background: rgba(14, 14, 15, 0.52);
+  border: 1px solid var(--bg-panel-border);
+  border-radius: var(--radius-md);
+}
+
+.checkBoxed input {
+  margin-top: 0;
+}
+
+/* ── Notice (CutoffWatch advice 패턴: 좌측 강조선 + 옅은 틴트) ── */
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--tone);
+  background: color-mix(in srgb, var(--tone) 8%, transparent);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.noticeTitle {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--tone);
+}
+
+.toneError {
+  --tone: var(--accent-red);
+}
+
+.toneInfo {
+  --tone: var(--accent);
+}
+
+.toneSuccess {
+  --tone: var(--accent-lime);
+}
+
+.toneWarn {
+  --tone: var(--accent-soft);
+}
+
+/* ── StatusPill (헤더 상태 pill 패턴) ── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(14, 14, 15, 0.55);
+  border: 1px solid color-mix(in srgb, var(--tone) 38%, transparent);
+  white-space: nowrap;
+}
+
+.pillDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+  box-shadow: 0 0 10px var(--tone);
+}
+
+.pillLabel {
+  font-family: var(--font-racing);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--tone);
+}
+
+.toneMuted {
+  --tone: var(--text-muted);
+}
+
+/* ── Badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tone, var(--text-secondary));
+  background: color-mix(in srgb, var(--tone, var(--text-muted)) 14%, transparent);
+}
+
+/* ── MetricBar ── */
+.bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* ── Modal ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 8, 10, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.modal {
+  width: 100%;
+  max-width: 460px;
+}

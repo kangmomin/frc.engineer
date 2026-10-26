@@ -1,5 +1,6 @@
 import { Component, useState, useEffect, type ReactNode } from 'react';
 import { F1SetupManager } from './F1SetupManager';
+import { Button, Hint, Modal, Notice, Panel } from './ui';
 
 interface SenderStorageInfo {
   selected: string | null;
@@ -79,121 +80,86 @@ function UpdateBanner() {
     const installing = update.phase === 'installing';
     const percent = installing ? 100 : update.percent || 0;
     return (
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 30000,
-        background: 'rgba(6, 8, 10, 0.92)', backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-      }}>
-        <div style={{
-          width: '100%', maxWidth: 460,
-          background: 'rgba(32, 31, 32, 0.92)',
-          border: '1px solid rgba(59, 73, 76, 0.15)',
-          borderRadius: 8, padding: 24,
-          fontFamily: 'Inter, sans-serif', color: '#e5e2e3',
-        }}>
-          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", marginBottom: 6 }}>
-            필수 업데이트
-          </div>
-          <div style={{ fontSize: 12, color: '#849396', lineHeight: 1.6, marginBottom: 18 }}>
+      <Modal zIndex={30000}>
+        <Panel title="Mandatory Update" detail="필수 업데이트" tone="secondary">
+          <Hint>
             {installing
               ? '설치를 시작합니다. 앱이 곧 자동으로 재시작됩니다.'
               : `새 버전 v${update.version} 을 내려받는 중입니다. 완료되면 자동으로 설치·재시작됩니다.`}
+          </Hint>
+          <div>
+            <div style={{ height: 4, borderRadius: 2, background: 'rgba(0,229,255,0.1)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-racing)', fontWeight: 700 }}>
+              {installing ? '설치 준비 중...' : `${percent}%`}
+            </div>
           </div>
-          <div style={{ height: 4, borderRadius: 2, background: 'rgba(0,229,255,0.1)', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${percent}%`, background: '#00e5ff', transition: 'width 0.3s' }} />
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, color: '#5a6577', fontFamily: "'Space Grotesk', sans-serif" }}>
-            {installing ? '설치 준비 중...' : `${percent}%`}
-          </div>
-          <div style={{ marginTop: 16, fontSize: 11, color: '#5a6577', lineHeight: 1.6 }}>
+          <Hint>
             진행되지 않으면{' '}
-            <a
-              href={update.releasesUrl || RELEASES_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: '#849396' }}
-            >
+            <a href={update.releasesUrl || RELEASES_URL} target="_blank" rel="noopener noreferrer">
               릴리스 페이지
             </a>
             에서 직접 내려받아 설치할 수 있습니다.
-          </div>
-        </div>
-      </div>
+          </Hint>
+        </Panel>
+      </Modal>
     );
   }
 
   if (update.status === 'downloading') {
     return (
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: 3, background: 'rgba(0,229,255,0.1)', zIndex: 10000 }}>
-        <div style={{ height: '100%', width: `${update.percent || 0}%`, background: '#00e5ff', transition: 'width 0.3s' }} />
+        <div style={{ height: '100%', width: `${update.percent || 0}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
       </div>
     );
   }
 
   if (update.status === 'ready') {
     return (
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'rgba(0,229,255,0.08)', backdropFilter: 'blur(8px)',
-        borderTop: '1px solid rgba(0,229,255,0.15)',
-        padding: '8px 16px', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', zIndex: 10000,
-        fontFamily: 'Inter, sans-serif', fontSize: 13,
-      }}>
-        <span style={{ color: '#c8d0da' }}>v{update.version} 업데이트 준비 완료</span>
-        <button
-          onClick={() => window.electronAPI?.installUpdate?.()}
-          style={{
-            background: '#00e5ff', color: '#06080d', border: 'none',
-            borderRadius: 4, padding: '4px 14px', fontWeight: 600,
-            fontSize: 12, cursor: 'pointer',
-          }}
-        >
-          재시작
-        </button>
-      </div>
+      <BottomBar>
+        <Notice
+          tone="info"
+          title={`v${update.version} 업데이트 준비 완료`}
+          action={<Button size="sm" onClick={() => window.electronAPI?.installUpdate?.()}>재시작</Button>}
+        />
+      </BottomBar>
     );
   }
 
   // 강제 업데이트 실패 — 게이트는 해제되고(fail-open) 수동 설치 안내만 남는다
   if (update.status === 'error' && !dismissed) {
     return (
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        background: 'rgba(255,82,92,0.08)', backdropFilter: 'blur(8px)',
-        borderTop: '1px solid rgba(255,82,92,0.2)',
-        padding: '8px 16px', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', gap: 12, zIndex: 10000,
-        fontFamily: 'Inter, sans-serif', fontSize: 13,
-      }}>
-        <span style={{ color: '#c8d0da' }}>
-          업데이트 설치 실패{update.version ? ` (v${update.version})` : ''} — 수동으로 내려받아 주세요
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <a
-            href={update.releasesUrl || RELEASES_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#00e5ff', fontSize: 12, fontWeight: 600 }}
-          >
-            다운로드
-          </a>
-          <button
-            onClick={() => setDismissed(true)}
-            style={{
-              background: 'transparent', color: '#849396',
-              border: '1px solid rgba(59,73,76,0.4)', borderRadius: 4,
-              padding: '4px 10px', fontSize: 12, cursor: 'pointer',
-            }}
-          >
-            닫기
-          </button>
-        </span>
-      </div>
+      <BottomBar>
+        <Notice
+          tone="error"
+          title={`업데이트 설치 실패${update.version ? ` (v${update.version})` : ''}`}
+          action={
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <a href={update.releasesUrl || RELEASES_URL} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600 }}>
+                다운로드
+              </a>
+              <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>
+                닫기
+              </Button>
+            </span>
+          }
+        >
+          수동으로 내려받아 주세요
+        </Notice>
+      </BottomBar>
     );
   }
 
   return null;
+}
+
+function BottomBar({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10000, padding: '8px 16px', background: 'var(--bg-panel)', borderTop: '1px solid var(--bg-panel-border)', backdropFilter: 'blur(8px)' }}>
+      {children}
+    </div>
+  );
 }
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -202,10 +168,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 40, color: '#ff525c', fontFamily: 'monospace', fontSize: 13, background: '#06080d', minHeight: '100vh' }}>
-          <h2 style={{ color: '#00e5ff', marginBottom: 16 }}>Runtime Error</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', color: '#c8d0da' }}>{this.state.error.message}</pre>
-          <pre style={{ whiteSpace: 'pre-wrap', color: '#5a6577', marginTop: 8, fontSize: 11 }}>{this.state.error.stack}</pre>
+        <div style={{ padding: 40, fontSize: 13, background: 'var(--bg-primary)', height: '100%', overflow: 'auto' }}>
+          <h2 style={{ color: 'var(--accent-red)', fontFamily: 'var(--font-racing)', marginBottom: 16 }}>Runtime Error</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>{this.state.error.message}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--text-muted)', marginTop: 8, fontSize: 11 }}>{this.state.error.stack}</pre>
         </div>
       );
     }
