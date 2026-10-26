@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"syscall"
+	"time"
 )
 
 // startupErrorPrefix marks the single stderr line Driver Pack parses
@@ -28,18 +31,15 @@ type startupError struct {
 	Port     int    `json:"port"`
 	Reason   string `json:"reason"`
 	Detail   string `json:"detail"`
-	// Fatal: the sender exits right after reporting (Driver Pack must restart it).
-	Fatal bool `json:"fatal"`
 }
 
-func newPortStartupError(code, protocol string, port int, err error, fatal bool) startupError {
+func newPortStartupError(code, protocol string, port int, err error) startupError {
 	return startupError{
 		Code:     code,
 		Protocol: protocol,
 		Port:     port,
 		Reason:   classifyBindError(err),
 		Detail:   err.Error(),
-		Fatal:    fatal,
 	}
 }
 
@@ -87,12 +87,9 @@ func (e startupError) alertMessage() string {
 
 	var advice string
 	if e.Code == startupErrorUDPPort {
-		advice = "SimHub, Crew Chief 등 F1 텔레메트리를 받는 다른 프로그램이나 이미 실행 중인 다른 Sender를 종료한 뒤 Sender를 다시 실행해 주세요."
+		advice = "SimHub, Crew Chief 등 F1 텔레메트리를 받는 다른 프로그램이나 이미 실행 중인 다른 Sender를 종료하면 자동으로 다시 연결됩니다.\n또는 설정 페이지에서 UDP 포트를 바꾸고, 게임의 텔레메트리 UDP 포트도 같은 값으로 바꿔 주세요."
 	} else {
 		advice = "이 포트를 사용하는 프로그램이나 이미 실행 중인 다른 Sender를 종료한 뒤 Sender를 다시 실행해 주세요."
-	}
-	if e.Fatal {
-		advice = "Sender를 종료합니다.\n" + advice
 	}
 	return fmt.Sprintf("%s\n\n%s\n\n(%s)", cause, advice, e.Detail)
 }
@@ -111,5 +108,29 @@ func announceStartupError(embedded bool, e startupError) {
 		writeStartupError(os.Stderr, e)
 		return
 	}
-	showStartupAlert("FRC Pitwall Sender", e.alertMessage())
+	// MessageBox blocks until dismissed; keep startup (HTTP server, retries) going.
+	go showStartupAlert("FRC Pitwall Sender", e.alertMessage())
+}
+
+const udpBindRetryInterval = 3 * time.Second
+
+// retryUDPBind calls tryBind under mu every interval until it reports success
+// (bound, or recovered elsewhere) or ctx ends. This lets the sender pick the
+// port up as soon as the other program releases it.
+func retryUDPBind(ctx context.Context, interval time.Duration, mu sync.Locker, tryBind func() bool) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		mu.Lock()
+		done := tryBind()
+		mu.Unlock()
+		if done {
+			return
+		}
+	}
 }

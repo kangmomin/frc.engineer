@@ -88,9 +88,17 @@ interface SenderStatus {
   invite?: SenderInvite;
   peers?: SenderPeer[];
   paired?: boolean;
+  // null/부재 = UDP 수신 중, 객체 = 포트 점유로 바인드 대기 중(sender가 3초마다 자동 재시도)
+  udpBindError?: SenderUdpBindError | null;
   // 플랫폼 권한(자문 게이트 전용): null/부재 = 미확인 → fail-open(허용),
   // 배열 = 그랜트 노드 원본(hasPermission으로 매칭 — includes 금지)
   permissions?: string[] | null;
+}
+
+interface SenderUdpBindError {
+  port: number;
+  reason?: "in_use" | "access_denied" | "unknown";
+  detail?: string;
 }
 
 interface SenderSession {
@@ -1525,6 +1533,31 @@ export function F1SetupManager() {
   const setupAllowed =
     !senderStatus || senderStatus.permissions == null || hasPermission(senderStatus.permissions, "sender.setup.read");
   const rootContentRef = useRef<HTMLDivElement>(null);
+  const udpPortInputRef = useRef<HTMLInputElement>(null);
+  const [udpPortFocusRequest, setUdpPortFocusRequest] = useState(0);
+  const udpBindError = senderStatus?.udpBindError ?? null;
+  const openUdpPortSettings = () => {
+    setSection("sender");
+    setUdpPortFocusRequest((current) => current + 1);
+  };
+
+  // UDP 포트 점유 알림창(메인 프로세스)의 "UDP 포트 변경" 버튼
+  useEffect(() => {
+    return window.electronAPI?.onOpenSenderUdpSettings?.(() => {
+      setSection("sender");
+      setUdpPortFocusRequest((current) => current + 1);
+    });
+  }, []);
+
+  // Sender 섹션이 렌더된 뒤 UDP 포트 입력란으로 이동
+  useEffect(() => {
+    if (udpPortFocusRequest === 0 || section !== "sender") return;
+    const input = udpPortInputRef.current;
+    if (!input) return;
+    input.scrollIntoView({ block: "center" });
+    input.focus();
+    input.select();
+  }, [udpPortFocusRequest, section]);
 
   // React 18: inert 프로퍼티가 없어 ref로 DOM 속성을 직접 set/remove
   useEffect(() => {
@@ -1991,6 +2024,21 @@ export function F1SetupManager() {
 
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto", overflowX: "auto" }}>
         <main style={{ minHeight: "100%", minWidth: 0, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+          {udpBindError ? (
+            <div style={{ padding: 12, borderRadius: 4, background: "rgba(255,82,92,0.08)", border: `1px solid rgba(255,82,92,0.3)`, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.6 }}>
+                <div style={{ color: P.danger, fontWeight: 700, fontFamily: P.mono }}>
+                  UDP 포트 {udpBindError.port} {udpBindError.reason === "access_denied" ? "접근 불가" : "사용 중"} — 텔레메트리 수신 대기
+                </div>
+                <div style={{ color: P.muted }}>
+                  SimHub, Crew Chief 등 다른 프로그램을 종료하면 자동으로 연결됩니다. 포트를 바꾸면 게임의 텔레메트리 UDP 포트도 같은 값으로 맞춰 주세요.
+                </div>
+              </div>
+              <button onClick={openUdpPortSettings} style={{ padding: "8px 12px", borderRadius: 4, border: `1px solid ${P.danger}`, background: "transparent", color: P.danger, cursor: "pointer", fontFamily: P.mono, fontSize: 10, flexShrink: 0 }}>
+                UDP 포트 변경
+              </button>
+            </div>
+          ) : null}
           <Panel title="WORKSPACE">
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>
@@ -2345,7 +2393,7 @@ export function F1SetupManager() {
             <Panel title="SENDER STATUS">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
                 <StatTile label="Sender" value={senderConnected ? "Online" : "Offline"} accent={senderConnected ? P.accent : P.danger} />
-                <StatTile label="UDP Port" value={senderStatus?.udpPort ? String(senderStatus.udpPort) : "--"} />
+                <StatTile label="UDP Port" value={senderStatus?.udpPort ? String(senderStatus.udpPort) : "--"} accent={udpBindError ? P.danger : undefined} />
                 <StatTile label="Track" value={detectedTrack ?? liveSession?.trackName ?? "--"} />
                 <StatTile label="Session" value={liveSession?.sessionType ?? "--"} />
                 <StatTile label="Weather" value={liveSession?.weather ?? "--"} />
@@ -2380,6 +2428,7 @@ export function F1SetupManager() {
                   <div style={{ display: "grid", gap: 6 }}>
                     <div style={{ fontSize: 10, color: P.muted, fontFamily: P.mono }}>UDP Port</div>
                     <input
+                      ref={udpPortInputRef}
                       value={senderConfig.udpPort}
                       onChange={(event) => setSenderConfig((current) => ({ ...current, udpPort: event.target.value }))}
                       style={{ width: "100%", padding: "10px 12px", borderRadius: 4, border: `1px solid ${P.border}`, background: P.surface2, color: P.text, fontFamily: P.mono, outline: "none" }}

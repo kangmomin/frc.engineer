@@ -44,17 +44,19 @@ function mainProcess(t) {
     child.stderr = new EventEmitter();
     child.stdin.writable = true;
     child.stdin.end = (command) => { child.commands.push(command); child.stdin.writable = false; };
-    child.exit = () => {
-      child.exitCode = 0;
-      child.emit('exit', 0, null);
+    child.exit = (code = 0) => {
+      child.exitCode = code;
+      child.emit('exit', code, null);
     };
     children.push(child);
     return child;
   };
   const dialogs = [];
   const dialogResponses = [];
+  const windowMessages = [];
+  const windows = [];
   const electron = {
-    app, ipcMain, BrowserWindow: { getAllWindows: () => [] },
+    app, ipcMain, BrowserWindow: { getAllWindows: () => windows },
     globalShortcut: { isRegistered: () => false },
     dialog: {
       showMessageBox: async (...args) => {
@@ -81,9 +83,18 @@ function mainProcess(t) {
   });
   vm.runInContext(fs.readFileSync(require.resolve('./main.cjs'), 'utf8'), context);
   vm.runInContext('startSender(); setupAutoUpdater({});', context);
+  const baselineTimers = new Set(timers);
   t.after(() => children.forEach((child) => { if (child.exitCode === null) child.exit(); }));
   return {
-    app, ipcMain, autoUpdater, children, installs, timers, dialogs, dialogResponses,
+    app, ipcMain, autoUpdater, children, installs, timers, dialogs, dialogResponses, windowMessages,
+    addWindow() {
+      windows.push({
+        isDestroyed: () => false,
+        isVisible: () => true,
+        webContents: { send: (channel) => windowMessages.push(channel) },
+      });
+    },
+    respawnTimer: () => [...timers].find((timer) => !baselineTimers.has(timer) && [1000, 3000, 10000].includes(timer.ms)),
     restart: () => handlers.get('restart-sender')(),
     get quits() { return quits; },
   };
@@ -217,30 +228,93 @@ for (const failure of ['error-before-exit', 'installer-throws', 'watchdog']) {
   });
 }
 
-const udpInUse = 'FRC_SENDER_STARTUP_ERROR {"code":"udp_port_unavailable","protocol":"udp","port":20777,"reason":"in_use","detail":"bind: address already in use","fatal":true}\n';
+const marker = (payload) => `FRC_SENDER_STARTUP_ERROR ${JSON.stringify(payload)}\n`;
+const udpInUse = marker({ code: 'udp_port_unavailable', protocol: 'udp', port: 20777, reason: 'in_use', detail: 'bind: address already in use' });
+const settingsInUse = marker({ code: 'settings_port_unavailable', protocol: 'tcp', port: 8099, reason: 'in_use', detail: 'bind: address already in use' });
 
-test('Sender port conflict shows an alert and retry launches a new Sender', async (t) => {
+test('UDP port conflict alert opens the UDP port settings without restarting the Sender', async (t) => {
   const main = mainProcess(t);
+  main.addWindow();
   main.dialogResponses.push(0);
   // Split mid-line: stderr chunks do not respect line boundaries.
   main.children[0].stderr.emit('data', Buffer.from(udpInUse.slice(0, 30)));
   main.children[0].stderr.emit('data', Buffer.from(udpInUse.slice(30)));
-  main.children[0].exit();
-  await settle();
   await settle();
   assert.equal(main.dialogs.length, 1);
   assert.match(main.dialogs[0].message, /UDP 포트 20777/);
+  assert.deepEqual([...main.dialogs[0].buttons], ['UDP 포트 변경', '닫기']);
+  assert.deepEqual(main.windowMessages, ['open-sender-udp-settings']);
+  assert.equal(main.children.length, 1);
+  assert.deepEqual(main.children[0].commands, []);
+});
+
+test('settings port conflict alert retry restarts the Sender', async (t) => {
+  const main = mainProcess(t);
+  main.dialogResponses.push(0);
+  main.children[0].stderr.emit('data', Buffer.from(settingsInUse));
+  await settle();
   assert.deepEqual([...main.dialogs[0].buttons], ['다시 시도', '닫기']);
+  assert.deepEqual(main.children[0].commands, ['shutdown\n']);
+  main.children[0].exit();
+  await settle();
   assert.equal(main.children.length, 2);
 });
 
-test('closing the Sender port alert does not relaunch the Sender', async (t) => {
+test('closing the port alert leaves the Sender alone', async (t) => {
   const main = mainProcess(t);
   main.dialogResponses.push(1);
-  main.children[0].stderr.emit('data', Buffer.from(udpInUse));
-  main.children[0].exit();
-  await settle();
+  main.children[0].stderr.emit('data', Buffer.from(settingsInUse));
   await settle();
   assert.equal(main.dialogs.length, 1);
+  assert.deepEqual(main.children[0].commands, []);
   assert.equal(main.children.length, 1);
+});
+
+test('a crashed Sender is restarted with backoff, then the user is alerted', async (t) => {
+  const main = mainProcess(t);
+  for (const delay of [1000, 3000, 10000]) {
+    main.children.at(-1).exit(2);
+    const timer = main.respawnTimer();
+    assert.equal(timer?.ms, delay);
+    main.timers.delete(timer);
+    timer.callback();
+  }
+  assert.equal(main.children.length, 4);
+  main.dialogResponses.push(0);
+  main.children.at(-1).exit(2);
+  await settle();
+  assert.equal(main.respawnTimer(), undefined);
+  assert.equal(main.dialogs.length, 1);
+  assert.match(main.dialogs[0].message, /반복해서 비정상 종료/);
+  // "다시 시도" resets the crash budget and launches immediately.
+  assert.equal(main.children.length, 5);
+  main.children.at(-1).exit(2);
+  assert.equal(main.respawnTimer()?.ms, 1000);
+});
+
+test('a clean Sender exit (tray Quit) is not restarted', (t) => {
+  const main = mainProcess(t);
+  main.children[0].exit(0);
+  assert.equal(main.respawnTimer(), undefined);
+  assert.equal(main.children.length, 1);
+});
+
+test('stopping or quitting cancels a pending crash restart', async (t) => {
+  const main = mainProcess(t);
+  main.children[0].exit(2);
+  assert.ok(main.respawnTimer());
+  main.app.quit();
+  assert.equal(main.respawnTimer(), undefined);
+  await settle();
+  assert.equal(main.quits, 1);
+  assert.equal(main.children.length, 1);
+});
+
+test('a manual restart replaces a pending crash restart', async (t) => {
+  const main = mainProcess(t);
+  main.children[0].exit(2);
+  assert.ok(main.respawnTimer());
+  await main.restart();
+  assert.equal(main.respawnTimer(), undefined);
+  assert.equal(main.children.length, 2);
 });

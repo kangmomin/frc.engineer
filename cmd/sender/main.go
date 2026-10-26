@@ -395,11 +395,16 @@ func main() {
 	}
 
 	// Create UDP listener & parser
+	// 포트를 못 잡아도 종료하지 않는다 — HTTP API(페어링·포트 변경)는 살려 두고
+	// 같은 포트 자동 재시도(retryUDPBind) 또는 PUT /api/config 포트 변경으로 복구한다.
+	var udpBindError *startupError
 	udpListener, err := udp.NewListener(udpPort, 2048, logger)
 	if err != nil {
 		logger.Error("failed to create UDP listener", "port", udpPort, "error", err)
-		announceStartupError(embeddedDriverPack, newPortStartupError(startupErrorUDPPort, "udp", udpPort, err, true))
-		os.Exit(1)
+		bindErr := newPortStartupError(startupErrorUDPPort, "udp", udpPort, err)
+		udpBindError = &bindErr
+		announceStartupError(embeddedDriverPack, bindErr)
+		udpListener = udp.NewUnboundListener(2048, logger)
 	}
 	parser := udp.NewParser(logger)
 	packetLogDir := resolveSenderStoragePath("data", "packets")
@@ -1257,6 +1262,19 @@ func main() {
 	// Start components
 	go udpListener.Start(ctx)
 	go processor.Start(ctx, udpListener.Packets())
+	if udpBindError != nil {
+		go retryUDPBind(ctx, udpBindRetryInterval, &cfgMu, func() bool {
+			if udpBindError == nil {
+				return true // 설정 저장으로 이미 복구됨
+			}
+			if err := udpListener.Rebind(cfgUDPPort); err != nil {
+				return false
+			}
+			udpBindError = nil
+			logger.Info("UDP listener bound after retry", "port", cfgUDPPort)
+			return true
+		})
+	}
 	go radioEngine.Run(ctx)
 
 	// Poll the central ban list (signaling server) and refresh the local store.
@@ -1490,6 +1508,11 @@ func main() {
 		rp := cfgRoomPassword
 		dashboardURL := cfgEngineerDashboardURL
 		paired := cfgUploadToken != ""
+		var udpBind *startupError
+		if udpBindError != nil {
+			copied := *udpBindError
+			udpBind = &copied
+		}
 		// permissions: null=미확인(fail-open — 소비자는 허용으로 판정), 배열=확정
 		// 그랜트 노드 원본. setup-manager가 3초 폴링으로 게이트에 쓴다.
 		var perms []string
@@ -1512,6 +1535,7 @@ func main() {
 			"roomProtected":      rp != "",
 			"connectedEngineers": peerManager.ConnectedCount(),
 			"udpPort":            port,
+			"udpBindError":       udpBind, // null = 수신 중, 객체 = 포트 점유로 대기 중
 			"saveFiles":          sf,
 			"trackRecording":     tr,
 			"raceStorageMode":    senderState.RaceStorageMode,
@@ -2009,6 +2033,13 @@ func main() {
 			}
 			logger.Info("UDP port changed", "from", cfgUDPPort, "to", body.UDPPort)
 			cfgUDPPort = body.UDPPort
+			udpBindError = nil
+		} else if udpBindError != nil {
+			// 같은 포트 저장은 즉시 재시도만 한다 — 아직 점유 중이어도 다른 설정 저장은 막지 않는다.
+			if err := udpListener.Rebind(cfgUDPPort); err == nil {
+				logger.Info("UDP listener bound on config save", "port", cfgUDPPort)
+				udpBindError = nil
+			}
 		}
 
 		nextDataStorageMode := cfgDataStorageMode
@@ -2196,7 +2227,7 @@ func main() {
 				if embeddedDriverPack {
 					logger.Error("embedded settings server failed", "port", port, "error", err)
 					// UDP 텔레메트리 송출은 계속되므로 프로세스는 유지하고 Driver Pack에 알리기만 한다.
-					announceStartupError(true, newPortStartupError(startupErrorSettingsPort, "tcp", port, err, false))
+					announceStartupError(true, newPortStartupError(startupErrorSettingsPort, "tcp", port, err))
 					return
 				}
 				logger.Warn("settings server port in use, trying next", "port", port, "error", err)
@@ -2205,7 +2236,7 @@ func main() {
 			return
 		}
 		logger.Error("settings server failed after 10 port attempts")
-		announceStartupError(false, newPortStartupError(startupErrorSettingsPort, "tcp", basePort, lastErr, false))
+		announceStartupError(false, newPortStartupError(startupErrorSettingsPort, "tcp", basePort, lastErr))
 	}()
 
 	logger.Info("sender started",
