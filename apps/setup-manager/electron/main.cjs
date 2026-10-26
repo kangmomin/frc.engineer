@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { stopSenderProcess } = require('./sender-lifecycle.cjs');
+const { createStartupErrorParser, describeSenderCrash, describeStartupError } = require('./sender-startup-error.cjs');
 const {
   isTrustedMicrophoneCheck,
   isTrustedMicrophoneRequest,
@@ -394,7 +395,45 @@ ipcMain.handle('select-directory', async (_event, defaultPath) => {
   return result.filePaths[0];
 });
 
+// 비정상 종료(크래시) 자동 재시작 — 연속 실패마다 대기를 늘리고, 다 쓰면 알림창으로 넘긴다
+const SENDER_RESPAWN_DELAYS_MS = [1000, 3000, 10000];
+// 이만큼 정상 동작한 뒤의 크래시는 연속 실패로 세지 않는다
+const SENDER_STABLE_RUN_MS = 60000;
+let senderCrashCount = 0;
+let senderRespawnTimer = null;
+
+function cancelSenderRespawn() {
+  if (senderRespawnTimer) {
+    clearTimeout(senderRespawnTimer);
+    senderRespawnTimer = null;
+  }
+}
+
+function handleSenderExit(code, signal, ranMs) {
+  // 정상 종료(트레이 Quit 등 code 0)·의도한 중지·앱 종료·업데이트 설치 중에는 되살리지 않는다
+  if (code === 0 || senderStopPromise || isQuitting || senderInstallPending || isUpdateGateActive()) {
+    return;
+  }
+  if (ranMs >= SENDER_STABLE_RUN_MS) {
+    senderCrashCount = 0;
+  }
+  if (senderCrashCount >= SENDER_RESPAWN_DELAYS_MS.length) {
+    console.error(`[sender] Gave up restarting after ${senderCrashCount} consecutive crashes`);
+    const logPath = path.join(getSenderStorageInfo().effective, 'logs', 'sender.log');
+    void showSenderAlert(describeSenderCrash({ code, signal, attempts: senderCrashCount, logPath }));
+    return;
+  }
+  const delay = SENDER_RESPAWN_DELAYS_MS[senderCrashCount];
+  senderCrashCount += 1;
+  console.warn(`[sender] Unexpected exit; restarting in ${delay}ms (${senderCrashCount}/${SENDER_RESPAWN_DELAYS_MS.length})`);
+  senderRespawnTimer = setTimeout(() => {
+    senderRespawnTimer = null;
+    startSender();
+  }, delay);
+}
+
 function startSender() {
+  cancelSenderRespawn();
   if (senderProcess || senderStopPromise || senderInstallPending || isQuitting) {
     return;
   }
@@ -439,16 +478,25 @@ function startSender() {
     env,
   });
   senderProcess = proc;
+  const startedAt = Date.now();
   proc.stdout?.on('data', d => console.log('[sender]', d.toString().trim()));
   proc.stderr?.on('data', d => console.error('[sender]', d.toString().trim()));
+  proc.stderr?.on('data', createStartupErrorParser((error) => {
+    console.error('[sender] Startup error:', JSON.stringify(error));
+    void showSenderAlert(describeStartupError(error));
+  }));
   proc.on('error', err => console.error('[sender] Failed to start:', err.message));
   proc.on('exit', (code, signal) => {
     console.log(`[sender] Exited: code=${code} signal=${signal}`);
-    if (senderProcess === proc) senderProcess = null;
+    if (senderProcess !== proc) return;
+    senderProcess = null;
+    handleSenderExit(code, signal, Date.now() - startedAt);
   });
 }
 
 function stopSender() {
+  // 중지·설치·재시작 요청이 대기 중인 크래시 재기동보다 우선한다
+  cancelSenderRespawn();
   if (senderStopPromise) return senderStopPromise;
   const proc = senderProcess;
   if (!proc) return Promise.resolve();
@@ -480,19 +528,71 @@ function stopSender() {
   return senderStopPromise;
 }
 
-ipcMain.handle('restart-sender', async () => {
+async function restartSender() {
   // 게이트를 우회해 sender 를 되살리는 경로 차단
   if (isUpdateGateActive() || senderInstallPending) {
     console.log('[sender] Restart blocked: mandatory update in progress');
     return;
   }
+  // 사용자가 직접 재시작했으므로 크래시 자동 재시작 횟수를 새로 센다
+  senderCrashCount = 0;
   await stopSender();
   // stopSender 대기 중 앱 종료가 시작됐으면 재기동하지 않음
   if (isQuitting) {
     return;
   }
   startSender();
-});
+}
+
+ipcMain.handle('restart-sender', () => restartSender());
+
+// 포트 충돌·반복 크래시처럼 UI 의 Offline 표시만으로는 원인을 알 수 없는 상황을 알림창으로 알린다
+let senderAlertOpen = false;
+
+// sender 는 창보다 먼저 기동되므로, 창이 뜬 뒤 그 위에 모달로 띄운다
+function waitForVisibleWindow() {
+  const win = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
+  if (!win) return Promise.resolve(null);
+  if (win.isVisible()) return Promise.resolve(win);
+  return new Promise((resolve) => {
+    const onShow = () => { win.removeListener('closed', onClosed); resolve(win); };
+    const onClosed = () => { win.removeListener('show', onShow); resolve(null); };
+    win.once('show', onShow);
+    win.once('closed', onClosed);
+  });
+}
+
+async function showSenderAlert(text) {
+  if (!text || senderAlertOpen || isQuitting) return;
+  senderAlertOpen = true;
+  try {
+    const parent = await waitForVisibleWindow();
+    if (isQuitting) return;
+    const options = {
+      type: 'error',
+      title: text.title,
+      message: text.message,
+      detail: text.detail,
+      buttons: [text.primaryAction.label, '닫기'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    };
+    const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    if (response !== 0) return;
+    if (text.primaryAction.kind === 'restart') {
+      await restartSender();
+    } else if (text.primaryAction.kind === 'open-udp-settings') {
+      // 렌더러가 Sender 설정 화면으로 이동해 UDP 포트 입력란에 포커스한다
+      const target = parent ?? BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
+      target?.webContents.send('open-sender-udp-settings');
+    }
+  } catch (dialogError) {
+    console.error('[sender] Alert dialog failed:', dialogError instanceof Error ? dialogError.message : String(dialogError));
+  } finally {
+    senderAlertOpen = false;
+  }
+}
 
 // ─── Auto-updater ───
 const UPDATE_FAILURES_KEY = 'mandatory_update_failures';
@@ -864,6 +964,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', (event) => {
   isQuitting = true;
+  cancelSenderRespawn();
   if (!senderProcess && !senderStopPromise) return;
   // Resume quit only after exit; autoInstallOnAppQuit then sees closed files.
   event.preventDefault();

@@ -19,6 +19,10 @@ type Listener struct {
 	packetChan chan []byte
 	logger     *slog.Logger
 	forwarder  atomic.Pointer[Forwarder]
+	// bound closes on the first successful bind; done closes on Close.
+	// Start waits on them when the listener was created unbound.
+	bound chan struct{}
+	done  chan struct{}
 }
 
 // NewListener creates a new UDP listener
@@ -38,13 +42,26 @@ func NewListener(port int, bufferSize int, logger *slog.Logger) (*Listener, erro
 		logger.Warn("failed to set UDP read buffer", "error", err)
 	}
 
-	l := &Listener{
-		conn:       conn,
+	l := newListener(bufferSize, logger)
+	l.conn = conn
+	close(l.bound)
+	return l, nil
+}
+
+// NewUnboundListener creates a listener without a socket, for when the
+// configured port is unavailable. Start waits until Rebind succeeds, so the
+// sender can stay up and retry or switch ports instead of exiting.
+func NewUnboundListener(bufferSize int, logger *slog.Logger) *Listener {
+	return newListener(bufferSize, logger)
+}
+
+func newListener(bufferSize int, logger *slog.Logger) *Listener {
+	return &Listener{
 		packetChan: make(chan []byte, bufferSize),
 		logger:     logger,
+		bound:      make(chan struct{}),
+		done:       make(chan struct{}),
 	}
-
-	return l, nil
 }
 
 // Rebind rebinds the listener to a new port without stopping packet processing.
@@ -66,6 +83,10 @@ func (l *Listener) Rebind(port int) error {
 
 	oldConn := l.conn
 	l.conn = newConn
+	if oldConn == nil {
+		close(l.bound)
+		return nil
+	}
 	// Wake the reader; it always picks up the latest connection under mu.
 	oldConn.Close()
 
@@ -81,7 +102,6 @@ func (l *Listener) Start(ctx context.Context) {
 		return
 	}
 	l.started = true
-	currentConn := l.conn
 	l.mu.Unlock()
 
 	// Only the reader closes the packet stream once Start has claimed it.
@@ -89,6 +109,18 @@ func (l *Listener) Start(ctx context.Context) {
 	defer l.Close()
 	stop := context.AfterFunc(ctx, func() { _ = l.Close() })
 	defer stop()
+
+	select {
+	case <-l.bound:
+	case <-l.done:
+		return
+	}
+	l.mu.Lock()
+	currentConn := l.conn
+	l.mu.Unlock()
+	if currentConn == nil {
+		return
+	}
 	l.logger.Info("UDP listener started", "addr", currentConn.LocalAddr().String())
 	defer l.logger.Info("UDP listener shutting down")
 
@@ -153,8 +185,12 @@ func (l *Listener) Close() error {
 		return nil
 	}
 	l.closed = true
+	close(l.done)
 	if !l.started {
 		close(l.packetChan)
+	}
+	if l.conn == nil {
+		return nil
 	}
 	return l.conn.Close()
 }

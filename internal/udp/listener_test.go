@@ -350,3 +350,47 @@ func BenchmarkListenerReceive(b *testing.B) {
 	}
 	b.StopTimer()
 }
+
+func TestUnboundListenerReceivesAfterRebind(t *testing.T) {
+	listener := NewUnboundListener(4, udpTestLogger())
+	startTestListener(t, listener)
+	if err := listener.Rebind(0); err != nil {
+		t.Fatal(err)
+	}
+	want := bytes.Repeat([]byte{9}, packets.PacketHeaderSize)
+	sendTestPacket(t, listener, want)
+	if got := readTestPacket(t, listener); !bytes.Equal(got, want) {
+		t.Fatalf("received %x, want %x", got, want)
+	}
+}
+
+func TestUnboundListenerCloseStopsWaitingReader(t *testing.T) {
+	listener := NewUnboundListener(4, udpTestLogger())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); listener.Start(context.Background()) }()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		t.Fatal("waiting reader did not stop on Close")
+	}
+	if _, ok := <-listener.Packets(); ok {
+		t.Fatal("packet stream still open after Close")
+	}
+	if err := listener.Rebind(0); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("Rebind after Close = %v, want net.ErrClosed", err)
+	}
+}
+
+func TestUnboundListenerCloseBeforeStart(t *testing.T) {
+	listener := NewUnboundListener(4, udpTestLogger())
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := <-listener.Packets(); ok {
+		t.Fatal("packet stream still open after Close")
+	}
+	listener.Start(context.Background())
+}

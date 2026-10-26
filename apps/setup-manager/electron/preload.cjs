@@ -17,5 +17,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSenderStorageInfo: () => ipcRenderer.invoke('get-sender-storage-info'),
   selectDirectory: (defaultPath) => ipcRenderer.invoke('select-directory', defaultPath),
   restartSender: () => ipcRenderer.invoke('restart-sender'),
+  onOpenSenderUdpSettings: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('open-sender-udp-settings', listener);
+    return () => ipcRenderer.removeListener('open-sender-udp-settings', listener);
+  },
   getIntercomBridgeToken: () => ipcRenderer.invoke('get-intercom-bridge-token'),
 });
