@@ -225,9 +225,12 @@ jobs:
       - name: Native Electron packaged renderer and quit
         run: node scripts/smoke-electron.cjs release/win-unpacked/resources/app.asar
         working-directory: apps/setup-manager
+      # 125MB/run × 90일 보관은 Actions 스토리지 쿼터를 초과하므로 릴리스 태그 push에서만 짧게 보관한다.
       - uses: actions/upload-artifact@v4
+        if: github.ref_type == 'tag'
         with:
           name: windows-driver-pack
+          retention-days: 3
           path: |
             apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe
             apps/setup-manager/release/Minmo-Driver-Pack-Setup.exe.blockmap
