@@ -118,6 +118,8 @@ export interface RacePlayerSummary {
   completedLaps: number;
   bestLapMs: number;
   lastLapMs: number;
+  /** LapData m_resultStatus at summary time (3 finished, 4 DNF, 5 DSQ, 6 NC, 7 retired); absent = unknown/legacy. */
+  resultStatus?: number;
   pitStops: number;
   stints?: RaceStint[];
 }

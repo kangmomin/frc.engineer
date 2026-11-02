@@ -762,7 +762,10 @@ type UploadRequest struct {
 	// timestamp. A nil value deliberately preserves legacy unknown history.
 	RecordedAt *time.Time `json:"recordedAt,omitempty"`
 	// FinishPosition is the last live position at a SEND-triggered Race/Race
-	// 2/Race 3 close. It is not supplied for session switches or legacy files.
+	// 2/Race 3 close whose player result is settled (finished/DNF/DSQ/NC/
+	// retired). It is not supplied for session switches, legacy files, or a SEND
+	// caused by the player quitting mid-race (sender-side gate; the server cannot
+	// see the player's result status).
 	FinishPosition *int `json:"finishPosition,omitempty"`
 }
 

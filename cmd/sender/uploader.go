@@ -697,11 +697,20 @@ func summaryRecordedAt(savedAtLocal string) (time.Time, bool) {
 }
 
 // summaryFinishPosition returns the last live position only for a definitive
-// SEND close of one of the Race session variants. This is intentionally not a
-// classification result and must not be inferred for session switches/legacy
-// summaries or from an out-of-range player position.
+// SEND close of one of the Race session variants, and only when the player's
+// own result is settled. This is intentionally not a classification result and
+// must not be inferred for session switches/legacy summaries or from an
+// out-of-range player position.
+//
+// The settled-result gate exists because the game also sends SEND when the
+// player quits mid-race: their LapData result status is still 2 (active), no
+// Final Classification follows, and the live position at that instant is not a
+// finishing position (history/20261102-finish-position-validation.md).
 func summaryFinishPosition(summary *races.RaceSummary) (int, bool) {
 	if summary == nil || summary.Detail == nil || summary.Detail.FinalizeTrigger != "SEND" {
+		return 0, false
+	}
+	if !resultStatusSettled(summary.Player.ResultStatus) {
 		return 0, false
 	}
 	switch summary.Session.SessionType {
@@ -712,4 +721,12 @@ func summaryFinishPosition(summary *races.RaceSummary) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// resultStatusSettled reports whether a LapData m_resultStatus is a terminal
+// result: 3 finished, 4 DNF, 5 DSQ, 6 not classified, 7 retired. 0 (invalid or
+// unknown, including summaries saved before the field existed), 1 (inactive)
+// and 2 (active) are not.
+func resultStatusSettled(status int) bool {
+	return status >= 3 && status <= 7
 }
