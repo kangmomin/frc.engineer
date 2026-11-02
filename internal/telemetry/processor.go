@@ -219,9 +219,10 @@ func (p *Processor) SetRaceSummaryRecording(enabled bool) {
 }
 
 // SetCheckpointSaves enables checkpoint-class summary saves (idle-timeout /
-// session-switch / shutdown flush) and demotes CHQF/RCWN to checkpoints so a
-// premature "race winner" event can no longer freeze the summary before the
-// player finishes. cmd/sender enables this; cmd/server keeps legacy behavior.
+// session-switch / shutdown flush) and demotes CHQF/RCWN to checkpoints so the
+// winner's arrival (RCWN) or the chequered flag shown just before the player
+// crosses the line (CHQF) can no longer freeze the summary before the result
+// settles. cmd/sender enables this; cmd/server keeps legacy behavior.
 // Must be called before Start (read lock-free from the processor goroutine).
 func (p *Processor) SetCheckpointSaves(enabled bool) {
 	p.checkpointSaves = enabled
@@ -861,9 +862,14 @@ func isRaceEndEvent(eventCode string) bool {
 }
 
 // saveRaceSummaryForEvent maps a race-end event to a save. Under checkpoint mode
-// only SEND is final — CHQF/RCWN fire when the LEADER finishes, so treating them
-// as final would freeze the summary before the player's remaining laps land in
-// the session history. Legacy mode (cmd/server) keeps all three final.
+// only SEND is final. Captured F1 25 races show RCWN arrives when the WINNER
+// crosses the line, and CHQF a few seconds (3.5–5.4s) BEFORE the PLAYER crosses
+// it — up to a minute after the winner. At either point cars still on track
+// (often the player too) have not been settled, so the live order can still
+// change; treating them as final would freeze a provisional result and cut the
+// player's remaining laps. The game settles every remaining car in the last
+// LapData before SEND (history/20261102-finish-position-validation.md).
+// Legacy mode (cmd/server) keeps all three final.
 func (p *Processor) saveRaceSummaryForEvent(sessionUID uint64, eventCode string) {
 	final := !p.checkpointSaves || eventCode == packets.EventSessionEnded
 	p.saveRaceSummary(sessionUID, eventCode, final)

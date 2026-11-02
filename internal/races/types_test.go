@@ -111,7 +111,7 @@ func TestBuildSummaryRichDetail(t *testing.T) {
 		Drivers: []dto.DriverInfo{
 			{
 				Index: 0, Name: "Player", Position: 1, CurrentLapNum: 29,
-				BestLapTime: 91234, LastLapTime: 92500, NumPitStops: 1,
+				BestLapTime: 91234, LastLapTime: 92500, NumPitStops: 1, ResultStatus: 3,
 				TireCompound: "medium", TireAge: 12, TireWear: [4]int{40, 42, 45, 41},
 				// One closed Soft stint (laps 1-17), enriched by the StrategyManager.
 				StintHistory: []dto.StintInfoDTO{
@@ -148,6 +148,9 @@ func TestBuildSummaryRichDetail(t *testing.T) {
 
 	// The last, in-progress Medium stint must be synthesized (StintHistory only
 	// closes on a compound change) and continue from the closed Soft stint.
+	if summary.Player.ResultStatus != 3 {
+		t.Fatalf("Player.ResultStatus = %d, want 3 (finished) carried from LapData", summary.Player.ResultStatus)
+	}
 	if n := len(summary.Player.Stints); n != 2 {
 		t.Fatalf("player stints = %d, want 2 (closed soft + synthesized medium)", n)
 	}

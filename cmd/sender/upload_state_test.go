@@ -519,6 +519,7 @@ func TestBuildUploadRequestMapsMySetupHistoryFields(t *testing.T) {
 	summary.SavedAtLocal = "2026-09-04 19:23:45"
 	summary.Session.SessionType = "Race 2"
 	summary.Player.FinalPosition = 24 // F1 26's 24-car grid is valid.
+	summary.Player.ResultStatus = 3   // finished
 	summary.Detail.FinalizeTrigger = "SEND"
 
 	req, ok := buildUploadRequest(summary, testUploadLogger())
@@ -556,5 +557,44 @@ func TestBuildUploadRequestOmitsInvalidMySetupHistoryFields(t *testing.T) {
 	}
 	if req.RecordedAt != nil || req.FinishPosition != nil {
 		t.Fatalf("legacy/switch fields = %v/%v, want nil/nil", req.RecordedAt, req.FinishPosition)
+	}
+}
+
+// TestSummaryFinishPositionRequiresSettledPlayerResult pins the mid-race-exit
+// gate: the game sends SEND when the player quits mid-race too, with the player
+// still active and no Final Classification, so that live position must not be
+// uploaded as a finishing position (history/20261102-finish-position-validation.md).
+func TestSummaryFinishPositionRequiresSettledPlayerResult(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		want   bool
+	}{
+		{"unknown/legacy", 0, false},
+		{"inactive", 1, false},
+		{"active (mid-race exit)", 2, false},
+		{"finished", 3, true},
+		{"dnf", 4, true},
+		{"dsq", 5, true},
+		{"not classified", 6, true},
+		{"retired", 7, true},
+		{"out of range", 8, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			summary := newTestSummary(42, 1, 2)
+			summary.Session.SessionType = "Race"
+			summary.Player.FinalPosition = 8
+			summary.Player.ResultStatus = tc.status
+			summary.Detail.FinalizeTrigger = "SEND"
+
+			pos, ok := summaryFinishPosition(summary)
+			if ok != tc.want {
+				t.Fatalf("status %d: ok = %v, want %v", tc.status, ok, tc.want)
+			}
+			if ok && pos != 8 {
+				t.Fatalf("status %d: position = %d, want 8", tc.status, pos)
+			}
+		})
 	}
 }

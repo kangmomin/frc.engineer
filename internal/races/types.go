@@ -110,6 +110,12 @@ type PlayerSummary struct {
 	LastLapMS     uint32      `json:"lastLapMs"`
 	PitStops      int         `json:"pitStops"`
 	Stints        []RaceStint `json:"stints,omitempty"`
+	// ResultStatus is the player's LapData m_resultStatus at summary time
+	// (2 = active, 3 = finished, 4 = DNF, 5 = DSQ, 6 = not classified,
+	// 7 = retired). 0 means unknown — including summaries written before this
+	// field existed. It gates the platform finishPosition: a SEND that arrives
+	// while the player is still active is a mid-race exit, not a result.
+	ResultStatus int `json:"resultStatus,omitempty"`
 }
 
 // DriverSummary captures lightweight result metrics for each driver.
@@ -277,6 +283,7 @@ func BuildSummary(sessionUID uint64, state *dto.PitwallState, counts Notificatio
 				BestLapMS:     uint32(maxf32(p.BestLapTime, 0)),
 				LastLapMS:     uint32(maxf32(p.LastLapTime, 0)),
 				PitStops:      p.NumPitStops,
+				ResultStatus:  p.ResultStatus,
 			}
 			// The player's stints drive the rich Detail's per-lap tyre mapping, so
 			// synthesize the final in-progress stint (StintHistory only closes on a
